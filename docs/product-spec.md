@@ -183,6 +183,7 @@ sources:
       relay_through: # 经由中转，自动生成 🔗 HK-ISP 链式节点组
         type: group # group — 引用节点组 | select — 正则筛选 | all — 全部节点
         name: 🇭🇰 Hong Kong # group 时填组名，select 时改为 match: "(港|HK)"
+        strategy: select # 链式组策略，必须显式指定 select/url-test
 
 filters: # 可选
   exclude: "(过期|剩余流量|到期)" # 排除匹配的节点
@@ -348,5 +349,5 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 代理链             | 支持，作为 source 上的可选声明            | 不常用但重要                     |
 | 链式节点组         | 不计入 @all                               | 防止节点膨胀                     |
 | 链式节点组使用方式 | 与地区组完全一致，可被服务组引用          | 无特殊限制                       |
-| 节点组策略         | 支持 select 和 url-test                   | 手动 + 自动                      |
+| 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
