@@ -1,0 +1,19 @@
+sources:
+  subscriptions:
+    - url: "https://sub.example.com/api?token=xxx"
+
+groups:
+  HK: { match: "(HK)", strategy: select }
+
+routing:
+  proxy: [HK, DIRECT]
+  final: [proxy, DIRECT]
+
+rulesets:
+  proxy:
+    - "https://example.com/rules.list"
+
+rules:
+  - "GEOIP,CN,final"
+
+fallback: final

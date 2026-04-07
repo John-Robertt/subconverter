@@ -45,6 +45,7 @@ rule-provider 命名规则：
 
 映射要求：
 
+- 若配置了 `base_url`，输出首行为 `#!MANAGED-CONFIG <base_url>/generate?format=surge interval=86400 strict=false`
 - 节点输出到代理定义段
 - 节点组和服务组输出到组定义段
 - 远程规则集在规则中直接引用 URL
@@ -69,6 +70,26 @@ rule-provider 命名规则：
 - 规则集通常包含精确域名/IP 匹配，应优先命中
 - 用户内联规则通常是宽泛规则（如 `GEOIP`），放在规则集之后
 - 兜底规则天然是最后一条
+
+---
+
+## Surge Managed Profile
+
+当用户配置了 `base_url` 时，Surge 渲染器在输出首行写入：
+
+```
+#!MANAGED-CONFIG <base_url>/generate?format=surge interval=86400 strict=false
+```
+
+此行告知 Surge 客户端配置的更新源地址和检查间隔。
+
+参数说明：
+
+- URL：由 `base_url` + `/generate?format=surge` 拼接
+- `interval`：更新检查最小间隔，默认 86400 秒（24 小时）
+- `strict`：是否强制过期更新，默认 false
+
+当 `base_url` 为空时不输出此行。Clash Meta 输出不受影响。
 
 ---
 

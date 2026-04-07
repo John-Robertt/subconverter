@@ -9,6 +9,7 @@
 ## 顶层结构
 
 ```yaml
+base_url:
 sources:
 filters:
 groups:
@@ -20,6 +21,7 @@ fallback:
 
 各段职责：
 
+- `base_url`：声明服务的外部可访问地址（可选）
 - `sources`：声明订阅源和自定义代理
 - `filters`：定义订阅节点过滤规则
 - `groups`：声明地区节点组
@@ -209,6 +211,25 @@ fallback: 🐟 FINAL
 
 ---
 
+## base_url
+
+```yaml
+base_url: "https://my-server.com"
+```
+
+用途：
+
+- 声明服务的外部可访问地址
+- 用于 Surge 输出时生成 `#!MANAGED-CONFIG` 头，使 Surge 客户端能自动更新配置
+
+约束：
+
+- 可选字段
+- 值为 scheme + host（如 `https://my-server.com` 或 `http://192.168.1.1:8080`），不含路径
+- 为空时 Surge 输出不包含 `#!MANAGED-CONFIG` 头
+
+---
+
 ## 顺序规则
 
 以下段落的书写顺序直接影响输出：
@@ -218,3 +239,5 @@ fallback: 🐟 FINAL
 - `rulesets`
 
 系统必须保留此顺序，以保证客户端面板与配置书写顺序一致。
+
+`base_url` 是标量值，不属于顺序敏感字段。

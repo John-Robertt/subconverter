@@ -165,6 +165,7 @@ cmd/subconverter
 | 链式组策略声明 | 写在 `relay_through.strategy` | 派生关系就近声明，避免 `groups` 出现异类结构 |
 | `@all` 范围 | 仅原始节点，不含链式节点 | 控制节点膨胀 |
 | 缓存范围 | 仅缓存订阅拉取结果 | 规则集内容不由服务端消费 |
+| `base_url` 用途 | 声明服务外部地址，用于 Surge Managed Profile | 用户显式声明，避免反向代理下自动推导不可靠 |
 
 ---
 

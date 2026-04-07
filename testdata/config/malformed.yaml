@@ -1,0 +1,5 @@
+sources:
+  subscriptions:
+    - url: "https://example.com"
+  invalid_indent:
+ broken: [

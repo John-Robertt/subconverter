@@ -1,0 +1,101 @@
+# Example configuration for subconverter.
+# Covers: subscriptions, custom proxies with relay_through, filters,
+# region groups, routing (service groups), rulesets, rules, and fallback.
+#
+# Reference: docs/design/config-schema.md
+
+base_url: "https://my-server.com"
+
+sources:
+  subscriptions:
+    - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
+  custom_proxies:
+    - name: HK-ISP
+      type: socks5
+      server: 154.197.1.1
+      port: 45002
+      username: user
+      password: pass
+      relay_through:
+        type: group
+        name: "🇭🇰 Hong Kong"
+        strategy: select
+
+filters:
+  exclude: "(过期|剩余流量|到期)"
+
+groups:
+  🇭🇰 Hong Kong: { match: "(港|HK|Hong Kong)", strategy: select }
+  🇸🇬 Singapore: { match: "(新加坡|坡|狮城|SG|Singapore)", strategy: select }
+  🇨🇳 Taiwan: { match: "(台|新北|彰化|TW|Taiwan)", strategy: select }
+  🇯🇵 Japan: { match: "(日本|川日|东京|大阪|泉日|埼玉|沪日|深日|[^-尼]日|JP|Japan)", strategy: url-test }
+  🇺🇲 United States: { match: "(美国|波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|US|USA|United States)", strategy: select }
+
+routing:
+  🚀 快速选择: [🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, 🔗 HK-ISP, 🚀 手动切换, DIRECT]
+  🚀 手动切换: ["@all"]
+  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  📺 Netflix: [🇸🇬 Singapore, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  📺 DisneyPlus: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  📺 ViuTV: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  🎬 YouTube: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  🍎 Apple: [DIRECT, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States]
+  🔍 Google: [🇸🇬 Singapore, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  💻 Github: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  ☁️ OneDrive: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  Ⓜ️ Microsoft: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  💳 PayPal: [🇺🇲 United States, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, DIRECT]
+  💳 Stripe: [🇺🇲 United States, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, DIRECT]
+  🌍 DMM: [🇯🇵 Japan, 🚀 快速选择, 🚀 手动切换, DIRECT]
+  🎯 Global: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  🎯 China: [DIRECT, 🚀 快速选择, 🚀 手动切换]
+  🛑 BanList: [REJECT, DIRECT]
+  🐟 FINAL: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+
+rulesets:
+  🛑 BanList:
+    - "https://gcore.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/adblockloon.list"
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanAD.list"
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanProgramAD.list"
+  📺 Netflix:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Netflix.list"
+  📲 Telegram:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Telegram.list"
+  🎬 YouTube:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/YouTube.list"
+  🔍 Google:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Google.list"
+  💻 Github:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Github.list"
+  🍎 Apple:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Apple.list"
+  Ⓜ️ Microsoft:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Microsoft.list"
+  ☁️ OneDrive:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/OneDrive.list"
+  💳 PayPal:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/PayPal.list"
+  💳 Stripe:
+    - "https://raw.githubusercontent.com/nicedream2/ACL4SSR/master/Clash/Ruleset/Stripe.list"
+  📺 DisneyPlus:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/DisneyPlus.list"
+  🎯 China:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaDomain.list"
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaMedia.list"
+    - "https://raw.githubusercontent.com/nicedream2/ACL4SSR/master/Clash/Ruleset/SteamCN.list"
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Download.list"
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/LocalAreaNetwork.list"
+    - "https://raw.githubusercontent.com/nicedream2/ACL4SSR/master/Clash/Direct.list"
+  📺 ViuTV:
+    - "https://raw.githubusercontent.com/nicedream2/ACL4SSR/master/Clash/Ruleset/ViuTV.list"
+  🌍 DMM:
+    - "https://raw.githubusercontent.com/nicedream2/ACL4SSR/master/Clash/Ruleset/Dmm.list"
+  🎯 Global:
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyMedia.list"
+    - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyGFWlist.list"
+    - "https://raw.githubusercontent.com/nicedream2/ACL4SSR/master/Clash/Global.list"
+
+rules:
+  - "GEOIP,CN,🎯 China"
+
+fallback: 🐟 FINAL

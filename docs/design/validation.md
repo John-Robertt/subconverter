@@ -30,6 +30,7 @@
 - `relay_through.type=group` 时必须提供 `name`
 - `relay_through.type=select` 时必须提供 `match`
 - `fallback` 必填
+- `base_url` 可选；若非空，必须以 `http://` 或 `https://` 开头
 
 ---
 

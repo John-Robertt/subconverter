@@ -170,6 +170,8 @@ HK-03 → HK-ISP
 用户编写一个 YAML 配置文件，工具读取后生成 Clash Meta / Surge 配置。
 
 ```yaml
+base_url: "https://my-server.com"
+
 sources:
   subscriptions:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
@@ -351,3 +353,4 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 链式节点组使用方式 | 与地区组完全一致，可被服务组引用          | 无特殊限制                       |
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
+| Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG` | 用户显式控制，无需依赖反向代理头 |
