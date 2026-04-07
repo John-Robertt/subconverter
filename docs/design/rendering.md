@@ -33,6 +33,12 @@
 
 - Clash Meta 的规则集引用采用 provider 名称，而不是直接在规则中内联完整 URL
 
+rule-provider 命名规则：
+
+- 从 URL 路径中提取文件名并去掉扩展名，如 `https://example.com/Clash/Netflix.list` → `Netflix`
+- 同名时追加递增序号，如 `Netflix`、`Netflix-2`
+- provider 名称仅用于 Clash Meta 输出的内部引用，不影响语义
+
 ---
 
 ## Surge
@@ -50,6 +56,22 @@
 
 ---
 
+## 规则排列顺序
+
+最终输出的规则按以下顺序排列：
+
+1. `rulesets`（按 `rulesets` 段书写顺序，同一服务组的多条 URL 按声明顺序排列）
+2. `rules`（按 `rules` 段书写顺序）
+3. `MATCH` / `FINAL` 兜底规则（引用 `fallback` 指定的服务组）
+
+理由：
+
+- 规则集通常包含精确域名/IP 匹配，应优先命中
+- 用户内联规则通常是宽泛规则（如 `GEOIP`），放在规则集之后
+- 兜底规则天然是最后一条
+
+---
+
 ## 一致性要求
 
 无论输出 Clash Meta 还是 Surge，都必须保证：
@@ -57,6 +79,7 @@
 - 同样的节点组顺序
 - 同样的服务组顺序
 - 同样的 ruleset 顺序
+- 同样的规则排列顺序
 - 同样的 fallback 语义
 - 同样的 `@all` 展开结果
 

@@ -22,6 +22,7 @@
 
 - `subscriptions[].url` 必填
 - `custom_proxies[].name/type/server/port` 必填
+- `custom_proxies` 之间名称不能重复
 - `groups[*].match` 必填
 - `groups[*].strategy` 必填且只能是 `select` 或 `url-test`
 - `relay_through.type` 必填
@@ -47,10 +48,15 @@
 
 重点规则：
 
+- 自定义代理名称不得与订阅节点名称冲突
+- 跨订阅重名节点自动追加递增后缀
+- 节点组名与服务组名不得重复（共享同一命名空间）
 - `routing` 中引用的节点组、服务组、保留字都必须可解析
 - `rulesets` 的 key 必须存在于 `routing`
 - `relay_through.type=group` 引用的节点组必须存在
 - 自动生成的链式组必须至少包含一个成员
+- 地区节点组匹配结果不得为空
+- 订阅拉取结果不得为空（0 个节点视为异常）
 
 ---
 
