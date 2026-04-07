@@ -14,6 +14,7 @@ subconverter/
 │   └── main.go
 ├── internal/
 │   ├── config/
+│   ├── errtype/
 │   ├── fetch/
 │   ├── model/
 │   ├── pipeline/
@@ -21,6 +22,7 @@ subconverter/
 │   └── server/
 ├── configs/
 │   └── example.yaml
+├── testdata/
 └── docs/
 ```
 
@@ -34,6 +36,11 @@ subconverter/
 - YAML 加载
 - 保序映射
 - 静态校验
+
+`internal/errtype`
+
+- 四类错误定义（ConfigError、FetchError、BuildError、RenderError）
+- 横跨所有业务包的共享错误类型
 
 `internal/model`
 
@@ -79,13 +86,18 @@ pipeline
   -> config
   -> fetch
   -> model
+  -> errtype
 
 render
   -> model
+
+config
+  -> errtype
 ```
 
 约束：
 
 - `model` 不依赖其他业务包
+- `errtype` 不依赖其他业务包
 - `render` 不直接读取 YAML 配置
 - `server` 不承担业务转换逻辑

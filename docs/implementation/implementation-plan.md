@@ -80,8 +80,8 @@
 
 | 里程碑 | 主题 | 完成状态 |
 |------|------|------|
-| `M0` | 工程基线 | 仓库具备最小 Go 工程结构和开发约束 |
-| `M1` | 配置与模型 | 能稳定加载配置、保序、完成静态校验并建立统一中间表示 |
+| `M0` | 工程基线 | ✅ 已完成 |
+| `M1` | 配置与模型 | ✅ 已完成 |
 | `M2` | Source 与 Filter | 能拉取订阅、解析 SS、过滤节点 |
 | `M3` | Group 与 Route | 能生成地区组、链式组、服务组和路由绑定 |
 | `M4` | 校验与渲染 | 能校验引用关系并输出 Clash Meta / Surge |
@@ -102,7 +102,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ---
 
-## M0: 工程基线
+## M0: 工程基线 ✅
 
 ### 目标
 
@@ -110,25 +110,31 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 工作项
 
-- 初始化 `go.mod`
+- 初始化 `go.mod`（模块路径 `github.com/John-Robertt/subconverter`，Go 1.24）
 - 建立推荐目录结构
 - 增加 `configs/example.yaml`
 - 约定 `testdata` 和示例输入目录
-- 约定基本命令：格式化、测试、运行
+- 约定基本命令：格式化、测试、运行（Makefile）
 - 明确错误分类：配置错误、拉取错误、构建错误、渲染错误
 
 ### 产物
 
-- 最小 Go 工程骨架
-- 空包结构
-- 示例配置草稿
-- 开发命令说明
+- 最小 Go 工程骨架（`.gitignore`、`go.mod`、`Makefile`）
+- 空包结构（`config`、`model`、`fetch`、`pipeline`、`render`、`server`）
+- `internal/errtype`：四类错误类型（`ConfigError`、`FetchError`、`BuildError`、`RenderError`）及 9 个单元测试
+- 示例配置草稿（`configs/example.yaml`）
+- 测试数据（`testdata/subscriptions/sample.txt`：base64 编码的 SS URI 样本）
+- 入口占位（`cmd/subconverter/main.go`）
 
 ### 验收项
 
-- `go test ./...` 可执行
-- 目录结构符合 `project-structure.md`
-- 示例配置覆盖核心路径：订阅、地区组、链式组、routing、rulesets、fallback
+- ✅ `go test ./...` 可执行（errtype 9 个测试通过）
+- ✅ 目录结构符合 `project-structure.md`（补充 `internal/errtype`）
+- ✅ 示例配置覆盖核心路径：订阅、地区组、链式组、routing、rulesets、fallback
+
+### 实施记录
+
+新增 `internal/errtype` 包作为对 `project-structure.md` 的补充。理由：四类错误横跨所有业务包，放在任何业务包中会造成循环依赖。`errtype` 与 `model` 一样是零依赖叶子包。
 
 ### 对应需求
 
@@ -145,7 +151,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ---
 
-## M1: 配置与模型
+## M1: 配置与模型 ✅
 
 ### 目标
 
@@ -153,34 +159,55 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 工作项
 
-- 实现配置结构定义
-- 实现 `OrderedMap`
-- 实现 YAML 加载器
-- 实现静态配置校验
-- 实现统一中间表示模型
-- 让示例配置可成功加载
+- 实现配置结构定义（`Config`、`Sources`、`CustomProxy`、`RelayThrough`、`Group`、`Filters`）
+- 实现 `OrderedMap[V any]` 泛型保序映射
+- 实现 YAML 加载器（`Load`）
+- 实现静态配置校验（`Validate`，12 项校验规则，收集全部错误后一次返回）
+- 实现统一中间表示模型（`Proxy`、`ProxyGroup`、`Ruleset`、`Rule`、`Pipeline`）
+- 新增 `base_url` 顶层字段（用于 Surge Managed Profile）
+- 让示例配置可成功加载并通过校验
 
 ### 产物
 
-- `internal/config`
-- `internal/model`
-- 配置加载与静态校验能力
+- `internal/config`：
+  - `orderedmap.go`：自实现的泛型保序映射（~80 行），基于 yaml.v3 `MappingNode.Content` 遍历保序，支持 `Keys()`（防御性拷贝）、`Get()`、`Entries()`（Go 1.23+ `iter.Seq2`）
+  - `config.go`：顶层 `Config` 及所有子结构体定义
+  - `loader.go`：YAML 文件加载器，错误包装为 `*errtype.ConfigError`
+  - `validate.go`：静态校验器，使用 `errors.Join` 收集多个 `*errtype.ConfigError`
+- `internal/model`：
+  - `model.go`：格式无关的中间表示类型，枚举使用 typed string constants
+- 外部依赖：仅新增 `gopkg.in/yaml.v3`
+- 测试数据：`testdata/config/minimal_valid.yaml`、`testdata/config/malformed.yaml`
 
 ### 验收项
 
-- `groups`、`routing`、`rulesets` 顺序保持不变
-- `relay_through.strategy` 必填
-- 所有节点组策略都显式声明
-- 非法正则、缺失字段、非法枚举值可返回错误
-- 示例配置能加载为内存对象
+- ✅ `groups`、`routing`、`rulesets` 顺序保持不变（T-CFG-001/002/003）
+- ✅ `relay_through.strategy` 必填（T-CFG-004）
+- ✅ 所有节点组策略都显式声明（T-CFG-005）
+- ✅ 非法正则、缺失字段、非法枚举值可返回错误（22 个校验测试）
+- ✅ 示例配置能加载为内存对象并通过校验
+- ✅ `go test ./...` 全部通过（config 35 + errtype 9 + model 3 = 47 个测试）
 
 ### 对应测试
 
-- `T-CFG-001`：`groups` 保序解析
-- `T-CFG-002`：`routing` 保序解析
-- `T-CFG-003`：`rulesets` 保序解析
-- `T-CFG-004`：`relay_through.strategy` 缺失时报错
-- `T-CFG-005`：节点组 `strategy` 非法时报错
+- `T-CFG-001`：`groups` 保序解析 → `TestIntegration_GroupsOrder`
+- `T-CFG-002`：`routing` 保序解析 → `TestIntegration_RoutingOrder`
+- `T-CFG-003`：`rulesets` 保序解析 → `TestIntegration_RulesetsOrder`
+- `T-CFG-004`：`relay_through.strategy` 缺失时报错 → `TestValidate_RelayThroughMissingStrategy`
+- `T-CFG-005`：节点组 `strategy` 非法时报错 → `TestValidate_GroupInvalidStrategy`
+
+### 实施记录
+
+关键设计决策：
+
+| 决策 | 结论 | 原因 |
+|------|------|------|
+| OrderedMap | 自实现泛型 `OrderedMap[V any]`，不用第三方库 | 需求极简（保序遍历+查找），~80 行代码，遵循依赖克制原则 |
+| 保序机制 | 利用 yaml.v3 `MappingNode.Content` 的有序切片 | 标准库能力，无需额外工具 |
+| 校验策略 | 收集全部错误后 `errors.Join` 一次返回 | 用户一次看到所有问题，避免逐个修复 |
+| Model 枚举 | typed string constants（非 iota） | 可调试、可序列化、日志友好 |
+| config 与 model | 两个包完全独立，无 import 关系 | config 是用户配置层，model 是系统语义层，转换在 M2-M3 |
+| `base_url` | 顶层可选字段，用于 Surge `#!MANAGED-CONFIG` 头 | Surge 客户端需要自引用 URL 才能自动更新配置 |
 
 ### 对应需求
 
@@ -197,11 +224,13 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 退出条件
 
-- 顶层配置结构冻结，后续阶段不得任意扩展字段
+- ✅ 顶层配置结构已冻结：`sources`、`filters`、`groups`、`routing`、`rulesets`、`rules`、`fallback`、`base_url`
 
-### 风险
+### 已知限制
 
-- 配置模型定得过早，可能影响后续阶段扩展
+- 静态校验不做跨段引用检查（如 fallback 是否引用 routing 中的 key），留给 M4 图级校验
+- 正则只编译不存储，M2/M3 pipeline 阶段按需重新编译
+- `base_url` 的 URL 格式校验留给 M5 server 层
 
 ---
 
