@@ -34,6 +34,12 @@ func TestValidate_MissingSubscriptionURL(t *testing.T) {
 	assertFieldError(t, Validate(&cfg), "sources.subscriptions[0].url")
 }
 
+func TestValidate_InvalidSubscriptionURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.Subscriptions = []Subscription{{URL: "not-a-url"}}
+	assertFieldError(t, Validate(&cfg), "sources.subscriptions[0].url")
+}
+
 func TestValidate_MissingCustomProxyName(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{{
@@ -182,6 +188,44 @@ func TestValidate_MissingFallback(t *testing.T) {
 	cfg := validBase()
 	cfg.Fallback = ""
 	assertFieldError(t, Validate(&cfg), "fallback")
+}
+
+func TestValidate_RulesetEmptyList(t *testing.T) {
+	cfg := validBase()
+	cfg.Rulesets = mustOrderedMap[[]string](`proxy: []`)
+	assertFieldError(t, Validate(&cfg), "rulesets.proxy")
+}
+
+func TestValidate_RulesetEmptyURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Rulesets = mustOrderedMap[[]string](`proxy: [""]`)
+	assertFieldError(t, Validate(&cfg), "rulesets.proxy[0]")
+}
+
+func TestValidate_RulesetInvalidURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Rulesets = mustOrderedMap[[]string](`proxy: ["not-a-url"]`)
+	assertFieldError(t, Validate(&cfg), "rulesets.proxy[0]")
+}
+
+func TestValidate_BaseURLInvalidScheme(t *testing.T) {
+	cfg := validBase()
+	cfg.BaseURL = "ftp://example.com"
+	assertFieldError(t, Validate(&cfg), "base_url")
+}
+
+func TestValidate_BaseURLWithPath(t *testing.T) {
+	cfg := validBase()
+	cfg.BaseURL = "https://example.com/path"
+	assertFieldError(t, Validate(&cfg), "base_url")
+}
+
+func TestValidate_BaseURLValid(t *testing.T) {
+	cfg := validBase()
+	cfg.BaseURL = "https://example.com"
+	if err := Validate(&cfg); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
 }
 
 func TestValidate_MultipleErrors(t *testing.T) {

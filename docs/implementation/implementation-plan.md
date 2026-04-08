@@ -184,9 +184,9 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ `groups`、`routing`、`rulesets` 顺序保持不变（T-CFG-001/002/003）
 - ✅ `relay_through.strategy` 必填（T-CFG-004）
 - ✅ 所有节点组策略都显式声明（T-CFG-005）
-- ✅ 非法正则、缺失字段、非法枚举值可返回错误（22 个校验测试）
+- ✅ 非法正则、缺失字段、非法枚举值、非法 URL 可返回错误
 - ✅ 示例配置能加载为内存对象并通过校验
-- ✅ `go test ./...` 全部通过（config 35 + errtype 9 + model 3 = 47 个测试）
+- ✅ `go test ./...` 全部通过
 
 ### 对应测试
 
@@ -230,7 +230,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 - 静态校验不做跨段引用检查（如 fallback 是否引用 routing 中的 key），留给 M4 图级校验
 - 正则只编译不存储，M2/M3 pipeline 阶段按需重新编译
-- `base_url` 的 URL 格式校验留给 M5 server 层
+- `base_url` 在 M1 做静态格式校验，M5 server 层只负责将其拼接为外部 managed URL
 
 ---
 

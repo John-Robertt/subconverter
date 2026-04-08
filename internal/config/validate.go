@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
@@ -17,6 +18,8 @@ func Validate(cfg *Config) error {
 	for i, sub := range cfg.Sources.Subscriptions {
 		if sub.URL == "" {
 			c.add(fmt.Sprintf("sources.subscriptions[%d].url", i), "required")
+		} else {
+			c.validateHTTPURL(fmt.Sprintf("sources.subscriptions[%d].url", i), sub.URL)
 		}
 	}
 
@@ -72,9 +75,31 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	// rulesets
+	for k, urls := range cfg.Rulesets.Entries() {
+		prefix := fmt.Sprintf("rulesets.%s", k)
+		if len(urls) == 0 {
+			c.add(prefix, "must contain at least one URL")
+			continue
+		}
+		for i, rawURL := range urls {
+			field := fmt.Sprintf("%s[%d]", prefix, i)
+			if rawURL == "" {
+				c.add(field, "required")
+				continue
+			}
+			c.validateHTTPURL(field, rawURL)
+		}
+	}
+
 	// fallback
 	if cfg.Fallback == "" {
 		c.add("fallback", "required")
+	}
+
+	// base_url
+	if cfg.BaseURL != "" {
+		c.validateBaseURL("base_url", cfg.BaseURL)
 	}
 
 	return c.result()
@@ -110,6 +135,35 @@ func (c *collector) validateRelayThrough(rt *RelayThrough, prefix string) {
 func (c *collector) compileRegex(field, pattern string) {
 	if _, err := regexp.Compile(pattern); err != nil {
 		c.add(field, fmt.Sprintf("invalid regex: %v", err))
+	}
+}
+
+func (c *collector) validateHTTPURL(field, rawURL string) {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		c.add(field, fmt.Sprintf("invalid URL %q", rawURL))
+		return
+	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		c.add(field, fmt.Sprintf("must start with http:// or https://, got %q", rawURL))
+	}
+}
+
+func (c *collector) validateBaseURL(field, rawURL string) {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		c.add(field, fmt.Sprintf("invalid URL %q", rawURL))
+		return
+	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		c.add(field, fmt.Sprintf("must start with http:// or https://, got %q", rawURL))
+		return
+	}
+
+	if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		c.add(field, "must contain scheme and host only, without path, query, or fragment")
 	}
 }
 
