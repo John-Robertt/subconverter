@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -8,9 +9,9 @@ import (
 )
 
 func TestLoad_ExampleConfig(t *testing.T) {
-	cfg, err := Load("../../configs/example.yaml")
+	cfg, err := Load(context.Background(), "../../configs/base_config.yaml", nil)
 	if err != nil {
-		t.Fatalf("Load example.yaml: %v", err)
+		t.Fatalf("Load base_config.yaml: %v", err)
 	}
 
 	if cfg.Fallback != "🐟 FINAL" {
@@ -39,7 +40,7 @@ func TestLoad_ExampleConfig(t *testing.T) {
 }
 
 func TestLoad_MinimalValid(t *testing.T) {
-	cfg, err := Load("../../testdata/config/minimal_valid.yaml")
+	cfg, err := Load(context.Background(), "../../testdata/config/minimal_valid.yaml", nil)
 	if err != nil {
 		t.Fatalf("Load minimal: %v", err)
 	}
@@ -61,7 +62,7 @@ func TestLoad_MinimalValid(t *testing.T) {
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
-	_, err := Load("nonexistent.yaml")
+	_, err := Load(context.Background(), "nonexistent.yaml", nil)
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
@@ -72,7 +73,7 @@ func TestLoad_FileNotFound(t *testing.T) {
 }
 
 func TestLoad_MalformedYAML(t *testing.T) {
-	_, err := Load("../../testdata/config/malformed.yaml")
+	_, err := Load(context.Background(), "../../testdata/config/malformed.yaml", nil)
 	if err == nil {
 		t.Fatal("expected error for malformed YAML")
 	}

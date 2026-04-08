@@ -1,0 +1,222 @@
+# ============================================================
+# Clash Meta (mihomo) 底版模板
+# ============================================================
+#
+# 本文件是渲染器的底版配置。工具会自动注入以下四个段落：
+#   - proxies          （节点列表）
+#   - proxy-groups      （节点组 + 服务组）
+#   - rule-providers    （远程规则集 provider）
+#   - rules             （路由规则）
+#
+# 你只需在此文件中配置通用设置（端口、DNS、TUN 等）。
+# 上述四个段落如果写在这里，会被工具生成的内容覆盖。
+#
+# 使用方法：在 config.yaml 中声明
+#   templates:
+#     clash: "configs/base_clash.yaml"
+#
+# ============================================================
+
+
+# ==================== 基础设置 ====================
+
+# HTTP(S) 和 SOCKS5 混合代理端口
+# 客户端（浏览器/系统代理）连接此端口
+mixed-port: 7890
+
+# 是否允许局域网设备连接
+# true: 其他设备可通过本机 IP:mixed-port 使用代理
+# false: 仅本机可用
+allow-lan: false
+
+# 绑定地址，配合 allow-lan 使用
+# "*": 监听所有接口 | "0.0.0.0": 仅 IPv4 | 具体 IP: 指定接口
+bind-address: "*"
+
+# 运行模式
+# rule: 基于规则路由（推荐）
+# global: 所有流量走代理
+# direct: 所有流量直连
+mode: rule
+
+# 日志级别: silent | error | warning | info | debug
+log-level: info
+
+# 是否启用 IPv6
+ipv6: false
+
+
+# ==================== 控制面板 ====================
+
+# 外部控制 API 监听地址
+# 用于 Yacd / MetaCubeX 等 Web 面板连接
+external-controller: 127.0.0.1:9090
+
+# 外部控制 API 密钥（可选）
+# 设置后面板连接需要此密钥
+# secret: "your-secret-here"
+
+# 外部面板 UI 路径（可选）
+# 下载 metacubex-ui 后填入本地路径，或留空使用在线面板
+# external-ui: /path/to/ui
+
+
+# ==================== 进程与性能 ====================
+
+# 进程匹配模式
+# always: 始终匹配进程名（占资源较多）
+# strict: 仅匹配有进程规则时启用
+# off: 关闭进程匹配
+find-process-mode: strict
+
+# 统一延迟测试
+# true: 消除握手等额外延迟，显示更准确的节点延迟
+unified-delay: true
+
+# TCP 并发连接
+# true: 同时发起 TCP 和 TLS 握手，选择最快的连接
+tcp-concurrent: true
+
+# 全局客户端指纹（TLS fingerprint）
+# 伪装为指定浏览器的 TLS 握手特征
+# 可选: chrome | firefox | safari | iOS | android | edge | 360 | qq | random
+global-client-fingerprint: chrome
+
+
+# ==================== GEO 数据 ====================
+
+# GEO 数据模式
+# true: 使用 dat 文件（兼容 v2ray）
+# false: 使用 mmdb 文件（兼容 Clash 原版）
+geodata-mode: true
+
+# 自动更新 GEO 数据库
+geo-auto-update: true
+
+# 更新间隔（小时）
+geo-update-interval: 24
+
+# GEO 数据下载地址（可选，取消注释以自定义）
+# geox-url:
+#   geoip: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat"
+#   geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
+#   mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
+
+
+# ==================== 缓存 ====================
+
+profile:
+  # 保存用户在面板中的策略组选择
+  store-selected: true
+  # 保存 fake-ip 映射，重启后复用
+  store-fake-ip: true
+
+
+# ==================== DNS ====================
+
+dns:
+  enable: true
+  # DNS 监听地址（通常不需要改）
+  listen: :1053
+  ipv6: false
+
+  # DNS 增强模式
+  # fake-ip: 返回假 IP，由规则决定出口（推荐，延迟低）
+  # redir-host: 返回真实 IP（兼容性好，但延迟略高）
+  enhanced-mode: fake-ip
+
+  # fake-ip 地址池范围
+  fake-ip-range: 28.0.0.1/8
+
+  # fake-ip 白名单：匹配的域名返回真实 IP 而非 fake-ip
+  # 常见需要真实 IP 的场景：本地网络、NTP、微软连接测试等
+  fake-ip-filter:
+    - "*"
+    - "+.lan"
+    - "+.local"
+    - "+.msftconnecttest.com"
+    - "+.msftncsi.com"
+    - "time.*.com"
+    - "ntp.*.com"
+    - "+.pool.ntp.org"
+    - "localhost.ptlogin2.qq.com"
+
+  # 默认 DNS（用于解析 DoH/DoT 服务器本身的域名）
+  # 必须为纯 IP 地址，不能是域名
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+
+  # 主 DNS 服务器（支持 DoH / DoT / UDP）
+  nameserver:
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
+
+  # 备用 DNS（当主 DNS 返回的 IP 为污染结果时使用）
+  # 通常配置为境外 DNS 以应对 DNS 污染
+  # fallback:
+  #   - https://dns.cloudflare.com/dns-query
+  #   - https://dns.google/dns-query
+
+  # 备用 DNS 触发条件
+  # fallback-filter:
+  #   geoip: true
+  #   geoip-code: CN
+  #   geosite:
+  #     - gfw
+  #   ipcidr:
+  #     - 240.0.0.0/4
+
+  # 域名策略：对指定域名使用特定 DNS
+  # nameserver-policy:
+  #   "geosite:cn,private":
+  #     - https://doh.pub/dns-query
+  #     - https://dns.alidns.com/dns-query
+
+
+# ==================== TUN 模式（可选）====================
+# TUN 模式会创建虚拟网卡接管系统全部流量，比系统代理覆盖面更广
+# 需要管理员/root 权限
+
+# tun:
+#   enable: true
+#   # 网络栈: system（兼容性好）| gvisor（用户态，无需内核支持）| mixed（混合）
+#   stack: mixed
+#   # 自动设置路由表
+#   auto-route: true
+#   # 自动检测出口网卡
+#   auto-detect-interface: true
+#   # 劫持 DNS 请求到 Clash DNS
+#   dns-hijack:
+#     - "any:53"
+#     - "tcp://any:53"
+
+
+# ==================== 流量嗅探（可选）====================
+# 通过检查流量特征识别真实目标域名，提升 TUN 模式下的路由准确性
+
+# sniffer:
+#   enable: true
+#   # 强制使用嗅探结果覆盖 DNS 解析
+#   force-dns-mapping: true
+#   # 解析纯 IP 请求
+#   parse-pure-ip: true
+#   sniff:
+#     HTTP:
+#       ports: [80, 8080-8880]
+#       override-destination: true
+#     TLS:
+#       ports: [443, 8443]
+#     QUIC:
+#       ports: [443, 8443]
+
+
+# ============================================================
+# 以下段落由工具自动生成，无需手动编写。
+# 如果在此处写入，会被工具覆盖。
+#
+#   proxies:       → 节点列表
+#   proxy-groups:  → 节点组 + 服务组
+#   rule-providers:→ 远程规则集
+#   rules:         → 路由规则
+# ============================================================

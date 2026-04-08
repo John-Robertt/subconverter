@@ -8,11 +8,17 @@
 
 ## 缓存对象
 
-系统只缓存订阅 URL 的拉取结果。
+系统缓存以下远程资源的拉取结果：
+
+- 订阅 URL（SS 节点列表）
+- 模板 URL（底版配置文件，当 `templates.clash` / `templates.surge` 为 HTTP(S) URL 时）
+
+两者共享同一个 `CachedFetcher` 实例和 TTL 参数。
 
 不缓存：
 
 - 规则集 URL 内容
+- 本地文件（通过 `os.ReadFile` 直接读取）
 
 原因：
 

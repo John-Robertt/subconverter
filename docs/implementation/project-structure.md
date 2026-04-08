@@ -21,7 +21,7 @@ subconverter/
 │   ├── render/
 │   └── server/
 ├── configs/
-│   └── example.yaml
+│   └── base_config.yaml
 ├── testdata/
 └── docs/
 ```
@@ -32,8 +32,8 @@ subconverter/
 
 `internal/config`
 
-- 配置结构
-- YAML 加载
+- 配置结构（含 `Templates` 底版模板声明）
+- YAML 加载（支持本地路径和远程 URL）
 - 保序映射
 - 静态校验
 
@@ -50,6 +50,7 @@ subconverter/
 
 - 订阅拉取
 - TTL 缓存
+- 统一资源加载（`LoadResource`：按 URL 前缀分发本地/远程）
 
 `internal/pipeline`
 
@@ -59,8 +60,8 @@ subconverter/
 
 `internal/render`
 
-- Clash Meta 渲染器
-- Surge 渲染器
+- Clash Meta 渲染器（yaml.Node API + 底版模板合并）
+- Surge 渲染器（INI section 切分替换 + 底版模板合并）
 
 `internal/server`
 

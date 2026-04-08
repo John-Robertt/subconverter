@@ -107,11 +107,11 @@ cmd/subconverter
 
 模块职责：
 
-- `config`：配置加载、保序解析、静态校验
+- `config`：配置加载（支持本地/远程）、保序解析、静态校验
 - `model`：格式无关的中间表示
-- `fetch`：订阅拉取与缓存
+- `fetch`：订阅拉取、缓存、统一资源加载（`LoadResource`：按前缀分发本地文件读取或 HTTP 拉取）
 - `pipeline`：Source / Filter / Group / Route / ValidateGraph 编排
-- `render`：Clash Meta 与 Surge 渲染器
+- `render`：Clash Meta 与 Surge 渲染器（支持底版模板合并）
 - `server`：HTTP 接口和错误映射
 
 依赖原则：
@@ -164,8 +164,11 @@ cmd/subconverter
 | 链式组建模 | 属于节点组，由 `custom_proxies[].relay_through` 派生 | 与用户心智一致，配置归属清晰 |
 | 链式组策略声明 | 写在 `relay_through.strategy` | 派生关系就近声明，避免 `groups` 出现异类结构 |
 | `@all` 范围 | 仅原始节点，不含链式节点 | 控制节点膨胀 |
-| 缓存范围 | 仅缓存订阅拉取结果 | 规则集内容不由服务端消费 |
+| 缓存范围 | 缓存订阅和模板的远程拉取结果 | 规则集内容不由服务端消费；模板与订阅共享 CachedFetcher |
 | `base_url` 用途 | 声明服务外部地址，用于 Surge Managed Profile | 用户显式声明，避免反向代理下自动推导不可靠 |
+| 通用设置来源 | 用户提供底版模板文件（`templates.clash` / `templates.surge`） | 通用设置因用户环境而异，不可硬编码 |
+| 资源加载模型 | 配置文件和模板均支持本地路径或 HTTP(S) URL | 统一 `LoadResource` 按前缀分发，复用已有 Fetcher |
+| 渲染器合并策略 | Clash 用 yaml.Node 树替换；Surge 用 section header 切分替换 | 保留底版全部用户自定义设置 |
 
 ---
 

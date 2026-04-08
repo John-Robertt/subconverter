@@ -285,3 +285,31 @@ func mustOrderedMap[V any](yamlStr string) OrderedMap[V] {
 	}
 	return m
 }
+
+func TestValidate_TemplateClashInvalidURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Templates.Clash = "https://"
+	err := Validate(&cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid template URL")
+	}
+	if !strings.Contains(err.Error(), "templates.clash") {
+		t.Errorf("error should mention templates.clash: %v", err)
+	}
+}
+
+func TestValidate_TemplateClashValidURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Templates.Clash = "https://example.com/base.yaml"
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("valid template URL should pass: %v", err)
+	}
+}
+
+func TestValidate_TemplateLocalPath(t *testing.T) {
+	cfg := validBase()
+	cfg.Templates.Surge = "./configs/base_surge.conf"
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("local template path should pass validation: %v", err)
+	}
+}

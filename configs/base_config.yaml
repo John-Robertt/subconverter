@@ -1,14 +1,85 @@
-# Example configuration for subconverter.
-# Covers: subscriptions, custom proxies with relay_through, filters,
-# region groups, routing (service groups), rulesets, rules, and fallback.
+# ============================================================
+# subconverter 用户配置文件
+# ============================================================
 #
-# Reference: docs/design/config-schema.md
+# 本文件声明系统的全部输入：订阅源、自定义代理、节点分组、
+# 服务路由、远程规则集、内联规则和兜底策略。
+#
+# 工具读取此文件后，结合底版模板（templates），
+# 生成 Clash Meta (.yaml) 或 Surge (.conf) 配置。
+#
+# 详细字段说明参见 docs/design/config-schema.md
+# ============================================================
+
+
+# ==================== 服务地址（可选）====================
+#
+# 声明本服务的外部可访问地址。
+# 用于 Surge 输出时自动生成 #!MANAGED-CONFIG 头，
+# 使 Surge 客户端能定期自动更新配置。
+#
+# 值为 scheme + host，不含路径。为空则 Surge 不输出此头。
+# 示例: "https://my-server.com" 或 "http://192.168.1.1:8080"
 
 base_url: "https://my-server.com"
 
+
+# ==================== 底版模板（可选）====================
+#
+# 为每种输出格式指定底版配置文件。渲染时工具会将生成的
+# 节点/分组/规则注入底版，保留底版中的通用设置。
+#
+# 值可以是：
+#   - 本地文件路径: "configs/base_clash.yaml"
+#   - 远程 URL:     "https://example.com/base_clash.yaml"
+#
+# 远程模板与订阅共享缓存（CachedFetcher + TTL）。
+# 不配置时，输出仅包含生成段（无通用设置）。
+
+templates:
+  clash: "configs/base_clash.yaml"
+  surge: "configs/base_surge.conf"
+
+
+# ==================== 节点来源 ====================
+
 sources:
+
+  # ---------- 订阅源 ----------
+  # 每个订阅返回 base64 编码的 SS 节点列表。
+  # 支持多个订阅，节点按顺序合并，跨订阅重名自动追加后缀（②③...）。
+  # url 必填，必须为 http:// 或 https:// 开头。
+
   subscriptions:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
+    # - url: "https://sub2.example.com/api/v1/client/subscribe?token=yyy"
+
+  # ---------- 自定义代理 ----------
+  # 不来自订阅、手动定义的节点（如机房专线、ISP 代理）。
+  #
+  # 字段说明：
+  #   name:     节点名称（不能与订阅节点或其他自定义代理重名）
+  #   type:     代理类型，可选 socks5 | http
+  #   server:   服务器地址
+  #   port:     端口号
+  #   username: 认证用户名（可选）
+  #   password: 认证密码（可选）
+  #
+  # relay_through（可选）：声明链式代理——通过指定的上游节点中转。
+  #   系统会自动生成链式节点和链式节点组（🔗 <name>）。
+  #
+  #   type: 筛选上游节点的方式
+  #     group  — 引用已定义的节点组（需填 name）
+  #     select — 用正则从订阅节点中筛选（需填 match）
+  #     all    — 使用全部订阅节点
+  #
+  #   strategy: 链式组的策略，必填
+  #     select   — 用户手动选节点
+  #     url-test — 自动选延迟最低的节点
+  #
+  #   name:  type=group 时必填，引用的节点组名
+  #   match: type=select 时必填，正则表达式
+
   custom_proxies:
     - name: HK-ISP
       type: socks5
@@ -21,8 +92,31 @@ sources:
         name: "🇭🇰 Hong Kong"
         strategy: select
 
+
+# ==================== 节点过滤（可选）====================
+#
+# exclude: 正则表达式，匹配的订阅节点会被排除。
+# 仅作用于订阅节点，不影响自定义代理和链式节点。
+# 常用于过滤订阅中的信息性节点（到期提醒、流量统计等）。
+
 filters:
   exclude: "(过期|剩余流量|到期)"
+
+
+# ==================== 节点组 ====================
+#
+# 定义地区节点组。每个组按正则匹配订阅节点。
+# 书写顺序 = 客户端面板显示顺序。
+#
+# 字段说明：
+#   match:    正则表达式，匹配订阅节点名称
+#   strategy: 必填，可选 select | url-test
+#     select   — 用户手动选节点
+#     url-test — 自动选延迟最低的节点
+#
+# 注意：
+#   - 链式组（🔗 HK-ISP）由 relay_through 自动生成，不在此处定义
+#   - 所有节点组都必须显式声明 strategy
 
 groups:
   🇭🇰 Hong Kong: { match: "(港|HK|Hong Kong)", strategy: select }
@@ -30,6 +124,22 @@ groups:
   🇨🇳 Taiwan: { match: "(台|新北|彰化|TW|Taiwan)", strategy: select }
   🇯🇵 Japan: { match: "(日本|川日|东京|大阪|泉日|埼玉|沪日|深日|[^-尼]日|JP|Japan)", strategy: url-test }
   🇺🇲 United States: { match: "(美国|波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|US|USA|United States)", strategy: select }
+
+
+# ==================== 服务组（路由）====================
+#
+# 定义服务组——"这个服务走哪个出口"。
+# 书写顺序 = 客户端面板显示顺序。
+# 列表中的顺序 = 出口推荐优先级（第一个是默认出口）。
+#
+# 可引用的成员：
+#   - 节点组名:   🇭🇰 Hong Kong, 🇸🇬 Singapore, ...
+#   - 服务组名:   🚀 快速选择, 🚀 手动切换, ...（互相引用）
+#   - 链式组名:   🔗 HK-ISP（由 relay_through 自动生成）
+#   - 保留策略:   DIRECT（直连）, REJECT（拒绝）
+#   - @all:       展开为全部原始节点（不含链式节点）
+#
+# 服务组策略固定为 select（用户手选出口）。
 
 routing:
   🚀 快速选择: [🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, 🔗 HK-ISP, 🚀 手动切换, DIRECT]
@@ -51,6 +161,18 @@ routing:
   🎯 China: [DIRECT, 🚀 快速选择, 🚀 手动切换]
   🛑 BanList: [REJECT, DIRECT]
   🐟 FINAL: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+
+
+# ==================== 远程规则集 ====================
+#
+# 将远程规则集 URL 绑定到服务组。
+# key 必须对应 routing 中已定义的服务组。
+# value 为一个或多个规则集 URL（多条合并匹配到同一服务组）。
+# 书写顺序 = 最终规则匹配优先级。
+#
+# 规则集内容由客户端运行时拉取，服务端只透传 URL。
+# Clash Meta: 转为 rule-providers + RULE-SET 引用
+# Surge: 直接 RULE-SET,<url>,<policy>
 
 rulesets:
   🛑 BanList:
@@ -95,7 +217,26 @@ rulesets:
     - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyGFWlist.list"
     - "https://raw.githubusercontent.com/nicedream2/ACL4SSR/master/Clash/Global.list"
 
+
+# ==================== 内联规则 ====================
+#
+# 直接写入的路由规则，排在远程规则集之后、兜底规则之前。
+# 系统只提取最后一个逗号后的策略名做引用校验，不解析规则语义。
+# 渲染时原样透传——Clash Meta 和 Surge 的内联规则语法兼容。
+#
+# 常用格式：
+#   GEOIP,CN,<策略>          → 中国 IP 走指定策略
+#   DOMAIN-SUFFIX,xxx,<策略>  → 匹配域名后缀
+#   IP-CIDR,xxx/xx,<策略>     → 匹配 IP 段
+
 rules:
   - "GEOIP,CN,🎯 China"
+
+
+# ==================== 兜底策略 ====================
+#
+# 未匹配任何规则集和内联规则的流量走这里。
+# 必填，必须引用 routing 中已定义的服务组。
+# 渲染为: Clash Meta → MATCH,<fallback> | Surge → FINAL,<fallback>
 
 fallback: 🐟 FINAL

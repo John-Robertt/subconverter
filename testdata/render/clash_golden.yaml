@@ -1,0 +1,66 @@
+proxies:
+  - name: HK-01
+    type: ss
+    server: hk.example.com
+    port: 8388
+    cipher: aes-256-gcm
+    password: secret
+  - name: SG-01
+    type: ss
+    server: sg.example.com
+    port: 8388
+    cipher: aes-256-gcm
+    password: secret
+  - name: MY-PROXY
+    type: socks5
+    server: 10.0.0.1
+    port: 1080
+    username: user
+    password: pass
+  - name: HK-01→MY-PROXY
+    type: socks5
+    server: 10.0.0.1
+    port: 1080
+    username: user
+    password: pass
+    dialer-proxy: HK-01
+proxy-groups:
+  - name: "\U0001F1ED\U0001F1F0 HK"
+    type: select
+    proxies:
+      - HK-01
+  - name: "\U0001F517 MY-PROXY"
+    type: url-test
+    proxies:
+      - HK-01→MY-PROXY
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+  - name: Quick
+    type: select
+    proxies:
+      - "\U0001F1ED\U0001F1F0 HK"
+      - "\U0001F517 MY-PROXY"
+      - DIRECT
+  - name: Final
+    type: select
+    proxies:
+      - Quick
+      - DIRECT
+rule-providers:
+  Ad:
+    type: http
+    behavior: classical
+    url: https://example.com/rules/Ad.list
+    path: ./rule-providers/Ad.yaml
+    interval: 86400
+  Ad-2:
+    type: http
+    behavior: classical
+    url: https://example.com/rules/Ad.list
+    path: ./rule-providers/Ad-2.yaml
+    interval: 86400
+rules:
+  - RULE-SET,Ad,Quick
+  - RULE-SET,Ad-2,Quick
+  - GEOIP,CN,Final
+  - MATCH,Final

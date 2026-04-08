@@ -1,11 +1,12 @@
 package config
 
 import (
+	"context"
 	"slices"
 	"testing"
 )
 
-const exampleConfigPath = "../../configs/example.yaml"
+const exampleConfigPath = "../../configs/base_config.yaml"
 
 // T-CFG-001: groups 保序解析
 func TestIntegration_GroupsOrder(t *testing.T) {
@@ -158,7 +159,7 @@ func TestIntegration_SpotCheckValues(t *testing.T) {
 
 func mustLoadExample(t *testing.T) *Config {
 	t.Helper()
-	cfg, err := Load(exampleConfigPath)
+	cfg, err := Load(context.Background(), exampleConfigPath, nil)
 	if err != nil {
 		t.Fatalf("Load example config: %v", err)
 	}

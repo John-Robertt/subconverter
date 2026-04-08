@@ -17,6 +17,7 @@ routing:
 rulesets:
 rules:
 fallback:
+templates:
 ```
 
 各段职责：
@@ -29,6 +30,7 @@ fallback:
 - `rulesets`：将远程规则集 URL 绑定到服务组
 - `rules`：声明内联规则
 - `fallback`：定义最终兜底出口
+- `templates`：声明输出格式的底版配置模板（可选）
 
 ---
 
@@ -227,6 +229,30 @@ base_url: "https://my-server.com"
 - 可选字段
 - 值为 scheme + host（如 `https://my-server.com` 或 `http://192.168.1.1:8080`），不含路径
 - 为空时 Surge 输出不包含 `#!MANAGED-CONFIG` 头
+
+---
+
+## templates
+
+```yaml
+templates:
+  clash: "configs/base_clash.yaml"
+  surge: "https://example.com/base_surge.conf"
+```
+
+用途：
+
+- 声明 Clash Meta 和 Surge 的底版配置模板
+- 渲染时将生成的节点、分组和规则注入底版，保留底版中的通用设置（如 `port`、`dns`、`[General]` 等）
+- 无底版时仅输出生成段（proxies / proxy-groups / rule-providers / rules）
+
+约束：
+
+- 两个字段均可选
+- 值可为本地文件路径或 HTTP(S) URL
+- 若为 HTTP(S) URL，必须满足基本 URL 格式要求
+- 若为本地路径，不做格式校验（加载时由 OS 报错）
+- 远程模板与订阅共享同一缓存机制（CachedFetcher + TTL）
 
 ---
 

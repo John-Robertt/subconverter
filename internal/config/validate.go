@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strings"
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
@@ -102,6 +103,14 @@ func Validate(cfg *Config) error {
 		c.validateBaseURL("base_url", cfg.BaseURL)
 	}
 
+	// templates
+	if cfg.Templates.Clash != "" {
+		c.validateTemplatePath("templates.clash", cfg.Templates.Clash)
+	}
+	if cfg.Templates.Surge != "" {
+		c.validateTemplatePath("templates.surge", cfg.Templates.Surge)
+	}
+
 	return c.result()
 }
 
@@ -165,6 +174,13 @@ func (c *collector) validateBaseURL(field, rawURL string) {
 	if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		c.add(field, "must contain scheme and host only, without path, query, or fragment")
 	}
+}
+
+func (c *collector) validateTemplatePath(field, location string) {
+	if strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "https://") {
+		c.validateHTTPURL(field, location)
+	}
+	// Local paths are not validated here; OS will report errors at load time.
 }
 
 // collector accumulates validation errors.

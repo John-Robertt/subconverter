@@ -17,7 +17,7 @@ build:
 	go build -o subconverter ./cmd/subconverter
 
 run: build
-	./subconverter -config configs/example.yaml
+	./subconverter -config configs/base_config.yaml
 
 clean:
 	rm -f subconverter coverage.out coverage.html

@@ -84,7 +84,7 @@
 | `M1` | 配置与模型 | ✅ 已完成 |
 | `M2` | Source 与 Filter | ✅ 已完成 |
 | `M3` | Group 与 Route | ✅ 已完成 |
-| `M4` | 校验与渲染 | 能校验引用关系并输出 Clash Meta / Surge |
+| `M4` | 校验与渲染 | ✅ 已完成 |
 | `M5` | HTTP 与 E2E | 能通过 HTTP 生成配置并完成端到端验收 |
 
 执行顺序：
@@ -112,7 +112,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 - 初始化 `go.mod`（模块路径 `github.com/John-Robertt/subconverter`，Go 1.24）
 - 建立推荐目录结构
-- 增加 `configs/example.yaml`
+- 增加 `configs/base_config.yaml`
 - 约定 `testdata` 和示例输入目录
 - 约定基本命令：格式化、测试、运行（Makefile）
 - 明确错误分类：配置错误、拉取错误、构建错误、渲染错误
@@ -122,7 +122,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 最小 Go 工程骨架（`.gitignore`、`go.mod`、`Makefile`）
 - 空包结构（`config`、`model`、`fetch`、`pipeline`、`render`、`server`）
 - `internal/errtype`：四类错误类型（`ConfigError`、`FetchError`、`BuildError`、`RenderError`）及 9 个单元测试
-- 示例配置草稿（`configs/example.yaml`）
+- 示例配置草稿（`configs/base_config.yaml`）
 - 测试数据（`testdata/subscriptions/sample.txt`：base64 编码的 SS URI 样本）
 - 入口占位（`cmd/subconverter/main.go`）
 
@@ -434,7 +434,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ---
 
-## M4: 校验与渲染
+## M4: 校验与渲染 ✅
 
 ### 目标
 
@@ -446,31 +446,60 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 实现 Clash Meta 渲染器
 - 实现 Surge 渲染器
 - 为两种输出建立 golden tests
+- 新增模板注入机制（底版配置 + 生成段合并）
+- 新增统一资源加载（本地路径 / HTTP URL）
+- Config 层新增 `templates` 字段，Loader 支持远程加载
 
 ### 产物
 
-- `pipeline/validate`
-- `render/clash`
-- `render/surge`
+- `internal/pipeline/validate.go`：ValidateGraph 实现（8 项校验规则，DFS 循环检测，collector 模式收集全部错误）
+- `internal/render/clash.go`：Clash Meta 渲染器（yaml.Node API，模板合并，provider 名称提取/去重）
+- `internal/render/surge.go`：Surge 渲染器（bytes.Buffer，INI section 切分/替换合并）
+- `internal/fetch/resource.go`：`LoadResource` 统一加载函数（按 URL 前缀分发 local/remote）
+- `internal/config/config.go`：新增 `Templates` 结构体
+- `internal/config/loader.go`：`Load` 签名扩展为 `(ctx, location, fetcher)`
+- 测试数据：`testdata/render/clash_golden.yaml`、`testdata/render/surge_golden.conf`
+- 外部依赖：无新增
 
 ### 验收项
 
-- 引用不存在时报错
-- 服务组循环引用时报错
-- 空链式组时报错
-- Clash Meta 输出包含正确节点、组、规则和 rule-providers
-- Surge 输出包含正确节点、组、规则和 FINAL
-- 链式节点映射到正确字段：`dialer-proxy` / `underlying-proxy`
+- ✅ 引用不存在时报错（T-VAL-001）
+- ✅ 服务组循环引用时报错（T-VAL-002）
+- ✅ 空链式组时报错（T-VAL-003）
+- ✅ Clash Meta 输出包含正确节点、组、规则和 rule-providers（T-RND-001）
+- ✅ Surge 输出包含正确节点、组、规则和 FINAL（T-RND-002）
+- ✅ 链式节点映射到正确字段：`dialer-proxy` / `underlying-proxy`（T-RND-003）
+- ✅ 规则顺序正确：rulesets → inline rules → fallback（T-RND-004）
+- ✅ 模板合并保留底版通用设置
+- ✅ `go test ./...` 全部通过
 
 ### 对应测试
 
-- `T-VAL-001`：服务组引用不存在时报错
-- `T-VAL-002`：服务组循环引用时报错
-- `T-VAL-003`：链式组展开为空时报错
-- `T-RND-001`：Clash Meta 输出快照
-- `T-RND-002`：Surge 输出快照
-- `T-RND-003`：链式节点渲染字段正确
-- `T-RND-004`：ruleset 顺序与 fallback 位置正确
+- `T-VAL-001`：服务组引用不存在时报错 → `TestValidateGraph_RouteGroupMemberNotFound`
+- `T-VAL-002`：服务组循环引用时报错 → `TestValidateGraph_CircularReference`
+- `T-VAL-002b`：自引用时报错 → `TestValidateGraph_SelfReference`
+- `T-VAL-003`：链式组展开为空时报错 → `TestValidateGraph_EmptyChainedGroup`
+- `T-RND-001`：Clash Meta 输出快照 → `TestClash_GoldenNoTemplate`
+- `T-RND-002`：Surge 输出快照 → `TestSurge_GoldenNoTemplate`
+- `T-RND-003`：链式节点渲染字段正确 → `TestClash_ChainedProxyHasDialerProxy` / `TestSurge_ChainedProxyHasUnderlyingProxy`
+- `T-RND-004`：ruleset 顺序与 fallback 位置正确 → `TestClash_RuleOrder` / `TestSurge_RuleOrder`
+
+### 实施记录
+
+关键设计决策：
+
+| 决策 | 结论 | 原因 |
+|------|------|------|
+| 通用设置来源 | 用户提供底版模板文件（`templates.clash` / `templates.surge`） | 通用设置因用户环境而异，不可硬编码 |
+| 模板路径 | 支持本地文件路径或 HTTP(S) URL | 统一 `LoadResource` 按前缀分发 |
+| 模板缓存 | 走 CachedFetcher，与订阅共享 TTL | 避免每次请求重复拉取 |
+| Clash 输出方式 | yaml.v3 Node API | 精确控制字段顺序和转义；支持底版注释保留 |
+| Surge 输出方式 | bytes.Buffer + section 切分替换 | INI 风格纯文本 |
+| 无底版时行为 | 仅输出生成段 | 降低使用门槛 |
+| rule-provider behavior | `classical` | ACL4SSR 规则集格式 |
+| url-test 默认参数 | url=gstatic, interval=300, tolerance=100 | 业界标准 |
+| Config.Load 签名 | `(ctx, location, fetcher)` | 支持远程加载，nil fetcher 限定仅本地 |
+| 错误收集 | graphCollector + errors.Join | 与 M1 config.Validate 一致 |
 
 ### 对应需求
 
@@ -483,9 +512,21 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 里程碑记录：`M4-validate-render`
 - 固定 golden files：Clash 和 Surge 各一套
 
+### 退出条件
+
+- ✅ ValidateGraph 输出稳定的 `*model.Pipeline`，可供渲染器消费
+- ✅ Clash / Surge 渲染器输出通过 golden 比对
+- ✅ 模板合并逻辑正确保留底版设置
+
+### 已知限制
+
+- 不校验远程规则集 URL 的可达性或内容格式
+- Clash rule-provider behavior 固定为 `classical`，不支持 `domain` 或 `ipcidr`
+- Surge 模板合并基于 `[Section]` header 文本匹配，不支持嵌套 section
+
 ### 风险
 
-- 同一语义在两个客户端格式中的映射不完全对称
+- 同一语义在两个客户端格式中的映射不完全对称（已通过 golden tests 固化预期）
 
 ---
 

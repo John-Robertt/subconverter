@@ -33,11 +33,14 @@
 
 - Clash Meta 的规则集引用采用 provider 名称，而不是直接在规则中内联完整 URL
 
-rule-provider 命名规则：
+rule-provider 命名规则（两阶段分配）：
 
-- 从 URL 路径中提取文件名并去掉扩展名，如 `https://example.com/Clash/Netflix.list` → `Netflix`
-- 同名时追加递增序号，如 `Netflix`、`Netflix-2`
-- provider 名称仅用于 Clash Meta 输出的内部引用，不影响语义
+1. 从 URL 路径中提取文件名并去掉扩展名，如 `https://example.com/Clash/Netflix.list` → `Netflix`
+2. 跨所有 rulesets 统一去重（provider 命名空间全局共享）：
+   - 唯一名称直接使用
+   - 重复名称追加递增后缀（`Netflix-2`、`Netflix-3`）
+   - 生成的后缀名若与其他 URL 的自然名称碰撞，则继续递增直到不冲突
+3. provider 名称仅用于 Clash Meta 输出的内部引用，不影响语义
 
 ---
 
@@ -103,6 +106,34 @@ rule-provider 命名规则：
 - 同样的规则排列顺序
 - 同样的 fallback 语义
 - 同样的 `@all` 展开结果
+
+---
+
+## 底版模板合并
+
+渲染器支持可选的底版模板（base template），用于保留用户自定义的通用设置。
+
+模板来源：由用户在 `templates.clash` / `templates.surge` 中声明，值可为本地路径或 HTTP(S) URL。
+
+### Clash Meta 合并策略
+
+- 使用 yaml.v3 Node API 解析底版为 AST
+- 在根 MappingNode 中定位并替换 `proxies`、`proxy-groups`、`rule-providers`、`rules` 四个 key
+- 底版中的其他 key（如 `mixed-port`、`dns`、`tun`）原样保留
+- 底版为空或非 YAML 映射文档时报错
+
+### Surge 合并策略
+
+- 按 `[Section]` header 正则切分底版为段落列表
+- 替换 `[Proxy]`、`[Proxy Group]`、`[Rule]` 三个段落的内容
+- 底版中的其他段落（如 `[General]`、`[Host]`）原样保留
+- 未在底版中找到的生成段落追加到末尾
+- 底版 preamble 中的 `#!MANAGED-CONFIG` 行会被剥离，避免与新生成的 header 重复
+
+### 无底版时的行为
+
+- Clash Meta：仅输出 `proxies` / `proxy-groups` / `rule-providers` / `rules` 四个段
+- Surge：仅输出 `[Proxy]` / `[Proxy Group]` / `[Rule]` 三个段（加可选的 managed header）
 
 ---
 

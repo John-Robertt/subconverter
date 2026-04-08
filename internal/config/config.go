@@ -2,14 +2,22 @@ package config
 
 // Config is the top-level user configuration.
 type Config struct {
-	Sources  Sources              `yaml:"sources"`
-	Filters  Filters              `yaml:"filters"`
-	Groups   OrderedMap[Group]    `yaml:"groups"`
-	Routing  OrderedMap[[]string] `yaml:"routing"`
-	Rulesets OrderedMap[[]string] `yaml:"rulesets"`
-	Rules    []string             `yaml:"rules"`
-	Fallback string               `yaml:"fallback"`
-	BaseURL  string               `yaml:"base_url,omitempty"`
+	Sources   Sources              `yaml:"sources"`
+	Filters   Filters              `yaml:"filters"`
+	Groups    OrderedMap[Group]    `yaml:"groups"`
+	Routing   OrderedMap[[]string] `yaml:"routing"`
+	Rulesets  OrderedMap[[]string] `yaml:"rulesets"`
+	Rules     []string             `yaml:"rules"`
+	Fallback  string               `yaml:"fallback"`
+	BaseURL   string               `yaml:"base_url,omitempty"`
+	Templates Templates            `yaml:"templates,omitempty"`
+}
+
+// Templates declares optional base config templates per output format.
+// Each value may be a local file path or an HTTP(S) URL.
+type Templates struct {
+	Clash string `yaml:"clash,omitempty"`
+	Surge string `yaml:"surge,omitempty"`
 }
 
 // Sources declares subscription and custom proxy inputs.
