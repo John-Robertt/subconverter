@@ -154,24 +154,30 @@ func deduplicateNames(proxies []model.Proxy) []model.Proxy {
 func convertCustomProxies(cps []config.CustomProxy) []model.Proxy {
 	proxies := make([]model.Proxy, 0, len(cps))
 	for _, cp := range cps {
-		params := make(map[string]string)
-		if cp.Username != "" {
-			params["username"] = cp.Username
-		}
-		if cp.Password != "" {
-			params["password"] = cp.Password
-		}
-
 		proxies = append(proxies, model.Proxy{
 			Name:   cp.Name,
 			Type:   cp.Type,
 			Server: cp.Server,
 			Port:   cp.Port,
-			Params: params,
+			Params: buildCustomParams(cp),
 			Kind:   model.KindCustom,
 		})
 	}
 	return proxies
+}
+
+// buildCustomParams builds a fresh Params map from a CustomProxy config.
+// Each call allocates a new map to prevent sharing between proxies.
+// Used by both Source stage (convertCustomProxies) and Group stage (chained node generation).
+func buildCustomParams(cp config.CustomProxy) map[string]string {
+	params := make(map[string]string)
+	if cp.Username != "" {
+		params["username"] = cp.Username
+	}
+	if cp.Password != "" {
+		params["password"] = cp.Password
+	}
+	return params
 }
 
 // checkNameConflicts verifies that no custom proxy name collides

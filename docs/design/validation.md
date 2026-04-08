@@ -22,6 +22,7 @@
 
 - `subscriptions[].url` 必填
 - `custom_proxies[].name/type/server/port` 必填
+- SS URI 中端口值必须在 1-65535 范围内
 - `custom_proxies` 之间名称不能重复
 - `groups[*].match` 必填
 - `groups[*].strategy` 必填且只能是 `select` 或 `url-test`

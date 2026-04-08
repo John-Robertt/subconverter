@@ -83,7 +83,7 @@
 | `M0` | 工程基线 | ✅ 已完成 |
 | `M1` | 配置与模型 | ✅ 已完成 |
 | `M2` | Source 与 Filter | ✅ 已完成 |
-| `M3` | Group 与 Route | 能生成地区组、链式组、服务组和路由绑定 |
+| `M3` | Group 与 Route | ✅ 已完成 |
 | `M4` | 校验与渲染 | 能校验引用关系并输出 Clash Meta / Surge |
 | `M5` | HTTP 与 E2E | 能通过 HTTP 生成配置并完成端到端验收 |
 
@@ -264,8 +264,8 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 ### 验收项
 
 - ✅ 支持合法 SS URI 解析（padded/unpadded base64、URL 编码中文 fragment、password 含冒号）
-- ✅ 非法 SS URI 可识别并返回 `*errtype.BuildError{Phase: "source"}`
-- ✅ 多订阅结果可合并，跨订阅重名自动追加 ②③ 后缀
+- ✅ 非法 SS URI 可识别并返回 `*errtype.BuildError{Phase: "source"}`（含端口范围 1-65535 校验）
+- ✅ 多订阅结果可合并，跨订阅重名自动追加 ②③ 后缀，且二轮去重解决生成名与原始名碰撞
 - ✅ `exclude` 仅影响订阅节点
 - ✅ 自定义代理不受过滤影响（即使名称匹配 exclude 正则）
 - ✅ 缓存命中与失效行为符合预期（可注入时钟验证）
@@ -277,11 +277,12 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 ### 对应测试
 
 - `T-SRC-001`：合法 SS URI 解析 → `TestParseSSURI_Valid`（6 个子用例）
-- `T-SRC-002`：非法 SS URI 报错 → `TestParseSSURI_Invalid`（10 个子用例）
+- `T-SRC-002`：非法 SS URI 报错 → `TestParseSSURI_Invalid`（13 个子用例，含端口范围校验）
 - `T-SRC-003`：多订阅合并 → `TestSource_MultiSubscriptionMerge`
 - `T-FLT-001`：`exclude` 过滤订阅节点 → `TestFilter_ExcludeSubscriptionNodes`
 - `T-FLT-002`：自定义代理不参与过滤 → `TestFilter_CustomProxiesNotFiltered`
 - `T-SRC-004`：缓存 TTL 命中与失效 → `TestCachedFetcher_TTLHitAndMiss`
+- `T-SRC-005`：去重后缀碰撞解决 → `TestSource_DedupSuffixCollision`
 
 ### 实施记录
 
@@ -292,7 +293,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | Fetcher 抽象 | 单方法接口 `Fetcher`，pipeline 依赖接口 | 测试可注入 fake，不依赖网络 |
 | 缓存模式 | `CachedFetcher` 装饰器，实现同一 `Fetcher` 接口 | 透明包装，可注入时钟测试 TTL |
 | 拉取策略 | 顺序拉取，非并发 | 单用户通常 1-3 订阅，顺序保证去重后缀确定性；接口已为并发预留 |
-| 去重命名 | 第 2 次 `②`、第 3 次 `③`...第 10 次后 `(N)` | 遵循 domain-model.md 约定 |
+| 去重命名 | 两轮去重：第一轮追加 ②③...⑩/(N) 后缀，第二轮解决生成名与原始名碰撞 | 保证节点名全局唯一，覆盖极端场景 |
 | base64 解码 | 四种 base64 编码依次尝试（Std/Raw/URL/RawURL） | 兼容不同订阅商格式 |
 | 解析容错 | 逐行解析，跳过无效 URI；整个订阅 0 有效节点报错 | 平衡容错与错误发现 |
 | URL 脱敏 | `SanitizeURL` 剥离 query 和 fragment | 防止泄露用户 token |
@@ -327,7 +328,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ---
 
-## M3: Group 与 Route
+## M3: Group 与 Route ✅
 
 ### 目标
 
@@ -344,28 +345,62 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 产物
 
-- `pipeline/group`
-- `pipeline/route`
+- `internal/pipeline/`:
+  - `group.go`：Group 阶段编排——地区组正则匹配→链式节点/组生成→@all 计算
+  - `route.go`：Route 阶段编排——服务组构建→规则集映射→内联规则解析→fallback 记录
+- 外部依赖：无新增
 
 ### 验收项
 
-- 地区组能按正则匹配节点
-- 链式展开支持 `group`、`select`、`all`
-- 链式组策略来自 `relay_through.strategy`
-- 链式组出现在节点组层
-- `@all` 不包含链式节点
-- 服务组能引用节点组、服务组、`DIRECT`、`REJECT`
-- ruleset 与 fallback 能绑定到目标服务组
+- ✅ 地区组能按正则匹配节点（仅订阅节点参与匹配）
+- ✅ 链式展开支持 `group`、`select`、`all` 三种模式
+- ✅ 链式组策略来自 `relay_through.strategy`
+- ✅ 链式组出现在节点组层（`Scope: ScopeNode`）
+- ✅ 链式组命名为 `🔗 <custom_proxy.name>`（config-schema.md 约定）
+- ✅ 链式节点属性（Type/Server/Port/Params/Dialer）正确传递
+- ✅ `@all` 不包含链式节点
+- ✅ 服务组能引用节点组、服务组、`DIRECT`、`REJECT`
+- ✅ `@all` 在服务组 Members 中正确展开
+- ✅ ruleset 与 fallback 能绑定到目标服务组
+- ✅ 内联规则 Policy 从最后逗号后提取
+- ✅ `go test ./...` 全部通过
 
 ### 对应测试
 
-- `T-GRP-001`：地区组正则匹配
-- `T-GRP-002`：`relay_through=group` 生成链式组
-- `T-GRP-003`：`relay_through=select` 生成链式组
-- `T-GRP-004`：`relay_through=all` 生成链式组
-- `T-RTE-001`：服务组引用节点组
-- `T-RTE-002`：`@all` 不包含链式节点
-- `T-RTE-003`：ruleset 与 fallback 绑定正确
+- `T-GRP-001`：地区组正则匹配 → `TestGroup_RegionGroupMatching`
+- `T-GRP-002`：`relay_through=group` 生成链式组 → `TestGroup_ChainedTypeGroup`
+- `T-GRP-003`：`relay_through=select` 生成链式组 → `TestGroup_ChainedTypeSelect`
+- `T-GRP-004`：`relay_through=all` 生成链式组 → `TestGroup_ChainedTypeAll`
+- `T-GRP-005`：`@all` 排除链式节点 → `TestGroup_AllProxiesExcludesChained`
+- `T-GRP-006`：`type=group` 引用不存在 → `TestGroup_ChainedGroupRefNotFound`
+- `T-GRP-007`：无 relay_through → `TestGroup_NoChaining`
+- `T-GRP-008`：多个链式组 → `TestGroup_MultipleChainedGroups`
+- `T-GRP-009`：链式节点属性 → `TestGroup_ChainedNodeProperties`
+- `T-GRP-010`：合并顺序 → `TestGroup_ProxiesMergeOrder`
+- `T-RTE-001`：服务组声明序 → `TestRoute_ServiceGroups`
+- `T-RTE-002`：`@all` 展开 → `TestRoute_AllExpansion`
+- `T-RTE-003`：ruleset 映射 → `TestRoute_Rulesets`
+- `T-RTE-004`：Rules 解析 → `TestRoute_RulesParsing`
+- `T-RTE-005`：Rule 无逗号 → `TestRoute_RuleNoComma`
+- `T-RTE-006`：Fallback 传递 → `TestRoute_Fallback`
+- `T-RTE-007`：空 routing → `TestRoute_EmptyRouting`
+- `T-RTE-008`：@all 空列表 → `TestRoute_AllExpansionEmpty`
+
+### 实施记录
+
+关键设计决策：
+
+| 决策 | 结论 | 原因 |
+|------|------|------|
+| 链式组命名 | `🔗 ` + custom proxy name（系统前缀） | config-schema.md 明确约定 |
+| 链式节点命名 | `{upstream}→{custom}`（含 `→` 字符） | 天然与普通节点名不冲突 |
+| 地区组匹配范围 | 仅 KindSubscription 节点 | 自定义代理由用户显式管理 |
+| Params 隔离 | 每个链式节点独立 `make(map[string]string)` | 防止共享篡改 |
+| 空组处理 | Group/Route 阶段不报错 | 留给 M4 ValidateGraph |
+| @all 计算时机 | 在链式节点生成前，从原始 proxies 收集 | 天然排除链式节点 |
+| 服务组策略 | 固定 `"select"` | 设计约定 |
+| Rule Policy 提取 | `strings.LastIndex(raw, ",")` | 透传方案，只提取 Policy 用于引用校验 |
+| 结果类型 | GroupResult / RouteResult 独立结构体 | 便于测试和后续 Pipeline 组装 |
 
 ### 对应需求
 
@@ -381,10 +416,21 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 里程碑记录：`M3-group-route`
 - 固定一组中间表示样本，作为回归基线
 
+### 退出条件
+
+- ✅ `Group` 输出稳定的 `GroupResult`（全部节点 + 节点组 + @all），可供 M4 校验
+- ✅ `Route` 输出稳定的 `RouteResult`（服务组 + 规则集 + 规则 + fallback），可供 M4 校验
+
+### 已知限制
+
+- 不做图级校验（空组、循环引用、引用不存在等留给 M4）
+- 不组装最终 `model.Pipeline`（留给 M4/M5 orchestrator）
+- 正则编译为防御性检查（静态校验已拦截）
+
 ### 风险
 
-- 链式展开边界和组引用边界最容易出错
-- 节点名与组名冲突时需要明确错误策略
+- 链式展开边界和组引用边界最容易出错（已通过 10 个 Group 测试覆盖）
+- 节点名与组名冲突时需要明确错误策略（`🔗 ` 前缀提供命名空间隔离）
 
 ---
 
