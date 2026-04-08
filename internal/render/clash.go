@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	urlTestURL             = "http://www.gstatic.com/generate_204"
-	urlTestInterval        = 300
-	ruleProviderInterval   = 86400
-	ruleProviderBehavior   = "classical"
+	urlTestURL           = "http://www.gstatic.com/generate_204"
+	urlTestInterval      = 300
+	urlTestTolerance     = 100
+	ruleProviderInterval = 86400
+	ruleProviderBehavior = "classical"
 )
 
 // providerEntry holds a rule-provider definition for Clash Meta output.
@@ -101,7 +102,7 @@ func buildClashSections(p *model.Pipeline) (*clashSections, []providerEntry, err
 	}
 
 	groups := &yaml.Node{Kind: yaml.SequenceNode}
-	allGroups := append(p.NodeGroups, p.RouteGroups...)
+	allGroups := append(p.RouteGroups, p.NodeGroups...)
 	for _, g := range allGroups {
 		groups.Content = append(groups.Content, buildClashGroup(g))
 	}
@@ -154,6 +155,7 @@ func buildClashGroup(g model.ProxyGroup) *yaml.Node {
 	if g.Strategy == "url-test" {
 		addPair(m, "url", scalarNode(urlTestURL))
 		addPair(m, "interval", intNode(urlTestInterval))
+		addPair(m, "tolerance", intNode(urlTestTolerance))
 	}
 
 	return m

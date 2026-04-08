@@ -19,28 +19,29 @@ var reservedPolicies = map[string]bool{
 // Group and Route stages, then assembles a Pipeline.
 //
 // Checks (in order):
-//  1. Node group / route group name collision
-//  2. Empty node groups (region and chained)
-//  3. Route group member reference resolution
-//  4. Circular references among route groups
-//  5. Ruleset policy existence
-//  6. Rule policy existence
-//  7. Fallback existence
+//  1. Shared namespace collisions and duplicate declarations
+//  2. @all expansion excludes chained proxies
+//  3. Empty node groups (region and chained)
+//  4. Raw routing members only reference allowed object types
+//  5. Expanded route group member reference resolution
+//  6. Circular references among route groups
+//  7. Ruleset policy existence
+//  8. Rule policy existence
+//  9. Fallback existence
 func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 	var c graphCollector
 
-	proxyNames := buildNameSet(gr.Proxies)
-	nodeGroupNames := buildGroupNameSet(gr.NodeGroups)
-	routeGroupNames := buildGroupNameSet(rr.RouteGroups)
+	index := buildNamespaceIndex(&c, gr.Proxies, gr.NodeGroups, rr.RouteGroups)
 
-	// 1. Name collision between node groups and route groups.
-	for name := range nodeGroupNames {
-		if routeGroupNames[name] {
-			c.add(fmt.Sprintf("name %q used by both node group and route group", name))
+	// 2. @all must exclude chained proxies.
+	chainedProxyNames := buildChainedProxyNameSet(gr.Proxies)
+	for _, name := range gr.AllProxies {
+		if chainedProxyNames[name] {
+			c.add(fmt.Sprintf("@all contains chained proxy %q", name))
 		}
 	}
 
-	// 2. Empty node groups.
+	// 3. Empty node groups.
 	for _, g := range gr.NodeGroups {
 		if len(g.Members) == 0 {
 			if strings.HasPrefix(g.Name, chainedGroupPrefix) {
@@ -51,36 +52,62 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 		}
 	}
 
-	// 3. Route group member resolution.
+	// 4. Raw routing members may only reference node groups, route groups,
+	// reserved policies, or @all.
+	for _, g := range rr.RouteGroups {
+		rawMembers := g.Members
+		if rr.RawRouteMembers != nil {
+			if members, ok := rr.RawRouteMembers[g.Name]; ok {
+				rawMembers = members
+			}
+		}
+
+		for _, member := range rawMembers {
+			if member == "@all" || reservedPolicies[member] || index.nodeGroupNames[member] || index.routeGroupNames[member] {
+				continue
+			}
+			if index.proxyNames[member] {
+				c.add(fmt.Sprintf(
+					"route group %q: member %q must reference a node group, route group, DIRECT, REJECT, or @all",
+					g.Name,
+					member,
+				))
+				continue
+			}
+			c.add(fmt.Sprintf("route group %q: member %q not found", g.Name, member))
+		}
+	}
+
+	// 5. Expanded route group member resolution.
 	for _, g := range rr.RouteGroups {
 		for _, member := range g.Members {
-			if !proxyNames[member] && !nodeGroupNames[member] && !routeGroupNames[member] && !reservedPolicies[member] {
+			if !index.proxyNames[member] && !index.nodeGroupNames[member] && !index.routeGroupNames[member] && !reservedPolicies[member] {
 				c.add(fmt.Sprintf("route group %q: member %q not found", g.Name, member))
 			}
 		}
 	}
 
-	// 4. Circular references among route groups.
-	if cycle := detectCycle(rr.RouteGroups, routeGroupNames); cycle != "" {
+	// 6. Circular references among route groups.
+	if cycle := detectCycle(rr.RouteGroups, index.routeGroupNames); cycle != "" {
 		c.add(cycle)
 	}
 
-	// 5. Ruleset policy existence.
+	// 7. Ruleset policy existence.
 	for _, rs := range rr.Rulesets {
-		if !routeGroupNames[rs.Policy] {
+		if !index.routeGroupNames[rs.Policy] {
 			c.add(fmt.Sprintf("ruleset policy %q not found in routing", rs.Policy))
 		}
 	}
 
-	// 6. Rule policy existence.
+	// 8. Rule policy existence.
 	for _, r := range rr.Rules {
-		if !routeGroupNames[r.Policy] && !reservedPolicies[r.Policy] {
+		if !index.routeGroupNames[r.Policy] && !reservedPolicies[r.Policy] {
 			c.add(fmt.Sprintf("rule policy %q not found in routing", r.Policy))
 		}
 	}
 
-	// 7. Fallback existence.
-	if !routeGroupNames[rr.Fallback] {
+	// 9. Fallback existence.
+	if !index.routeGroupNames[rr.Fallback] {
 		c.add(fmt.Sprintf("fallback %q not found in routing", rr.Fallback))
 	}
 
@@ -97,6 +124,57 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 		Fallback:    rr.Fallback,
 		AllProxies:  gr.AllProxies,
 	}, nil
+}
+
+type namespaceIndex struct {
+	proxyNames      map[string]bool
+	nodeGroupNames  map[string]bool
+	routeGroupNames map[string]bool
+}
+
+func buildNamespaceIndex(c *graphCollector, proxies []model.Proxy, nodeGroups, routeGroups []model.ProxyGroup) namespaceIndex {
+	idx := namespaceIndex{
+		proxyNames:      make(map[string]bool, len(proxies)),
+		nodeGroupNames:  make(map[string]bool, len(nodeGroups)),
+		routeGroupNames: make(map[string]bool, len(routeGroups)),
+	}
+	registry := make(map[string]string, len(proxies)+len(nodeGroups)+len(routeGroups))
+
+	for _, p := range proxies {
+		registerName(c, idx.proxyNames, registry, p.Name, "proxy")
+	}
+	for _, g := range nodeGroups {
+		registerName(c, idx.nodeGroupNames, registry, g.Name, "node group")
+	}
+	for _, g := range routeGroups {
+		registerName(c, idx.routeGroupNames, registry, g.Name, "route group")
+	}
+
+	return idx
+}
+
+func registerName(c *graphCollector, names map[string]bool, registry map[string]string, name, kind string) {
+	if names[name] {
+		c.add(fmt.Sprintf("%s %q declared more than once", kind, name))
+		return
+	}
+	names[name] = true
+
+	if other, ok := registry[name]; ok {
+		c.add(fmt.Sprintf("name %q used by both %s and %s", name, other, kind))
+		return
+	}
+	registry[name] = kind
+}
+
+func buildChainedProxyNameSet(proxies []model.Proxy) map[string]bool {
+	s := make(map[string]bool)
+	for _, p := range proxies {
+		if p.Kind == model.KindChained {
+			s[p.Name] = true
+		}
+	}
+	return s
 }
 
 // detectCycle checks for circular references among route groups using
@@ -144,24 +222,6 @@ func detectCycle(groups []model.ProxyGroup, routeGroupNames map[string]bool) str
 		}
 	}
 	return ""
-}
-
-// buildNameSet creates a set of proxy names.
-func buildNameSet(proxies []model.Proxy) map[string]bool {
-	s := make(map[string]bool, len(proxies))
-	for _, p := range proxies {
-		s[p.Name] = true
-	}
-	return s
-}
-
-// buildGroupNameSet creates a set of group names.
-func buildGroupNameSet(groups []model.ProxyGroup) map[string]bool {
-	s := make(map[string]bool, len(groups))
-	for _, g := range groups {
-		s[g.Name] = true
-	}
-	return s
 }
 
 // graphCollector accumulates graph validation errors.

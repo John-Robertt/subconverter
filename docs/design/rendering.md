@@ -29,6 +29,12 @@
 
 - 对链式节点输出 `dialer-proxy`
 
+`url-test` 组默认参数：
+
+- `url=http://www.gstatic.com/generate_204`
+- `interval=300`
+- `tolerance=100`
+
 说明：
 
 - Clash Meta 的规则集引用采用 provider 名称，而不是直接在规则中内联完整 URL
@@ -57,6 +63,12 @@ rule-provider 命名规则（两阶段分配）：
 链式节点要求：
 
 - 对链式节点输出 `underlying-proxy`
+
+`url-test` 组默认参数：
+
+- `url=http://www.gstatic.com/generate_204`
+- `interval=300`
+- `tolerance=100`
 
 ---
 

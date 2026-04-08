@@ -15,6 +15,9 @@ type RouteResult struct {
 	Rulesets    []model.Ruleset
 	Rules       []model.Rule
 	Fallback    string
+	// RawRouteMembers preserves the original routing declarations before @all
+	// expansion so ValidateGraph can enforce routing's allowed reference types.
+	RawRouteMembers map[string][]string
 }
 
 // Route executes pipeline stage 6: build service groups, rulesets,
@@ -29,10 +32,11 @@ func Route(cfg *config.Config, allProxies []string) (*RouteResult, error) {
 	}
 
 	return &RouteResult{
-		RouteGroups: routeGroups,
-		Rulesets:    rulesets,
-		Rules:       rules,
-		Fallback:    cfg.Fallback,
+		RouteGroups:     routeGroups,
+		Rulesets:        rulesets,
+		Rules:           rules,
+		Fallback:        cfg.Fallback,
+		RawRouteMembers: copyRouteMembers(&cfg.Routing),
 	}, nil
 }
 
@@ -48,6 +52,14 @@ func buildRouteGroups(routing *config.OrderedMap[[]string], allProxies []string)
 			Strategy: "select",
 			Members:  expandMembers(members, allProxies),
 		})
+	}
+	return result
+}
+
+func copyRouteMembers(routing *config.OrderedMap[[]string]) map[string][]string {
+	result := make(map[string][]string, routing.Len())
+	for name, members := range routing.Entries() {
+		result[name] = append([]string(nil), members...)
 	}
 	return result
 }

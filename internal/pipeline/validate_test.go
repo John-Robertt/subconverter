@@ -40,6 +40,10 @@ func validRouteResult() *RouteResult {
 			{Raw: "GEOIP,CN,Final", Policy: "Final"},
 		},
 		Fallback: "Final",
+		RawRouteMembers: map[string][]string{
+			"Quick": []string{"🇭🇰 HK", "🔗 MY-PROXY", "DIRECT"},
+			"Final": []string{"Quick", "DIRECT"},
+		},
 	}
 }
 
@@ -172,6 +176,77 @@ func TestValidateGraph_NameCollision(t *testing.T) {
 	}
 }
 
+func TestValidateGraph_ProxyAndNodeGroupNameCollision(t *testing.T) {
+	gr := validGroupResult()
+	gr.NodeGroups = append(gr.NodeGroups, model.ProxyGroup{
+		Name: "HK-01", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01"},
+	})
+
+	_, err := ValidateGraph(gr, validRouteResult())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !containsError(err, `name "HK-01" used by both proxy and node group`) {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestValidateGraph_DuplicateRouteGroupNames(t *testing.T) {
+	gr := validGroupResult()
+	rr := validRouteResult()
+	rr.RouteGroups = append(rr.RouteGroups, model.ProxyGroup{
+		Name: "Quick", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"DIRECT"},
+	})
+
+	_, err := ValidateGraph(gr, rr)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !containsError(err, `route group "Quick" declared more than once`) {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestValidateGraph_RouteGroupExplicitProxyMemberRejected(t *testing.T) {
+	gr := validGroupResult()
+	rr := validRouteResult()
+	rr.RawRouteMembers["Quick"] = []string{"HK-01", "DIRECT"}
+	rr.RouteGroups[0].Members = []string{"HK-01", "DIRECT"}
+
+	_, err := ValidateGraph(gr, rr)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !containsError(err, `member "HK-01" must reference a node group, route group, DIRECT, REJECT, or @all`) {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestValidateGraph_RouteGroupExpandedProxyMembersAllowedViaAtAll(t *testing.T) {
+	gr := validGroupResult()
+	rr := validRouteResult()
+	rr.RawRouteMembers["Quick"] = []string{"@all", "DIRECT"}
+	rr.RouteGroups[0].Members = []string{"HK-01", "SG-01", "MY-PROXY", "DIRECT"}
+
+	_, err := ValidateGraph(gr, rr)
+	if err != nil {
+		t.Fatalf("@all-expanded proxies should remain valid after raw-member validation: %v", err)
+	}
+}
+
+func TestValidateGraph_AllProxiesContainsChainedRejected(t *testing.T) {
+	gr := validGroupResult()
+	gr.AllProxies = append(gr.AllProxies, "HK-01→MY-PROXY")
+
+	_, err := ValidateGraph(gr, validRouteResult())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !containsError(err, `@all contains chained proxy "HK-01→MY-PROXY"`) {
+		t.Errorf("error = %v", err)
+	}
+}
+
 func TestValidateGraph_RulesetPolicyNotFound(t *testing.T) {
 	gr := validGroupResult()
 	rr := validRouteResult()
@@ -234,8 +309,8 @@ func TestValidateGraph_MultipleErrors(t *testing.T) {
 	gr.NodeGroups[1].Members = nil // empty chained group
 
 	rr := validRouteResult()
-	rr.Fallback = "Missing"                                                              // bad fallback
-	rr.RouteGroups[0].Members = append(rr.RouteGroups[0].Members, "AlsoMissing")         // bad member
+	rr.Fallback = "Missing"                                                      // bad fallback
+	rr.RouteGroups[0].Members = append(rr.RouteGroups[0].Members, "AlsoMissing") // bad member
 
 	_, err := ValidateGraph(gr, rr)
 	if err == nil {

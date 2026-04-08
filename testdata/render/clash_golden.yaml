@@ -25,16 +25,6 @@ proxies:
     password: pass
     dialer-proxy: HK-01
 proxy-groups:
-  - name: "\U0001F1ED\U0001F1F0 HK"
-    type: select
-    proxies:
-      - HK-01
-  - name: "\U0001F517 MY-PROXY"
-    type: url-test
-    proxies:
-      - HK-01→MY-PROXY
-    url: http://www.gstatic.com/generate_204
-    interval: 300
   - name: Quick
     type: select
     proxies:
@@ -46,6 +36,17 @@ proxy-groups:
     proxies:
       - Quick
       - DIRECT
+  - name: "\U0001F1ED\U0001F1F0 HK"
+    type: select
+    proxies:
+      - HK-01
+  - name: "\U0001F517 MY-PROXY"
+    type: url-test
+    proxies:
+      - HK-01→MY-PROXY
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 100
 rule-providers:
   Ad:
     type: http

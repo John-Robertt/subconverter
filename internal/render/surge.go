@@ -89,7 +89,7 @@ func renderSurgeProxy(px model.Proxy) string {
 
 func buildSurgeGroups(nodeGroups, routeGroups []model.ProxyGroup) string {
 	var sb strings.Builder
-	allGroups := append(nodeGroups, routeGroups...)
+	allGroups := append(routeGroups, nodeGroups...)
 	for _, g := range allGroups {
 		sb.WriteString(renderSurgeGroup(g))
 		sb.WriteByte('\n')

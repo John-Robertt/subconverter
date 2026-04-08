@@ -166,3 +166,21 @@ FINAL,DIRECT
 		t.Error("old managed header should be stripped")
 	}
 }
+
+func TestSurge_GroupOrderRouteBeforeNode(t *testing.T) {
+	p := goldenPipeline()
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+	output := string(got)
+
+	quickIdx := strings.Index(output, "Quick = select")
+	hkIdx := strings.Index(output, "🇭🇰 HK = select")
+	if quickIdx < 0 || hkIdx < 0 {
+		t.Fatalf("missing expected groups in output:\n%s", output)
+	}
+	if !(quickIdx < hkIdx) {
+		t.Error("route groups should be rendered before node groups")
+	}
+}

@@ -246,3 +246,25 @@ func TestRoute_AllExpansionEmpty(t *testing.T) {
 		}
 	}
 }
+
+func TestRoute_RawMembersPreserved(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"🚀 手动切换": ["@all"]
+"📲 Telegram": ["🇭🇰 Hong Kong", "DIRECT"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	result, err := Route(cfg, []string{"HK-01", "SG-01"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := result.RawRouteMembers["🚀 手动切换"]; len(got) != 1 || got[0] != "@all" {
+		t.Fatalf("raw members for 手动切换 = %v, want [@all]", got)
+	}
+	if got := result.RawRouteMembers["📲 Telegram"]; len(got) != 2 || got[0] != "🇭🇰 Hong Kong" || got[1] != "DIRECT" {
+		t.Fatalf("raw members for Telegram = %v, want [🇭🇰 Hong Kong DIRECT]", got)
+	}
+}

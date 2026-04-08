@@ -147,6 +147,35 @@ func TestClash_ProviderNameDedup(t *testing.T) {
 	}
 }
 
+func TestClash_URLTestHasTolerance(t *testing.T) {
+	p := goldenPipeline()
+	got, err := Clash(p, nil)
+	if err != nil {
+		t.Fatalf("Clash() error: %v", err)
+	}
+	if !strings.Contains(string(got), "tolerance: 100") {
+		t.Error("url-test group should contain tolerance: 100")
+	}
+}
+
+func TestClash_GroupOrderRouteBeforeNode(t *testing.T) {
+	p := goldenPipeline()
+	got, err := Clash(p, nil)
+	if err != nil {
+		t.Fatalf("Clash() error: %v", err)
+	}
+	output := string(got)
+
+	quickIdx := strings.Index(output, "- name: Quick")
+	hkIdx := strings.Index(output, "- name: \"\\U0001F1ED\\U0001F1F0 HK\"")
+	if quickIdx < 0 || hkIdx < 0 {
+		t.Fatalf("missing expected groups in output:\n%s", output)
+	}
+	if !(quickIdx < hkIdx) {
+		t.Error("route groups should be rendered before node groups")
+	}
+}
+
 func TestClash_WithBaseTemplate(t *testing.T) {
 	baseTemplate := []byte(`mixed-port: 7890
 allow-lan: false

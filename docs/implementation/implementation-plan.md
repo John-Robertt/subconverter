@@ -466,10 +466,13 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ 引用不存在时报错（T-VAL-001）
 - ✅ 服务组循环引用时报错（T-VAL-002）
 - ✅ 空链式组时报错（T-VAL-003）
+- ✅ `routing` 显式引用原始代理名时报错（T-VAL-004）
+- ✅ 代理名/组名共享命名空间冲突时报错（T-VAL-005）
 - ✅ Clash Meta 输出包含正确节点、组、规则和 rule-providers（T-RND-001）
 - ✅ Surge 输出包含正确节点、组、规则和 FINAL（T-RND-002）
 - ✅ 链式节点映射到正确字段：`dialer-proxy` / `underlying-proxy`（T-RND-003）
 - ✅ 规则顺序正确：rulesets → inline rules → fallback（T-RND-004）
+- ✅ Clash / Surge 的 `url-test` 默认参数一致（含 `tolerance=100`）
 - ✅ 模板合并保留底版通用设置
 - ✅ `go test ./...` 全部通过
 
@@ -479,10 +482,13 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `T-VAL-002`：服务组循环引用时报错 → `TestValidateGraph_CircularReference`
 - `T-VAL-002b`：自引用时报错 → `TestValidateGraph_SelfReference`
 - `T-VAL-003`：链式组展开为空时报错 → `TestValidateGraph_EmptyChainedGroup`
+- `T-VAL-004`：`routing` 显式引用原始代理名时报错 → `TestValidateGraph_RouteGroupExplicitProxyMemberRejected`
+- `T-VAL-005`：代理名/组名共享命名空间冲突时报错 → `TestValidateGraph_ProxyAndNodeGroupNameCollision`
 - `T-RND-001`：Clash Meta 输出快照 → `TestClash_GoldenNoTemplate`
 - `T-RND-002`：Surge 输出快照 → `TestSurge_GoldenNoTemplate`
 - `T-RND-003`：链式节点渲染字段正确 → `TestClash_ChainedProxyHasDialerProxy` / `TestSurge_ChainedProxyHasUnderlyingProxy`
 - `T-RND-004`：ruleset 顺序与 fallback 位置正确 → `TestClash_RuleOrder` / `TestSurge_RuleOrder`
+- `T-RND-005`：Clash `url-test` 补齐 `tolerance` → `TestClash_URLTestHasTolerance`
 
 ### 实施记录
 
@@ -498,6 +504,8 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 无底版时行为 | 仅输出生成段 | 降低使用门槛 |
 | rule-provider behavior | `classical` | ACL4SSR 规则集格式 |
 | url-test 默认参数 | url=gstatic, interval=300, tolerance=100 | 业界标准 |
+| routing 校验粒度 | 校验原始 `routing` 声明，不接受显式代理名 | 保持“服务组选出口、节点组选节点”的分层，避免 `@all` 展开结果掩盖非法配置 |
+| 图校验命名空间 | 代理名、节点组名、服务组名统一登记校验 | 避免重名导致引用歧义或重复渲染 |
 | Config.Load 签名 | `(ctx, location, fetcher)` | 支持远程加载，nil fetcher 限定仅本地 |
 | 错误收集 | graphCollector + errors.Join | 与 M1 config.Validate 一致 |
 
