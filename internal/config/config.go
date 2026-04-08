@@ -34,7 +34,7 @@ type Subscription struct {
 // CustomProxy is a user-defined proxy node.
 type CustomProxy struct {
 	Name         string        `yaml:"name"`
-	Type         string        `yaml:"type"`                    // "socks5" | "http"
+	Type         string        `yaml:"type"` // "socks5" | "http"
 	Server       string        `yaml:"server"`
 	Port         int           `yaml:"port"`
 	Username     string        `yaml:"username,omitempty"`
@@ -44,9 +44,9 @@ type CustomProxy struct {
 
 // RelayThrough defines how a custom proxy chains through upstream nodes.
 type RelayThrough struct {
-	Type     string `yaml:"type"`           // "group" | "select" | "all"
-	Strategy string `yaml:"strategy"`       // "select" | "url-test"
-	Name     string `yaml:"name,omitempty"` // required when Type=group
+	Type     string `yaml:"type"`            // "group" | "select" | "all"
+	Strategy string `yaml:"strategy"`        // "select" | "url-test"
+	Name     string `yaml:"name,omitempty"`  // required when Type=group
 	Match    string `yaml:"match,omitempty"` // required when Type=select
 }
 
