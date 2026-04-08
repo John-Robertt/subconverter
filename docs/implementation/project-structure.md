@@ -21,7 +21,9 @@ subconverter/
 │   ├── render/
 │   └── server/
 ├── configs/
-│   └── base_config.yaml
+│   ├── base_config.yaml
+│   ├── base_clash.yaml
+│   └── base_surge.conf
 ├── testdata/
 └── docs/
 ```

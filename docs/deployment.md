@@ -27,24 +27,6 @@ Docker 镜像平台矩阵：
 
 ## GitHub Actions
 
-### CI
-
-文件：`.github/workflows/ci.yml`
-
-触发条件：
-
-- push 到 `main`
-- pull request
-
-执行内容：
-
-- `gofmt -l .`
-- `go test ./...`
-- `go vet ./...`
-- 本机构建 `go build ./cmd/subconverter`
-- Docker 镜像烟测 `docker build .`
-- 2 组 Linux 目标平台交叉编译
-
 ### Release
 
 文件：`.github/workflows/release.yml`
@@ -55,6 +37,7 @@ Docker 镜像平台矩阵：
 
 执行内容：
 
+- 运行 lint（golangci-lint）、格式检查（gofmt）、测试（go test）和 vet（go vet）
 - 用 GoReleaser 发布二进制和 `checksums.txt` 到 GitHub Release
 - 构建并推送 GHCR 多架构镜像
 
@@ -131,7 +114,7 @@ docker run -d \
   --name subconverter \
   -p 8080:8080 \
   -v $(pwd)/config.yaml:/config/config.yaml:ro \
-  ghcr.io/john-robertt/subconverter:v0.1.0
+  ghcr.io/john-robertt/subconverter:latest
 ```
 
 如果需要额外挂载自定义模板，可以在配置文件中改成绝对路径，并将模板文件挂载进容器。
