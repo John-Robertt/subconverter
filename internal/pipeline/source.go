@@ -102,6 +102,8 @@ func splitLines(text string) []string {
 
 // deduplicateNames renames duplicate proxy names by appending circled number
 // suffixes (②, ③, ...) for the 2nd through 10th occurrence, then (N) beyond.
+// After initial dedup, a second pass resolves any collisions between generated
+// suffixed names and original names (e.g. "HK-01②" already exists in subscription).
 func deduplicateNames(proxies []model.Proxy) []model.Proxy {
 	circled := []string{"②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"}
 
@@ -122,6 +124,27 @@ func deduplicateNames(proxies []model.Proxy) []model.Proxy {
 			}
 			result = append(result, dup)
 		}
+	}
+
+	// Second pass: resolve collisions between generated names and original names.
+	seen := make(map[string]struct{}, len(result))
+	for i, p := range result {
+		if _, exists := seen[p.Name]; exists {
+			// Collision detected — append incrementing suffix until unique.
+			for seq := 2; ; seq++ {
+				var candidate string
+				if seq-1 <= len(circled) {
+					candidate = p.Name + circled[seq-2]
+				} else {
+					candidate = fmt.Sprintf("%s(%d)", p.Name, seq)
+				}
+				if _, taken := seen[candidate]; !taken {
+					result[i].Name = candidate
+					break
+				}
+			}
+		}
+		seen[result[i].Name] = struct{}{}
 	}
 	return result
 }

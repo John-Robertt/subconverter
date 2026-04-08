@@ -75,6 +75,9 @@ func ParseSSURI(raw string) (model.Proxy, error) {
 	if err != nil {
 		return model.Proxy{}, ssError(raw, fmt.Sprintf("invalid port %q", portStr))
 	}
+	if port < 1 || port > 65535 {
+		return model.Proxy{}, ssError(raw, fmt.Sprintf("port %d out of range 1-65535", port))
+	}
 
 	return model.Proxy{
 		Name:   name,

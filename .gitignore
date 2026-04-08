@@ -31,3 +31,5 @@ Thumbs.db
 # Environment / secrets
 .env
 *.pem
+
+ss*.txt

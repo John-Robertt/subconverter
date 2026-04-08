@@ -357,6 +357,57 @@ func TestSource_SubscriptionAndCustomCombined(t *testing.T) {
 	}
 }
 
+func TestSource_DedupSuffixCollision(t *testing.T) {
+	// Subscription already contains "NODE-A②", and "NODE-A" appears twice.
+	// The dedup suffix "NODE-A②" should not collide with the original "NODE-A②".
+	sub := makeSubResponse(
+		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@a.example.com:8388#NODE-A",
+		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@b.example.com:8388#NODE-A%E2%91%A1", // NODE-A②
+		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@c.example.com:8388#NODE-A",
+	)
+
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{
+		{URL: "https://sub.example.com"},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://sub.example.com": sub,
+	}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(proxies) != 3 {
+		t.Fatalf("got %d proxies, want 3", len(proxies))
+	}
+
+	// All names must be unique.
+	names := make(map[string]struct{})
+	for _, p := range proxies {
+		if _, exists := names[p.Name]; exists {
+			t.Errorf("duplicate name %q after dedup", p.Name)
+		}
+		names[p.Name] = struct{}{}
+	}
+
+	// First NODE-A keeps original name.
+	if proxies[0].Name != "NODE-A" {
+		t.Errorf("proxy[0].Name = %q, want %q", proxies[0].Name, "NODE-A")
+	}
+	// Original NODE-A② keeps its name.
+	if proxies[1].Name != "NODE-A②" {
+		t.Errorf("proxy[1].Name = %q, want %q", proxies[1].Name, "NODE-A②")
+	}
+	// Second NODE-A would normally become NODE-A②, but that collides,
+	// so it should get a further suffix.
+	if proxies[2].Name == "NODE-A②" {
+		t.Errorf("proxy[2].Name should not collide with existing NODE-A②")
+	}
+}
+
 func TestSource_NoSubscriptionsOnlyCustom(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.CustomProxies = []config.CustomProxy{

@@ -123,6 +123,9 @@ func TestParseSSURI_Invalid(t *testing.T) {
 		{"missing port", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com#HK-01"},
 		{"empty method", "ss://OnBhc3N3b3Jk@hk.example.com:8388#HK-01"}, // base64(":password")
 		{"no colon in userinfo", "ss://bm9jb2xvbg@hk.example.com:8388#HK-01"}, // base64("nocolon")
+		{"port zero", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:0#HK-01"},
+		{"port negative", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:-1#HK-01"},
+		{"port too large", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:65536#HK-01"},
 	}
 
 	for _, tt := range tests {
