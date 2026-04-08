@@ -67,7 +67,7 @@ func TestSanitizeURL(t *testing.T) {
 func TestHTTPFetcher_Success(t *testing.T) {
 	body := "hello world"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, body)
+		_, _ = fmt.Fprint(w, body)
 	}))
 	defer srv.Close()
 

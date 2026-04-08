@@ -41,7 +41,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error) 
 			Cause:   err,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Drain body to allow HTTP keep-alive connection reuse.

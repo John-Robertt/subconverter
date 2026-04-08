@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
@@ -24,7 +25,7 @@ func LoadResource(ctx context.Context, location string, f Fetcher) ([]byte, erro
 		return f.Fetch(ctx, location)
 	}
 
-	data, err := os.ReadFile(location)
+	data, err := os.ReadFile(filepath.Clean(location))
 	if err != nil {
 		return nil, fmt.Errorf("reading local file %q: %w", location, err)
 	}

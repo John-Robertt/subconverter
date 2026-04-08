@@ -80,10 +80,10 @@ func TestClash_GoldenNoTemplate(t *testing.T) {
 	goldenPath := filepath.Join("..", "..", "testdata", "render", "clash_golden.yaml")
 
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
-		if err := os.MkdirAll(filepath.Dir(goldenPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(goldenPath), 0750); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(goldenPath, got, 0644); err != nil {
+		if err := os.WriteFile(goldenPath, got, 0600); err != nil {
 			t.Fatal(err)
 		}
 		t.Log("golden file updated")

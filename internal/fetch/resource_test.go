@@ -24,7 +24,7 @@ func TestLoadResource_LocalFileExists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.txt")
 	want := []byte("hello world")
-	if err := os.WriteFile(path, want, 0644); err != nil {
+	if err := os.WriteFile(path, want, 0600); err != nil {
 		t.Fatal(err)
 	}
 

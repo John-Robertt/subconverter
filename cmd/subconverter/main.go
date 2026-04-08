@@ -64,8 +64,9 @@ func main() {
 	// Start HTTP server.
 	srv := server.New(cfg, cachedFetcher)
 	httpServer := &http.Server{
-		Addr:    *listen,
-		Handler: srv.Handler(),
+		Addr:              *listen,
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Graceful shutdown on SIGINT / SIGTERM.

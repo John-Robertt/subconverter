@@ -67,11 +67,11 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	case "surge":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	}
-	w.Write(output)
+	_, _ = w.Write(output)
 }
 
 // handleHealthz returns 200 OK for health checks.
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	_, _ = w.Write([]byte("ok"))
 }
