@@ -89,9 +89,11 @@ ghcr.io/john-robertt/subconverter
 
 镜像默认启动命令：
 
-```text
-/app/subconverter -config /config/config.yaml -listen :8080
+```shell
+/app/subconverter -config /config/config.yaml
 ```
+
+镜像同时内置 `SUBCONVERTER_LISTEN=:8080`，因此默认仍监听 `:8080`。
 
 因此如果配置文件继续使用：
 
@@ -119,11 +121,41 @@ docker run -d \
 
 如果需要额外挂载自定义模板，可以在配置文件中改成绝对路径，并将模板文件挂载进容器。
 
+### 健康检查
+
+服务提供 `/healthz` 端点和 `-healthcheck` 标志两种探活方式：
+
+- `/healthz`：HTTP 端点，返回 `200 OK`，用于负载均衡器或外部监控
+- `-healthcheck`：二进制自检模式，按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 发请求并退出（退出码 0 = 健康，1 = 异常）
+
+`-healthcheck` 不依赖容器内的 curl 等外部工具，适用于 distroless 镜像。Dockerfile 已内置 `HEALTHCHECK` 指令，Docker Compose 部署时也可显式声明：
+
+```yaml
+healthcheck:
+  test: ["CMD", "/app/subconverter", "-healthcheck"]
+  interval: 10s
+  timeout: 3s
+  retries: 20
+```
+
+镜像默认设置了 `SUBCONVERTER_LISTEN=:8080`。若服务监听非默认端口，推荐只改环境变量，让主服务和内置 `HEALTHCHECK` 自动保持一致：
+
+```yaml
+environment:
+  SUBCONVERTER_LISTEN: :9090
+ports:
+  - 9090:9090
+healthcheck:
+  test: ["CMD", "/app/subconverter", "-healthcheck"]
+```
+
 ### 二进制部署
 
 ```bash
 ./subconverter -config ./config.yaml -listen :8080
 ```
+
+若不显式传入 `-listen`，进程会按 `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址。
 
 建议生产环境使用：
 

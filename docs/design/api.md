@@ -70,11 +70,15 @@
 
 ## 运行参数
 
-系统建议支持以下启动参数：
+系统支持以下启动参数：
 
-- `-config`
-- `-listen`
-- `-cache-ttl`
-- `-timeout`
+- `-config`：YAML 配置文件路径或 HTTP(S) URL（必填，除 `-healthcheck` / `-version` 模式外）
+- `-listen`：HTTP 监听地址（默认 `:8080`）
+- `-cache-ttl`：订阅、模板和远程配置文件的缓存 TTL（默认 `5m`）
+- `-timeout`：拉取订阅的 HTTP 超时时间（默认 `30s`）
+- `-healthcheck`：按监听地址解析规则向本地 `/healthz` 发起探活请求并退出（退出码 0 = 健康，1 = 异常）
+- `-version`：打印版本信息并退出
+
+监听地址解析规则：显式 `-listen` > `SUBCONVERTER_LISTEN` > `:8080`。`-healthcheck` 与主服务启动共用这套规则。
 
 这些参数属于进程运行时控制，不属于用户 YAML 配置的一部分。

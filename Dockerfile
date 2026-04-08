@@ -27,7 +27,12 @@ COPY configs /app/configs
 
 WORKDIR /app
 
+ENV SUBCONVERTER_LISTEN=:8080
+
 EXPOSE 8080
 
+HEALTHCHECK --interval=10s --timeout=3s --retries=20 \
+	CMD ["/app/subconverter", "-healthcheck"]
+
 ENTRYPOINT ["/app/subconverter"]
-CMD ["-config", "/config/config.yaml", "-listen", ":8080"]
+CMD ["-config", "/config/config.yaml"]

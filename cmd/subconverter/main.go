@@ -3,6 +3,7 @@
 // Usage:
 //
 //	subconverter -config <path> [-listen :8080] [-cache-ttl 5m] [-timeout 30s]
+//	subconverter -healthcheck [-listen :8080]
 package main
 
 import (
@@ -11,7 +12,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -28,17 +31,29 @@ var (
 	date    = "unknown"
 )
 
+const (
+	defaultListenAddr = ":8080"
+	listenEnvVar      = "SUBCONVERTER_LISTEN"
+)
+
 func main() {
 	configPath := flag.String("config", "", "path to YAML config file (required)")
-	listen := flag.String("listen", ":8080", "listen address")
+	listen := flag.String("listen", "", "listen address (overrides SUBCONVERTER_LISTEN)")
 	cacheTTL := flag.Duration("cache-ttl", 5*time.Minute, "subscription and template cache TTL")
 	timeout := flag.Duration("timeout", 30*time.Second, "HTTP fetch timeout for subscriptions")
 	showVersion := flag.Bool("version", false, "print version information and exit")
+	healthcheck := flag.Bool("healthcheck", false, "check service health and exit")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Printf("subconverter %s\ncommit: %s\nbuilt: %s\n", version, commit, date)
 		return
+	}
+
+	listenAddr := resolveListenAddress(*listen)
+
+	if *healthcheck {
+		os.Exit(runHealthcheck(listenAddr))
 	}
 
 	if *configPath == "" {
@@ -64,7 +79,7 @@ func main() {
 	// Start HTTP server.
 	srv := server.New(cfg, cachedFetcher)
 	httpServer := &http.Server{
-		Addr:              *listen,
+		Addr:              listenAddr,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -74,7 +89,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		log.Printf("listening on %s", *listen)
+		log.Printf("listening on %s", listenAddr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server error: %v", err)
 		}
@@ -86,5 +101,60 @@ func main() {
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown error: %v", err)
+	}
+}
+
+func resolveListenAddress(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if envValue := os.Getenv(listenEnvVar); envValue != "" {
+		return envValue
+	}
+	return defaultListenAddr
+}
+
+func runHealthcheck(listen string) int {
+	target, err := healthcheckURL(listen)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: invalid listen address %q: %v\n", listen, err)
+		return 1
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(target)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "healthcheck: status %d\n", resp.StatusCode)
+		return 1
+	}
+	return 0
+}
+
+func healthcheckURL(listen string) (string, error) {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return "", err
+	}
+
+	host = healthcheckHost(host)
+	return (&url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(host, port),
+		Path:   "/healthz",
+	}).String(), nil
+}
+
+func healthcheckHost(host string) string {
+	switch host {
+	case "", "0.0.0.0":
+		return "127.0.0.1"
+	case "::":
+		return "::1"
+	default:
+		return host
 	}
 }

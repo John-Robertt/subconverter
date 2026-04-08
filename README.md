@@ -21,6 +21,8 @@ SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源，执行过滤与
 
 ## 快速开始
 
+运行前需准备一份 YAML 配置文件，格式参见下方[配置](#配置)章节或 [`configs/base_config.yaml`](configs/base_config.yaml)。`-config` 同时支持本地路径和 HTTP(S) URL。
+
 ### Docker
 
 ```bash
@@ -31,7 +33,15 @@ docker run -d \
   ghcr.io/john-robertt/subconverter:latest
 ```
 
-容器默认读取 `/config/config.yaml`，内置底版模板位于 `/app/configs/`。
+容器默认读取 `/config/config.yaml`，内置底版模板位于 `/app/configs/`。也可以跳过挂载，直接使用远程配置：
+
+```bash
+docker run -d \
+  --name subconverter \
+  -p 8080:8080 \
+  ghcr.io/john-robertt/subconverter:latest \
+  -config https://example.com/config.yaml
+```
 
 验证服务：
 
@@ -40,6 +50,51 @@ curl "http://localhost:8080/generate?format=clash"
 curl "http://localhost:8080/generate?format=surge"
 curl "http://localhost:8080/healthz"
 ```
+
+### Docker Compose
+
+```yaml
+services:
+  subconverter:
+    image: ghcr.io/john-robertt/subconverter:latest
+    environment:
+      SUBCONVERTER_LISTEN: :8080
+    ports:
+      - 8080:8080
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "/app/subconverter", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+```
+
+```bash
+docker compose up -d
+```
+
+使用远程配置时，去掉 `volumes` 挂载并覆盖启动命令：
+
+```yaml
+services:
+  subconverter:
+    image: ghcr.io/john-robertt/subconverter:latest
+    command: ["-config", "https://example.com/config.yaml"]
+    environment:
+      SUBCONVERTER_LISTEN: :8080
+    ports:
+      - 8080:8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/subconverter", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+```
+
+修改容器监听端口时，推荐只改一次 `SUBCONVERTER_LISTEN`。主服务和内置 `-healthcheck` 都会按相同优先级解析监听地址：显式 `-listen` > `SUBCONVERTER_LISTEN` > `:8080`。
 
 ### 预编译二进制
 
@@ -65,13 +120,14 @@ make build
 
 ## 命令行参数
 
-| 参数         | 默认值     | 说明                     |
-| ------------ | ---------- | ------------------------ |
-| `-config`    | _（必填）_ | YAML 配置文件路径        |
-| `-listen`    | `:8080`    | HTTP 监听地址            |
-| `-cache-ttl` | `5m`       | 订阅和模板缓存的 TTL     |
-| `-timeout`   | `30s`      | 拉取订阅的 HTTP 超时时间 |
-| `-version`   |            | 打印版本信息并退出       |
+| 参数           | 默认值     | 说明                                          |
+| -------------- | ---------- | --------------------------------------------- |
+| `-config`      | _（必填）_ | YAML 配置文件路径或 HTTP(S) URL               |
+| `-listen`      | `:8080`    | HTTP 监听地址；未显式传入时可由 `SUBCONVERTER_LISTEN` 提供 |
+| `-cache-ttl`   | `5m`       | 订阅和模板缓存的 TTL                          |
+| `-timeout`     | `30s`      | 拉取订阅的 HTTP 超时时间                      |
+| `-healthcheck` |            | 按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 探活并退出 |
+| `-version`     |            | 打印版本信息并退出                            |
 
 ## API
 
@@ -89,6 +145,8 @@ make build
 ### `GET /healthz`
 
 返回 `200 OK`。用于容器健康检查和负载均衡器探针。
+
+在容器场景下，内置 `-healthcheck` 与主服务启动共用监听地址解析规则：显式 `-listen` > `SUBCONVERTER_LISTEN` > `:8080`。
 
 ## 配置
 
