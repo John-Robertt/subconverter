@@ -64,6 +64,16 @@ func unwrapAll(err error) []error {
 	return []error{err}
 }
 
+func countErrorContains(err error, substr string) int {
+	count := 0
+	for _, e := range unwrapAll(err) {
+		if strings.Contains(e.Error(), substr) {
+			count++
+		}
+	}
+	return count
+}
+
 // --- tests ---
 
 func TestValidateGraph_ValidGraph(t *testing.T) {
@@ -86,6 +96,7 @@ func TestValidateGraph_RouteGroupMemberNotFound(t *testing.T) {
 	gr := validGroupResult()
 	rr := validRouteResult()
 	rr.RouteGroups[0].Members = append(rr.RouteGroups[0].Members, "Nonexistent")
+	rr.RawRouteMembers["Quick"] = append(rr.RawRouteMembers["Quick"], "Nonexistent")
 
 	_, err := ValidateGraph(gr, rr)
 	if err == nil {
@@ -93,6 +104,9 @@ func TestValidateGraph_RouteGroupMemberNotFound(t *testing.T) {
 	}
 	if !containsError(err, `member "Nonexistent" not found`) {
 		t.Errorf("error = %v, want mention of Nonexistent", err)
+	}
+	if got := countErrorContains(err, `member "Nonexistent" not found`); got != 1 {
+		t.Errorf("expected exactly 1 missing-member error, got %d: %v", got, err)
 	}
 }
 
@@ -311,6 +325,7 @@ func TestValidateGraph_MultipleErrors(t *testing.T) {
 	rr := validRouteResult()
 	rr.Fallback = "Missing"                                                      // bad fallback
 	rr.RouteGroups[0].Members = append(rr.RouteGroups[0].Members, "AlsoMissing") // bad member
+	rr.RawRouteMembers["Quick"] = append(rr.RawRouteMembers["Quick"], "AlsoMissing")
 
 	_, err := ValidateGraph(gr, rr)
 	if err == nil {

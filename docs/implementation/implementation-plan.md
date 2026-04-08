@@ -85,7 +85,7 @@
 | `M2` | Source 与 Filter | ✅ 已完成 |
 | `M3` | Group 与 Route | ✅ 已完成 |
 | `M4` | 校验与渲染 | ✅ 已完成 |
-| `M5` | HTTP 与 E2E | 能通过 HTTP 生成配置并完成端到端验收 |
+| `M5` | HTTP 与 E2E | ✅ 已完成 |
 
 执行顺序：
 
@@ -538,7 +538,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ---
 
-## M5: HTTP 服务与端到端验收
+## M5: HTTP 服务与端到端验收 ✅
 
 ### 目标
 
@@ -555,28 +555,52 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 产物
 
-- `internal/server`
-- `cmd/subconverter/main.go`
-- 最小可运行服务
+- `internal/pipeline/`:
+  - `execute.go`：`Execute(ctx, cfg, fetcher)` 管道顶层编排，串联 Source→Filter→Group→Route→ValidateGraph
+- `internal/server/`:
+  - `server.go`：`Server` 结构体、`New` 构造函数、`Handler()` 路由注册
+  - `handler.go`：`handleGenerate`（管道→模板→渲染→响应）、`handleHealthz`
+  - `errors.go`：`mapError` 错误类型→HTTP 状态码映射
+- `cmd/subconverter/main.go`：flag 解析、依赖创建、服务启动、优雅关闭
+- 外部依赖：无新增
 
 ### 验收项
 
-- `format=clash` 返回 YAML
-- `format=surge` 返回 conf
-- 非法 `format` 返回 `400`
-- 订阅拉取失败返回 `502`
-- 内部错误返回 `500`
-- `healthz` 返回 `200`
-- 示例配置可完成端到端生成
+- ✅ `format=clash` 返回 YAML（T-E2E-001）
+- ✅ `format=surge` 返回 conf（T-E2E-002）
+- ✅ 非法 `format` 返回 `400`（T-E2E-003）
+- ✅ 订阅拉取失败返回 `502`（T-E2E-004）
+- ✅ 内部错误返回 `500`（T-E2E-005）
+- ✅ `healthz` 返回 `200`（T-E2E-006）
+- ✅ 示例配置可完成端到端生成
+- ✅ `go test ./...` 全部通过
 
 ### 对应测试
 
-- `T-E2E-001`：HTTP 生成 Clash 成功
-- `T-E2E-002`：HTTP 生成 Surge 成功
-- `T-E2E-003`：非法 `format` 返回 `400`
-- `T-E2E-004`：订阅拉取失败返回 `502`
-- `T-E2E-005`：配置非法或内部错误返回 `500` 或启动失败
-- `T-E2E-006`：`/healthz` 返回 `200`
+- `T-E2E-001`：HTTP 生成 Clash 成功 → `TestE2E_GenerateClash`
+- `T-E2E-002`：HTTP 生成 Surge 成功 → `TestE2E_GenerateSurge`
+- `T-E2E-003`：非法 `format` 返回 `400` → `TestE2E_InvalidFormat`
+- `T-E2E-004`：订阅拉取失败返回 `502` → `TestE2E_FetchFailure`
+- `T-E2E-005`：图校验失败返回 `500` → `TestE2E_BuildError`
+- `T-E2E-006`：`/healthz` 返回 `200` → `TestE2E_Healthz`
+- `T-EXE-001`：Execute happy path → `TestExecute_HappyPath`
+- `T-EXE-002`：Execute fetch error → `TestExecute_FetchError`
+- `T-EXE-003`：Execute filter excludes → `TestExecute_FilterExcludes`
+
+### 实施记录
+
+关键设计决策：
+
+| 决策 | 结论 | 原因 |
+|------|------|------|
+| 管道编排位置 | `pipeline.Execute` | project-structure.md 将"管道编排"归于 pipeline 包 |
+| Server 依赖注入 | main.go 创建 Config + CachedFetcher，注入 Server | 保持 server 可测试，不依赖 flag 解析 |
+| 模板加载位置 | server handler 中（pipeline.Execute 之后、render 之前） | 模板是格式特定的，pipeline 应保持格式无关 |
+| 错误映射 | `errors.As` 按类型分发（ConfigError→400, FetchError→502, BuildError/RenderError→500） | Go 1.24 `errors.As` 可穿透 `errors.Join`，映射简洁 |
+| E2E 测试方式 | httptest.Server + fake fetcher，black-box 包 | 只测公共 API，与内部实现解耦 |
+| 优雅关闭 | `signal.NotifyContext` + `httpServer.Shutdown` + 10s 超时 | 标准模式，防止慢请求阻塞关闭 |
+| 路由注册 | Go 1.22+ method pattern `"GET /generate"` | 避免 handler 内手动检查 HTTP 方法 |
+| 服务端日志 | 错误路径 `log.Printf` | 单用户服务，错误可能未被客户端消费 |
 
 ### 对应需求
 
@@ -590,10 +614,24 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 里程碑记录：`M5-http-e2e`
 - 发布候选版本：`rc1`
 
+### 退出条件
+
+- ✅ `Execute` 输出稳定的 `*model.Pipeline`，可供渲染器消费
+- ✅ HTTP 层仅做请求校验 + 编排 + 错误映射，不承担业务转换逻辑
+- ✅ 6 个 E2E 测试 + 3 个 Execute 单测全部通过
+- ✅ `make build` 和 `make run` 可用
+
+### 已知限制
+
+- HTTP 服务未设 `ReadTimeout` / `WriteTimeout`（单用户场景无 slowloris 风险）
+- 不支持运行时配置热重载（修改配置后需重启服务）
+- 错误消息直接返回给客户端（单用户场景，便于调试；多用户需脱敏）
+- `handleGenerate` 对 format 做 3 次 switch（当前仅 2 格式，不做提前抽象）
+
 ### 风险
 
-- 错误映射与用户预期不一致
-- HTTP 层吸收过多业务逻辑，破坏模块边界
+- 错误映射与用户预期不一致（已通过 E2E 测试覆盖主要路径）
+- HTTP 层吸收过多业务逻辑，破坏模块边界（已通过依赖注入和 pipeline.Execute 隔离）
 
 ---
 

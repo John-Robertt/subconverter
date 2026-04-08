@@ -411,10 +411,10 @@ func TestSource_DedupSuffixCollision(t *testing.T) {
 	if proxies[1].Name != "NODE-A②" {
 		t.Errorf("proxy[1].Name = %q, want %q", proxies[1].Name, "NODE-A②")
 	}
-	// Second NODE-A would normally become NODE-A②, but that collides,
-	// so it should get a further suffix.
-	if proxies[2].Name == "NODE-A②" {
-		t.Errorf("proxy[2].Name should not collide with existing NODE-A②")
+	// Second NODE-A would normally become NODE-A②, but that collides with the
+	// natural NODE-A②, so it should advance to NODE-A③.
+	if proxies[2].Name != "NODE-A③" {
+		t.Errorf("proxy[2].Name = %q, want %q", proxies[2].Name, "NODE-A③")
 	}
 }
 

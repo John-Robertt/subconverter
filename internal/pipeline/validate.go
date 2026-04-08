@@ -78,10 +78,28 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 		}
 	}
 
-	// 5. Expanded route group member resolution.
+	// 5. Expanded @all member resolution.
 	for _, g := range rr.RouteGroups {
+		rawMembers := g.Members
+		if rr.RawRouteMembers != nil {
+			if members, ok := rr.RawRouteMembers[g.Name]; ok {
+				rawMembers = members
+			}
+		}
+		if !containsMember(rawMembers, "@all") {
+			continue
+		}
+
+		rawMemberSet := make(map[string]struct{}, len(rawMembers))
+		for _, member := range rawMembers {
+			rawMemberSet[member] = struct{}{}
+		}
+
 		for _, member := range g.Members {
-			if !index.proxyNames[member] && !index.nodeGroupNames[member] && !index.routeGroupNames[member] && !reservedPolicies[member] {
+			if _, presentInRaw := rawMemberSet[member]; presentInRaw {
+				continue
+			}
+			if !index.proxyNames[member] {
 				c.add(fmt.Sprintf("route group %q: member %q not found", g.Name, member))
 			}
 		}
@@ -175,6 +193,15 @@ func buildChainedProxyNameSet(proxies []model.Proxy) map[string]bool {
 		}
 	}
 	return s
+}
+
+func containsMember(members []string, target string) bool {
+	for _, member := range members {
+		if member == target {
+			return true
+		}
+	}
+	return false
 }
 
 // detectCycle checks for circular references among route groups using

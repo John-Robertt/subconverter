@@ -102,51 +102,47 @@ func splitLines(text string) []string {
 
 // deduplicateNames renames duplicate proxy names by appending circled number
 // suffixes (②, ③, ...) for the 2nd through 10th occurrence, then (N) beyond.
-// After initial dedup, a second pass resolves any collisions between generated
-// suffixed names and original names (e.g. "HK-01②" already exists in subscription).
+// Candidate names are always derived from the original base name so collisions
+// with natural names still advance to the next logical suffix (e.g. "HK-01",
+// "HK-01②", "HK-01③").
 func deduplicateNames(proxies []model.Proxy) []model.Proxy {
-	circled := []string{"②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"}
-
-	count := make(map[string]int, len(proxies))
+	nextSeq := make(map[string]int, len(proxies))
+	used := make(map[string]struct{}, len(proxies))
 	result := make([]model.Proxy, 0, len(proxies))
 
 	for _, p := range proxies {
-		count[p.Name]++
-		n := count[p.Name]
-		if n == 1 {
-			result = append(result, p)
-		} else {
-			dup := p
-			if n-1 <= len(circled) {
-				dup.Name = p.Name + circled[n-2]
-			} else {
-				dup.Name = fmt.Sprintf("%s(%d)", p.Name, n)
+		seq := nextSeq[p.Name] + 1
+		candidate := deduplicatedName(p.Name, seq)
+		for {
+			if _, exists := used[candidate]; !exists {
+				break
 			}
-			result = append(result, dup)
+			seq++
+			candidate = deduplicatedName(p.Name, seq)
 		}
+
+		deduped := p
+		deduped.Name = candidate
+		result = append(result, deduped)
+
+		nextSeq[p.Name] = seq
+		used[candidate] = struct{}{}
 	}
 
-	// Second pass: resolve collisions between generated names and original names.
-	seen := make(map[string]struct{}, len(result))
-	for i, p := range result {
-		if _, exists := seen[p.Name]; exists {
-			// Collision detected — append incrementing suffix until unique.
-			for seq := 2; ; seq++ {
-				var candidate string
-				if seq-1 <= len(circled) {
-					candidate = p.Name + circled[seq-2]
-				} else {
-					candidate = fmt.Sprintf("%s(%d)", p.Name, seq)
-				}
-				if _, taken := seen[candidate]; !taken {
-					result[i].Name = candidate
-					break
-				}
-			}
-		}
-		seen[result[i].Name] = struct{}{}
-	}
 	return result
+}
+
+func deduplicatedName(base string, seq int) string {
+	if seq <= 1 {
+		return base
+	}
+
+	circled := []string{"②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"}
+	if seq-2 < len(circled) {
+		return base + circled[seq-2]
+	}
+
+	return fmt.Sprintf("%s(%d)", base, seq)
 }
 
 // convertCustomProxies converts config.CustomProxy entries to model.Proxy objects.

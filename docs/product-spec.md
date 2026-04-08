@@ -84,7 +84,7 @@ HK-03 → HK-ISP
 
 ```
 🚀 快速选择      ─▶  🇭🇰 HK │ 🇸🇬 SG │ 🇨🇳 TW │ 🇯🇵 JP │ 🇺🇲 US │ 🔗 HK-ISP │ 手动切换 │ DIRECT
-🚀 手动切换      ─▶  HK-01 │ HK-02 │ SG-01 │ US-01 │ ...（全部原始节点，不含链式节点）
+🚀 手动切换      ─▶  HK-01 │ HK-02 │ SG-01 │ US-01 │ HK-ISP │ ...（全部原始节点，不含链式节点）
 📲 Telegram      ─▶  🇭🇰 HK │ 快速选择 │ 手动切换 │ 🇸🇬 SG │ 🇨🇳 TW │ 🇯🇵 JP │ 🇺🇲 US │ DIRECT
 📺 Netflix       ─▶  🇸🇬 SG │ 快速选择 │ 手动切换 │ 🇭🇰 HK │ 🇨🇳 TW │ 🇯🇵 JP │ 🇺🇲 US │ DIRECT
 📺 DisneyPlus    ─▶  🇭🇰 HK │ 快速选择 │ 手动切换 │ 🇸🇬 SG │ 🇨🇳 TW │ 🇯🇵 JP │ 🇺🇲 US │ DIRECT
@@ -207,7 +207,7 @@ groups:
   # 🔗 HK-ISP 由 relay_through 自动生成，无需定义
 
 # 服务组：key = 组名，value = 有序出口列表（第一个是默认推荐）
-# 可引用：节点组名、其他服务组名、🔗 链式组名、DIRECT、REJECT、@all（全部原始节点，不含链式节点）
+# 可引用：节点组名、其他服务组名、🔗 链式组名、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + 自定义代理，不含链式节点）
 # 书写顺序 = 面板显示顺序
 routing:
   🚀 快速选择:

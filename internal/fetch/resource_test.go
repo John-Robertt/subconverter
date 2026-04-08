@@ -43,8 +43,8 @@ func TestLoadResource_LocalFileNotFound(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 	var fetchErr *errtype.FetchError
-	if !errors.As(err, &fetchErr) {
-		t.Errorf("expected *errtype.FetchError, got %T", err)
+	if errors.As(err, &fetchErr) {
+		t.Errorf("local file error should not be *errtype.FetchError, got %T", err)
 	}
 }
 

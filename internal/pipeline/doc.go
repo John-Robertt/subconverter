@@ -10,8 +10,11 @@
 //   - Group stage: region groups, chained nodes/groups, @all computation (Group)
 //   - Route stage: service groups, rulesets, rules, fallback (Route)
 //
-// To be implemented (M4):
-//   - Graph-level reference validation
+// Implemented (M4):
+//   - Graph-level reference validation (ValidateGraph)
+//
+// Implemented (M5):
+//   - Full pipeline orchestration (Execute)
 //
 // Design reference: docs/design/pipeline.md
 package pipeline

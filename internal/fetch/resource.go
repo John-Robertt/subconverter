@@ -26,11 +26,7 @@ func LoadResource(ctx context.Context, location string, f Fetcher) ([]byte, erro
 
 	data, err := os.ReadFile(location)
 	if err != nil {
-		return nil, &errtype.FetchError{
-			URL:     location,
-			Message: fmt.Sprintf("reading local file: %v", err),
-			Cause:   err,
-		}
+		return nil, fmt.Errorf("reading local file %q: %w", location, err)
 	}
 	return data, nil
 }
