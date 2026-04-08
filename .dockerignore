@@ -1,0 +1,9 @@
+.git
+.github
+coverage.out
+coverage.html
+dist
+docs
+output
+subconverter
+testdata

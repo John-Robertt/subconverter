@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -21,17 +22,31 @@ import (
 	"github.com/John-Robertt/subconverter/internal/server"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	configPath := flag.String("config", "", "path to YAML config file (required)")
 	listen := flag.String("listen", ":8080", "listen address")
 	cacheTTL := flag.Duration("cache-ttl", 5*time.Minute, "subscription and template cache TTL")
 	timeout := flag.Duration("timeout", 30*time.Second, "HTTP fetch timeout for subscriptions")
+	showVersion := flag.Bool("version", false, "print version information and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("subconverter %s\ncommit: %s\nbuilt: %s\n", version, commit, date)
+		return
+	}
 
 	if *configPath == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	log.Printf("starting subconverter %s (commit=%s built=%s)", version, commit, date)
 
 	// Build dependency chain: HTTPFetcher -> CachedFetcher.
 	httpFetcher := &fetch.HTTPFetcher{Client: &http.Client{Timeout: *timeout}}
