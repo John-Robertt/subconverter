@@ -17,17 +17,17 @@ func TestSurge_GoldenNoTemplate(t *testing.T) {
 	goldenPath := filepath.Join("..", "..", "testdata", "render", "surge_golden.conf")
 
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
-		if err := os.MkdirAll(filepath.Dir(goldenPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(goldenPath), 0750); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(goldenPath, got, 0644); err != nil {
+		if err := os.WriteFile(goldenPath, got, 0600); err != nil {
 			t.Fatal(err)
 		}
 		t.Log("golden file updated")
 		return
 	}
 
-	want, err := os.ReadFile(goldenPath)
+	want, err := os.ReadFile(filepath.Clean(goldenPath))
 	if err != nil {
 		t.Fatalf("reading golden file (run with UPDATE_GOLDEN=1 to create): %v", err)
 	}
@@ -88,7 +88,7 @@ func TestSurge_RuleOrder(t *testing.T) {
 	if rulesetIdx < 0 || inlineIdx < 0 || finalIdx < 0 {
 		t.Fatalf("missing expected rules in output:\n%s", output)
 	}
-	if !(rulesetIdx < inlineIdx && inlineIdx < finalIdx) {
+	if rulesetIdx >= inlineIdx || inlineIdx >= finalIdx {
 		t.Error("rule order should be: RULE-SET < inline < FINAL")
 	}
 }
@@ -180,7 +180,7 @@ func TestSurge_GroupOrderRouteBeforeNode(t *testing.T) {
 	if quickIdx < 0 || hkIdx < 0 {
 		t.Fatalf("missing expected groups in output:\n%s", output)
 	}
-	if !(quickIdx < hkIdx) {
+	if quickIdx >= hkIdx {
 		t.Error("route groups should be rendered before node groups")
 	}
 }
