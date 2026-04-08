@@ -82,7 +82,7 @@
 |------|------|------|
 | `M0` | 工程基线 | ✅ 已完成 |
 | `M1` | 配置与模型 | ✅ 已完成 |
-| `M2` | Source 与 Filter | 能拉取订阅、解析 SS、过滤节点 |
+| `M2` | Source 与 Filter | ✅ 已完成 |
 | `M3` | Group 与 Route | 能生成地区组、链式组、服务组和路由绑定 |
 | `M4` | 校验与渲染 | 能校验引用关系并输出 Clash Meta / Surge |
 | `M5` | HTTP 与 E2E | 能通过 HTTP 生成配置并完成端到端验收 |
@@ -234,7 +234,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ---
 
-## M2: Source 与 Filter
+## M2: Source 与 Filter ✅
 
 ### 目标
 
@@ -245,34 +245,58 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 实现订阅抓取器
 - 实现 TTL 缓存
 - 实现 SS URI 解析器
-- 实现多订阅并发拉取
+- 实现多订阅顺序拉取（顺序保证去重后缀确定性）
 - 将自定义代理转换为原始节点
 - 实现过滤逻辑
 
 ### 产物
 
-- `internal/fetch`
-- `pipeline/source`
-- `pipeline/ssuri`
-- `pipeline/filter`
+- `internal/fetch`：
+  - `fetch.go`：`Fetcher` 接口（单方法，便于测试注入）、`HTTPFetcher` 实现、`SanitizeURL`（URL 脱敏）
+  - `cache.go`：`CachedFetcher`（TTL 缓存装饰器，实现 `Fetcher` 接口，可注入时钟）
+- `internal/pipeline`：
+  - `ssuri.go`：SS URI 解析器，支持 padded/unpadded/URL-safe 多种 base64 变体
+  - `source.go`：Source 阶段编排——拉取→解码→解析→跨订阅去重→自定义代理转换→名称冲突检查
+  - `filter.go`：Filter 阶段——`exclude` 正则仅作用于 `KindSubscription` 节点
+- `testdata/subscriptions/sample_sub2.txt`：第二份订阅 fixture（含重名 HK-01，用于去重测试）
+- 外部依赖：无新增
 
 ### 验收项
 
-- 支持合法 SS URI 解析
-- 非法 SS URI 可识别并返回错误
-- 多订阅结果可合并
-- `exclude` 仅影响订阅节点
-- 自定义代理不受过滤影响
-- 缓存命中与失效行为符合预期
+- ✅ 支持合法 SS URI 解析（padded/unpadded base64、URL 编码中文 fragment、password 含冒号）
+- ✅ 非法 SS URI 可识别并返回 `*errtype.BuildError{Phase: "source"}`
+- ✅ 多订阅结果可合并，跨订阅重名自动追加 ②③ 后缀
+- ✅ `exclude` 仅影响订阅节点
+- ✅ 自定义代理不受过滤影响（即使名称匹配 exclude 正则）
+- ✅ 缓存命中与失效行为符合预期（可注入时钟验证）
+- ✅ 自定义代理与订阅节点重名时返回错误
+- ✅ 混合有效/无效 URI 时跳过无效行，保留有效节点
+- ✅ 空订阅（0 个有效节点）返回错误
+- ✅ `go test ./...` 全部通过
 
 ### 对应测试
 
-- `T-SRC-001`：合法 SS URI 解析
-- `T-SRC-002`：非法 SS URI 报错
-- `T-SRC-003`：多订阅合并
-- `T-FLT-001`：`exclude` 过滤订阅节点
-- `T-FLT-002`：自定义代理不参与过滤
-- `T-SRC-004`：缓存 TTL 命中与失效
+- `T-SRC-001`：合法 SS URI 解析 → `TestParseSSURI_Valid`（6 个子用例）
+- `T-SRC-002`：非法 SS URI 报错 → `TestParseSSURI_Invalid`（10 个子用例）
+- `T-SRC-003`：多订阅合并 → `TestSource_MultiSubscriptionMerge`
+- `T-FLT-001`：`exclude` 过滤订阅节点 → `TestFilter_ExcludeSubscriptionNodes`
+- `T-FLT-002`：自定义代理不参与过滤 → `TestFilter_CustomProxiesNotFiltered`
+- `T-SRC-004`：缓存 TTL 命中与失效 → `TestCachedFetcher_TTLHitAndMiss`
+
+### 实施记录
+
+关键设计决策：
+
+| 决策 | 结论 | 原因 |
+|------|------|------|
+| Fetcher 抽象 | 单方法接口 `Fetcher`，pipeline 依赖接口 | 测试可注入 fake，不依赖网络 |
+| 缓存模式 | `CachedFetcher` 装饰器，实现同一 `Fetcher` 接口 | 透明包装，可注入时钟测试 TTL |
+| 拉取策略 | 顺序拉取，非并发 | 单用户通常 1-3 订阅，顺序保证去重后缀确定性；接口已为并发预留 |
+| 去重命名 | 第 2 次 `②`、第 3 次 `③`...第 10 次后 `(N)` | 遵循 domain-model.md 约定 |
+| base64 解码 | 四种 base64 编码依次尝试（Std/Raw/URL/RawURL） | 兼容不同订阅商格式 |
+| 解析容错 | 逐行解析，跳过无效 URI；整个订阅 0 有效节点报错 | 平衡容错与错误发现 |
+| URL 脱敏 | `SanitizeURL` 剥离 query 和 fragment | 防止泄露用户 token |
+| 缓存隔离 | 存储和返回都做防御性拷贝 | 防止调用方修改污染缓存数据 |
 
 ### 对应需求
 
@@ -285,10 +309,21 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 里程碑记录：`M2-source-filter`
 - 固定测试订阅响应作为回归输入
 
+### 退出条件
+
+- ✅ `Source` 输出稳定的 `[]model.Proxy`，可供 M3 Group 阶段消费
+- ✅ `Filter` 输出过滤后的节点集合，自定义代理不受影响
+
+### 已知限制
+
+- 不支持并发拉取订阅（接口设计已预留，可后续添加 `errgroup` 并发而无破坏性变更）
+- 不处理 `RelayThrough`（留给 M3 Group 阶段）
+- 订阅体中非 SS URI 格式的行直接跳过，不记录警告日志（可在 M5 接入日志后补充）
+
 ### 风险
 
-- 订阅返回格式存在兼容性差异
-- 订阅可能包含空行、无效行或异常编码内容
+- 订阅返回格式存在兼容性差异（已通过多种 base64 变体回退处理缓解）
+- 订阅可能包含空行、无效行或异常编码内容（已通过逐行解析 + 跳过无效行处理）
 
 ---
 
