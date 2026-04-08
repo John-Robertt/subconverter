@@ -20,21 +20,12 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
 	-ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
 	-o /out/subconverter ./cmd/subconverter
 
-FROM debian:bookworm-slim
+FROM gcr.io/distroless/static-debian12:nonroot
 
-RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ca-certificates \
-	&& rm -rf /var/lib/apt/lists/* \
-	&& useradd --system --create-home --home-dir /app --uid 10001 appuser \
-	&& mkdir -p /config /app/configs \
-	&& chown -R appuser:appuser /app /config
+COPY --from=builder /out/subconverter /app/subconverter
+COPY configs /app/configs
 
 WORKDIR /app
-
-COPY --from=builder --chown=appuser:appuser /out/subconverter /app/subconverter
-COPY --chown=appuser:appuser configs /app/configs
-
-USER appuser
 
 EXPOSE 8080
 

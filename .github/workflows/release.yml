@@ -5,9 +5,47 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify module integrity
+        run: go mod verify
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2
+
+      - name: Verify formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Run vet
+        run: go vet ./...
+
   binaries:
     runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -21,14 +59,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run tests
-        run: go test ./...
-
       - name: Release binaries
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
+          version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -36,6 +71,7 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     needs: binaries
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -60,15 +96,15 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/john-robertt/subconverter
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
           labels: |
             org.opencontainers.image.title=subconverter
             org.opencontainers.image.description=Single-user HTTP service that converts SS subscriptions into Clash Meta and Surge configs.
-            org.opencontainers.image.source=https://github.com/John-Robertt/subconverter
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
 
