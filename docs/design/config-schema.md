@@ -256,6 +256,8 @@ templates:
 - 若为本地路径，不做格式校验（加载时由 OS 报错）
 - 远程模板与订阅共享同一缓存机制（CachedFetcher + TTL）
 
+注：配置文件本身（`-config` 参数）也支持 HTTP(S) URL，加载时同样经过 `LoadResource` 和 `CachedFetcher`。
+
 ---
 
 ## 顺序规则
