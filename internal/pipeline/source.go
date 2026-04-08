@@ -82,7 +82,7 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 func decodeSubscriptionBody(body []byte) (string, error) {
 	s := strings.TrimSpace(string(body))
 	if s == "" {
-		return "", fmt.Errorf("empty response body")
+		return "", nil
 	}
 	return decodeBase64(s)
 }

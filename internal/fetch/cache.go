@@ -39,10 +39,7 @@ func (c *CachedFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error
 	entry, ok := c.cache[rawURL]
 	if ok && c.now().Sub(entry.fetchedAt) < c.ttl {
 		c.mu.Unlock()
-		// Return a copy to prevent callers from mutating cached data.
-		cp := make([]byte, len(entry.body))
-		copy(cp, entry.body)
-		return cp, nil
+		return cloneBytes(entry.body), nil
 	}
 	c.mu.Unlock()
 
@@ -51,13 +48,21 @@ func (c *CachedFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error
 		return nil, err
 	}
 
-	// Store a copy to prevent callers from mutating cached data.
-	stored := make([]byte, len(body))
-	copy(stored, body)
+	// Store and return copies to prevent callers from mutating cached data.
+	stored := cloneBytes(body)
 
 	c.mu.Lock()
 	c.cache[rawURL] = cacheEntry{body: stored, fetchedAt: c.now()}
 	c.mu.Unlock()
 
-	return body, nil
+	return cloneBytes(stored), nil
+}
+
+func cloneBytes(src []byte) []byte {
+	if src == nil {
+		return nil
+	}
+	dst := make([]byte, len(src))
+	copy(dst, src)
+	return dst
 }

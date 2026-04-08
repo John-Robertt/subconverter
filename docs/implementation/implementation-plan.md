@@ -423,7 +423,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 已知限制
 
-- 不做图级校验（空组、循环引用、引用不存在等留给 M4）
+- 不做大部分图级校验（空组、循环引用、routing/ruleset/fallback 引用不存在等留给 M4）；仅 `relay_through.type=group` 的局部引用在 M3 fail-fast
 - 不组装最终 `model.Pipeline`（留给 M4/M5 orchestrator）
 - 正则编译为防御性检查（静态校验已拦截）
 

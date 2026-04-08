@@ -71,6 +71,9 @@ func ParseSSURI(raw string) (model.Proxy, error) {
 	}
 	server := hostport[:colonIdx]
 	portStr := hostport[colonIdx+1:]
+	if server == "" {
+		return model.Proxy{}, ssError(raw, "empty server host")
+	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		return model.Proxy{}, ssError(raw, fmt.Sprintf("invalid port %q", portStr))

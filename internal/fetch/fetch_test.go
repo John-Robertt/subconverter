@@ -241,3 +241,19 @@ func TestCachedFetcher_ReturnsCopy(t *testing.T) {
 		t.Errorf("cached data was mutated: got %q, want %q", body2, "original")
 	}
 }
+
+func TestCachedFetcher_MissReturnsCopy(t *testing.T) {
+	mock := &mockFetcher{body: []byte("original")}
+	cf := NewCachedFetcher(mock, 5*time.Minute)
+
+	body, err := cf.Fetch(context.Background(), "https://example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body[0] = 'X'
+
+	if string(mock.body) != "original" {
+		t.Errorf("inner fetcher body was mutated: got %q, want %q", mock.body, "original")
+	}
+}

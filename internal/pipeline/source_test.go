@@ -274,7 +274,6 @@ func TestSource_InvalidBase64Response(t *testing.T) {
 }
 
 func TestSource_EmptySubscription(t *testing.T) {
-	// Base64-encode an empty string.
 	cfg := baseCfg()
 	cfg.Sources.Subscriptions = []config.Subscription{
 		{URL: "https://sub.example.com"},
@@ -287,6 +286,17 @@ func TestSource_EmptySubscription(t *testing.T) {
 	_, err := Source(context.Background(), cfg, f)
 	if err == nil {
 		t.Fatal("expected error for empty subscription")
+	}
+
+	var buildErr *errtype.BuildError
+	if !errors.As(err, &buildErr) {
+		t.Fatalf("error type = %T, want *errtype.BuildError", err)
+	}
+	if buildErr.Phase != "source" {
+		t.Errorf("Phase = %q, want %q", buildErr.Phase, "source")
+	}
+	if !strings.Contains(buildErr.Message, "0 valid nodes") {
+		t.Errorf("error should mention 0 valid nodes, got: %s", buildErr.Message)
 	}
 }
 

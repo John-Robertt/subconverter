@@ -119,9 +119,10 @@ func TestParseSSURI_Invalid(t *testing.T) {
 		{"missing fragment", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388"},
 		{"empty fragment", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#"},
 		{"invalid base64", "ss://!!!invalid!!!@hk.example.com:8388#HK-01"},
+		{"empty host", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@:8388#HK-01"},
 		{"non-numeric port", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:abc#HK-01"},
 		{"missing port", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com#HK-01"},
-		{"empty method", "ss://OnBhc3N3b3Jk@hk.example.com:8388#HK-01"}, // base64(":password")
+		{"empty method", "ss://OnBhc3N3b3Jk@hk.example.com:8388#HK-01"},       // base64(":password")
 		{"no colon in userinfo", "ss://bm9jb2xvbg@hk.example.com:8388#HK-01"}, // base64("nocolon")
 		{"port zero", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:0#HK-01"},
 		{"port negative", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:-1#HK-01"},
