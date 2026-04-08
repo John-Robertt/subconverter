@@ -31,7 +31,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v2
+          version: v2.11.4
 
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"
