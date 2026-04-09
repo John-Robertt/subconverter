@@ -122,13 +122,13 @@ func TestIntegration_SpotCheckValues(t *testing.T) {
 		t.Errorf("JP Strategy = %q, want url-test", jp.Strategy)
 	}
 
-	// first routing entry members
+	// first routing entry members (uses @auto shorthand)
 	fast, ok := cfg.Routing.Get("🚀 快速选择")
 	if !ok {
 		t.Fatal("routing 🚀 快速选择 not found")
 	}
-	if fast[0] != "🇭🇰 Hong Kong" || fast[len(fast)-1] != "DIRECT" {
-		t.Errorf("🚀 快速选择 members = %v", fast)
+	if len(fast) != 1 || fast[0] != "@auto" {
+		t.Errorf("🚀 快速选择 members = %v, want [@auto]", fast)
 	}
 
 	// rulesets: BanList has 3 URLs

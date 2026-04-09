@@ -26,7 +26,7 @@ func Execute(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*m
 		return nil, err
 	}
 
-	rr, err := Route(cfg, gr.AllProxies)
+	rr, err := Route(cfg, gr)
 	if err != nil {
 		return nil, err
 	}

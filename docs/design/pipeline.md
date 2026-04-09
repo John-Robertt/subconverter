@@ -156,6 +156,7 @@ LoadConfig
 职责：
 
 - 根据 `routing` 生成服务组
+- 展开 `@auto` 和 `@all` token
 - 根据 `rulesets` 生成服务组绑定关系
 - 解析 `rules`
 - 记录 `fallback`
@@ -166,7 +167,7 @@ LoadConfig
 - `rulesets`
 - `rules`
 - `fallback`
-- `@all` 展开列表
+- `GroupResult`（含 `@all` 展开列表和节点组列表）
 
 输出：
 
@@ -178,7 +179,8 @@ LoadConfig
 说明：
 
 - 服务组统一为 `select`
-- `@all` 在本阶段展开
+- `@auto` 先于 `@all` 展开：`@auto` 替换为自动补充池（节点组 → @all 服务组 → DIRECT → REJECT），然后 `@all` 替换为全部原始节点名
+- 两种 token 互斥，不可在同一 entry 中同时使用
 
 ---
 

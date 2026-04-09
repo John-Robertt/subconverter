@@ -137,10 +137,13 @@ groups:
 
 ```yaml
 routing:
-  🚀 快速选择: [🇭🇰 Hong Kong, 🇸🇬 Singapore, 🔗 HK-ISP, 🚀 手动切换, DIRECT]
+  🚀 快速选择: ["@auto"]
   🚀 手动切换: ["@all"]
-  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, DIRECT]
-  🐟 FINAL: [🚀 快速选择, DIRECT]
+  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
+  💻 Github: [🚀 快速选择, "@auto"]
+  🍎 Apple: [DIRECT, 🚀 快速选择, "@auto"]
+  🛑 BanList: [REJECT, DIRECT]
+  🐟 FINAL: ["@auto"]
 ```
 
 用途：
@@ -155,6 +158,7 @@ routing:
 - `DIRECT`
 - `REJECT`
 - `@all`
+- `@auto`
 
 约束：
 
@@ -164,6 +168,10 @@ routing:
 - `@all` 展开为全部原始节点（订阅节点 + 自定义代理），不包含链式节点
 - 自定义代理即使声明了 `relay_through`，仍属于原始节点，必须被 `@all` 包含
 - 用户配置中不允许直接写原始代理名；若需要“全部原始节点”，必须通过 `@all` 展开
+- `@auto` 展开为自动补充池，替换其所在位置。池内容按顺序：全部节点组名（地区组 + 链式组，按声明序）→ 包含 `@all` 的服务组名（按声明序）→ `DIRECT` → `REJECT`
+- `@auto` 自动去重：已在同一 entry 中出现的项不会重复；组不包含自身
+- 同一 entry 中 `@auto` 最多出现一次
+- `@all` 与 `@auto` 不能在同一 entry 中同时使用
 
 ---
 

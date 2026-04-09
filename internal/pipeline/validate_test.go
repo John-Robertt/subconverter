@@ -231,7 +231,7 @@ func TestValidateGraph_RouteGroupExplicitProxyMemberRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `member "HK-01" must reference a node group, route group, DIRECT, REJECT, or @all`) {
+	if !containsError(err, `member "HK-01" must reference a node group, route group, DIRECT, REJECT, @all, or @auto`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -343,5 +343,19 @@ func TestValidateGraph_MultipleErrors(t *testing.T) {
 		} else if be.Phase != "validate" {
 			t.Errorf("Phase = %q, want %q", be.Phase, "validate")
 		}
+	}
+}
+
+// TestValidateGraph_AutoTokenAccepted: @auto in raw routing members is accepted
+func TestValidateGraph_AutoTokenAccepted(t *testing.T) {
+	gr := validGroupResult()
+	rr := validRouteResult()
+
+	// Add @auto to raw members of Quick group; the expanded members stay valid.
+	rr.RawRouteMembers["Quick"] = []string{"🇭🇰 HK", "@auto"}
+
+	_, err := ValidateGraph(gr, rr)
+	if err != nil {
+		t.Errorf("@auto should be accepted in raw routing members, got: %v", err)
 	}
 }

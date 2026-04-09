@@ -22,7 +22,7 @@ func TestRoute_ServiceGroups(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, []string{"HK-01", "SG-01"})
+	result, err := Route(cfg, &GroupResult{AllProxies: []string{"HK-01", "SG-01"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestRoute_AllExpansion(t *testing.T) {
 
 	allProxies := []string{"HK-01", "SG-01", "JP-01"}
 
-	result, err := Route(cfg, allProxies)
+	result, err := Route(cfg, &GroupResult{AllProxies: allProxies})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRoute_Rulesets(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, nil)
+	result, err := Route(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestRoute_RulesParsing(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, nil)
+	result, err := Route(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestRoute_RuleNoComma(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	_, err := Route(cfg, nil)
+	_, err := Route(cfg, &GroupResult{})
 	if err == nil {
 		t.Fatal("expected error for rule without comma")
 	}
@@ -188,7 +188,7 @@ func TestRoute_Fallback(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, nil)
+	result, err := Route(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestRoute_EmptyRouting(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, nil)
+	result, err := Route(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestRoute_AllExpansionEmpty(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, []string{})
+	result, err := Route(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestRoute_RawMembersPreserved(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, []string{"HK-01", "SG-01"})
+	result, err := Route(cfg, &GroupResult{AllProxies: []string{"HK-01", "SG-01"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -266,5 +266,293 @@ func TestRoute_RawMembersPreserved(t *testing.T) {
 	}
 	if got := result.RawRouteMembers["📲 Telegram"]; len(got) != 2 || got[0] != "🇭🇰 Hong Kong" || got[1] != "DIRECT" {
 		t.Fatalf("raw members for Telegram = %v, want [🇭🇰 Hong Kong DIRECT]", got)
+	}
+}
+
+// --- @auto tests ---
+
+// TestRoute_AutoFillBasic: [@auto] expands to all node groups + @all route groups + DIRECT + REJECT
+func TestRoute_AutoFillBasic(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"🚀 快速选择": ["@auto"]
+"🚀 手动切换": ["@all"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	gr := &GroupResult{
+		NodeGroups: []model.ProxyGroup{
+			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
+			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
+		},
+		AllProxies: []string{"HK-01", "SG-01", "HK-ISP"},
+	}
+
+	result, err := Route(cfg, gr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	quick := result.RouteGroups[0]
+	want := []string{
+		"🇭🇰 Hong Kong", "🇸🇬 Singapore", "🔗 HK-ISP", // node groups
+		"🚀 手动切换", // @all route group
+		"DIRECT", "REJECT",
+	}
+	if len(quick.Members) != len(want) {
+		t.Fatalf("快速选择 members = %v, want %v", quick.Members, want)
+	}
+	for i, w := range want {
+		if quick.Members[i] != w {
+			t.Errorf("Members[%d] = %q, want %q", i, quick.Members[i], w)
+		}
+	}
+}
+
+// TestRoute_AutoFillWithPreferred: preferred items come before auto-fill, no duplicates
+func TestRoute_AutoFillWithPreferred(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"📲 Telegram": ["🇭🇰 Hong Kong", "🚀 快速选择", "@auto"]
+"🚀 快速选择": ["@auto"]
+"🚀 手动切换": ["@all"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	gr := &GroupResult{
+		NodeGroups: []model.ProxyGroup{
+			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
+			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
+		},
+		AllProxies: []string{"HK-01", "SG-01"},
+	}
+
+	result, err := Route(cfg, gr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	telegram := result.RouteGroups[0]
+	want := []string{
+		"🇭🇰 Hong Kong", // preferred
+		"🚀 快速选择",       // preferred
+		"🇸🇬 Singapore", // auto-fill (HK already in preferred)
+		"🔗 HK-ISP",     // auto-fill (chained)
+		"🚀 手动切换",       // auto-fill (@all route group)
+		"DIRECT", "REJECT",
+	}
+	if len(telegram.Members) != len(want) {
+		t.Fatalf("Telegram members = %v,\nwant %v", telegram.Members, want)
+	}
+	for i, w := range want {
+		if telegram.Members[i] != w {
+			t.Errorf("Members[%d] = %q, want %q", i, telegram.Members[i], w)
+		}
+	}
+}
+
+// TestRoute_AutoFillExcludesSelf: a group does not include itself in auto-fill
+func TestRoute_AutoFillExcludesSelf(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"🚀 快速选择": ["@auto"]
+"🚀 手动切换": ["@all"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	gr := &GroupResult{
+		NodeGroups: []model.ProxyGroup{
+			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+		},
+		AllProxies: []string{"HK-01"},
+	}
+
+	result, err := Route(cfg, gr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	quick := result.RouteGroups[0]
+	for _, m := range quick.Members {
+		if m == "🚀 快速选择" {
+			t.Error("快速选择 should not contain itself")
+		}
+	}
+}
+
+// TestRoute_AutoFillIncludesChainedGroups: chained groups appear in auto-fill
+func TestRoute_AutoFillIncludesChainedGroups(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"📺 Netflix": ["🇸🇬 Singapore", "@auto"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	gr := &GroupResult{
+		NodeGroups: []model.ProxyGroup{
+			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
+			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
+			{Name: "🔗 SG-ISP", Scope: model.ScopeNode},
+		},
+	}
+
+	result, err := Route(cfg, gr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	netflix := result.RouteGroups[0]
+	// SG is preferred; HK, 🔗 HK-ISP, 🔗 SG-ISP should be auto-filled
+	found := make(map[string]bool)
+	for _, m := range netflix.Members {
+		found[m] = true
+	}
+	for _, want := range []string{"🔗 HK-ISP", "🔗 SG-ISP", "🇭🇰 Hong Kong"} {
+		if !found[want] {
+			t.Errorf("expected %q in Netflix members, got %v", want, netflix.Members)
+		}
+	}
+}
+
+// TestRoute_AutoFillIncludesAllRouteGroups: route groups containing @all appear in auto-fill
+func TestRoute_AutoFillIncludesAllRouteGroups(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"📲 Telegram": ["@auto"]
+"🚀 手动切换": ["@all"]
+"🔀 另一个全选": ["@all"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	gr := &GroupResult{
+		NodeGroups: []model.ProxyGroup{
+			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+		},
+		AllProxies: []string{"HK-01"},
+	}
+
+	result, err := Route(cfg, gr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	telegram := result.RouteGroups[0]
+	found := make(map[string]bool)
+	for _, m := range telegram.Members {
+		found[m] = true
+	}
+	if !found["🚀 手动切换"] {
+		t.Error("expected 🚀 手动切换 in auto-fill")
+	}
+	if !found["🔀 另一个全选"] {
+		t.Error("expected 🔀 另一个全选 in auto-fill")
+	}
+}
+
+// TestRoute_AutoFillOrder: verify pool order: node groups → @all route groups → DIRECT → REJECT
+func TestRoute_AutoFillOrder(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"🐟 FINAL": ["@auto"]
+"🚀 手动切换": ["@all"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	gr := &GroupResult{
+		NodeGroups: []model.ProxyGroup{
+			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
+			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
+		},
+	}
+
+	result, err := Route(cfg, gr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	final := result.RouteGroups[0]
+	want := []string{
+		"🇭🇰 Hong Kong", // node group 1
+		"🇸🇬 Singapore", // node group 2
+		"🔗 HK-ISP",     // chained group
+		"🚀 手动切换",       // @all route group
+		"DIRECT",
+		"REJECT",
+	}
+	if len(final.Members) != len(want) {
+		t.Fatalf("FINAL members = %v, want %v", final.Members, want)
+	}
+	for i, w := range want {
+		if final.Members[i] != w {
+			t.Errorf("Members[%d] = %q, want %q", i, final.Members[i], w)
+		}
+	}
+}
+
+// TestRoute_NoAutoFill: entries without @auto work as before (backward compatible)
+func TestRoute_NoAutoFill(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"🛑 BanList": ["REJECT", "DIRECT"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	gr := &GroupResult{
+		NodeGroups: []model.ProxyGroup{
+			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+		},
+	}
+
+	result, err := Route(cfg, gr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ban := result.RouteGroups[0]
+	want := []string{"REJECT", "DIRECT"}
+	if len(ban.Members) != len(want) {
+		t.Fatalf("BanList members = %v, want %v", ban.Members, want)
+	}
+	for i, w := range want {
+		if ban.Members[i] != w {
+			t.Errorf("Members[%d] = %q, want %q", i, ban.Members[i], w)
+		}
+	}
+}
+
+func TestRoute_NilGroupResult(t *testing.T) {
+	cfg := &config.Config{
+		Routing: mustRoutingMap(t, `
+"📲 Telegram": ["🚀 手动切换", "@auto"]
+"🚀 手动切换": ["@all"]
+`),
+		Fallback: "🐟 FINAL",
+	}
+
+	result, err := Route(cfg, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	telegram := result.RouteGroups[0]
+	want := []string{"🚀 手动切换", "DIRECT", "REJECT"}
+	if len(telegram.Members) != len(want) {
+		t.Fatalf("Telegram members = %v, want %v", telegram.Members, want)
+	}
+	for i, w := range want {
+		if telegram.Members[i] != w {
+			t.Errorf("Members[%d] = %q, want %q", i, telegram.Members[i], w)
+		}
 	}
 }

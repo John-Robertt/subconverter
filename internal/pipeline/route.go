@@ -15,15 +15,19 @@ type RouteResult struct {
 	Rulesets    []model.Ruleset
 	Rules       []model.Rule
 	Fallback    string
-	// RawRouteMembers preserves the original routing declarations before @all
-	// expansion so ValidateGraph can enforce routing's allowed reference types.
+	// RawRouteMembers preserves the original routing declarations before @auto
+	// and @all expansion so ValidateGraph can enforce routing's allowed reference types.
 	RawRouteMembers map[string][]string
 }
 
 // Route executes pipeline stage 6: build service groups, rulesets,
 // parse inline rules, and record fallback.
-func Route(cfg *config.Config, allProxies []string) (*RouteResult, error) {
-	routeGroups := buildRouteGroups(&cfg.Routing, allProxies)
+func Route(cfg *config.Config, gr *GroupResult) (*RouteResult, error) {
+	if gr == nil {
+		gr = &GroupResult{}
+	}
+
+	routeGroups := buildRouteGroups(&cfg.Routing, gr)
 	rulesets := buildRulesets(&cfg.Rulesets)
 
 	rules, err := parseRules(cfg.Rules)
@@ -41,16 +45,19 @@ func Route(cfg *config.Config, allProxies []string) (*RouteResult, error) {
 }
 
 // buildRouteGroups creates service-level proxy groups from routing config.
-// @all tokens in members are expanded to the allProxies list.
+// @auto tokens are expanded first (using node groups from GroupResult),
+// then @all tokens are expanded to the allProxies list.
 // Service group strategy is always "select".
-func buildRouteGroups(routing *config.OrderedMap[[]string], allProxies []string) []model.ProxyGroup {
+func buildRouteGroups(routing *config.OrderedMap[[]string], gr *GroupResult) []model.ProxyGroup {
 	result := make([]model.ProxyGroup, 0, routing.Len())
 	for name, members := range routing.Entries() {
+		expanded := expandAutoFill(members, name, routing, gr.NodeGroups)
+		expanded = expandMembers(expanded, gr.AllProxies)
 		result = append(result, model.ProxyGroup{
 			Name:     name,
 			Scope:    model.ScopeRoute,
 			Strategy: "select",
-			Members:  expandMembers(members, allProxies),
+			Members:  expanded,
 		})
 	}
 	return result
@@ -70,6 +77,69 @@ func expandMembers(members []string, allProxies []string) []string {
 	for _, m := range members {
 		if m == "@all" {
 			result = append(result, allProxies...)
+		} else {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
+// expandAutoFill replaces the "@auto" token with auto-filled members.
+// The auto-fill pool (in order): all node group names (region + chained,
+// declaration order), route groups containing @all (declaration order),
+// DIRECT, REJECT. Items already present in members and the group's own
+// name are excluded from the pool.
+func expandAutoFill(
+	members []string,
+	groupName string,
+	routing *config.OrderedMap[[]string],
+	nodeGroups []model.ProxyGroup,
+) []string {
+	if !containsMember(members, "@auto") {
+		return members
+	}
+
+	// Collect items already declared (excluding @auto itself).
+	seen := make(map[string]struct{})
+	seen[groupName] = struct{}{} // exclude self-reference
+	for _, m := range members {
+		if m != "@auto" {
+			seen[m] = struct{}{}
+		}
+	}
+
+	// Build auto-fill pool.
+	var pool []string
+
+	// 1. All node group names (region groups first, then chained groups).
+	for _, g := range nodeGroups {
+		if _, ok := seen[g.Name]; !ok {
+			pool = append(pool, g.Name)
+		}
+	}
+
+	// 2. Route groups that contain @all in their raw members.
+	for name, rMembers := range routing.Entries() {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		if containsMember(rMembers, "@all") {
+			pool = append(pool, name)
+		}
+	}
+
+	// 3. DIRECT and REJECT.
+	for _, reserved := range []string{"DIRECT", "REJECT"} {
+		if _, ok := seen[reserved]; !ok {
+			pool = append(pool, reserved)
+		}
+	}
+
+	// Replace @auto with the pool.
+	result := make([]string, 0, len(members)+len(pool))
+	for _, m := range members {
+		if m == "@auto" {
+			result = append(result, pool...)
 		} else {
 			result = append(result, m)
 		}

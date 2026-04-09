@@ -93,6 +93,25 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	// routing: @all and @auto are mutually exclusive within the same entry
+	for k, members := range cfg.Routing.Entries() {
+		hasAll, autoCount := false, 0
+		for _, m := range members {
+			if m == "@all" {
+				hasAll = true
+			}
+			if m == "@auto" {
+				autoCount++
+			}
+		}
+		if hasAll && autoCount > 0 {
+			c.add(fmt.Sprintf("routing.%s", k), "@all and @auto cannot be used together")
+		}
+		if autoCount > 1 {
+			c.add(fmt.Sprintf("routing.%s", k), "@auto cannot be used more than once")
+		}
+	}
+
 	// fallback
 	if cfg.Fallback == "" {
 		c.add("fallback", "required")

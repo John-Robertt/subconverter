@@ -18,6 +18,10 @@
 - 地区节点组匹配
 - `relay_through` 三种模式展开
 - `@all` 不包含链式节点
+- `@auto` 展开为节点组+@all 服务组+DIRECT+REJECT，去重且排除自身
+- 同一 entry 内重复 `@auto` 会被静态校验拒绝
+- `@auto` 与 `@all` 在同一 entry 中互斥
+- `Route(cfg, nil)` 按空 `GroupResult` 处理，不发生 panic
 - `routing` 不允许显式引用原始代理名
 - 代理名、节点组名、服务组名共享命名空间无冲突
 - 服务组引用校验

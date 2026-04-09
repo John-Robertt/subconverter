@@ -12,7 +12,7 @@ SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源，执行过滤与
 - **链式代理** — 通过 `relay_through` 配置上游中转，支持三种选择模式：`group`、`select`、`all`
 - **节点过滤** — 正则排除订阅节点（如到期提醒、流量统计等信息性节点）
 - **地区分组** — 按正则将节点组织为地区组，支持 `select`（手选）或 `url-test`（自动选延迟最低）策略
-- **服务路由** — 为每个服务定义出口偏好顺序（Telegram、Netflix、YouTube 等）
+- **服务路由** — 为每个服务定义出口偏好顺序（Telegram、Netflix、YouTube 等），`@auto` 自动补充节点组、`@all` 服务组、`DIRECT`、`REJECT`
 - **远程规则集** — 将规则集 URL 绑定到路由组（URL 透传，由客户端运行时拉取）
 - **内联规则** — 直接编写路由规则，与远程规则集并用
 - **双格式输出** — 同一份配置生成 Clash Meta YAML 和 Surge conf
@@ -184,10 +184,10 @@ groups:
   🇯🇵 Japan: { match: "(日本|JP|Japan)", strategy: url-test }
 
 routing:
-  🚀 快速选择: [🇭🇰 Hong Kong, 🇯🇵 Japan, 🚀 手动切换, DIRECT]
-  🚀 手动切换: ["@all"] # @all 展开为全部原始节点（订阅节点 + 自定义代理，不含链式节点）
-  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, DIRECT]
-  🐟 FINAL: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇯🇵 Japan, DIRECT]
+  🚀 快速选择: ["@auto"]          # @auto 自动补充：全部节点组 + @all 服务组 + DIRECT + REJECT（每个 entry 最多一次）
+  🚀 手动切换: ["@all"]           # @all 展开为全部原始节点（不含链式节点）
+  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]  # 首选项在前，@auto 补充剩余
+  🐟 FINAL: ["@auto"]
 
 rulesets:
   📲 Telegram:

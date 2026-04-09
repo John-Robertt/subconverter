@@ -53,6 +53,7 @@
 | `REQ-10` | 同一中间表示输出 Clash Meta 与 Surge |
 | `REQ-11` | 提供 `/generate` 与 `/healthz` |
 | `REQ-12` | 配置、引用和循环依赖等错误可校验和报告 |
+| `REQ-13` | `@auto` 自动补充 routing 成员（节点组+@all 服务组+DIRECT+REJECT） |
 
 ### 里程碑编号
 
@@ -343,14 +344,14 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 根据 `relay_through` 生成链式节点
 - 自动生成链式组
 - 计算 `@all`
-- 构建服务组
+- 构建服务组（含 `@auto` 展开）
 - 装配 `rulesets`、`rules` 和 `fallback`
 
 ### 产物
 
 - `internal/pipeline/`:
   - `group.go`：Group 阶段编排——地区组正则匹配→链式节点/组生成→@all 计算
-  - `route.go`：Route 阶段编排——服务组构建→规则集映射→内联规则解析→fallback 记录
+  - `route.go`：Route 阶段编排——@auto 展开→服务组构建→@all 展开→规则集映射→内联规则解析→fallback 记录
 - 外部依赖：无新增
 
 ### 验收项
@@ -366,6 +367,12 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ `@all` 在服务组 Members 中正确展开
 - ✅ ruleset 与 fallback 能绑定到目标服务组
 - ✅ 内联规则 Policy 从最后逗号后提取
+- ✅ `@auto` 展开为节点组+@all 服务组+DIRECT+REJECT（声明序）
+- ✅ `@auto` 自动去重，组不包含自身
+- ✅ 同一 entry 中重复 `@auto` 会被静态校验拒绝
+- ✅ `@auto` 与 `@all` 在同一 entry 中互斥（静态校验拦截）
+- ✅ 不含 `@auto` 的 entry 行为不变（向后兼容）
+- ✅ `Route(cfg, nil)` 按空 `GroupResult` 处理，不发生 panic
 - ✅ `go test ./...` 全部通过
 
 ### 对应测试
@@ -388,6 +395,15 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `T-RTE-006`：Fallback 传递 → `TestRoute_Fallback`
 - `T-RTE-007`：空 routing → `TestRoute_EmptyRouting`
 - `T-RTE-008`：@all 空列表 → `TestRoute_AllExpansionEmpty`
+- `T-RTE-009`：@auto 基本展开 → `TestRoute_AutoFillBasic`
+- `T-RTE-010`：@auto 首选+补充 → `TestRoute_AutoFillWithPreferred`
+- `T-RTE-011`：@auto 排除自身 → `TestRoute_AutoFillExcludesSelf`
+- `T-RTE-012`：@auto 含链式组 → `TestRoute_AutoFillIncludesChainedGroups`
+- `T-RTE-013`：@auto 含@all 服务组 → `TestRoute_AutoFillIncludesAllRouteGroups`
+- `T-RTE-014`：@auto 展开顺序 → `TestRoute_AutoFillOrder`
+- `T-RTE-015`：无@auto 向后兼容 → `TestRoute_NoAutoFill`
+- `T-CFG-006`：同一 entry 中重复 @auto 报错 → `TestValidate_RoutingAutoRepeatedRejected`
+- `T-RTE-016`：`Route(cfg, nil)` 不 panic → `TestRoute_NilGroupResult`
 
 ### 实施记录
 
@@ -404,6 +420,12 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 服务组策略 | 固定 `"select"` | 设计约定 |
 | Rule Policy 提取 | `strings.LastIndex(raw, ",")` | 透传方案，只提取 Policy 用于引用校验 |
 | 结果类型 | GroupResult / RouteResult 独立结构体 | 便于测试和后续 Pipeline 组装 |
+| @auto 展开位置 | Route 阶段（`expandAutoFill`），在 `@all` 展开之前 | Route 阶段有 GroupResult（节点组列表），是唯一正确的展开点 |
+| @auto 补充池顺序 | 节点组（声明序）→ @all 服务组（声明序）→ DIRECT → REJECT | 节点组是主要路由目标，DIRECT/REJECT 为兜底 |
+| @auto 次数限制 | 同一 entry 最多一次，由 config.Validate 拦截 | 多次出现没有额外语义，只会增加歧义 |
+| @auto 与 @all 互斥 | 同一 entry 静态校验拦截 | 两者语义不同（组级 vs 节点级），混用无合理场景 |
+| Route 签名 | `Route(cfg, gr *GroupResult)` | @auto 展开需要 NodeGroups，直接传入 GroupResult |
+| Route nil 保护 | `gr == nil` 时按空 `GroupResult` 处理 | 兼容旧调用方式，避免迁移遗漏导致 panic |
 
 ### 对应需求
 
@@ -413,6 +435,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `REQ-07`
 - `REQ-08`
 - `REQ-09`
+- `REQ-13`
 
 ### 回溯点
 

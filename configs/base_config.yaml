@@ -138,29 +138,39 @@ groups:
 #   - 链式组名:   🔗 HK-ISP（由 relay_through 自动生成）
 #   - 保留策略:   DIRECT（直连）, REJECT（拒绝）
 #   - @all:       展开为全部原始节点（不含链式节点）
+#   - @auto:      自动补充剩余成员（见下方说明）
+#
+# @auto 自动补充规则：
+#   @auto 所在位置会被替换为以下内容（去重后）：
+#   1. 全部节点组（地区组 + 链式组，按声明顺序）
+#   2. 包含 @all 的服务组（如 🚀 手动切换）
+#   3. DIRECT
+#   4. REJECT
+#   已在列表中出现的项不会重复，且组不包含自身。
+#   同一 entry 中 @auto 最多出现一次；@auto 与 @all 不能同时使用。
 #
 # 服务组策略固定为 select（用户手选出口）。
 
 routing:
-  🚀 快速选择: [🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, 🔗 HK-ISP, 🚀 手动切换, DIRECT]
+  🚀 快速选择: ["@auto"]
   🚀 手动切换: ["@all"]
-  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  📺 Netflix: [🇸🇬 Singapore, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  📺 DisneyPlus: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  📺 ViuTV: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  🎬 YouTube: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  🍎 Apple: [DIRECT, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States]
-  🔍 Google: [🇸🇬 Singapore, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  💻 Github: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  ☁️ OneDrive: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  Ⓜ️ Microsoft: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  💳 PayPal: [🇺🇲 United States, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, DIRECT]
-  💳 Stripe: [🇺🇲 United States, 🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, DIRECT]
-  🌍 DMM: [🇯🇵 Japan, 🚀 快速选择, 🚀 手动切换, DIRECT]
-  🎯 Global: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
-  🎯 China: [DIRECT, 🚀 快速选择, 🚀 手动切换]
+  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
+  📺 Netflix: [🇸🇬 Singapore, 🚀 快速选择, "@auto"]
+  📺 DisneyPlus: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
+  📺 ViuTV: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
+  🎬 YouTube: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
+  🍎 Apple: [DIRECT, 🚀 快速选择, "@auto"]
+  🔍 Google: [🇸🇬 Singapore, 🚀 快速选择, "@auto"]
+  💻 Github: [🚀 快速选择, "@auto"]
+  ☁️ OneDrive: [🚀 快速选择, "@auto"]
+  Ⓜ️ Microsoft: [🚀 快速选择, "@auto"]
+  💳 PayPal: [🇺🇲 United States, 🚀 快速选择, "@auto"]
+  💳 Stripe: [🇺🇲 United States, 🚀 快速选择, "@auto"]
+  🌍 DMM: [🇯🇵 Japan, 🚀 快速选择, "@auto"]
+  🎯 Global: [🚀 快速选择, "@auto"]
+  🎯 China: [DIRECT, 🚀 快速选择, "@auto"]
   🛑 BanList: [REJECT, DIRECT]
-  🐟 FINAL: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇸🇬 Singapore, 🇨🇳 Taiwan, 🇯🇵 Japan, 🇺🇲 United States, DIRECT]
+  🐟 FINAL: ["@auto"]
 
 
 # ==================== 远程规则集 ====================

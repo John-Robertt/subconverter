@@ -313,3 +313,35 @@ func TestValidate_TemplateLocalPath(t *testing.T) {
 		t.Errorf("local template path should pass validation: %v", err)
 	}
 }
+
+func TestValidate_RoutingAutoAndAllMutuallyExclusive(t *testing.T) {
+	cfg := validBase()
+	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@all", "@auto"]`)
+	err := Validate(&cfg)
+	if err == nil {
+		t.Fatal("expected error for @all + @auto in same entry")
+	}
+	if !strings.Contains(err.Error(), "@all and @auto cannot be used together") {
+		t.Errorf("error = %v, want @all+@auto conflict message", err)
+	}
+}
+
+func TestValidate_RoutingAutoAloneIsValid(t *testing.T) {
+	cfg := validBase()
+	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@auto"]`)
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("@auto alone should be valid: %v", err)
+	}
+}
+
+func TestValidate_RoutingAutoRepeatedRejected(t *testing.T) {
+	cfg := validBase()
+	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@auto", "@auto"]`)
+	err := Validate(&cfg)
+	if err == nil {
+		t.Fatal("expected error for repeated @auto in same entry")
+	}
+	if !strings.Contains(err.Error(), "@auto cannot be used more than once") {
+		t.Errorf("error = %v, want repeated @auto message", err)
+	}
+}

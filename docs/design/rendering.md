@@ -117,7 +117,7 @@ rule-provider 命名规则（两阶段分配）：
 - 同样的 ruleset 顺序
 - 同样的规则排列顺序
 - 同样的 fallback 语义
-- 同样的 `@all` 展开结果
+- 同样的 `@auto` 和 `@all` 展开结果
 
 ---
 

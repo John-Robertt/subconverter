@@ -53,7 +53,7 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 	}
 
 	// 4. Raw routing members may only reference node groups, route groups,
-	// reserved policies, or @all.
+	// reserved policies, @all, or @auto.
 	for _, g := range rr.RouteGroups {
 		rawMembers := g.Members
 		if rr.RawRouteMembers != nil {
@@ -63,12 +63,12 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 		}
 
 		for _, member := range rawMembers {
-			if member == "@all" || reservedPolicies[member] || index.nodeGroupNames[member] || index.routeGroupNames[member] {
+			if member == "@all" || member == "@auto" || reservedPolicies[member] || index.nodeGroupNames[member] || index.routeGroupNames[member] {
 				continue
 			}
 			if index.proxyNames[member] {
 				c.add(fmt.Sprintf(
-					"route group %q: member %q must reference a node group, route group, DIRECT, REJECT, or @all",
+					"route group %q: member %q must reference a node group, route group, DIRECT, REJECT, @all, or @auto",
 					g.Name,
 					member,
 				))

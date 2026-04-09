@@ -31,6 +31,8 @@
 - `relay_through.type=select` 时必须提供 `match`
 - `fallback` 必填
 - `base_url` 可选；若非空，必须以 `http://` 或 `https://` 开头
+- `routing` 中同一 entry 内 `@auto` 最多出现一次
+- `routing` 中同一 entry 内 `@all` 与 `@auto` 不能同时出现
 
 ---
 
@@ -74,7 +76,7 @@
 - 跨订阅重名节点自动追加递增后缀
 - 代理名、节点组名、服务组名在引用体系中共享命名空间，不允许重名或重复声明
 - 节点组名与服务组名不得重复（共享同一命名空间）
-- `routing` 中原始声明的成员只允许引用节点组、服务组、`DIRECT`、`REJECT`、`@all`
+- `routing` 中原始声明的成员只允许引用节点组、服务组、`DIRECT`、`REJECT`、`@all`、`@auto`
 - `routing` 中 `@all` 展开后的具体代理名可出现在中间表示里，但用户配置不能直接声明这些代理名
 - `routing` 中引用的节点组、服务组、保留字都必须可解析
 - `rulesets` 的 key 必须存在于 `routing`

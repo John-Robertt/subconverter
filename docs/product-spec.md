@@ -207,102 +207,29 @@ groups:
   # 🔗 HK-ISP 由 relay_through 自动生成，无需定义
 
 # 服务组：key = 组名，value = 有序出口列表（第一个是默认推荐）
-# 可引用：节点组名、其他服务组名、🔗 链式组名、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + 自定义代理，不含链式节点）
+# 可引用：节点组名、其他服务组名、🔗 链式组名、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + 自定义代理，不含链式节点）、@auto（自动补充剩余成员）
+# @auto 展开为：全部节点组（声明序）→ 包含 @all 的服务组（声明序）→ DIRECT → REJECT（去重、排除自身）
+# 同一 entry 中 @auto 最多出现一次；@auto 与 @all 不能在同一 entry 中同时使用
 # 书写顺序 = 面板显示顺序
 routing:
-  🚀 快速选择:
-    [
-      🇭🇰 Hong Kong,
-      🇸🇬 Singapore,
-      🇨🇳 Taiwan,
-      🇯🇵 Japan,
-      🇺🇲 United States,
-      🔗 HK-ISP,
-      🚀 手动切换,
-      DIRECT,
-    ]
+  🚀 快速选择: ["@auto"]
   🚀 手动切换: ["@all"]
   📲 Telegram:
     [
       🇭🇰 Hong Kong,
       🚀 快速选择,
-      🚀 手动切换,
-      🇸🇬 Singapore,
-      🇨🇳 Taiwan,
-      🇯🇵 Japan,
-      🇺🇲 United States,
-      DIRECT,
+      "@auto",
     ]
-  📺 Netflix:
-    [
-      🇸🇬 Singapore,
-      🚀 快速选择,
-      🚀 手动切换,
-      🇭🇰 Hong Kong,
-      🇨🇳 Taiwan,
-      🇯🇵 Japan,
-      🇺🇲 United States,
-      DIRECT,
-    ]
-  📺 DisneyPlus:
-    [
-      🇭🇰 Hong Kong,
-      🚀 快速选择,
-      🚀 手动切换,
-      🇸🇬 Singapore,
-      🇨🇳 Taiwan,
-      🇯🇵 Japan,
-      🇺🇲 United States,
-      DIRECT,
-    ]
+  📺 Netflix: [🇸🇬 Singapore, 🚀 快速选择, "@auto"]
+  📺 DisneyPlus: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
   # ... 其余服务组结构相同，仅首选出口不同 ...
-  🍎 Apple:
-    [
-      DIRECT,
-      🚀 快速选择,
-      🚀 手动切换,
-      🇭🇰 Hong Kong,
-      🇸🇬 Singapore,
-      🇨🇳 Taiwan,
-      🇯🇵 Japan,
-      🇺🇲 United States,
-    ]
-  💳 PayPal:
-    [
-      🇺🇲 United States,
-      🚀 快速选择,
-      🚀 手动切换,
-      🇭🇰 Hong Kong,
-      🇸🇬 Singapore,
-      🇨🇳 Taiwan,
-      🇯🇵 Japan,
-      DIRECT,
-    ]
-  🌍 DMM: [🇯🇵 Japan, 🚀 快速选择, 🚀 手动切换, DIRECT]
-  🎯 Global:
-    [
-      🚀 快速选择,
-      🚀 手动切换,
-      🇭🇰 Hong Kong,
-      🇸🇬 Singapore,
-      🇨🇳 Taiwan,
-      🇯🇵 Japan,
-      🇺🇲 United States,
-      DIRECT,
-    ]
-  🎯 China: [DIRECT, 🚀 快速选择, 🚀 手动切换]
+  🍎 Apple: [DIRECT, 🚀 快速选择, "@auto"]
+  💳 PayPal: [🇺🇲 United States, 🚀 快速选择, "@auto"]
+  🌍 DMM: [🇯🇵 Japan, 🚀 快速选择, "@auto"]
+  🎯 Global: [🚀 快速选择, "@auto"]
+  🎯 China: [DIRECT, 🚀 快速选择, "@auto"]
   🛑 BanList: [REJECT, DIRECT]
-  🐟 FINAL:
-    [
-      🚀 快速选择,
-      🚀 手动切换,
-      🇭🇰 Hong Kong,
-      🇸🇬 Singapore,
-      🇨🇳 Taiwan,
-      🇯🇵 Japan,
-      🇺🇲 United States,
-      DIRECT,
-    ]
+  🐟 FINAL: ["@auto"]
 
 # 规则集：key = routing 中的服务组名，value = URL 列表（多条合并匹配）
 rulesets:
@@ -351,6 +278,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 代理链             | 支持，作为 source 上的可选声明            | 不常用但重要                     |
 | 链式节点组         | 不计入 @all                               | 防止节点膨胀                     |
 | 链式节点组使用方式 | 与地区组完全一致，可被服务组引用          | 无特殊限制                       |
+| 路由自动补充       | `@auto` 展开为节点组+@all 服务组+DIRECT+REJECT | 消除 routing 冗余，链式组自动可用 |
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
 | Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG` | 用户显式控制，无需依赖反向代理头 |
