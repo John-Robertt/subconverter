@@ -84,6 +84,9 @@ LoadConfig
 - 规则集 URL 不在本阶段拉取
 - 拉取失败时的错误信息不得包含完整订阅 URL（URL 中可能含有用户 token），应对 query 参数做脱敏处理
 - 跨订阅重名通过两轮去重处理：第一轮追加递增后缀（②③...），第二轮检测并解决生成的后缀名与原始节点名的碰撞
+- SS URI 按 SIP002 解析：支持 `ss://userinfo@host:port[/][?query][#tag]`
+- `userinfo` 支持 base64/base64url 形式，也支持明文 `method:password`（必要时带 percent-encoding）
+- 未识别的 query 参数直接忽略；`plugin` query 会保留到中间表示，交由渲染阶段按目标格式解释
 - SS URI 端口值必须在 1-65535 范围内，超出范围视为无效 URI
 
 ---
@@ -217,6 +220,8 @@ LoadConfig
 
 - 两种输出的面板结构和路由语义保持一致
 - 差异仅体现在目标语法
+- Clash Meta 对 SS plugin 采用通用透传：输出 `plugin` 与 `plugin-opts`
+- Surge 仅支持可映射的 SS obfs 类 plugin；不支持的 plugin 或 option 在本阶段返回渲染错误，而不是静默降级
 
 ---
 

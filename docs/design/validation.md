@@ -22,7 +22,6 @@
 
 - `subscriptions[].url` 必填
 - `custom_proxies[].name/type/server/port` 必填
-- SS URI 中端口值必须在 1-65535 范围内
 - `custom_proxies` 之间名称不能重复
 - `groups[*].match` 必填
 - `groups[*].strategy` 必填且只能是 `select` 或 `url-test`
@@ -44,12 +43,15 @@
 - 订阅拉取后是否得到至少一个有效节点
 - 运行期名称冲突是否出现
 - `relay_through.type=group` 的局部引用是否存在
+- SS URI 与 plugin query 是否能按 SIP002 基本结构解析
 
 重点规则：
 
 - 订阅拉取结果不得为空（0 个有效节点视为异常）
 - 自定义代理名称不得与订阅节点名称冲突
 - `relay_through.type=group` 引用的节点组必须存在
+- SS URI 中端口值必须在 1-65535 范围内
+- 非法 SS URI、非法 fragment 编码、非法 query 编码、损坏的 plugin 参数都属于 Source 阶段构建期错误
 
 ---
 

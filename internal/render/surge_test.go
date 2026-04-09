@@ -1,10 +1,14 @@
 package render
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/John-Robertt/subconverter/internal/errtype"
+	"github.com/John-Robertt/subconverter/internal/model"
 )
 
 func TestSurge_GoldenNoTemplate(t *testing.T) {
@@ -70,6 +74,65 @@ func TestSurge_ChainedProxyHasUnderlyingProxy(t *testing.T) {
 	output := string(got)
 	if !strings.Contains(output, "underlying-proxy=HK-01") {
 		t.Error("chained proxy should contain underlying-proxy field")
+	}
+}
+
+func TestSurge_SSProxyWithSimpleObfsPlugin(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-OBFS",
+			Type:   "ss",
+			Server: "hk.example.com",
+			Port:   8388,
+			Params: map[string]string{
+				"cipher":   "aes-256-gcm",
+				"password": "secret",
+			},
+			Plugin: &model.Plugin{Name: "simple-obfs", Opts: map[string]string{"obfs": "http", "obfs-host": "cdn.example.com"}},
+			Kind:   model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+
+	output := string(got)
+	if !strings.Contains(output, "HK-OBFS = ss, hk.example.com, 8388, encrypt-method=aes-256-gcm, password=secret, obfs=http, obfs-host=cdn.example.com") {
+		t.Error("ss proxy should render Surge obfs parameters")
+	}
+	if !strings.Contains(output, "FINAL,DIRECT") {
+		t.Error("fallback rule should still be present")
+	}
+}
+
+func TestSurge_SSProxyWithUnsupportedPlugin(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-V2RAY",
+			Type:   "ss",
+			Server: "hk.example.com",
+			Port:   8388,
+			Params: map[string]string{"cipher": "aes-256-gcm", "password": "secret"},
+			Plugin: &model.Plugin{Name: "v2ray-plugin", Opts: map[string]string{"mode": "websocket"}},
+			Kind:   model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	_, err := Surge(p, "", nil)
+	if err == nil {
+		t.Fatal("expected error for unsupported ss plugin")
+	}
+
+	var renderErr *errtype.RenderError
+	if !errors.As(err, &renderErr) {
+		t.Fatalf("error type = %T, want *errtype.RenderError", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported ss plugin "v2ray-plugin"`) {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 

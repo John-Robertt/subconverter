@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -130,6 +131,12 @@ func buildClashProxy(px model.Proxy) *yaml.Node {
 		if v := px.Params["password"]; v != "" {
 			addPair(m, "password", scalarNode(v))
 		}
+		if px.Plugin != nil {
+			addPair(m, "plugin", scalarNode(normalizeClashSSPluginName(px.Plugin.Name)))
+			if pluginOpts := buildClashPluginOpts(px.Plugin); len(pluginOpts.Content) > 0 {
+				addPair(m, "plugin-opts", pluginOpts)
+			}
+		}
 	case "socks5", "http":
 		if v := px.Params["username"]; v != "" {
 			addPair(m, "username", scalarNode(v))
@@ -144,6 +151,51 @@ func buildClashProxy(px model.Proxy) *yaml.Node {
 	}
 
 	return m
+}
+
+func normalizeClashSSPluginName(name string) string {
+	switch name {
+	case "simple-obfs", "obfs-local", "obfs":
+		return "obfs"
+	default:
+		return name
+	}
+}
+
+func buildClashPluginOpts(plugin *model.Plugin) *yaml.Node {
+	opts := &yaml.Node{Kind: yaml.MappingNode}
+	if plugin == nil || len(plugin.Opts) == 0 {
+		return opts
+	}
+
+	mapped := make(map[string]string, len(plugin.Opts))
+	for key, value := range plugin.Opts {
+		mapped[mapClashPluginOpt(plugin.Name, key)] = value
+	}
+
+	keys := make([]string, 0, len(mapped))
+	for key := range mapped {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		addPair(opts, key, scalarNode(mapped[key]))
+	}
+
+	return opts
+}
+
+func mapClashPluginOpt(pluginName, key string) string {
+	switch normalizeClashSSPluginName(pluginName) {
+	case "obfs":
+		switch key {
+		case "obfs":
+			return "mode"
+		case "obfs-host":
+			return "host"
+		}
+	}
+	return key
 }
 
 func buildClashGroup(g model.ProxyGroup) *yaml.Node {

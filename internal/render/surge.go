@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
+	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
@@ -21,7 +23,10 @@ var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
 // baseURL is used for the #!MANAGED-CONFIG header (empty = omit header).
 // If baseTemplate is non-nil, generated sections replace corresponding sections in the template.
 func Surge(p *model.Pipeline, baseURL string, baseTemplate []byte) ([]byte, error) {
-	proxySection := buildSurgeProxies(p.Proxies)
+	proxySection, err := buildSurgeProxies(p.Proxies)
+	if err != nil {
+		return nil, err
+	}
 	groupSection := buildSurgeGroups(p.NodeGroups, p.RouteGroups)
 	ruleSection := buildSurgeRules(p.Rulesets, p.Rules, p.Fallback)
 
@@ -48,16 +53,24 @@ func Surge(p *model.Pipeline, baseURL string, baseTemplate []byte) ([]byte, erro
 	return buf.Bytes(), nil
 }
 
-func buildSurgeProxies(proxies []model.Proxy) string {
+func buildSurgeProxies(proxies []model.Proxy) (string, error) {
 	var sb strings.Builder
 	for _, px := range proxies {
-		sb.WriteString(renderSurgeProxy(px))
+		line, err := renderSurgeProxy(px)
+		if err != nil {
+			return "", &errtype.RenderError{
+				Format:  "surge",
+				Message: fmt.Sprintf("proxy %q: %v", px.Name, err),
+				Cause:   err,
+			}
+		}
+		sb.WriteString(line)
 		sb.WriteByte('\n')
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
-func renderSurgeProxy(px model.Proxy) string {
+func renderSurgeProxy(px model.Proxy) (string, error) {
 	var parts []string
 
 	switch px.Type {
@@ -69,6 +82,11 @@ func renderSurgeProxy(px model.Proxy) string {
 		if v := px.Params["password"]; v != "" {
 			parts = append(parts, "password="+v)
 		}
+		pluginParams, err := renderSurgeSSPlugin(px.Plugin)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, pluginParams...)
 	case "socks5", "http":
 		parts = append(parts, px.Name+" = "+px.Type, px.Server, fmt.Sprintf("%d", px.Port))
 		username := px.Params["username"]
@@ -84,7 +102,57 @@ func renderSurgeProxy(px model.Proxy) string {
 		parts = append(parts, "underlying-proxy="+px.Dialer)
 	}
 
-	return strings.Join(parts, ", ")
+	return strings.Join(parts, ", "), nil
+}
+
+func renderSurgeSSPlugin(plugin *model.Plugin) ([]string, error) {
+	if plugin == nil {
+		return nil, nil
+	}
+
+	if !isSurgeSSObfsPlugin(plugin.Name) {
+		return nil, fmt.Errorf("unsupported ss plugin %q", plugin.Name)
+	}
+
+	allowed := map[string]bool{
+		"obfs":      true,
+		"obfs-host": true,
+		"obfs-uri":  true,
+	}
+	keys := make([]string, 0, len(plugin.Opts))
+	for key := range plugin.Opts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !allowed[key] {
+			return nil, fmt.Errorf("unsupported ss plugin option %q for %q", key, plugin.Name)
+		}
+	}
+
+	mode := plugin.Opts["obfs"]
+	if mode != "http" && mode != "tls" {
+		return nil, fmt.Errorf("ss plugin %q requires obfs=http or obfs=tls", plugin.Name)
+	}
+
+	parts := []string{"obfs=" + mode}
+	if host := plugin.Opts["obfs-host"]; host != "" {
+		parts = append(parts, "obfs-host="+host)
+	}
+	if uri := plugin.Opts["obfs-uri"]; uri != "" {
+		parts = append(parts, "obfs-uri="+uri)
+	}
+
+	return parts, nil
+}
+
+func isSurgeSSObfsPlugin(name string) bool {
+	switch name {
+	case "simple-obfs", "obfs-local", "obfs":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildSurgeGroups(nodeGroups, routeGroups []model.ProxyGroup) string {

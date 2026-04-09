@@ -24,8 +24,15 @@ type Proxy struct {
 	Server string
 	Port   int
 	Params map[string]string // type-specific parameters (cipher, password, etc.)
+	Plugin *Plugin
 	Kind   ProxyKind
 	Dialer string // upstream proxy name; only set for chained proxies
+}
+
+// Plugin represents an outbound plugin attached to a proxy.
+type Plugin struct {
+	Name string
+	Opts map[string]string
 }
 
 // ProxyGroup represents a named group of proxies on the client panel.

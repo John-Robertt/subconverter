@@ -18,6 +18,7 @@ func TestParseSSURI_Valid(t *testing.T) {
 		wantPort int
 		cipher   string
 		password string
+		plugin   *model.Plugin
 	}{
 		{
 			name:     "standard URI",
@@ -73,6 +74,63 @@ func TestParseSSURI_Valid(t *testing.T) {
 			cipher:   "chacha20-ietf-poly1305",
 			password: "mypass",
 		},
+		{
+			name:     "plain userinfo",
+			uri:      "ss://aes-256-gcm:pass%3Aword@plain.example.com:8443#PLAIN-01",
+			wantName: "PLAIN-01",
+			wantHost: "plain.example.com",
+			wantPort: 8443,
+			cipher:   "aes-256-gcm",
+			password: "pass:word",
+		},
+		{
+			name:     "query group is ignored",
+			uri:      "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388/?group=Example#HK-03",
+			wantName: "HK-03",
+			wantHost: "hk.example.com",
+			wantPort: 8388,
+			cipher:   "aes-256-cfb",
+			password: "password",
+		},
+		{
+			name:     "simple obfs plugin",
+			uri:      "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388/?plugin=simple-obfs%3Bobfs%3Dhttp%3Bobfs-host%3Dcdn.example.com#HK-04",
+			wantName: "HK-04",
+			wantHost: "hk.example.com",
+			wantPort: 8388,
+			cipher:   "aes-256-cfb",
+			password: "password",
+			plugin: &model.Plugin{
+				Name: "simple-obfs",
+				Opts: map[string]string{"obfs": "http", "obfs-host": "cdn.example.com"},
+			},
+		},
+		{
+			name:     "generic plugin with flag option",
+			uri:      "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388/?plugin=v2ray-plugin%3Bmode%3Dwebsocket%3Bserver#HK-05",
+			wantName: "HK-05",
+			wantHost: "hk.example.com",
+			wantPort: 8388,
+			cipher:   "aes-256-cfb",
+			password: "password",
+			plugin: &model.Plugin{
+				Name: "v2ray-plugin",
+				Opts: map[string]string{"mode": "websocket", "server": ""},
+			},
+		},
+		{
+			name:     "escaped plugin option separators",
+			uri:      "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388/?plugin=simple-obfs%3Bobfs%3Dhttp%3Bobfs-host%3Dcdn\\%3Ddemo\\%3Bedge#HK-06",
+			wantName: "HK-06",
+			wantHost: "hk.example.com",
+			wantPort: 8388,
+			cipher:   "aes-256-cfb",
+			password: "password",
+			plugin: &model.Plugin{
+				Name: "simple-obfs",
+				Opts: map[string]string{"obfs": "http", "obfs-host": "cdn=demo;edge"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -99,6 +157,26 @@ func TestParseSSURI_Valid(t *testing.T) {
 			}
 			if proxy.Params["password"] != tt.password {
 				t.Errorf("password = %q, want %q", proxy.Params["password"], tt.password)
+			}
+			if tt.plugin == nil {
+				if proxy.Plugin != nil {
+					t.Errorf("Plugin = %#v, want nil", proxy.Plugin)
+				}
+			} else {
+				if proxy.Plugin == nil {
+					t.Fatalf("Plugin = nil, want %#v", tt.plugin)
+				}
+				if proxy.Plugin.Name != tt.plugin.Name {
+					t.Errorf("Plugin.Name = %q, want %q", proxy.Plugin.Name, tt.plugin.Name)
+				}
+				if len(proxy.Plugin.Opts) != len(tt.plugin.Opts) {
+					t.Fatalf("Plugin.Opts len = %d, want %d", len(proxy.Plugin.Opts), len(tt.plugin.Opts))
+				}
+				for key, want := range tt.plugin.Opts {
+					if got := proxy.Plugin.Opts[key]; got != want {
+						t.Errorf("Plugin.Opts[%q] = %q, want %q", key, got, want)
+					}
+				}
 			}
 			if proxy.Kind != model.KindSubscription {
 				t.Errorf("Kind = %q, want %q", proxy.Kind, model.KindSubscription)
@@ -127,6 +205,8 @@ func TestParseSSURI_Invalid(t *testing.T) {
 		{"port zero", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:0#HK-01"},
 		{"port negative", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:-1#HK-01"},
 		{"port too large", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:65536#HK-01"},
+		{"invalid query escape", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388/?plugin=%zz#HK-01"},
+		{"plugin trailing escape", "ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388/?plugin=simple-obfs%3Bobfs%3Dhttp%3Bobfs-host%3Dcdn\\#HK-01"},
 	}
 
 	for _, tt := range tests {

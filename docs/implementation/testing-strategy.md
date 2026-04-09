@@ -12,6 +12,8 @@
 
 - 保序映射解析
 - SS URI 解析
+- SIP002 明文 `userinfo`
+- SS plugin query 解析与转义处理
 - 订阅过滤
 - 地区节点组匹配
 - `relay_through` 三种模式展开
@@ -30,6 +32,8 @@
 - Clash Meta 输出快照
 - Surge 输出快照
 - 链式节点渲染字段
+- Clash Meta 的通用 SS plugin 透传
+- Surge 对不支持 SS plugin 的错误路径
 - ruleset 输出顺序
 - fallback 输出位置
 - Clash / Surge 的 `url-test` 默认参数一致
@@ -42,6 +46,7 @@
 
 - 从示例配置生成 Clash Meta
 - 从示例配置生成 Surge
+- 真实订阅样本的解析回归
 - 订阅拉取失败场景
 - 配置非法场景
 

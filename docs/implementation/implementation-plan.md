@@ -255,7 +255,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
   - `fetch.go`：`Fetcher` 接口（单方法，便于测试注入）、`HTTPFetcher` 实现、`SanitizeURL`（URL 脱敏）
   - `cache.go`：`CachedFetcher`（TTL 缓存装饰器，实现 `Fetcher` 接口，可注入时钟）
 - `internal/pipeline`：
-  - `ssuri.go`：SS URI 解析器，支持 padded/unpadded/URL-safe 多种 base64 变体
+  - `ssuri.go`：SIP002 风格 SS URI 解析器，支持 base64/base64url 与 plain userinfo，并保留 plugin 结构
   - `source.go`：Source 阶段编排——拉取→解码→解析→跨订阅去重→自定义代理转换→名称冲突检查
   - `filter.go`：Filter 阶段——`exclude` 正则仅作用于 `KindSubscription` 节点
 - `testdata/subscriptions/sample_sub2.txt`：第二份订阅 fixture（含重名 HK-01，用于去重测试）
@@ -263,7 +263,10 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 验收项
 
+注：以下为 M2 当时的阶段验收记录；当前实现已在此基础上继续扩展 SS URI / plugin 支持能力。
+
 - ✅ 支持合法 SS URI 解析（padded/unpadded base64、URL 编码中文 fragment、password 含冒号）
+- ✅ 当前实现进一步支持 SIP002 风格 plain userinfo、query 参数与通用 plugin 解析
 - ✅ 非法 SS URI 可识别并返回 `*errtype.BuildError{Phase: "source"}`（含端口范围 1-65535 校验）
 - ✅ 多订阅结果可合并，跨订阅重名自动追加 ②③ 后缀，且二轮去重解决生成名与原始名碰撞
 - ✅ `exclude` 仅影响订阅节点
@@ -276,8 +279,8 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 对应测试
 
-- `T-SRC-001`：合法 SS URI 解析 → `TestParseSSURI_Valid`（6 个子用例）
-- `T-SRC-002`：非法 SS URI 报错 → `TestParseSSURI_Invalid`（13 个子用例，含端口范围校验）
+- `T-SRC-001`：合法 SS URI 解析 → `TestParseSSURI_Valid`（当前已覆盖 plain userinfo、query、plugin 与转义场景）
+- `T-SRC-002`：非法 SS URI 报错 → `TestParseSSURI_Invalid`（当前已覆盖 query 编码与 plugin 转义错误）
 - `T-SRC-003`：多订阅合并 → `TestSource_MultiSubscriptionMerge`
 - `T-FLT-001`：`exclude` 过滤订阅节点 → `TestFilter_ExcludeSubscriptionNodes`
 - `T-FLT-002`：自定义代理不参与过滤 → `TestFilter_CustomProxiesNotFiltered`
@@ -323,7 +326,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 风险
 
-- 订阅返回格式存在兼容性差异（已通过多种 base64 变体回退处理缓解）
+- 订阅返回格式存在兼容性差异（已通过 SIP002 解析、userinfo 多形态兼容与 plugin 解析缓解）
 - 订阅可能包含空行、无效行或异常编码内容（已通过逐行解析 + 跳过无效行处理）
 
 ---

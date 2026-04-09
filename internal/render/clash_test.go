@@ -111,6 +111,74 @@ func TestClash_ChainedProxyHasDialerProxy(t *testing.T) {
 	}
 }
 
+func TestClash_SSProxyWithSimpleObfsPlugin(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-OBFS",
+			Type:   "ss",
+			Server: "hk.example.com",
+			Port:   8388,
+			Params: map[string]string{
+				"cipher":   "aes-256-gcm",
+				"password": "secret",
+			},
+			Plugin: &model.Plugin{Name: "simple-obfs", Opts: map[string]string{"obfs": "http", "obfs-host": "cdn.example.com"}},
+			Kind:   model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Clash(p, nil)
+	if err != nil {
+		t.Fatalf("Clash() error: %v", err)
+	}
+
+	output := string(got)
+	if !strings.Contains(output, "plugin: obfs") {
+		t.Error("ss proxy should normalize simple-obfs to plugin: obfs")
+	}
+	if !strings.Contains(output, "plugin-opts:") {
+		t.Error("ss proxy should render plugin-opts section")
+	}
+	if !strings.Contains(output, "mode: http") {
+		t.Error("ss proxy should map obfs to plugin mode")
+	}
+	if !strings.Contains(output, "host: cdn.example.com") {
+		t.Error("ss proxy should map obfs-host to plugin host")
+	}
+	if !strings.Contains(output, "MATCH,DIRECT") {
+		t.Error("fallback rule should still be present")
+	}
+}
+
+func TestClash_SSProxyWithGenericPluginOptions(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-V2RAY",
+			Type:   "ss",
+			Server: "hk.example.com",
+			Port:   8388,
+			Params: map[string]string{"cipher": "aes-256-gcm", "password": "secret"},
+			Plugin: &model.Plugin{Name: "v2ray-plugin", Opts: map[string]string{"host": "cdn.example.com", "mode": "websocket"}},
+			Kind:   model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Clash(p, nil)
+	if err != nil {
+		t.Fatalf("Clash() error: %v", err)
+	}
+
+	output := string(got)
+	if !strings.Contains(output, "plugin: v2ray-plugin") {
+		t.Error("ss proxy should preserve generic plugin name for Clash")
+	}
+	if !strings.Contains(output, "host: cdn.example.com") || !strings.Contains(output, "mode: websocket") {
+		t.Error("ss proxy should preserve generic plugin options for Clash")
+	}
+}
+
 func TestClash_RuleOrder(t *testing.T) {
 	p := goldenPipeline()
 	got, err := Clash(p, nil)

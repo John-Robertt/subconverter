@@ -7,6 +7,7 @@ SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源，执行过滤与
 ## 功能特性
 
 - **多订阅源** — 支持多个 SS 订阅源合并，跨订阅自动去重
+- **SIP002 兼容** — 支持常见 SS URI 变体，包括 base64/plain userinfo、query 参数和 plugin 声明
 - **自定义代理** — 在订阅之外定义 socks5/http 代理节点（如专线、ISP 代理）
 - **链式代理** — 通过 `relay_through` 配置上游中转，支持三种选择模式：`group`、`select`、`all`
 - **节点过滤** — 正则排除订阅节点（如到期提醒、流量统计等信息性节点）
@@ -137,6 +138,7 @@ make build
 
 - **查询参数**：`format`（必填）— `clash` 或 `surge`
 - **成功**：返回生成的配置文本
+- **SS plugin 支持**：Clash Meta 通用透传 SS plugin；Surge 仅支持可映射的 obfs 类 SS plugin，不支持的 plugin 会返回 `500`
 - **错误码**：
   - `400` — 参数无效或配置校验失败
   - `502` — 订阅拉取失败
@@ -161,7 +163,7 @@ templates:
 
 sources:
   subscriptions:
-    - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
+    - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx" # 订阅体应为 base64 编码的 SS URI 列表（SIP002 兼容）
   custom_proxies:
     - name: HK-ISP
       type: socks5
@@ -183,7 +185,7 @@ groups:
 
 routing:
   🚀 快速选择: [🇭🇰 Hong Kong, 🇯🇵 Japan, 🚀 手动切换, DIRECT]
-  🚀 手动切换: ["@all"] # @all 展开为全部原始订阅节点
+  🚀 手动切换: ["@all"] # @all 展开为全部原始节点（订阅节点 + 自定义代理，不含链式节点）
   📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, 🚀 手动切换, DIRECT]
   🐟 FINAL: [🚀 快速选择, 🚀 手动切换, 🇭🇰 Hong Kong, 🇯🇵 Japan, DIRECT]
 

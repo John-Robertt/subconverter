@@ -43,6 +43,7 @@
 - `Server`
 - `Port`
 - `Params`
+- `Plugin`
 - `Kind`
 - `Dialer`
 
@@ -50,7 +51,9 @@
 
 - 用 `Kind` 区分节点来源与行为，而不是只用一个布尔值标记是否链式
 - `Dialer` 仅在链式节点上生效，用于标识其上游节点
-- `Params` 为 `map[string]string`，承载所有类型特定的参数（如 SS 的加密方法、socks5/http 的 username/password 等）。具体 key 约定在实现阶段确定，设计层面只约束其为透传容器
+- `Params` 为 `map[string]string`，承载代理类型的核心参数（如 SS 的 `cipher/password`、socks5/http 的 `username/password`）
+- `Plugin` 为可选结构，承载 SS plugin 的名称与参数，避免把 plugin 语义混入 `Params` 的字符串 key 约定中
+- 渲染器按目标客户端能力解释 `Plugin`：Clash Meta 可通用透传，Surge 仅支持可映射的子集
 
 ### ProxyGroup
 
