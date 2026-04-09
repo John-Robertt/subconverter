@@ -53,7 +53,7 @@
 | `REQ-10` | 同一中间表示输出 Clash Meta 与 Surge |
 | `REQ-11` | 提供 `/generate` 与 `/healthz` |
 | `REQ-12` | 配置、引用和循环依赖等错误可校验和报告 |
-| `REQ-13` | `@auto` 自动补充 routing 成员（节点组+@all 服务组+DIRECT+REJECT） |
+| `REQ-13` | `@auto` 自动补充 routing 成员（节点组+@all 服务组+DIRECT） |
 
 ### 里程碑编号
 
@@ -367,8 +367,9 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ `@all` 在服务组 Members 中正确展开
 - ✅ ruleset 与 fallback 能绑定到目标服务组
 - ✅ 内联规则 Policy 从最后逗号后提取
-- ✅ `@auto` 展开为节点组+@all 服务组+DIRECT+REJECT（声明序）
+- ✅ `@auto` 展开为节点组+@all 服务组+DIRECT（声明序）
 - ✅ `@auto` 自动去重，组不包含自身
+- ✅ `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
 - ✅ 同一 entry 中重复 `@auto` 会被静态校验拒绝
 - ✅ `@auto` 与 `@all` 在同一 entry 中互斥（静态校验拦截）
 - ✅ 不含 `@auto` 的 entry 行为不变（向后兼容）
@@ -404,6 +405,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `T-RTE-015`：无@auto 向后兼容 → `TestRoute_NoAutoFill`
 - `T-CFG-006`：同一 entry 中重复 @auto 报错 → `TestValidate_RoutingAutoRepeatedRejected`
 - `T-RTE-016`：`Route(cfg, nil)` 不 panic → `TestRoute_NilGroupResult`
+- `T-RTE-017`：手动 REJECT 位置保持不变 → `TestRoute_AutoFillPreservesManualRejectPlacement`
 
 ### 实施记录
 
@@ -421,7 +423,8 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | Rule Policy 提取 | `strings.LastIndex(raw, ",")` | 透传方案，只提取 Policy 用于引用校验 |
 | 结果类型 | GroupResult / RouteResult 独立结构体 | 便于测试和后续 Pipeline 组装 |
 | @auto 展开位置 | Route 阶段（`expandAutoFill`），在 `@all` 展开之前 | Route 阶段有 GroupResult（节点组列表），是唯一正确的展开点 |
-| @auto 补充池顺序 | 节点组（声明序）→ @all 服务组（声明序）→ DIRECT → REJECT | 节点组是主要路由目标，DIRECT/REJECT 为兜底 |
+| @auto 补充池顺序 | 节点组（声明序）→ @all 服务组（声明序）→ DIRECT | `REJECT` 需由用户显式决定是否加入 |
+| REJECT 处理 | 不参与 @auto 自动补充，位置由用户显式控制 | 避免把拒绝策略隐式塞进所有服务组 |
 | @auto 次数限制 | 同一 entry 最多一次，由 config.Validate 拦截 | 多次出现没有额外语义，只会增加歧义 |
 | @auto 与 @all 互斥 | 同一 entry 静态校验拦截 | 两者语义不同（组级 vs 节点级），混用无合理场景 |
 | Route 签名 | `Route(cfg, gr *GroupResult)` | @auto 展开需要 NodeGroups，直接传入 GroupResult |

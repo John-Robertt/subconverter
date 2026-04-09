@@ -18,7 +18,8 @@
 - 地区节点组匹配
 - `relay_through` 三种模式展开
 - `@all` 不包含链式节点
-- `@auto` 展开为节点组+@all 服务组+DIRECT+REJECT，去重且排除自身
+- `@auto` 展开为节点组+@all 服务组+DIRECT，去重且排除自身
+- `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
 - 同一 entry 内重复 `@auto` 会被静态校验拒绝
 - `@auto` 与 `@all` 在同一 entry 中互斥
 - `Route(cfg, nil)` 按空 `GroupResult` 处理，不发生 panic

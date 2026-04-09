@@ -179,7 +179,7 @@ LoadConfig
 说明：
 
 - 服务组统一为 `select`
-- `@auto` 先于 `@all` 展开：`@auto` 替换为自动补充池（节点组 → @all 服务组 → DIRECT → REJECT），然后 `@all` 替换为全部原始节点名
+- `@auto` 先于 `@all` 展开：`@auto` 替换为自动补充池（节点组 → @all 服务组 → DIRECT），然后 `@all` 替换为全部原始节点名
 - 两种 token 互斥，不可在同一 entry 中同时使用
 
 ---

@@ -83,7 +83,7 @@
 
 说明：
 
-- `@auto` 在 Route 阶段展开为节点组名、@all 服务组名、DIRECT、REJECT 后写入 Members
+- `@auto` 在 Route 阶段展开为节点组名、@all 服务组名、DIRECT 后写入 Members
 - `@all` 在 Route 阶段展开为具体节点名后写入 Members
 - 中间表示中不出现 `@all` 或 `@auto` 字面值
 - Members 中的字符串统一在同一命名空间中解析（节点名、组名、保留字共享一个查找空间）

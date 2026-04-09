@@ -87,8 +87,9 @@ func expandMembers(members []string, allProxies []string) []string {
 // expandAutoFill replaces the "@auto" token with auto-filled members.
 // The auto-fill pool (in order): all node group names (region + chained,
 // declaration order), route groups containing @all (declaration order),
-// DIRECT, REJECT. Items already present in members and the group's own
-// name are excluded from the pool.
+// DIRECT. REJECT is never auto-filled and must be declared explicitly.
+// Items already present in members and the group's own name are excluded
+// from the pool.
 func expandAutoFill(
 	members []string,
 	groupName string,
@@ -128,8 +129,8 @@ func expandAutoFill(
 		}
 	}
 
-	// 3. DIRECT and REJECT.
-	for _, reserved := range []string{"DIRECT", "REJECT"} {
+	// 3. DIRECT.
+	for _, reserved := range []string{"DIRECT"} {
 		if _, ok := seen[reserved]; !ok {
 			pool = append(pool, reserved)
 		}

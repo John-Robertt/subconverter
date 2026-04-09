@@ -145,8 +145,8 @@ groups:
 #   1. 全部节点组（地区组 + 链式组，按声明顺序）
 #   2. 包含 @all 的服务组（如 🚀 手动切换）
 #   3. DIRECT
-#   4. REJECT
 #   已在列表中出现的项不会重复，且组不包含自身。
+#   REJECT 不在 @auto 中；如需使用，必须显式写在成员列表里，位置保持不变。
 #   同一 entry 中 @auto 最多出现一次；@auto 与 @all 不能同时使用。
 #
 # 服务组策略固定为 select（用户手选出口）。
@@ -154,7 +154,7 @@ groups:
 routing:
   🚀 快速选择: ["@auto"]
   🚀 手动切换: ["@all"]
-  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
+  📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto", REJECT]
   📺 Netflix: [🇸🇬 Singapore, 🚀 快速选择, "@auto"]
   📺 DisneyPlus: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
   📺 ViuTV: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]

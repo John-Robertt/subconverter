@@ -208,7 +208,8 @@ groups:
 
 # 服务组：key = 组名，value = 有序出口列表（第一个是默认推荐）
 # 可引用：节点组名、其他服务组名、🔗 链式组名、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + 自定义代理，不含链式节点）、@auto（自动补充剩余成员）
-# @auto 展开为：全部节点组（声明序）→ 包含 @all 的服务组（声明序）→ DIRECT → REJECT（去重、排除自身）
+# @auto 展开为：全部节点组（声明序）→ 包含 @all 的服务组（声明序）→ DIRECT（去重、排除自身）
+# REJECT 不在 @auto 中；如需使用，必须显式写在成员列表里
 # 同一 entry 中 @auto 最多出现一次；@auto 与 @all 不能在同一 entry 中同时使用
 # 书写顺序 = 面板显示顺序
 routing:
@@ -219,6 +220,7 @@ routing:
       🇭🇰 Hong Kong,
       🚀 快速选择,
       "@auto",
+      REJECT,
     ]
   📺 Netflix: [🇸🇬 Singapore, 🚀 快速选择, "@auto"]
   📺 DisneyPlus: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto"]
@@ -278,7 +280,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 代理链             | 支持，作为 source 上的可选声明            | 不常用但重要                     |
 | 链式节点组         | 不计入 @all                               | 防止节点膨胀                     |
 | 链式节点组使用方式 | 与地区组完全一致，可被服务组引用          | 无特殊限制                       |
-| 路由自动补充       | `@auto` 展开为节点组+@all 服务组+DIRECT+REJECT | 消除 routing 冗余，链式组自动可用 |
+| 路由自动补充       | `@auto` 展开为节点组+@all 服务组+DIRECT | 消除 routing 冗余，链式组自动可用 |
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
 | Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG` | 用户显式控制，无需依赖反向代理头 |
