@@ -38,6 +38,8 @@
 说明：
 
 - Clash Meta 的规则集引用采用 provider 名称，而不是直接在规则中内联完整 URL
+- 规则集固定生成 `behavior: classical` 且显式输出 `format: text`
+- provider 缓存路径固定为 `.txt`
 
 rule-provider 命名规则（两阶段分配）：
 

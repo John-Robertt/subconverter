@@ -531,7 +531,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | Clash 输出方式 | yaml.v3 Node API | 精确控制字段顺序和转义；支持底版注释保留 |
 | Surge 输出方式 | bytes.Buffer + section 切分替换 | INI 风格纯文本 |
 | 无底版时行为 | 仅输出生成段 | 降低使用门槛 |
-| rule-provider behavior | `classical` | ACL4SSR 规则集格式 |
+| rule-provider behavior | `classical` + `format: text` | 兼容文本 ruleset 并保持跨客户端一致语义 |
 | url-test 默认参数 | url=gstatic, interval=300, tolerance=100 | 业界标准 |
 | routing 校验粒度 | 校验原始 `routing` 声明，不接受显式代理名 | 保持“服务组选出口、节点组选节点”的分层，避免 `@all` 展开结果掩盖非法配置 |
 | 图校验命名空间 | 代理名、节点组名、服务组名统一登记校验 | 避免重名导致引用歧义或重复渲染 |
@@ -558,7 +558,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 ### 已知限制
 
 - 不校验远程规则集 URL 的可达性或内容格式
-- Clash rule-provider behavior 固定为 `classical`，不支持 `domain` 或 `ipcidr`
+- Clash rule-provider 固定为 `behavior: classical` + `format: text`，不支持 `domain`、`ipcidr` 或 YAML `payload` ruleset
 - Surge 模板合并基于 `[Section]` header 文本匹配，不支持嵌套 section
 
 ### 风险
@@ -599,7 +599,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ `format=surge` 返回 conf（T-E2E-002）
 - ✅ 非法 `format` 返回 `400`（T-E2E-003）
 - ✅ 订阅拉取失败返回 `502`（T-E2E-004）
-- ✅ 内部错误返回 `500`（T-E2E-005）
+- ✅ 配置语义/图校验错误返回 `400`（T-E2E-005）
 - ✅ `healthz` 返回 `200`（T-E2E-006）
 - ✅ 示例配置可完成端到端生成
 - ✅ `go test ./...` 全部通过
@@ -610,7 +610,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `T-E2E-002`：HTTP 生成 Surge 成功 → `TestE2E_GenerateSurge`
 - `T-E2E-003`：非法 `format` 返回 `400` → `TestE2E_InvalidFormat`
 - `T-E2E-004`：订阅拉取失败返回 `502` → `TestE2E_FetchFailure`
-- `T-E2E-005`：图校验失败返回 `500` → `TestE2E_BuildError`
+- `T-E2E-005`：图校验失败返回 `400` → `TestE2E_BuildError`
 - `T-E2E-006`：`/healthz` 返回 `200` → `TestE2E_Healthz`
 - `T-EXE-001`：Execute happy path → `TestExecute_HappyPath`
 - `T-EXE-002`：Execute fetch error → `TestExecute_FetchError`
@@ -625,7 +625,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 管道编排位置 | `pipeline.Execute` | project-structure.md 将"管道编排"归于 pipeline 包 |
 | Server 依赖注入 | main.go 创建 Config + CachedFetcher，注入 Server | 保持 server 可测试，不依赖 flag 解析 |
 | 模板加载位置 | server handler 中（pipeline.Execute 之后、render 之前） | 模板是格式特定的，pipeline 应保持格式无关 |
-| 错误映射 | `errors.As` 按类型分发（ConfigError→400, FetchError→502, BuildError/RenderError→500） | Go 1.24 `errors.As` 可穿透 `errors.Join`，映射简洁 |
+| 错误映射 | `errors.As` 按类型分发（ConfigError/BuildError→400, FetchError→502, RenderError→500） | Go 1.24 `errors.As` 可穿透 `errors.Join`，并将配置语义错误暴露为用户可修复的 400 |
 | E2E 测试方式 | httptest.Server + fake fetcher，black-box 包 | 只测公共 API，与内部实现解耦 |
 | 优雅关闭 | `signal.NotifyContext` + `httpServer.Shutdown` + 10s 超时 | 标准模式，防止慢请求阻塞关闭 |
 | 路由注册 | Go 1.22+ method pattern `"GET /generate"` | 避免 handler 内手动检查 HTTP 方法 |

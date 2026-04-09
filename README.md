@@ -139,10 +139,7 @@ make build
 - **查询参数**：`format`（必填）— `clash` 或 `surge`
 - **成功**：返回生成的配置文本
 - **SS plugin 支持**：Clash Meta 通用透传 SS plugin；Surge 仅支持可映射的 obfs 类 SS plugin，不支持的 plugin 会返回 `500`
-- **错误码**：
-  - `400` — 参数无效或配置校验失败
-  - `502` — 订阅拉取失败
-  - `500` — 内部处理或渲染错误
+- **错误码**：`400` — 参数无效，或配置语义 / 图校验失败；`502` — 订阅拉取失败，或订阅内容无效（如 0 个有效节点）；`500` — 内部处理或渲染错误
 
 ### `GET /healthz`
 
@@ -192,6 +189,11 @@ routing:
 rulesets:
   📲 Telegram:
     - "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Telegram.list"
+  📺 Netflix:
+    - "https://example.com/Netflix.list"
+
+# rulesets 只接受字符串 URL
+# 远程内容必须是纯文本规则集，而不是 Clash payload YAML
 
 rules:
   - "GEOIP,CN,🎯 China"

@@ -21,7 +21,7 @@ func mapError(err error) (statusCode int, message string) {
 	case errors.As(err, &fetchErr):
 		return http.StatusBadGateway, err.Error()
 	case errors.As(err, &buildErr):
-		return http.StatusInternalServerError, err.Error()
+		return http.StatusBadRequest, err.Error()
 	case errors.As(err, &renderErr):
 		return http.StatusInternalServerError, err.Error()
 	default:

@@ -289,15 +289,15 @@ func TestSource_EmptySubscription(t *testing.T) {
 		t.Fatal("expected error for empty subscription")
 	}
 
-	var buildErr *errtype.BuildError
-	if !errors.As(err, &buildErr) {
-		t.Fatalf("error type = %T, want *errtype.BuildError", err)
+	var fetchErr *errtype.FetchError
+	if !errors.As(err, &fetchErr) {
+		t.Fatalf("error type = %T, want *errtype.FetchError", err)
 	}
-	if buildErr.Phase != "source" {
-		t.Errorf("Phase = %q, want %q", buildErr.Phase, "source")
+	if fetchErr.URL != "https://sub.example.com" {
+		t.Errorf("URL = %q, want %q", fetchErr.URL, "https://sub.example.com")
 	}
-	if !strings.Contains(buildErr.Message, "0 valid nodes") {
-		t.Errorf("error should mention 0 valid nodes, got: %s", buildErr.Message)
+	if !strings.Contains(fetchErr.Message, "0 valid nodes") {
+		t.Errorf("error should mention 0 valid nodes, got: %s", fetchErr.Message)
 	}
 }
 

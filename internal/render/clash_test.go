@@ -9,7 +9,24 @@ import (
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
+	"gopkg.in/yaml.v3"
 )
+
+type clashProviderDoc struct {
+	RuleProviders map[string]struct {
+		Format string `yaml:"format"`
+		Path   string `yaml:"path"`
+	} `yaml:"rule-providers"`
+}
+
+func mustParseClashProviderDoc(t *testing.T, data []byte) clashProviderDoc {
+	t.Helper()
+	var doc clashProviderDoc
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("parse clash yaml: %v", err)
+	}
+	return doc
+}
 
 func goldenPipeline() *model.Pipeline {
 	return &model.Pipeline{
@@ -212,6 +229,26 @@ func TestClash_ProviderNameDedup(t *testing.T) {
 	}
 	if !strings.Contains(output, "Ad-2:") {
 		t.Error("expected deduplicated provider name Ad-2")
+	}
+}
+
+func TestClash_RuleProvidersUseTextFormat(t *testing.T) {
+	p := goldenPipeline()
+	got, err := Clash(p, nil)
+	if err != nil {
+		t.Fatalf("Clash() error: %v", err)
+	}
+	doc := mustParseClashProviderDoc(t, got)
+
+	provider, ok := doc.RuleProviders["Ad"]
+	if !ok {
+		t.Fatal("expected provider Ad")
+	}
+	if provider.Format != "text" {
+		t.Errorf("provider format = %q, want %q", provider.Format, "text")
+	}
+	if provider.Path != "./rule-providers/Ad.txt" {
+		t.Errorf("provider path = %q, want %q", provider.Path, "./rule-providers/Ad.txt")
 	}
 }
 

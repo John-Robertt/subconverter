@@ -120,10 +120,32 @@ func TestE2E_GenerateClash(t *testing.T) {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	content := string(body)
-	for _, want := range []string{"proxies:", "proxy-groups:", "rules:"} {
-		if !strings.Contains(content, want) {
-			t.Errorf("response body missing %q", want)
+	var doc struct {
+		Proxies       []any    `yaml:"proxies"`
+		ProxyGroups   []any    `yaml:"proxy-groups"`
+		Rules         []string `yaml:"rules"`
+		RuleProviders map[string]struct {
+			Format string `yaml:"format"`
+		} `yaml:"rule-providers"`
+	}
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("parse clash response yaml: %v", err)
+	}
+	if len(doc.Proxies) == 0 {
+		t.Error("response should contain proxies")
+	}
+	if len(doc.ProxyGroups) == 0 {
+		t.Error("response should contain proxy-groups")
+	}
+	if len(doc.Rules) == 0 {
+		t.Error("response should contain rules")
+	}
+	if len(doc.RuleProviders) == 0 {
+		t.Fatal("response should contain rule-providers")
+	}
+	for name, provider := range doc.RuleProviders {
+		if provider.Format != "text" {
+			t.Errorf("rule-provider %q format = %q, want %q", name, provider.Format, "text")
 		}
 	}
 }
@@ -200,7 +222,7 @@ func TestE2E_FetchFailure(t *testing.T) {
 	}
 }
 
-// T-E2E-005: Build error returns 500
+// T-E2E-005: Graph validation error returns 400
 func TestE2E_BuildError(t *testing.T) {
 	// Config passes static validation but fails graph validation:
 	// routing references "NONEXISTENT" which is not a node group, route group, or reserved policy.
@@ -215,9 +237,26 @@ func TestE2E_BuildError(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusInternalServerError {
+	if resp.StatusCode != http.StatusBadRequest {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("status = %d, want 500; body: %s", resp.StatusCode, body)
+		t.Errorf("status = %d, want 400; body: %s", resp.StatusCode, body)
+	}
+}
+
+// T-E2E-005b: Invalid subscription content returns 502
+func TestE2E_InvalidSubscriptionContent(t *testing.T) {
+	f := &fakeFetcher{responses: map[string][]byte{subURL: []byte("")}}
+	ts := startTestServer(t, validConfig(t), f)
+
+	resp, err := http.Get(ts.URL + "/generate?format=clash")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("status = %d, want 502; body: %s", resp.StatusCode, body)
 	}
 }
 

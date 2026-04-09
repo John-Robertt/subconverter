@@ -119,7 +119,10 @@ func TestRoute_Rulesets(t *testing.T) {
 		t.Errorf("ruleset[0].Policy = %q, want Telegram", result.Rulesets[0].Policy)
 	}
 	if len(result.Rulesets[0].URLs) != 1 {
-		t.Errorf("Telegram URLs count = %d, want 1", len(result.Rulesets[0].URLs))
+		t.Fatalf("Telegram URLs count = %d, want 1", len(result.Rulesets[0].URLs))
+	}
+	if got := result.Rulesets[0].URLs[0]; got != "https://example.com/telegram.list" {
+		t.Errorf("Telegram URL = %q, want https://example.com/telegram.list", got)
 	}
 
 	if result.Rulesets[1].Policy != "🎯 China" {

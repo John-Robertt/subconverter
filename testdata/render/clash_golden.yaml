@@ -51,14 +51,16 @@ rule-providers:
   Ad:
     type: http
     behavior: classical
+    format: text
     url: https://example.com/rules/Ad.list
-    path: ./rule-providers/Ad.yaml
+    path: ./rule-providers/Ad.txt
     interval: 86400
   Ad-2:
     type: http
     behavior: classical
+    format: text
     url: https://example.com/rules/Ad.list
-    path: ./rule-providers/Ad-2.yaml
+    path: ./rule-providers/Ad-2.txt
     interval: 86400
 rules:
   - RULE-SET,Ad,Quick

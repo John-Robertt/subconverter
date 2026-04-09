@@ -182,6 +182,7 @@ routing:
 #
 # 规则集内容由客户端运行时拉取，服务端只透传 URL。
 # Clash Meta: 转为 rule-providers + RULE-SET 引用
+#   - 固定生成 behavior: classical + format: text
 # Surge: 直接 RULE-SET,<url>,<policy>
 
 rulesets:

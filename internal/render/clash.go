@@ -20,6 +20,8 @@ const (
 	urlTestTolerance     = 100
 	ruleProviderInterval = 86400
 	ruleProviderBehavior = "classical"
+	ruleProviderFormat   = "text"
+	ruleProviderPathExt  = ".txt"
 )
 
 // providerEntry holds a rule-provider definition for Clash Meta output.
@@ -219,8 +221,9 @@ func buildRuleProviderNode(providers []providerEntry) *yaml.Node {
 		entry := &yaml.Node{Kind: yaml.MappingNode}
 		addPair(entry, "type", scalarNode("http"))
 		addPair(entry, "behavior", scalarNode(ruleProviderBehavior))
+		addPair(entry, "format", scalarNode(ruleProviderFormat))
 		addPair(entry, "url", scalarNode(pe.url))
-		addPair(entry, "path", scalarNode("./rule-providers/"+pe.name+".yaml"))
+		addPair(entry, "path", scalarNode("./rule-providers/"+pe.name+ruleProviderPathExt))
 		addPair(entry, "interval", intNode(ruleProviderInterval))
 		addPair(m, pe.name, entry)
 	}

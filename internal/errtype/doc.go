@@ -5,7 +5,7 @@
 //
 //   - ConfigError  → 400 (invalid YAML, missing fields, bad regex)
 //   - FetchError   → 502 (subscription fetch failures)
-//   - BuildError   → 500 (group/route construction failures)
+//   - BuildError   → 400 (group/route/config semantic failures)
 //   - RenderError  → 500 (output generation failures)
 //
 // Design reference: docs/design/validation.md

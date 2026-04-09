@@ -234,6 +234,7 @@ routing:
   🐟 FINAL: ["@auto"]
 
 # 规则集：key = routing 中的服务组名，value = URL 列表（多条合并匹配）
+# 远端内容必须是纯文本规则列表，不支持 Clash payload YAML
 rulesets:
   🛑 BanList:
     - "https://gcore.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/adblockloon.list"
@@ -253,7 +254,7 @@ rulesets:
 rules:
   - "GEOIP,CN,🎯 China" # 中国 IP  → 直连
 
-fallback: 🐟 FINAL # 未匹配任何规则集的流量走这里（生成 MATCH 规则）
+fallback: 🐟 FINAL # 未匹配任何规则的流量走这里（Clash 生成 MATCH，Surge 生成 FINAL）
 ```
 
 ### 配置与面板的对应关系

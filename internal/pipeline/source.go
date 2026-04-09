@@ -69,9 +69,9 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 	}
 
 	if len(proxies) == 0 {
-		return nil, &errtype.BuildError{
-			Phase:   "source",
-			Message: fmt.Sprintf("subscription %s yielded 0 valid nodes", fetch.SanitizeURL(rawURL)),
+		return nil, &errtype.FetchError{
+			URL:     fetch.SanitizeURL(rawURL),
+			Message: "subscription yielded 0 valid nodes",
 		}
 	}
 
