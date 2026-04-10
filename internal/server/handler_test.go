@@ -35,31 +35,31 @@ func TestResolveFilename(t *testing.T) {
 			name:    "unicode rejected",
 			query:   url.Values{"filename": {"配置"}},
 			format:  "clash",
-			wantErr: "invalid filename parameter: only ASCII letters, digits, dot, dash, and underscore are allowed",
+			wantErr: "filename 参数无效：仅允许 ASCII 字母、数字、点号(.)、连字符(-)、下划线(_)",
 		},
 		{
 			name:    "space rejected",
 			query:   url.Values{"filename": {"my profile"}},
 			format:  "clash",
-			wantErr: "invalid filename parameter: only ASCII letters, digits, dot, dash, and underscore are allowed",
+			wantErr: "filename 参数无效：仅允许 ASCII 字母、数字、点号(.)、连字符(-)、下划线(_)",
 		},
 		{
 			name:    "quote rejected",
 			query:   url.Values{"filename": {`a"b`}},
 			format:  "clash",
-			wantErr: "invalid filename parameter: only ASCII letters, digits, dot, dash, and underscore are allowed",
+			wantErr: "filename 参数无效：仅允许 ASCII 字母、数字、点号(.)、连字符(-)、下划线(_)",
 		},
 		{
 			name:    "basename required",
 			query:   url.Values{"filename": {".yaml"}},
 			format:  "clash",
-			wantErr: "invalid filename parameter: basename is required",
+			wantErr: "filename 参数无效：文件名主体不能为空",
 		},
 		{
 			name:    "wrong extension rejected",
 			query:   url.Values{"filename": {"profile.yaml"}},
 			format:  "surge",
-			wantErr: "invalid filename parameter: surge files must use .conf",
+			wantErr: "filename 参数无效：Surge 配置必须使用 .conf 扩展名",
 		},
 	}
 

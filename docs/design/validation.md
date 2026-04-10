@@ -25,7 +25,8 @@
 重点规则：
 
 - `subscriptions[].url` 必填
-- `custom_proxies[].name/type/server/port` 必填
+- `custom_proxies[].name/type/server` 必填
+- `custom_proxies[].port` 必须为正整数
 - `custom_proxies` 之间名称不能重复
 - `groups[*].match` 必填
 - `groups[*].strategy` 必填且只能是 `select` 或 `url-test`
@@ -91,11 +92,12 @@
 
 ## 错误分层
 
-推荐按来源区分错误：
+按来源区分错误：
 
-- 配置错误
-- 远程拉取错误
-- 渲染错误
+- 配置错误（`ConfigError`）
+- 远程拉取错误（`FetchError`）
+- 构建错误（`BuildError`）
+- 渲染错误（`RenderError`）
 
 HTTP 层映射：
 

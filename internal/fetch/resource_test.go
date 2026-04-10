@@ -62,7 +62,7 @@ func TestLoadResource_RemoteURL(t *testing.T) {
 }
 
 func TestLoadResource_RemoteURLFetchError(t *testing.T) {
-	f := &fakeFetcher{err: &errtype.FetchError{URL: "example.com", Message: "timeout"}}
+	f := &fakeFetcher{err: &errtype.FetchError{Code: errtype.CodeFetchRequestFailed, URL: "example.com", Message: "请求上游失败：timeout"}}
 
 	_, err := LoadResource(context.Background(), "https://example.com/config.yaml", f)
 	if err == nil {

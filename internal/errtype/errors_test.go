@@ -7,68 +7,71 @@ import (
 )
 
 func TestConfigError(t *testing.T) {
-	e := &ConfigError{Field: "groups.HK.strategy", Message: "must be select or url-test"}
-	want := `config error [groups.HK.strategy]: must be select or url-test`
+	e := &ConfigError{Code: CodeConfigValidationFailed, Field: "groups.HK.strategy", Message: "必须为 select 或 url-test"}
+	want := `config error [groups.HK.strategy]: 必须为 select 或 url-test`
 	if got := e.Error(); got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+	if e.Code != CodeConfigValidationFailed {
+		t.Errorf("code = %q, want %q", e.Code, CodeConfigValidationFailed)
 	}
 }
 
 func TestConfigErrorNoField(t *testing.T) {
-	e := &ConfigError{Message: "invalid YAML"}
-	want := `config error: invalid YAML`
+	e := &ConfigError{Code: CodeConfigYAMLInvalid, Message: "YAML 解析失败"}
+	want := `config error: YAML 解析失败`
 	if got := e.Error(); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestFetchError(t *testing.T) {
-	e := &FetchError{URL: "https://example.com/sub?token=***", Message: "timeout", Cause: io.ErrUnexpectedEOF}
-	want := `fetch error [https://example.com/sub?token=***]: timeout`
+	e := &FetchError{Code: CodeFetchRequestFailed, URL: "https://example.com/sub?token=***", Message: "请求上游失败：timeout", Cause: io.ErrUnexpectedEOF}
+	want := `fetch error [https://example.com/sub?token=***]: 请求上游失败：timeout`
 	if got := e.Error(); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestFetchErrorUnwrap(t *testing.T) {
-	e := &FetchError{URL: "https://example.com/sub", Message: "timeout", Cause: io.ErrUnexpectedEOF}
+	e := &FetchError{Code: CodeFetchRequestFailed, URL: "https://example.com/sub", Message: "请求上游失败：timeout", Cause: io.ErrUnexpectedEOF}
 	if !errors.Is(e, io.ErrUnexpectedEOF) {
 		t.Error("FetchError should unwrap to its Cause")
 	}
 }
 
 func TestBuildError(t *testing.T) {
-	e := &BuildError{Phase: "group", Message: "empty chain group"}
-	want := `build error [group]: empty chain group`
+	e := &BuildError{Code: CodeBuildValidationFailed, Phase: "group", Message: "链式节点组为空"}
+	want := `build error [group]: 链式节点组为空`
 	if got := e.Error(); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestRenderError(t *testing.T) {
-	e := &RenderError{Format: "clash", Message: "template failed", Cause: io.EOF}
-	want := `render error [clash]: template failed`
+	e := &RenderError{Code: CodeRenderTemplateParseFailed, Format: "clash", Message: "底版模板解析失败", Cause: io.EOF}
+	want := `render error [clash]: 底版模板解析失败`
 	if got := e.Error(); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestRenderErrorUnwrap(t *testing.T) {
-	e := &RenderError{Format: "surge", Message: "write failed", Cause: io.EOF}
+	e := &RenderError{Code: CodeRenderYAMLEncodeFailed, Format: "surge", Message: "写入失败", Cause: io.EOF}
 	if !errors.Is(e, io.EOF) {
 		t.Error("RenderError should unwrap to its Cause")
 	}
 }
 
 func TestFetchErrorNilCause(t *testing.T) {
-	e := &FetchError{URL: "https://example.com/sub", Message: "not found"}
+	e := &FetchError{Code: CodeFetchStatusInvalid, URL: "https://example.com/sub", Message: "上游返回 HTTP 404"}
 	if e.Unwrap() != nil {
 		t.Error("FetchError with nil Cause should unwrap to nil")
 	}
 }
 
 func TestRenderErrorNilCause(t *testing.T) {
-	e := &RenderError{Format: "clash", Message: "unknown field"}
+	e := &RenderError{Code: CodeRenderTemplateInvalid, Format: "clash", Message: "底版模板格式无效"}
 	if e.Unwrap() != nil {
 		t.Error("RenderError with nil Cause should unwrap to nil")
 	}

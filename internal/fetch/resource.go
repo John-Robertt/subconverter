@@ -18,8 +18,9 @@ func LoadResource(ctx context.Context, location string, f Fetcher) ([]byte, erro
 	if isRemoteURL(location) {
 		if f == nil {
 			return nil, &errtype.FetchError{
+				Code:    errtype.CodeFetchFetcherRequired,
 				URL:     SanitizeURL(location),
-				Message: "remote URL requires a Fetcher, but none provided",
+				Message: "远程 URL 需要 Fetcher，但当前未提供",
 			}
 		}
 		return f.Fetch(ctx, location)

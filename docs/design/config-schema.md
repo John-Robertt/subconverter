@@ -55,7 +55,7 @@ sources:
 
 ### subscriptions
 
-- `url` 必填
+- `url` 必填，必须为 HTTP(S) URL
 - 支持多个订阅源
 - 每个订阅源返回 SS 节点列表
 
@@ -240,7 +240,7 @@ base_url: "https://my-server.com"
 约束：
 
 - 可选字段
-- 值为 scheme + host（如 `https://my-server.com` 或 `http://192.168.1.1:8080`），不含路径
+- 值为 scheme + host（如 `https://my-server.com` 或 `http://192.168.1.1:8080`），不含路径、query 或 fragment
 - 为空时 Surge 输出不包含 `#!MANAGED-CONFIG` 头
 
 说明：

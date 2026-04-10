@@ -27,8 +27,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error) 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, &errtype.FetchError{
+			Code:    errtype.CodeFetchRequestURLInvalid,
 			URL:     SanitizeURL(rawURL),
-			Message: "invalid request URL",
+			Message: "请求 URL 无效",
 			Cause:   err,
 		}
 	}
@@ -36,8 +37,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error) 
 	resp, err := f.Client.Do(req)
 	if err != nil {
 		return nil, &errtype.FetchError{
+			Code:    errtype.CodeFetchRequestFailed,
 			URL:     SanitizeURL(rawURL),
-			Message: err.Error(),
+			Message: "请求上游失败：" + err.Error(),
 			Cause:   err,
 		}
 	}
@@ -47,16 +49,18 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error) 
 		// Drain body to allow HTTP keep-alive connection reuse.
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, &errtype.FetchError{
+			Code:    errtype.CodeFetchStatusInvalid,
 			URL:     SanitizeURL(rawURL),
-			Message: fmt.Sprintf("HTTP %d", resp.StatusCode),
+			Message: fmt.Sprintf("上游返回 HTTP %d", resp.StatusCode),
 		}
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, &errtype.FetchError{
+			Code:    errtype.CodeFetchBodyReadFailed,
 			URL:     SanitizeURL(rawURL),
-			Message: "failed to read response body",
+			Message: "读取响应体失败",
 			Cause:   err,
 		}
 	}

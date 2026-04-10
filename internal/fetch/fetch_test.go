@@ -97,8 +97,11 @@ func TestHTTPFetcher_Non2xx(t *testing.T) {
 	if !errors.As(err, &fetchErr) {
 		t.Fatalf("error type = %T, want *errtype.FetchError", err)
 	}
-	if fetchErr.Message != "HTTP 403" {
-		t.Errorf("message = %q, want %q", fetchErr.Message, "HTTP 403")
+	if fetchErr.Code != errtype.CodeFetchStatusInvalid {
+		t.Errorf("code = %q, want %q", fetchErr.Code, errtype.CodeFetchStatusInvalid)
+	}
+	if fetchErr.Message != "上游返回 HTTP 403" {
+		t.Errorf("message = %q, want %q", fetchErr.Message, "上游返回 HTTP 403")
 	}
 	// URL should be sanitized (no query params)
 	if fetchErr.URL != srv.URL+"/sub" {
@@ -117,6 +120,9 @@ func TestHTTPFetcher_NetworkError(t *testing.T) {
 	var fetchErr *errtype.FetchError
 	if !errors.As(err, &fetchErr) {
 		t.Fatalf("error type = %T, want *errtype.FetchError", err)
+	}
+	if fetchErr.Code != errtype.CodeFetchRequestFailed {
+		t.Errorf("code = %q, want %q", fetchErr.Code, errtype.CodeFetchRequestFailed)
 	}
 	if fetchErr.Cause == nil {
 		t.Error("expected Cause to be set for network errors")

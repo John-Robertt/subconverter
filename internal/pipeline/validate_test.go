@@ -102,10 +102,10 @@ func TestValidateGraph_RouteGroupMemberNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `member "Nonexistent" not found`) {
+	if !containsError(err, `成员 "Nonexistent" 不存在`) {
 		t.Errorf("error = %v, want mention of Nonexistent", err)
 	}
-	if got := countErrorContains(err, `member "Nonexistent" not found`); got != 1 {
+	if got := countErrorContains(err, `成员 "Nonexistent" 不存在`); got != 1 {
 		t.Errorf("expected exactly 1 missing-member error, got %d: %v", got, err)
 	}
 }
@@ -124,7 +124,7 @@ func TestValidateGraph_CircularReference(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, "circular reference") {
+	if !containsError(err, "循环引用") {
 		t.Errorf("error = %v, want circular reference", err)
 	}
 }
@@ -142,7 +142,7 @@ func TestValidateGraph_SelfReference(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, "circular reference") {
+	if !containsError(err, "循环引用") {
 		t.Errorf("error = %v, want circular reference", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestValidateGraph_EmptyChainedGroup(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `chained group "🔗 MY-PROXY" has no members`) {
+	if !containsError(err, `链式节点组 "🔗 MY-PROXY" 没有成员`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -168,7 +168,7 @@ func TestValidateGraph_EmptyRegionGroup(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `node group "🇭🇰 HK" has no members`) {
+	if !containsError(err, `节点组 "🇭🇰 HK" 没有成员`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -185,7 +185,7 @@ func TestValidateGraph_NameCollision(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `name "🇭🇰 HK" used by both`) {
+	if !containsError(err, `名称 "🇭🇰 HK" 同时被`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -200,7 +200,7 @@ func TestValidateGraph_ProxyAndNodeGroupNameCollision(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `name "HK-01" used by both proxy and node group`) {
+	if !containsError(err, `名称 "HK-01" 同时被 代理 和 节点组 使用`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -216,7 +216,7 @@ func TestValidateGraph_DuplicateRouteGroupNames(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `route group "Quick" declared more than once`) {
+	if !containsError(err, `服务组 "Quick" 重复声明`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -231,7 +231,7 @@ func TestValidateGraph_RouteGroupExplicitProxyMemberRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `member "HK-01" must reference a node group, route group, DIRECT, REJECT, @all, or @auto`) {
+	if !containsError(err, `成员 "HK-01" 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -256,7 +256,7 @@ func TestValidateGraph_AllProxiesContainsChainedRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `@all contains chained proxy "HK-01→MY-PROXY"`) {
+	if !containsError(err, `@all 包含了链式节点 "HK-01→MY-PROXY"`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -272,7 +272,7 @@ func TestValidateGraph_RulesetPolicyNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `ruleset policy "Nonexistent" not found`) {
+	if !containsError(err, `ruleset 策略 "Nonexistent" 未在 routing 中定义`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -288,7 +288,7 @@ func TestValidateGraph_RulePolicyNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `rule policy "Missing" not found`) {
+	if !containsError(err, `规则策略 "Missing" 未在 routing 中定义`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -302,7 +302,7 @@ func TestValidateGraph_FallbackNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `fallback "NonexistentFallback" not found`) {
+	if !containsError(err, `fallback "NonexistentFallback" 未在 routing 中定义`) {
 		t.Errorf("error = %v", err)
 	}
 }

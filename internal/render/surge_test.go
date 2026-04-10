@@ -131,7 +131,7 @@ func TestSurge_SSProxyWithUnsupportedPlugin(t *testing.T) {
 	if !errors.As(err, &renderErr) {
 		t.Fatalf("error type = %T, want *errtype.RenderError", err)
 	}
-	if !strings.Contains(err.Error(), `unsupported ss plugin "v2ray-plugin"`) {
+	if !strings.Contains(err.Error(), `不支持的 ss plugin "v2ray-plugin"`) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

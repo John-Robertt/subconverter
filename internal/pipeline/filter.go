@@ -21,8 +21,9 @@ func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error)
 	re, err := regexp.Compile(excludePattern)
 	if err != nil {
 		return nil, &errtype.BuildError{
+			Code:    errtype.CodeBuildFilterRegexInvalid,
 			Phase:   "filter",
-			Message: "invalid exclude regex: " + err.Error(),
+			Message: "exclude 正则无效：" + err.Error(),
 		}
 	}
 

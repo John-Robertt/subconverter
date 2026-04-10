@@ -21,26 +21,27 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	format := query.Get("format")
 	if format != "clash" && format != "surge" {
-		http.Error(w, "invalid or missing format parameter: must be clash or surge", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "format 参数无效：必须为 clash 或 surge")
 		return
 	}
 
 	if !s.isAuthorized(query.Get("token")) {
-		http.Error(w, "missing or invalid token", http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, "访问令牌缺失或无效")
 		return
 	}
 
 	filename, err := resolveFilename(query, format)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		code, msg := presentError(err)
+		writeError(w, code, msg)
 		return
 	}
 
 	p, err := pipeline.Execute(r.Context(), s.cfg, s.fetcher)
 	if err != nil {
-		code, msg := mapError(err)
+		code, msg := presentError(err)
 		log.Printf("pipeline error: %v", err)
-		http.Error(w, msg, code)
+		writeError(w, code, msg)
 		return
 	}
 
@@ -57,9 +58,9 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	if templatePath != "" {
 		tmpl, err = fetch.LoadResource(r.Context(), templatePath, s.fetcher)
 		if err != nil {
-			code, msg := mapError(err)
+			code, msg := presentError(err)
 			log.Printf("template load error: %v", err)
-			http.Error(w, msg, code)
+			writeError(w, code, msg)
 			return
 		}
 	}
@@ -73,9 +74,9 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		output, err = render.Surge(p, buildManagedURL(s.cfg.BaseURL, filename, s.opts.AccessToken), tmpl)
 	}
 	if err != nil {
-		code, msg := mapError(err)
+		code, msg := presentError(err)
 		log.Printf("render error: %v", err)
-		http.Error(w, msg, code)
+		writeError(w, code, msg)
 		return
 	}
 
@@ -108,12 +109,12 @@ func resolveFilename(query url.Values, format string) (string, error) {
 	if _, ok := query["filename"]; ok {
 		raw = query.Get("filename")
 		if raw == "" {
-			return "", fmt.Errorf("invalid filename parameter: cannot be empty")
+			return "", badRequest("filename 参数无效：不能为空")
 		}
 	}
 
 	if len(raw) > maxFilenameLength {
-		return "", fmt.Errorf("invalid filename parameter: too long")
+		return "", badRequest("filename 参数无效：长度不能超过 255 个字符")
 	}
 	if err := validateFilename(raw); err != nil {
 		return "", err
@@ -127,10 +128,17 @@ func resolveFilename(query url.Values, format string) (string, error) {
 		currentExt = ext
 	}
 	if !strings.EqualFold(currentExt, ext) {
-		return "", fmt.Errorf("invalid filename parameter: %s files must use %s", format, ext)
+		switch format {
+		case "clash":
+			return "", badRequest("filename 参数无效：Clash 配置必须使用 .yaml 扩展名")
+		case "surge":
+			return "", badRequest("filename 参数无效：Surge 配置必须使用 .conf 扩展名")
+		default:
+			return "", badRequest("filename 参数无效：扩展名不正确")
+		}
 	}
 	if base := strings.TrimSuffix(name, currentExt); strings.Trim(base, ".") == "" {
-		return "", fmt.Errorf("invalid filename parameter: basename is required")
+		return "", badRequest("filename 参数无效：文件名主体不能为空")
 	}
 	return name, nil
 }
@@ -139,15 +147,15 @@ func validateFilename(name string) error {
 	for _, r := range name {
 		switch {
 		case r > 127:
-			return fmt.Errorf("invalid filename parameter: only ASCII letters, digits, dot, dash, and underscore are allowed")
+			return badRequest("filename 参数无效：仅允许 ASCII 字母、数字、点号(.)、连字符(-)、下划线(_)")
 		case r < 32 || r == 127:
-			return fmt.Errorf("invalid filename parameter: control characters are not allowed")
+			return badRequest("filename 参数无效：不能包含控制字符")
 		case r >= 'a' && r <= 'z':
 		case r >= 'A' && r <= 'Z':
 		case r >= '0' && r <= '9':
 		case r == '.', r == '-', r == '_':
 		default:
-			return fmt.Errorf("invalid filename parameter: only ASCII letters, digits, dot, dash, and underscore are allowed")
+			return badRequest("filename 参数无效：仅允许 ASCII 字母、数字、点号(.)、连字符(-)、下划线(_)")
 		}
 	}
 	return nil

@@ -18,7 +18,7 @@ func Validate(cfg *Config) error {
 	// sources.subscriptions
 	for i, sub := range cfg.Sources.Subscriptions {
 		if sub.URL == "" {
-			c.add(fmt.Sprintf("sources.subscriptions[%d].url", i), "required")
+			c.add(fmt.Sprintf("sources.subscriptions[%d].url", i), "必填")
 		} else {
 			c.validateHTTPURL(fmt.Sprintf("sources.subscriptions[%d].url", i), sub.URL)
 		}
@@ -30,23 +30,23 @@ func Validate(cfg *Config) error {
 		prefix := fmt.Sprintf("sources.custom_proxies[%d]", i)
 
 		if cp.Name == "" {
-			c.add(prefix+".name", "required")
+			c.add(prefix+".name", "必填")
 		}
 		if cp.Type == "" {
-			c.add(prefix+".type", "required")
+			c.add(prefix+".type", "必填")
 		} else if cp.Type != "socks5" && cp.Type != "http" {
-			c.add(prefix+".type", fmt.Sprintf("must be socks5 or http, got %q", cp.Type))
+			c.add(prefix+".type", fmt.Sprintf("必须为 socks5 或 http，当前为 %q", cp.Type))
 		}
 		if cp.Server == "" {
-			c.add(prefix+".server", "required")
+			c.add(prefix+".server", "必填")
 		}
 		if cp.Port <= 0 {
-			c.add(prefix+".port", "must be positive")
+			c.add(prefix+".port", "必须为正整数")
 		}
 
 		if cp.Name != "" {
 			if seen[cp.Name] {
-				c.add(prefix+".name", fmt.Sprintf("duplicate custom proxy name %q", cp.Name))
+				c.add(prefix+".name", fmt.Sprintf("自定义代理名 %q 重复", cp.Name))
 			}
 			seen[cp.Name] = true
 		}
@@ -65,14 +65,14 @@ func Validate(cfg *Config) error {
 	for k, g := range cfg.Groups.Entries() {
 		prefix := fmt.Sprintf("groups.%s", k)
 		if g.Match == "" {
-			c.add(prefix+".match", "required")
+			c.add(prefix+".match", "必填")
 		} else {
 			c.compileRegex(prefix+".match", g.Match)
 		}
 		if g.Strategy == "" {
-			c.add(prefix+".strategy", "required")
+			c.add(prefix+".strategy", "必填")
 		} else if g.Strategy != "select" && g.Strategy != "url-test" {
-			c.add(prefix+".strategy", fmt.Sprintf("must be select or url-test, got %q", g.Strategy))
+			c.add(prefix+".strategy", fmt.Sprintf("必须为 select 或 url-test，当前为 %q", g.Strategy))
 		}
 	}
 
@@ -80,13 +80,13 @@ func Validate(cfg *Config) error {
 	for k, urls := range cfg.Rulesets.Entries() {
 		prefix := fmt.Sprintf("rulesets.%s", k)
 		if len(urls) == 0 {
-			c.add(prefix, "must contain at least one URL")
+			c.add(prefix, "至少需要一个 URL")
 			continue
 		}
 		for i, rawURL := range urls {
 			field := fmt.Sprintf("%s[%d]", prefix, i)
 			if rawURL == "" {
-				c.add(field, "required")
+				c.add(field, "必填")
 				continue
 			}
 			c.validateHTTPURL(field, rawURL)
@@ -105,16 +105,16 @@ func Validate(cfg *Config) error {
 			}
 		}
 		if hasAll && autoCount > 0 {
-			c.add(fmt.Sprintf("routing.%s", k), "@all and @auto cannot be used together")
+			c.add(fmt.Sprintf("routing.%s", k), "@all 和 @auto 不能同时使用")
 		}
 		if autoCount > 1 {
-			c.add(fmt.Sprintf("routing.%s", k), "@auto cannot be used more than once")
+			c.add(fmt.Sprintf("routing.%s", k), "@auto 不能重复使用")
 		}
 	}
 
 	// fallback
 	if cfg.Fallback == "" {
-		c.add("fallback", "required")
+		c.add("fallback", "必填")
 	}
 
 	// base_url
@@ -137,61 +137,61 @@ func (c *collector) validateRelayThrough(rt *RelayThrough, prefix string) {
 	switch rt.Type {
 	case "group":
 		if rt.Name == "" {
-			c.add(prefix+".name", "required when type is group")
+			c.add(prefix+".name", "type=group 时必填")
 		}
 	case "select":
 		if rt.Match == "" {
-			c.add(prefix+".match", "required when type is select")
+			c.add(prefix+".match", "type=select 时必填")
 		} else {
 			c.compileRegex(prefix+".match", rt.Match)
 		}
 	case "all":
 		// no additional fields required
 	case "":
-		c.add(prefix+".type", "required")
+		c.add(prefix+".type", "必填")
 	default:
-		c.add(prefix+".type", fmt.Sprintf("must be group, select, or all, got %q", rt.Type))
+		c.add(prefix+".type", fmt.Sprintf("必须为 group、select 或 all，当前为 %q", rt.Type))
 	}
 
 	if rt.Strategy == "" {
-		c.add(prefix+".strategy", "required")
+		c.add(prefix+".strategy", "必填")
 	} else if rt.Strategy != "select" && rt.Strategy != "url-test" {
-		c.add(prefix+".strategy", fmt.Sprintf("must be select or url-test, got %q", rt.Strategy))
+		c.add(prefix+".strategy", fmt.Sprintf("必须为 select 或 url-test，当前为 %q", rt.Strategy))
 	}
 }
 
 func (c *collector) compileRegex(field, pattern string) {
 	if _, err := regexp.Compile(pattern); err != nil {
-		c.add(field, fmt.Sprintf("invalid regex: %v", err))
+		c.add(field, fmt.Sprintf("正则表达式无效：%v", err))
 	}
 }
 
 func (c *collector) validateHTTPURL(field, rawURL string) {
 	parsed, err := url.ParseRequestURI(rawURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		c.add(field, fmt.Sprintf("invalid URL %q", rawURL))
+		c.add(field, fmt.Sprintf("URL 无效：%q", rawURL))
 		return
 	}
 
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		c.add(field, fmt.Sprintf("must start with http:// or https://, got %q", rawURL))
+		c.add(field, fmt.Sprintf("必须以 http:// 或 https:// 开头，当前为 %q", rawURL))
 	}
 }
 
 func (c *collector) validateBaseURL(field, rawURL string) {
 	parsed, err := url.ParseRequestURI(rawURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		c.add(field, fmt.Sprintf("invalid URL %q", rawURL))
+		c.add(field, fmt.Sprintf("URL 无效：%q", rawURL))
 		return
 	}
 
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		c.add(field, fmt.Sprintf("must start with http:// or https://, got %q", rawURL))
+		c.add(field, fmt.Sprintf("必须以 http:// 或 https:// 开头，当前为 %q", rawURL))
 		return
 	}
 
 	if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
-		c.add(field, "must contain scheme and host only, without path, query, or fragment")
+		c.add(field, "只能包含 scheme 和 host，不能包含 path、query 或 fragment")
 	}
 }
 
@@ -208,7 +208,7 @@ type collector struct {
 }
 
 func (c *collector) add(field, message string) {
-	c.errs = append(c.errs, &errtype.ConfigError{Field: field, Message: message})
+	c.errs = append(c.errs, &errtype.ConfigError{Code: errtype.CodeConfigValidationFailed, Field: field, Message: message})
 }
 
 func (c *collector) result() error {

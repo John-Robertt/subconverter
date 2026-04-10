@@ -31,6 +31,13 @@
 - Surge：`Content-Type: text/plain; charset=utf-8`
 - 两种格式都会输出 `Content-Disposition: attachment; ...`，默认文件名分别为 `clash.yaml`、`surge.conf`
 
+错误响应：
+
+- 统一返回 `text/plain; charset=utf-8`
+- 错误正文为中文纯文本
+- 已分类错误返回可定位问题的说明
+- 未分类内部错误统一返回 `内部错误`
+
 ### `GET /healthz`
 
 用途：

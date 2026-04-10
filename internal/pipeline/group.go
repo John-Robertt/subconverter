@@ -69,8 +69,9 @@ func buildRegionGroups(proxies []model.Proxy, groups *config.OrderedMap[config.G
 		re, err := regexp.Compile(g.Match)
 		if err != nil {
 			return nil, &errtype.BuildError{
+				Code:    errtype.CodeBuildGroupRegexInvalid,
 				Phase:   "group",
-				Message: fmt.Sprintf("group %q: invalid match regex: %v", name, err),
+				Message: fmt.Sprintf("节点组 %q 的 match 正则无效：%v", name, err),
 			}
 		}
 
@@ -151,8 +152,9 @@ func resolveUpstreams(
 		group, ok := findGroupByName(regionGroups, rt.Name)
 		if !ok {
 			return nil, &errtype.BuildError{
+				Code:    errtype.CodeBuildRelayGroupMissing,
 				Phase:   "group",
-				Message: fmt.Sprintf("relay_through type=group: group %q not found", rt.Name),
+				Message: fmt.Sprintf("relay_through type=group 引用了不存在的节点组 %q", rt.Name),
 			}
 		}
 		return resolveMembers(subProxies, group.Members), nil
@@ -161,8 +163,9 @@ func resolveUpstreams(
 		re, err := regexp.Compile(rt.Match)
 		if err != nil {
 			return nil, &errtype.BuildError{
+				Code:    errtype.CodeBuildRelayRegexInvalid,
 				Phase:   "group",
-				Message: fmt.Sprintf("relay_through type=select: invalid regex: %v", err),
+				Message: fmt.Sprintf("relay_through type=select 的正则无效：%v", err),
 			}
 		}
 		var matched []model.Proxy
@@ -180,8 +183,9 @@ func resolveUpstreams(
 
 	default:
 		return nil, &errtype.BuildError{
+			Code:    errtype.CodeBuildRelayTypeInvalid,
 			Phase:   "group",
-			Message: fmt.Sprintf("relay_through: unknown type %q", rt.Type),
+			Message: fmt.Sprintf("relay_through 的 type %q 无效", rt.Type),
 		}
 	}
 }

@@ -23,11 +23,11 @@ type fakeFetcher struct {
 
 func (f *fakeFetcher) Fetch(_ context.Context, url string) ([]byte, error) {
 	if f.err != nil {
-		return nil, &errtype.FetchError{URL: url, Message: f.err.Error(), Cause: f.err}
+		return nil, &errtype.FetchError{Code: errtype.CodeFetchRequestFailed, URL: url, Message: "请求上游失败：" + f.err.Error(), Cause: f.err}
 	}
 	body, ok := f.responses[url]
 	if !ok {
-		return nil, &errtype.FetchError{URL: url, Message: "not found"}
+		return nil, &errtype.FetchError{Code: errtype.CodeFetchStatusInvalid, URL: url, Message: "上游返回 HTTP 404"}
 	}
 	return body, nil
 }
@@ -269,8 +269,8 @@ func TestSource_InvalidBase64Response(t *testing.T) {
 	if !errors.As(err, &fetchErr) {
 		t.Fatalf("error type = %T, want *errtype.FetchError", err)
 	}
-	if !strings.Contains(fetchErr.Message, "base64") {
-		t.Errorf("error should mention base64, got: %s", fetchErr.Message)
+	if !strings.Contains(fetchErr.Message, "Base64") {
+		t.Errorf("error should mention Base64, got: %s", fetchErr.Message)
 	}
 }
 
@@ -296,8 +296,8 @@ func TestSource_EmptySubscription(t *testing.T) {
 	if fetchErr.URL != "https://sub.example.com" {
 		t.Errorf("URL = %q, want %q", fetchErr.URL, "https://sub.example.com")
 	}
-	if !strings.Contains(fetchErr.Message, "0 valid nodes") {
-		t.Errorf("error should mention 0 valid nodes, got: %s", fetchErr.Message)
+	if !strings.Contains(fetchErr.Message, "任何有效节点") {
+		t.Errorf("error should mention empty subscription, got: %s", fetchErr.Message)
 	}
 }
 

@@ -51,8 +51,9 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 	decoded, err := decodeSubscriptionBody(body)
 	if err != nil {
 		return nil, &errtype.FetchError{
+			Code:    errtype.CodeFetchSubscriptionBase64Invalid,
 			URL:     fetch.SanitizeURL(rawURL),
-			Message: "invalid base64 response",
+			Message: "订阅内容不是合法的 Base64",
 			Cause:   err,
 		}
 	}
@@ -70,8 +71,9 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 
 	if len(proxies) == 0 {
 		return nil, &errtype.FetchError{
+			Code:    errtype.CodeFetchSubscriptionEmpty,
 			URL:     fetch.SanitizeURL(rawURL),
-			Message: "subscription yielded 0 valid nodes",
+			Message: "订阅未产生任何有效节点",
 		}
 	}
 
@@ -187,8 +189,9 @@ func checkNameConflicts(subProxies, customProxies []model.Proxy) error {
 	for _, cp := range customProxies {
 		if _, exists := subNames[cp.Name]; exists {
 			return &errtype.BuildError{
+				Code:    errtype.CodeBuildCustomNameConflict,
 				Phase:   "source",
-				Message: fmt.Sprintf("custom proxy name %q conflicts with subscription node", cp.Name),
+				Message: fmt.Sprintf("自定义代理名 %q 与订阅节点重名", cp.Name),
 			}
 		}
 	}

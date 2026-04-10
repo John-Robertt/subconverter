@@ -282,7 +282,8 @@ func ssError(uri, reason string) error {
 		display = display[:77] + "..."
 	}
 	return &errtype.BuildError{
+		Code:    errtype.CodeBuildSSURIInvalid,
 		Phase:   "source",
-		Message: fmt.Sprintf("invalid SS URI %q: %s", display, reason),
+		Message: fmt.Sprintf("SS URI %q 无效：%s", display, reason),
 	}
 }

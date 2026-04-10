@@ -321,7 +321,7 @@ func TestValidate_RoutingAutoAndAllMutuallyExclusive(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for @all + @auto in same entry")
 	}
-	if !strings.Contains(err.Error(), "@all and @auto cannot be used together") {
+	if !strings.Contains(err.Error(), "@all 和 @auto 不能同时使用") {
 		t.Errorf("error = %v, want @all+@auto conflict message", err)
 	}
 }
@@ -341,7 +341,7 @@ func TestValidate_RoutingAutoRepeatedRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for repeated @auto in same entry")
 	}
-	if !strings.Contains(err.Error(), "@auto cannot be used more than once") {
+	if !strings.Contains(err.Error(), "@auto 不能重复使用") {
 		t.Errorf("error = %v, want repeated @auto message", err)
 	}
 }

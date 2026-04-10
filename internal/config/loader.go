@@ -14,14 +14,16 @@ func Load(ctx context.Context, location string, f fetch.Fetcher) (*Config, error
 	data, err := fetch.LoadResource(ctx, location, f)
 	if err != nil {
 		return nil, &errtype.ConfigError{
-			Message: "reading config: " + err.Error(),
+			Code:    errtype.CodeConfigLoadFailed,
+			Message: "读取配置失败：" + err.Error(),
 		}
 	}
 
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, &errtype.ConfigError{
-			Message: "parsing YAML: " + err.Error(),
+			Code:    errtype.CodeConfigYAMLInvalid,
+			Message: "解析 YAML 失败：" + err.Error(),
 		}
 	}
 

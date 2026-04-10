@@ -169,8 +169,9 @@ func parseRules(rawRules []string) ([]model.Rule, error) {
 		idx := strings.LastIndex(raw, ",")
 		if idx < 0 {
 			return nil, &errtype.BuildError{
+				Code:    errtype.CodeBuildRuleFormatInvalid,
 				Phase:   "route",
-				Message: fmt.Sprintf("rules[%d]: no comma found in %q", i, raw),
+				Message: fmt.Sprintf("rules[%d] 缺少逗号分隔：%q", i, raw),
 			}
 		}
 		rules = append(rules, model.Rule{

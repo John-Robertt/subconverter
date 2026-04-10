@@ -59,8 +59,9 @@ func buildSurgeProxies(proxies []model.Proxy) (string, error) {
 		line, err := renderSurgeProxy(px)
 		if err != nil {
 			return "", &errtype.RenderError{
+				Code:    errtype.CodeRenderSurgeProxyInvalid,
 				Format:  "surge",
-				Message: fmt.Sprintf("proxy %q: %v", px.Name, err),
+				Message: fmt.Sprintf("代理 %q 渲染失败：%v", px.Name, err),
 				Cause:   err,
 			}
 		}
@@ -111,7 +112,7 @@ func renderSurgeSSPlugin(plugin *model.Plugin) ([]string, error) {
 	}
 
 	if !isSurgeSSObfsPlugin(plugin.Name) {
-		return nil, fmt.Errorf("unsupported ss plugin %q", plugin.Name)
+		return nil, fmt.Errorf("不支持的 ss plugin %q", plugin.Name)
 	}
 
 	allowed := map[string]bool{
@@ -126,13 +127,13 @@ func renderSurgeSSPlugin(plugin *model.Plugin) ([]string, error) {
 	sort.Strings(keys)
 	for _, key := range keys {
 		if !allowed[key] {
-			return nil, fmt.Errorf("unsupported ss plugin option %q for %q", key, plugin.Name)
+			return nil, fmt.Errorf("ss plugin %q 不支持选项 %q", plugin.Name, key)
 		}
 	}
 
 	mode := plugin.Opts["obfs"]
 	if mode != "http" && mode != "tls" {
-		return nil, fmt.Errorf("ss plugin %q requires obfs=http or obfs=tls", plugin.Name)
+		return nil, fmt.Errorf("ss plugin %q 要求 obfs=http 或 obfs=tls", plugin.Name)
 	}
 
 	parts := []string{"obfs=" + mode}

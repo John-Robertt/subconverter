@@ -589,7 +589,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `internal/server/`:
   - `server.go`：`Server` 结构体、`New` 构造函数、`Handler()` 路由注册
   - `handler.go`：`handleGenerate`（管道→模板→渲染→响应）、`handleHealthz`
-  - `errors.go`：`mapError` 错误类型→HTTP 状态码映射
+  - `errors.go`：`presentError` 错误类型→HTTP 状态码映射 + 中文消息格式化
 - `cmd/subconverter/main.go`：flag 解析、依赖创建、服务启动、优雅关闭
 - 外部依赖：无新增
 
@@ -629,7 +629,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 管道编排位置 | `pipeline.Execute` | project-structure.md 将"管道编排"归于 pipeline 包 |
 | Server 依赖注入 | main.go 创建 Config + CachedFetcher，注入 Server | 保持 server 可测试，不依赖 flag 解析 |
 | 模板加载位置 | server handler 中（pipeline.Execute 之后、render 之前） | 模板是格式特定的，pipeline 应保持格式无关 |
-| 错误映射 | `errors.As` 按类型分发（ConfigError/BuildError→400, FetchError→502, RenderError→500） | Go 1.24 `errors.As` 可穿透 `errors.Join`，并将配置语义错误暴露为用户可修复的 400 |
+| 错误呈现 | `presentError`：`flattenErrors` 展平 `errors.Join` 链 → `collect*Errors` 按类型收集 → `format*Error` 格式化中文消息 → `joinMessages` 聚合多错误（ConfigError/BuildError→400, FetchError→502, RenderError→500） | 错误码（`errtype.Code`）机器可读，消息中文面向终端用户，未分类错误返回 `"内部错误"` 不暴露细节 |
 | E2E 测试方式 | httptest.Server + fake fetcher，black-box 包 | 只测公共 API，与内部实现解耦 |
 | 优雅关闭 | `signal.NotifyContext` + `httpServer.Shutdown` + 10s 超时 | 标准模式，防止慢请求阻塞关闭 |
 | 路由注册 | Go 1.22+ method pattern `"GET /generate"` | 避免 handler 内手动检查 HTTP 方法 |
@@ -653,14 +653,14 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 - ✅ `Execute` 输出稳定的 `*model.Pipeline`，可供渲染器消费
 - ✅ HTTP 层仅做请求校验 + 编排 + 错误映射，不承担业务转换逻辑
-- ✅ 6 个 E2E 测试 + 3 个 Execute 单测全部通过
+- ✅ 12 个 E2E 测试 + 3 个 Execute 单测全部通过
 - ✅ `make build` 和 `make run` 可用
 
 ### 已知限制
 
 - HTTP 服务未设 `ReadTimeout` / `WriteTimeout`（单用户场景无 slowloris 风险）
 - 不支持运行时配置热重载（修改配置后需重启服务）
-- 错误消息直接返回给客户端（单用户场景，便于调试；多用户需脱敏）
+- 错误响应统一由 server 层格式化为中文纯文本；未知内部错误不向客户端暴露细节
 - `handleGenerate` 对 format 做 3 次 switch（当前仅 2 格式，不做提前抽象）
 
 ### 风险

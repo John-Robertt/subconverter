@@ -26,11 +26,11 @@ type fakeFetcher struct {
 
 func (f *fakeFetcher) Fetch(_ context.Context, rawURL string) ([]byte, error) {
 	if f.err != nil {
-		return nil, &errtype.FetchError{URL: rawURL, Message: f.err.Error(), Cause: f.err}
+		return nil, &errtype.FetchError{Code: errtype.CodeFetchRequestFailed, URL: rawURL, Message: "请求上游失败：" + f.err.Error(), Cause: f.err}
 	}
 	body, ok := f.responses[rawURL]
 	if !ok {
-		return nil, &errtype.FetchError{URL: rawURL, Message: "not found"}
+		return nil, &errtype.FetchError{Code: errtype.CodeFetchStatusInvalid, URL: rawURL, Message: "上游返回 HTTP 404"}
 	}
 	return body, nil
 }
@@ -291,6 +291,10 @@ func TestE2E_InvalidFilename(t *testing.T) {
 				body, _ := io.ReadAll(resp.Body)
 				t.Errorf("status = %d, want 400; body: %s", resp.StatusCode, body)
 			}
+			body, _ := io.ReadAll(resp.Body)
+			if !strings.Contains(string(body), "filename 参数无效") {
+				t.Errorf("body = %q, want filename 参数无效", body)
+			}
 		})
 	}
 }
@@ -318,6 +322,10 @@ func TestE2E_TokenRequired(t *testing.T) {
 				body, _ := io.ReadAll(resp.Body)
 				t.Errorf("status = %d, want 401; body: %s", resp.StatusCode, body)
 			}
+			body, _ := io.ReadAll(resp.Body)
+			if !strings.Contains(string(body), "访问令牌缺失或无效") {
+				t.Errorf("body = %q, want 访问令牌缺失或无效", body)
+			}
 		})
 	}
 }
@@ -335,6 +343,10 @@ func TestE2E_FetchFailure(t *testing.T) {
 
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "拉取失败") {
+		t.Errorf("body = %q, want 拉取失败", body)
 	}
 }
 
@@ -357,6 +369,10 @@ func TestE2E_BuildError(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Errorf("status = %d, want 400; body: %s", resp.StatusCode, body)
 	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "构建错误") {
+		t.Errorf("body = %q, want 构建错误", body)
+	}
 }
 
 // T-E2E-005b: Invalid subscription content returns 502
@@ -373,6 +389,10 @@ func TestE2E_InvalidSubscriptionContent(t *testing.T) {
 	if resp.StatusCode != http.StatusBadGateway {
 		body, _ := io.ReadAll(resp.Body)
 		t.Errorf("status = %d, want 502; body: %s", resp.StatusCode, body)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "拉取失败") {
+		t.Errorf("body = %q, want 拉取失败", body)
 	}
 }
 
@@ -412,5 +432,9 @@ func TestE2E_LocalTemplateReadError(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		body, _ := io.ReadAll(resp.Body)
 		t.Errorf("status = %d, want 500; body: %s", resp.StatusCode, body)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "内部错误" {
+		t.Errorf("body = %q, want %q", body, "内部错误")
 	}
 }

@@ -44,15 +44,17 @@ func Clash(p *model.Pipeline, baseTemplate []byte) ([]byte, error) {
 	if baseTemplate != nil {
 		if err := yaml.Unmarshal(baseTemplate, &root); err != nil {
 			return nil, &errtype.RenderError{
+				Code:    errtype.CodeRenderTemplateParseFailed,
 				Format:  "clash",
-				Message: "parsing base template: " + err.Error(),
+				Message: "解析底版模板失败：" + err.Error(),
 				Cause:   err,
 			}
 		}
 		if len(root.Content) == 0 || root.Content[0].Kind != yaml.MappingNode {
 			return nil, &errtype.RenderError{
+				Code:    errtype.CodeRenderTemplateInvalid,
 				Format:  "clash",
-				Message: "base template must be a YAML mapping document",
+				Message: "底版模板必须是 YAML 映射文档",
 			}
 		}
 	} else {
@@ -76,15 +78,17 @@ func Clash(p *model.Pipeline, baseTemplate []byte) ([]byte, error) {
 	enc.SetIndent(2)
 	if err := enc.Encode(&root); err != nil {
 		return nil, &errtype.RenderError{
+			Code:    errtype.CodeRenderYAMLEncodeFailed,
 			Format:  "clash",
-			Message: "encoding YAML: " + err.Error(),
+			Message: "编码 YAML 失败：" + err.Error(),
 			Cause:   err,
 		}
 	}
 	if err := enc.Close(); err != nil {
 		return nil, &errtype.RenderError{
+			Code:    errtype.CodeRenderYAMLFinalizeFailed,
 			Format:  "clash",
-			Message: "finalizing YAML encoder: " + err.Error(),
+			Message: "完成 YAML 编码失败：" + err.Error(),
 			Cause:   err,
 		}
 	}

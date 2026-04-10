@@ -34,6 +34,7 @@ var (
 const (
 	defaultListenAddr = ":8080"
 	listenEnvVar      = "SUBCONVERTER_LISTEN"
+	//nolint:gosec // This is an environment variable name, not an embedded credential.
 	accessTokenEnvVar = "SUBCONVERTER_TOKEN"
 )
 
