@@ -18,6 +18,10 @@
 # 用于 Surge 输出时自动生成 #!MANAGED-CONFIG 头，
 # 使 Surge 客户端能定期自动更新配置。
 #
+# 注意：访问 token 不写在这个 YAML 里，而是通过启动参数
+# `-access-token` 或环境变量 `SUBCONVERTER_TOKEN` 提供。
+# 生成的 managed URL 会自动继承当前请求里的 token 和最终文件名。
+#
 # 值为 scheme + host，不含路径。为空则 Surge 不输出此头。
 # 示例: "https://my-server.com" 或 "http://192.168.1.1:8080"
 
@@ -46,9 +50,11 @@ templates:
 sources:
 
   # ---------- 订阅源 ----------
-  # 每个订阅返回 base64 编码的 SS 节点列表。
-  # 支持多个订阅，节点按顺序合并，跨订阅重名自动追加后缀（②③...）。
-  # url 必填，必须为 http:// 或 https:// 开头。
+# 每个订阅返回 base64 编码的 SS 节点列表。
+# 支持多个订阅，节点按顺序合并，跨订阅重名自动追加后缀（②③...）。
+# url 必填，必须为 http:// 或 https:// 开头。
+# 这里的 token 是上游订阅服务自己的 token，和本服务 `/generate`
+# 的访问 token 是两回事。
 
   subscriptions:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"

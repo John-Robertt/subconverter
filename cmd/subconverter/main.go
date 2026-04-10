@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	subconverter -config <path> [-listen :8080] [-cache-ttl 5m] [-timeout 30s]
+//	subconverter -config <path> [-listen :8080] [-cache-ttl 5m] [-timeout 30s] [-access-token secret]
 //	subconverter -healthcheck [-listen :8080]
 package main
 
@@ -34,11 +34,13 @@ var (
 const (
 	defaultListenAddr = ":8080"
 	listenEnvVar      = "SUBCONVERTER_LISTEN"
+	accessTokenEnvVar = "SUBCONVERTER_TOKEN"
 )
 
 func main() {
 	configPath := flag.String("config", "", "path to YAML config file (required)")
 	listen := flag.String("listen", "", "listen address (overrides SUBCONVERTER_LISTEN)")
+	accessToken := flag.String("access-token", "", "access token for /generate (overrides SUBCONVERTER_TOKEN)")
 	cacheTTL := flag.Duration("cache-ttl", 5*time.Minute, "subscription and template cache TTL")
 	timeout := flag.Duration("timeout", 30*time.Second, "HTTP fetch timeout for subscriptions")
 	showVersion := flag.Bool("version", false, "print version information and exit")
@@ -51,6 +53,7 @@ func main() {
 	}
 
 	listenAddr := resolveListenAddress(*listen)
+	resolvedAccessToken := resolveAccessToken(*accessToken)
 
 	if *healthcheck {
 		os.Exit(runHealthcheck(listenAddr))
@@ -77,7 +80,7 @@ func main() {
 	}
 
 	// Start HTTP server.
-	srv := server.New(cfg, cachedFetcher)
+	srv := server.New(cfg, cachedFetcher, server.Options{AccessToken: resolvedAccessToken})
 	httpServer := &http.Server{
 		Addr:              listenAddr,
 		Handler:           srv.Handler(),
@@ -112,6 +115,13 @@ func resolveListenAddress(flagValue string) string {
 		return envValue
 	}
 	return defaultListenAddr
+}
+
+func resolveAccessToken(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return os.Getenv(accessTokenEnvVar)
 }
 
 func runHealthcheck(listen string) int {

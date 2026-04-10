@@ -59,6 +59,7 @@ func mustParseOrderedMapStrings(t *testing.T, yamlStr string) config.OrderedMap[
 }
 
 const subURL = "https://sub.example.com/api"
+const accessToken = "secret-token"
 
 // validConfig returns a minimal config that produces a valid Pipeline.
 func validConfig(t *testing.T) *config.Config {
@@ -91,7 +92,15 @@ func validFetcher() *fakeFetcher {
 // startTestServer creates and starts a test HTTP server.
 func startTestServer(t *testing.T, cfg *config.Config, f *fakeFetcher) *httptest.Server {
 	t.Helper()
-	srv := server.New(cfg, f)
+	srv := server.New(cfg, f, server.Options{})
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func startTestServerWithOptions(t *testing.T, cfg *config.Config, f *fakeFetcher, opts server.Options) *httptest.Server {
+	t.Helper()
+	srv := server.New(cfg, f, opts)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts
@@ -117,6 +126,9 @@ func TestE2E_GenerateClash(t *testing.T) {
 	ct := resp.Header.Get("Content-Type")
 	if ct != "text/yaml; charset=utf-8" {
 		t.Errorf("Content-Type = %q, want %q", ct, "text/yaml; charset=utf-8")
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="clash.yaml"; filename*=UTF-8''clash.yaml` {
+		t.Errorf("Content-Disposition = %q", cd)
 	}
 
 	body, _ := io.ReadAll(resp.Body)
@@ -169,6 +181,9 @@ func TestE2E_GenerateSurge(t *testing.T) {
 	if ct != "text/plain; charset=utf-8" {
 		t.Errorf("Content-Type = %q, want %q", ct, "text/plain; charset=utf-8")
 	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="surge.conf"; filename*=UTF-8''surge.conf` {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
 
 	body, _ := io.ReadAll(resp.Body)
 	content := string(body)
@@ -176,6 +191,50 @@ func TestE2E_GenerateSurge(t *testing.T) {
 		if !strings.Contains(content, want) {
 			t.Errorf("response body missing %q", want)
 		}
+	}
+	if !strings.Contains(content, "https://my-server.com/generate?format=surge&filename=surge.conf") {
+		t.Errorf("managed config header missing default filename: %s", content)
+	}
+}
+
+func TestE2E_GenerateWithCustomFilename(t *testing.T) {
+	ts := startTestServer(t, validConfig(t), validFetcher())
+
+	resp, err := http.Get(ts.URL + "/generate?format=clash&filename=my-profile")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, body)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="my-profile.yaml"; filename*=UTF-8''my-profile.yaml` {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+}
+
+func TestE2E_GenerateSurgeWithTokenAndCustomFilename(t *testing.T) {
+	ts := startTestServerWithOptions(t, validConfig(t), validFetcher(), server.Options{AccessToken: accessToken})
+
+	resp, err := http.Get(ts.URL + "/generate?format=surge&token=" + accessToken + "&filename=my-profile")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, body)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="my-profile.conf"; filename*=UTF-8''my-profile.conf` {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+	if !strings.Contains(content, "https://my-server.com/generate?format=surge&token=secret-token&filename=my-profile.conf") {
+		t.Errorf("managed config header missing token or filename: %s", content)
 	}
 }
 
@@ -201,6 +260,63 @@ func TestE2E_InvalidFormat(t *testing.T) {
 
 			if resp.StatusCode != http.StatusBadRequest {
 				t.Errorf("status = %d, want 400", resp.StatusCode)
+			}
+		})
+	}
+}
+
+func TestE2E_InvalidFilename(t *testing.T) {
+	ts := startTestServer(t, validConfig(t), validFetcher())
+
+	cases := []struct {
+		name string
+		url  string
+	}{
+		{"empty", ts.URL + "/generate?format=clash&filename="},
+		{"wrong extension", ts.URL + "/generate?format=surge&filename=profile.yaml"},
+		{"path separator", ts.URL + "/generate?format=clash&filename=../secret"},
+		{"unicode", ts.URL + "/generate?format=clash&filename=%E9%85%8D%E7%BD%AE"},
+		{"space", ts.URL + "/generate?format=clash&filename=my%20profile"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Get(tc.url)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusBadRequest {
+				body, _ := io.ReadAll(resp.Body)
+				t.Errorf("status = %d, want 400; body: %s", resp.StatusCode, body)
+			}
+		})
+	}
+}
+
+func TestE2E_TokenRequired(t *testing.T) {
+	ts := startTestServerWithOptions(t, validConfig(t), validFetcher(), server.Options{AccessToken: accessToken})
+
+	cases := []struct {
+		name string
+		url  string
+	}{
+		{"missing token", ts.URL + "/generate?format=clash"},
+		{"wrong token", ts.URL + "/generate?format=clash&token=wrong-token"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Get(tc.url)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusUnauthorized {
+				body, _ := io.ReadAll(resp.Body)
+				t.Errorf("status = %d, want 401; body: %s", resp.StatusCode, body)
 			}
 		})
 	}

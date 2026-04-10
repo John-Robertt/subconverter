@@ -28,6 +28,7 @@
 - 启动时加载一份 YAML 配置文件
 - 服务运行期间使用同一份内存配置处理所有请求
 - 客户端通过 HTTP 请求指定输出格式，不在请求中上传配置
+- 若服务端启用了访问 token，请求需附带 `token` 查询参数
 
 ```text
 config.yaml + subscriptions
@@ -35,8 +36,8 @@ config.yaml + subscriptions
         ▼
    subconverter
         │
-        ├─► /generate?format=clash
-        └─► /generate?format=surge
+        ├─► /generate?format=clash[&token=...][&filename=...]
+        └─► /generate?format=surge[&token=...][&filename=...]
 ```
 
 ---
@@ -172,6 +173,8 @@ cmd/subconverter
 | `@auto` 与 `@all` 互斥 | 同一 routing entry 中不能同时使用 | 语义不同，混用会产生歧义 |
 | 缓存范围 | 缓存订阅和模板的远程拉取结果 | 规则集内容不由服务端消费；模板与订阅共享 CachedFetcher |
 | `base_url` 用途 | 声明服务外部地址，用于 Surge Managed Profile | 用户显式声明，避免反向代理下自动推导不可靠 |
+| 访问 token 存放位置 | 运行时参数（flag/env），不进入 YAML | 访问控制属于服务部署语义，而非配置生成语义 |
+| 下载文件名 | 由请求参数 `filename` 决定；未传时按格式使用默认名；仅接受安全 ASCII 文件名 | 文件名是 HTTP 传输层行为，不属于配置模型本身 |
 | 通用设置来源 | 用户提供底版模板文件（`templates.clash` / `templates.surge`） | 通用设置因用户环境而异，不可硬编码 |
 | 资源加载模型 | 配置文件和模板均支持本地路径或 HTTP(S) URL | 统一 `LoadResource` 按前缀分发，复用已有 Fetcher |
 | 渲染器合并策略 | Clash 用 yaml.Node 树替换；Surge 用 section header 切分替换 | 保留底版全部用户自定义设置 |
@@ -185,6 +188,7 @@ cmd/subconverter
 - 节点名称匹配完全依赖用户正则，错误正则会导致分组为空或误分组
 - 服务组和节点组存在引用关系，需要显式做图校验
 - 链式展开可能造成节点数量快速增长，需要限制其只来源于订阅节点
+- 若部署时启用了 token，客户端必须稳定携带同一 token；否则 Surge 自动更新会失效
 
 边界约束：
 

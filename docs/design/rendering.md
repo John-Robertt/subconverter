@@ -56,7 +56,7 @@ rule-provider 命名规则（两阶段分配）：
 
 映射要求：
 
-- 若配置了 `base_url`，输出首行为 `#!MANAGED-CONFIG <base_url>/generate?format=surge interval=86400 strict=false`
+- 若配置了 `base_url`，输出首行为 `#!MANAGED-CONFIG <managed-url> interval=86400 strict=false`
 - 节点输出到代理定义段
 - 节点组和服务组输出到组定义段
 - 远程规则集在规则中直接引用 URL
@@ -95,18 +95,18 @@ rule-provider 命名规则（两阶段分配）：
 当用户配置了 `base_url` 时，Surge 渲染器在输出首行写入：
 
 ```
-#!MANAGED-CONFIG <base_url>/generate?format=surge interval=86400 strict=false
+#!MANAGED-CONFIG <managed-url> interval=86400 strict=false
 ```
 
 此行告知 Surge 客户端配置的更新源地址和检查间隔。
 
 参数说明：
 
-- URL：由 `base_url` + `/generate?format=surge` 拼接
+- URL：由 `base_url` + `/generate` 拼接，并继承当前请求的 `format=surge`、访问 `token`（若启用）和最终 `filename`；`filename` 已由 HTTP 层收紧为安全 ASCII 文件名
 - `interval`：更新检查最小间隔，默认 86400 秒（24 小时）
 - `strict`：是否强制过期更新，默认 false
 
-当 `base_url` 为空时不输出此行。Clash Meta 输出不受影响。
+未显式传入 `filename` 时，最终文件名默认使用 `surge.conf`；若请求带了自定义 `filename`，managed URL 中也使用该值。当 `base_url` 为空时不输出此行。Clash Meta 输出不受影响。
 
 ---
 

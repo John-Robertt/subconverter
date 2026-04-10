@@ -46,13 +46,13 @@ func TestSurge_RealBaseTemplate(t *testing.T) {
 	}
 
 	p := goldenPipeline()
-	out, err := Surge(p, "https://my-server.com", tpl)
+	out, err := Surge(p, "https://my-server.com/generate?format=surge", tpl)
 	if err != nil {
 		t.Fatalf("Surge() with real template: %v", err)
 	}
 	output := string(out)
 
-	// Managed header present (from baseURL).
+	// Managed header present (from managedURL).
 	if !strings.Contains(output, "#!MANAGED-CONFIG") {
 		t.Error("managed header should be present")
 	}

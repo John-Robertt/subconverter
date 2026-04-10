@@ -575,7 +575,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 工作项
 
-- 实现 `GET /generate?format=clash|surge`
+- 实现 `GET /generate?format=clash|surge[&token=...][&filename=...]`
 - 实现 `GET /healthz`
 - 接入启动参数
 - 串联配置加载、管道和渲染器
@@ -598,6 +598,8 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ `format=clash` 返回 YAML（T-E2E-001）
 - ✅ `format=surge` 返回 conf（T-E2E-002）
 - ✅ 非法 `format` 返回 `400`（T-E2E-003）
+- ✅ 服务端启用 token 时，缺少或错误 token 返回 `401`
+- ✅ 默认文件名为 `clash.yaml` / `surge.conf`，并允许通过安全 ASCII `filename` 覆盖
 - ✅ 订阅拉取失败返回 `502`（T-E2E-004）
 - ✅ 配置语义/图校验错误返回 `400`（T-E2E-005）
 - ✅ `healthz` 返回 `200`（T-E2E-006）
@@ -609,6 +611,8 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `T-E2E-001`：HTTP 生成 Clash 成功 → `TestE2E_GenerateClash`
 - `T-E2E-002`：HTTP 生成 Surge 成功 → `TestE2E_GenerateSurge`
 - `T-E2E-003`：非法 `format` 返回 `400` → `TestE2E_InvalidFormat`
+- `T-E2E-003a`：非法 `filename` 返回 `400` → `TestE2E_InvalidFilename`
+- `T-E2E-003b`：服务端 token 校验失败返回 `401` → `TestE2E_TokenRequired`
 - `T-E2E-004`：订阅拉取失败返回 `502` → `TestE2E_FetchFailure`
 - `T-E2E-005`：图校验失败返回 `400` → `TestE2E_BuildError`
 - `T-E2E-006`：`/healthz` 返回 `200` → `TestE2E_Healthz`
@@ -630,6 +634,8 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 优雅关闭 | `signal.NotifyContext` + `httpServer.Shutdown` + 10s 超时 | 标准模式，防止慢请求阻塞关闭 |
 | 路由注册 | Go 1.22+ method pattern `"GET /generate"` | 避免 handler 内手动检查 HTTP 方法 |
 | 服务端日志 | 错误路径 `log.Printf` | 单用户服务，错误可能未被客户端消费 |
+| 访问 token 位置 | 运行时 flag/env，不进 YAML | 访问控制属于部署语义，避免把敏感信息混入用户配置 |
+| 默认文件名 | Clash=`clash.yaml`，Surge=`surge.conf` | 保证浏览器下载与 Surge 托管 URL 都有稳定文件名 |
 
 ### 对应需求
 

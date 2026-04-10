@@ -49,6 +49,7 @@ docker run -d \
 ```bash
 curl "http://localhost:8080/generate?format=clash"
 curl "http://localhost:8080/generate?format=surge"
+curl "http://localhost:8080/generate?format=surge&filename=my-profile"
 curl "http://localhost:8080/healthz"
 ```
 
@@ -127,6 +128,7 @@ make build
 | `-listen`      | `:8080`    | HTTP 监听地址；未显式传入时可由 `SUBCONVERTER_LISTEN` 提供                                  |
 | `-cache-ttl`   | `5m`       | 订阅和模板缓存的 TTL                                                                        |
 | `-timeout`     | `30s`      | 拉取订阅的 HTTP 超时时间                                                                    |
+| `-access-token` | _空_      | `/generate` 访问 token；未显式传入时可由 `SUBCONVERTER_TOKEN` 提供                          |
 | `-healthcheck` |            | 按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 探活并退出 |
 | `-version`     |            | 打印版本信息并退出                                                                          |
 
@@ -136,10 +138,15 @@ make build
 
 生成代理配置文件。
 
-- **查询参数**：`format`（必填）— `clash` 或 `surge`
+- **查询参数**：`format`（必填）— `clash` 或 `surge`；`token`（当服务端配置 `-access-token` / `SUBCONVERTER_TOKEN` 时必填）；`filename`（可选，自定义下载文件名）
+- **默认文件名**：`clash.yaml`、`surge.conf`；未显式传入 `filename` 时也会作为下载文件名返回
+- **文件名约束**：`filename` 仅允许 ASCII 字母、数字、`.`、`-`、`_`；非法值直接返回 `400`
 - **成功**：返回生成的配置文本
+- **响应头**：返回 `Content-Disposition: attachment; ...`，浏览器和下载器会使用最终文件名
 - **SS plugin 支持**：Clash Meta 通用透传 SS plugin；Surge 仅支持可映射的 obfs 类 SS plugin，不支持的 plugin 会返回 `500`
-- **错误码**：`400` — 参数无效，或配置语义 / 图校验失败；`502` — 订阅拉取失败，或订阅内容无效（如 0 个有效节点）；`500` — 内部处理或渲染错误
+- **错误码**：`400` — 参数无效，或配置语义 / 图校验失败；`401` — 缺少 token 或 token 不匹配；`502` — 订阅拉取失败，或订阅内容无效（如 0 个有效节点）；`500` — 内部处理或渲染错误
+
+如果配置了 `base_url`，Surge 输出中的 `#!MANAGED-CONFIG` 会自动继承当前请求的 `token` 和最终 `filename`，保证客户端后续自动更新仍能访问同一 URL。
 
 ### `GET /healthz`
 

@@ -11,11 +11,17 @@ import (
 type Server struct {
 	cfg     *config.Config
 	fetcher fetch.Fetcher
+	opts    Options
+}
+
+// Options holds runtime-only server behavior toggles.
+type Options struct {
+	AccessToken string
 }
 
 // New creates a Server with the given configuration and fetcher.
-func New(cfg *config.Config, fetcher fetch.Fetcher) *Server {
-	return &Server{cfg: cfg, fetcher: fetcher}
+func New(cfg *config.Config, fetcher fetch.Fetcher, opts Options) *Server {
+	return &Server{cfg: cfg, fetcher: fetcher, opts: opts}
 }
 
 // Handler returns an http.Handler with all routes registered.

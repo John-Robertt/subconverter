@@ -17,6 +17,8 @@
 查询参数：
 
 - `format=clash|surge`
+- `token=<access-token>`（仅当服务端配置了访问 token 时必填）
+- `filename=<custom-name>`（可选；未传时默认 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`）
 
 成功响应：
 
@@ -27,6 +29,7 @@
 
 - Clash Meta：`Content-Type: text/yaml; charset=utf-8`
 - Surge：`Content-Type: text/plain; charset=utf-8`
+- 两种格式都会输出 `Content-Disposition: attachment; ...`，默认文件名分别为 `clash.yaml`、`surge.conf`
 
 ### `GET /healthz`
 
@@ -45,6 +48,7 @@
 | 状态码 | 场景 |
 |------|------|
 | `400` | 请求参数非法，或配置语义 / 图校验失败 |
+| `401` | 缺少 token，或 token 不匹配 |
 | `502` | 订阅拉取失败，或订阅内容不可用 |
 | `500` | 内部处理或渲染失败 |
 
@@ -61,11 +65,13 @@
 `/generate` 的典型处理顺序：
 
 1. 校验 `format`
-2. 读取内存中的配置对象
-3. 执行管道生成中间表示
-4. 根据 `format` 选择渲染器
-5. 若 `format=surge` 且配置了 `base_url`，生成固定 managed URL：`<base_url>/generate?format=surge`
-6. 返回配置文本
+2. 若服务端配置了访问 token，校验 `token`
+3. 校验并规范化 `filename`
+4. 读取内存中的配置对象
+5. 执行管道生成中间表示
+6. 根据 `format` 选择渲染器
+7. 若 `format=surge` 且配置了 `base_url`，生成 managed URL：`<base_url>/generate?format=surge[&token=...][&filename=...]`
+8. 返回配置文本
 
 ---
 
@@ -77,6 +83,7 @@
 - `-listen`：HTTP 监听地址（默认 `:8080`）
 - `-cache-ttl`：订阅、模板和远程配置文件的缓存 TTL（默认 `5m`）
 - `-timeout`：拉取订阅的 HTTP 超时时间（默认 `30s`）
+- `-access-token`：为 `/generate` 启用访问 token（默认空；空值表示不鉴权）
 - `-healthcheck`：按监听地址解析规则向本地 `/healthz` 发起探活请求并退出（退出码 0 = 健康，1 = 异常）
 - `-version`：打印版本信息并退出
 

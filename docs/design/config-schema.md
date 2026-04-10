@@ -235,12 +235,17 @@ base_url: "https://my-server.com"
 
 - 声明服务的外部可访问地址
 - 用于 Surge 输出时生成 `#!MANAGED-CONFIG` 头，使 Surge 客户端能自动更新配置
+- 生成的 managed URL 会继承当前请求里的 `filename`，以及服务端启用时的访问 `token`
 
 约束：
 
 - 可选字段
 - 值为 scheme + host（如 `https://my-server.com` 或 `http://192.168.1.1:8080`），不含路径
 - 为空时 Surge 输出不包含 `#!MANAGED-CONFIG` 头
+
+说明：
+
+- 访问 token 属于服务运行时参数，不属于 YAML 配置字段
 
 ---
 

@@ -28,6 +28,32 @@ func TestResolveListenAddress(t *testing.T) {
 	})
 }
 
+func TestResolveAccessToken(t *testing.T) {
+	t.Run("uses empty value when flag and env are empty", func(t *testing.T) {
+		t.Setenv(accessTokenEnvVar, "")
+
+		if got := resolveAccessToken(""); got != "" {
+			t.Fatalf("resolveAccessToken() = %q, want empty string", got)
+		}
+	})
+
+	t.Run("uses env when flag is empty", func(t *testing.T) {
+		t.Setenv(accessTokenEnvVar, "env-token")
+
+		if got := resolveAccessToken(""); got != "env-token" {
+			t.Fatalf("resolveAccessToken() = %q, want %q", got, "env-token")
+		}
+	})
+
+	t.Run("flag overrides env", func(t *testing.T) {
+		t.Setenv(accessTokenEnvVar, "env-token")
+
+		if got := resolveAccessToken("flag-token"); got != "flag-token" {
+			t.Fatalf("resolveAccessToken() = %q, want %q", got, "flag-token")
+		}
+	})
+}
+
 func TestHealthcheckURL(t *testing.T) {
 	tests := []struct {
 		name   string

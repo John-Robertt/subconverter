@@ -20,9 +20,9 @@ const (
 var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
 
 // Surge renders a Pipeline into Surge conf format.
-// baseURL is used for the #!MANAGED-CONFIG header (empty = omit header).
+// managedURL is used for the #!MANAGED-CONFIG header (empty = omit header).
 // If baseTemplate is non-nil, generated sections replace corresponding sections in the template.
-func Surge(p *model.Pipeline, baseURL string, baseTemplate []byte) ([]byte, error) {
+func Surge(p *model.Pipeline, managedURL string, baseTemplate []byte) ([]byte, error) {
 	proxySection, err := buildSurgeProxies(p.Proxies)
 	if err != nil {
 		return nil, err
@@ -33,9 +33,9 @@ func Surge(p *model.Pipeline, baseURL string, baseTemplate []byte) ([]byte, erro
 	var buf bytes.Buffer
 
 	// Managed config header.
-	if baseURL != "" {
-		fmt.Fprintf(&buf, "#!MANAGED-CONFIG %s/generate?format=surge interval=%d strict=false\n\n",
-			baseURL, surgeManagedInterval)
+	if managedURL != "" {
+		fmt.Fprintf(&buf, "#!MANAGED-CONFIG %s interval=%d strict=false\n\n",
+			managedURL, surgeManagedInterval)
 	}
 
 	if baseTemplate != nil {

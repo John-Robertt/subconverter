@@ -95,6 +95,8 @@ ghcr.io/john-robertt/subconverter
 
 镜像同时内置 `SUBCONVERTER_LISTEN=:8080`，因此默认仍监听 `:8080`。
 
+如需为 `/generate` 启用访问控制，可额外设置 `SUBCONVERTER_TOKEN`，客户端随后请求配置文件时需在 URL 上附带 `token` 查询参数。
+
 因此如果配置文件继续使用：
 
 ```yaml
@@ -143,6 +145,7 @@ healthcheck:
 ```yaml
 environment:
   SUBCONVERTER_LISTEN: :9090
+  SUBCONVERTER_TOKEN: your-token
 ports:
   - 9090:9090
 healthcheck:
@@ -156,6 +159,8 @@ healthcheck:
 ```
 
 若不显式传入 `-listen`，进程会按 `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址。
+
+若不显式传入 `-access-token`，进程会按 `SUBCONVERTER_TOKEN` > 空值解析访问 token；空值表示 `/generate` 不启用鉴权。
 
 建议生产环境使用：
 

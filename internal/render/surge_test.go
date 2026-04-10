@@ -13,7 +13,7 @@ import (
 
 func TestSurge_GoldenNoTemplate(t *testing.T) {
 	p := goldenPipeline()
-	got, err := Surge(p, "https://my-server.com", nil)
+	got, err := Surge(p, "https://my-server.com/generate?format=surge", nil)
 	if err != nil {
 		t.Fatalf("Surge() error: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestSurge_GoldenNoTemplate(t *testing.T) {
 
 func TestSurge_ManagedHeaderPresent(t *testing.T) {
 	p := goldenPipeline()
-	got, err := Surge(p, "https://my-server.com", nil)
+	got, err := Surge(p, "https://my-server.com/generate?format=surge", nil)
 	if err != nil {
 		t.Fatalf("Surge() error: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestSurge_ManagedHeaderPresent(t *testing.T) {
 	}
 }
 
-func TestSurge_NoManagedHeaderWhenBaseURLEmpty(t *testing.T) {
+func TestSurge_NoManagedHeaderWhenManagedURLEmpty(t *testing.T) {
 	p := goldenPipeline()
 	got, err := Surge(p, "", nil)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestSurge_NoManagedHeaderWhenBaseURLEmpty(t *testing.T) {
 	}
 	output := string(got)
 	if strings.Contains(output, "#!MANAGED-CONFIG") {
-		t.Error("output should not contain managed header when baseURL is empty")
+		t.Error("output should not contain managed header when managedURL is empty")
 	}
 }
 
@@ -211,7 +211,7 @@ OLD-GROUP = select, OLD
 FINAL,DIRECT
 `)
 	p := goldenPipeline()
-	got, err := Surge(p, "https://new-server.com", baseTemplate)
+	got, err := Surge(p, "https://new-server.com/generate?format=surge&token=test-token&filename=surge.conf", baseTemplate)
 	if err != nil {
 		t.Fatalf("Surge() error: %v", err)
 	}
@@ -222,7 +222,7 @@ FINAL,DIRECT
 	if count != 1 {
 		t.Errorf("expected exactly 1 managed header, got %d", count)
 	}
-	if !strings.Contains(output, "https://new-server.com/generate?format=surge") {
+	if !strings.Contains(output, "https://new-server.com/generate?format=surge&token=test-token&filename=surge.conf") {
 		t.Error("managed header should use new baseURL")
 	}
 	if strings.Contains(output, "old-server.com") {

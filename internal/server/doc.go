@@ -5,7 +5,7 @@
 //   - Request parameter validation and response rendering (handler.go)
 //   - Error-to-HTTP-status-code mapping (errors.go)
 //
-// Runtime parameters (-config, -listen, -cache-ttl, -timeout) are parsed
+// Runtime parameters (-config, -listen, -cache-ttl, -timeout, -access-token) are parsed
 // in cmd/subconverter/main.go and injected via [New].
 //
 // Design reference: docs/design/api.md
