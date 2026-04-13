@@ -434,7 +434,10 @@ func TestE2E_LocalTemplateReadError(t *testing.T) {
 		t.Errorf("status = %d, want 500; body: %s", resp.StatusCode, body)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if string(body) != "内部错误" {
-		t.Errorf("body = %q, want %q", body, "内部错误")
+	if !strings.Contains(string(body), "资源读取失败") {
+		t.Errorf("body = %q, want containing %q", body, "资源读取失败")
+	}
+	if !strings.Contains(string(body), cfg.Templates.Clash) {
+		t.Errorf("body = %q, want containing %q", body, cfg.Templates.Clash)
 	}
 }

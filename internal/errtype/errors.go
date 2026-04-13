@@ -18,6 +18,8 @@ const (
 	CodeFetchSubscriptionBase64Invalid Code = "fetch_subscription_base64_invalid"
 	CodeFetchSubscriptionEmpty         Code = "fetch_subscription_empty"
 
+	CodeResourceLocalReadFailed Code = "resource_local_read_failed"
+
 	CodeBuildFilterRegexInvalid Code = "build_filter_regex_invalid"
 	CodeBuildGroupRegexInvalid  Code = "build_group_regex_invalid"
 	CodeBuildRelayGroupMissing  Code = "build_relay_group_missing"
@@ -50,7 +52,7 @@ func (e *ConfigError) Error() string {
 	return fmt.Sprintf("config error: %s", e.Message)
 }
 
-// FetchError indicates a failure to retrieve a remote subscription.
+// FetchError indicates a failure to retrieve a remote HTTP(S) resource.
 // URL must be sanitized (query params redacted) before storing.
 type FetchError struct {
 	Code    Code
@@ -64,6 +66,25 @@ func (e *FetchError) Error() string {
 }
 
 func (e *FetchError) Unwrap() error {
+	return e.Cause
+}
+
+// ResourceError indicates a failure to read a local resource.
+type ResourceError struct {
+	Code     Code
+	Location string
+	Message  string
+	Cause    error
+}
+
+func (e *ResourceError) Error() string {
+	if e.Location != "" {
+		return fmt.Sprintf("resource error [%s]: %s", e.Location, e.Message)
+	}
+	return fmt.Sprintf("resource error: %s", e.Message)
+}
+
+func (e *ResourceError) Unwrap() error {
 	return e.Cause
 }
 

@@ -2,7 +2,8 @@ package fetch
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,18 @@ func LoadResource(ctx context.Context, location string, f Fetcher) ([]byte, erro
 
 	data, err := os.ReadFile(filepath.Clean(location))
 	if err != nil {
-		return nil, fmt.Errorf("reading local file %q: %w", location, err)
+		message := err.Error()
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			message = pathErr.Err.Error()
+		}
+
+		return nil, &errtype.ResourceError{
+			Code:     errtype.CodeResourceLocalReadFailed,
+			Location: location,
+			Message:  message,
+			Cause:    err,
+		}
 	}
 	return data, nil
 }

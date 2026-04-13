@@ -80,6 +80,24 @@ func TestValidate_InvalidCustomProxyPort(t *testing.T) {
 	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].port")
 }
 
+func TestValidate_CustomProxyPortExceeds65535(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.CustomProxies = []CustomProxy{{
+		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 70000,
+	}}
+	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].port")
+}
+
+func TestValidate_CustomProxyPortBoundary65535(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.CustomProxies = []CustomProxy{{
+		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 65535,
+	}}
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("port 65535 should be valid, got %v", err)
+	}
+}
+
 func TestValidate_DuplicateCustomProxyNames(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{

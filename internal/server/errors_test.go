@@ -41,3 +41,26 @@ func TestPresentError_MultipleFetchErrors(t *testing.T) {
 		t.Errorf("message should contain second error detail, got %q", msg)
 	}
 }
+
+func TestPresentError_ResourceError(t *testing.T) {
+	err := &errtype.ResourceError{
+		Code:     errtype.CodeResourceLocalReadFailed,
+		Location: "/tmp/base.yaml",
+		Message:  "no such file or directory",
+	}
+
+	code, msg := presentError(err)
+
+	if code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", code, http.StatusInternalServerError)
+	}
+	if !strings.Contains(msg, "资源读取失败") {
+		t.Fatalf("message should contain 资源读取失败, got %q", msg)
+	}
+	if !strings.Contains(msg, "/tmp/base.yaml") {
+		t.Errorf("message should mention location, got %q", msg)
+	}
+	if !strings.Contains(msg, "no such file or directory") {
+		t.Errorf("message should contain os error detail, got %q", msg)
+	}
+}

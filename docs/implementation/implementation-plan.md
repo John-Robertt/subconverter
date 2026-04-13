@@ -122,20 +122,20 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 - 最小 Go 工程骨架（`.gitignore`、`go.mod`、`Makefile`）
 - 空包结构（`config`、`model`、`fetch`、`pipeline`、`render`、`server`）
-- `internal/errtype`：四类错误类型（`ConfigError`、`FetchError`、`BuildError`、`RenderError`）及 9 个单元测试
+- `internal/errtype`：五类错误类型（`ConfigError`、`FetchError`、`ResourceError`、`BuildError`、`RenderError`）及对应单元测试
 - 示例配置草稿（`configs/base_config.yaml`）
 - 测试数据（`testdata/subscriptions/sample.txt`：base64 编码的 SS URI 样本）
 - 入口占位（`cmd/subconverter/main.go`）
 
 ### 验收项
 
-- ✅ `go test ./...` 可执行（errtype 9 个测试通过）
+- ✅ `go test ./...` 可执行（errtype 单元测试通过）
 - ✅ 目录结构符合 `project-structure.md`（补充 `internal/errtype`）
 - ✅ 示例配置覆盖核心路径：订阅、地区组、链式组、routing、rulesets、fallback
 
 ### 实施记录
 
-新增 `internal/errtype` 包作为对 `project-structure.md` 的补充。理由：四类错误横跨所有业务包，放在任何业务包中会造成循环依赖。`errtype` 与 `model` 一样是零依赖叶子包。
+新增 `internal/errtype` 包作为对 `project-structure.md` 的补充。理由：五类错误横跨所有业务包，放在任何业务包中会造成循环依赖。`errtype` 与 `model` 一样是零依赖叶子包。
 
 ### 对应需求
 
@@ -629,7 +629,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 管道编排位置 | `pipeline.Execute` | project-structure.md 将"管道编排"归于 pipeline 包 |
 | Server 依赖注入 | main.go 创建 Config + CachedFetcher，注入 Server | 保持 server 可测试，不依赖 flag 解析 |
 | 模板加载位置 | server handler 中（pipeline.Execute 之后、render 之前） | 模板是格式特定的，pipeline 应保持格式无关 |
-| 错误呈现 | `presentError`：`flattenErrors` 展平 `errors.Join` 链 → `collect*Errors` 按类型收集 → `format*Error` 格式化中文消息 → `joinMessages` 聚合多错误（ConfigError/BuildError→400, FetchError→502, RenderError→500） | 错误码（`errtype.Code`）机器可读，消息中文面向终端用户，未分类错误返回 `"内部错误"` 不暴露细节 |
+| 错误呈现 | `presentError`：`flattenErrors` 展平 `errors.Join` 链 → `collect*Errors` 按类型收集 → `format*Error` 格式化中文消息 → `joinMessages` 聚合多错误（ConfigError/BuildError→400, FetchError→502, ResourceError/RenderError→500） | 错误码（`errtype.Code`）机器可读，消息中文面向终端用户；未分类错误返回 `"内部错误"`，已分类错误尽量保留可排障信息 |
 | E2E 测试方式 | httptest.Server + fake fetcher，black-box 包 | 只测公共 API，与内部实现解耦 |
 | 优雅关闭 | `signal.NotifyContext` + `httpServer.Shutdown` + 10s 超时 | 标准模式，防止慢请求阻塞关闭 |
 | 路由注册 | Go 1.22+ method pattern `"GET /generate"` | 避免 handler 内手动检查 HTTP 方法 |

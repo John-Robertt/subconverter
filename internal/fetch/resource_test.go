@@ -38,13 +38,20 @@ func TestLoadResource_LocalFileExists(t *testing.T) {
 }
 
 func TestLoadResource_LocalFileNotFound(t *testing.T) {
-	_, err := LoadResource(context.Background(), "/nonexistent/path/file.txt", nil)
+	const location = "/nonexistent/path/file.txt"
+	_, err := LoadResource(context.Background(), location, nil)
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
-	var fetchErr *errtype.FetchError
-	if errors.As(err, &fetchErr) {
-		t.Errorf("local file error should not be *errtype.FetchError, got %T", err)
+	var resourceErr *errtype.ResourceError
+	if !errors.As(err, &resourceErr) {
+		t.Fatalf("expected *errtype.ResourceError, got %T", err)
+	}
+	if resourceErr.Code != errtype.CodeResourceLocalReadFailed {
+		t.Errorf("code = %q, want %q", resourceErr.Code, errtype.CodeResourceLocalReadFailed)
+	}
+	if resourceErr.Location != location {
+		t.Errorf("location = %q, want %q", resourceErr.Location, location)
 	}
 }
 

@@ -40,8 +40,8 @@ func Validate(cfg *Config) error {
 		if cp.Server == "" {
 			c.add(prefix+".server", "必填")
 		}
-		if cp.Port <= 0 {
-			c.add(prefix+".port", "必须为正整数")
+		if cp.Port <= 0 || cp.Port > 65535 {
+			c.add(prefix+".port", "必须为 1-65535 范围内的整数")
 		}
 
 		if cp.Name != "" {

@@ -41,7 +41,7 @@ subconverter/
 
 `internal/errtype`
 
-- 四类错误定义（ConfigError、FetchError、BuildError、RenderError）
+- 五类错误定义（ConfigError、FetchError、ResourceError、BuildError、RenderError）
 - 横跨所有业务包的共享错误类型
 
 `internal/model`

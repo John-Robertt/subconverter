@@ -40,6 +40,21 @@ func TestFetchErrorUnwrap(t *testing.T) {
 	}
 }
 
+func TestResourceError(t *testing.T) {
+	e := &ResourceError{Code: CodeResourceLocalReadFailed, Location: "/tmp/base.yaml", Message: "no such file or directory", Cause: io.ErrUnexpectedEOF}
+	want := `resource error [/tmp/base.yaml]: no such file or directory`
+	if got := e.Error(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestResourceErrorUnwrap(t *testing.T) {
+	e := &ResourceError{Code: CodeResourceLocalReadFailed, Location: "/tmp/base.yaml", Message: "permission denied", Cause: io.ErrUnexpectedEOF}
+	if !errors.Is(e, io.ErrUnexpectedEOF) {
+		t.Error("ResourceError should unwrap to its Cause")
+	}
+}
+
 func TestBuildError(t *testing.T) {
 	e := &BuildError{Code: CodeBuildValidationFailed, Phase: "group", Message: "链式节点组为空"}
 	want := `build error [group]: 链式节点组为空`
@@ -67,6 +82,13 @@ func TestFetchErrorNilCause(t *testing.T) {
 	e := &FetchError{Code: CodeFetchStatusInvalid, URL: "https://example.com/sub", Message: "上游返回 HTTP 404"}
 	if e.Unwrap() != nil {
 		t.Error("FetchError with nil Cause should unwrap to nil")
+	}
+}
+
+func TestResourceErrorNilCause(t *testing.T) {
+	e := &ResourceError{Code: CodeResourceLocalReadFailed, Location: "/tmp/base.yaml", Message: "no such file or directory"}
+	if e.Unwrap() != nil {
+		t.Error("ResourceError with nil Cause should unwrap to nil")
 	}
 }
 

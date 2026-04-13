@@ -44,6 +44,10 @@ func presentError(err error) (statusCode int, message string) {
 		return http.StatusBadGateway, joinMessages(fetchErrs, formatFetchError)
 	}
 
+	if resourceErrs := collectResourceErrors(err); len(resourceErrs) > 0 {
+		return http.StatusInternalServerError, joinMessages(resourceErrs, formatResourceError)
+	}
+
 	if buildErrs := collectBuildErrors(err); len(buildErrs) > 0 {
 		return http.StatusBadRequest, joinMessages(buildErrs, formatBuildError)
 	}
@@ -92,6 +96,18 @@ func collectBuildErrors(err error) []*errtype.BuildError {
 	return result
 }
 
+func collectResourceErrors(err error) []*errtype.ResourceError {
+	leaves := flattenErrors(err)
+	result := make([]*errtype.ResourceError, 0, len(leaves))
+	for _, leaf := range leaves {
+		var resourceErr *errtype.ResourceError
+		if errors.As(leaf, &resourceErr) {
+			result = append(result, resourceErr)
+		}
+	}
+	return result
+}
+
 // flattenErrors splits errors.Join chains into individual errors.
 // It only expands multi-Unwrap (errors.Join); single-Unwrap chains are left
 // intact so that typed errors like FetchError (which wrap a Cause) are
@@ -133,6 +149,13 @@ func formatFetchError(err *errtype.FetchError) string {
 		return "拉取失败 [" + err.URL + "]：" + err.Message
 	}
 	return "拉取失败：" + err.Message
+}
+
+func formatResourceError(err *errtype.ResourceError) string {
+	if err.Location != "" {
+		return "资源读取失败 [" + err.Location + "]：" + err.Message
+	}
+	return "资源读取失败：" + err.Message
 }
 
 func formatBuildError(err *errtype.BuildError) string {
