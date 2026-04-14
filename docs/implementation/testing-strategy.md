@@ -12,13 +12,16 @@
 
 - 保序映射解析
 - SS URI 解析
+- Snell Surge 行解析（valid / invalid / skip / duplicate key / 边界）
 - SIP002 明文 `userinfo`
 - SS plugin query 解析与转义处理
-- 订阅过滤
-- 地区节点组匹配
+- 拉取类节点过滤（订阅 + Snell）
+- 地区节点组匹配（订阅 + Snell）
 - `relay_through` 三种模式展开
+- Snell 节点可作为 `relay_through` 上游
 - `@all` 不包含链式节点
-- `@auto` 展开为节点组+@all 服务组+DIRECT，去重且排除自身
+- `@all` 包含全部原始节点（订阅 + Snell + 自定义）
+- `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT，去重且排除自身
 - `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
 - 同一 entry 内重复 `@auto` 会被静态校验拒绝
 - `@auto` 与 `@all` 在同一 entry 中互斥
@@ -27,6 +30,7 @@
 - 代理名、节点组名、服务组名共享命名空间无冲突
 - 服务组引用校验
 - 循环引用校验
+- Snell 单行失败错误携带脱敏 URL 与 1-based 物理行号
 
 ---
 
@@ -37,6 +41,8 @@
 - Clash Meta 输出快照
 - Surge 输出快照
 - 链式节点渲染字段
+- Clash 的 Snell 级联过滤与 fallback 清空路径
+- 清空路径中的 `(snell)` / `(chained)` 标记，以及共享掉落子图不误报 `(cycle)`
 - Clash Meta 的通用 SS plugin 透传
 - Surge 对不支持 SS plugin 的错误路径
 - ruleset 输出顺序

@@ -50,6 +50,24 @@ rule-provider 命名规则（两阶段分配）：
    - 生成的后缀名若与其他 URL 的自然名称碰撞，则继续递增直到不冲突
 3. provider 名称仅用于 Clash Meta 输出的内部引用，不影响语义
 
+### Snell 过滤
+
+Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。渲染器在入口做级联过滤：
+
+1. 剔除 `Type=="snell"` 的节点
+2. 剔除链式节点中 `Dialer` 属于已剔除集合的节点（失效上游）；诊断路径中这类叶子会标记为 `<name>(chained) ← [<upstream>]`
+3. 对每个节点组 / 服务组，剔除 Members 中属于已剔除集合的名字；若 Members 清空则该组自身被剔除。迭代到不动点
+4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
+5. 若 `fallback` 所指服务组在级联中被清空，返回 `RenderError`（`CodeRenderClashFallbackEmpty`），错误消息附带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY(chained) ← [HK-Snell(snell)]]]`），便于定位根因
+
+清空路径使用显式原因图：
+
+- 原始 Snell 根节点标记为 `NAME(snell)`
+- 受已删除上游牵连的链式节点标记为 `NAME(chained) ← [<upstream>]`
+- 共享掉落子图会正常展开；`(cycle)` 只表示真实递归保护命中，而不是普通共享引用
+
+过滤算法作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Surge 渲染使用未过滤的 Pipeline。
+
 ---
 
 ## Surge
@@ -71,6 +89,20 @@ rule-provider 命名规则（两阶段分配）：
 - `url=http://www.gstatic.com/generate_204`
 - `interval=300`
 - `tolerance=100`
+
+### Snell 渲染
+
+Snell 节点专属 Surge 输出（Clash 视图过滤掉 Snell 节点，见上文）。字段按固定顺序输出，以保证确定性（golden 文件可比对）：
+
+```
+<name> = snell, <server>, <port>, psk=..., version=..., obfs=..., obfs-host=..., obfs-uri=..., reuse=..., tfo=..., udp-relay=..., udp-port=..., shadow-tls-password=..., shadow-tls-sni=..., shadow-tls-version=...
+```
+
+约束：
+
+- `psk` 必填；其他字段可选，值为空时整条键值对不输出
+- `Params` 中的未知键**不输出**（渲染器只遍历固定列表）；这使解析器可以保持宽松地接纳新 Surge 选项，但渲染层的扩充需要显式更新 `surgeSnellKeyOrder`
+- 全字段支持 ShadowTLS（Surge 独有），Clash 不消费
 
 ---
 
@@ -120,6 +152,7 @@ rule-provider 命名规则（两阶段分配）：
 - 同样的规则排列顺序
 - 同样的 fallback 语义
 - 同样的 `@auto` 和 `@all` 展开结果
+- 对目标格式不支持的协议，按格式能力做显式处理（当前 Snell 为 Surge-only）
 
 ---
 

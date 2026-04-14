@@ -23,11 +23,22 @@ type Templates struct {
 // Sources declares subscription and custom proxy inputs.
 type Sources struct {
 	Subscriptions []Subscription `yaml:"subscriptions"`
+	Snell         []SnellSource  `yaml:"snell"`
 	CustomProxies []CustomProxy  `yaml:"custom_proxies"`
 }
 
 // Subscription is a single subscription source.
 type Subscription struct {
+	URL string `yaml:"url"`
+}
+
+// SnellSource is a single Snell node source. The URL is fetched as plain text;
+// each non-empty line is parsed as a Surge-style Snell proxy declaration
+// (e.g. `HK = snell, 1.2.3.4, 57891, psk=xxx, version=4`).
+//
+// Snell nodes are Surge-only: they appear in Surge output and are filtered
+// out of Clash output (Clash Meta does not support Snell v4/v5).
+type SnellSource struct {
 	URL string `yaml:"url"`
 }
 

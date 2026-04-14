@@ -1,4 +1,4 @@
-# 产品草案：SS 订阅 → Surge / Clash Meta 配置生成工具
+# 产品草案：SS / Snell 来源 → Surge / Clash Meta 配置生成工具
 
 ## 一、我们有什么（输入素材）
 
@@ -16,6 +16,31 @@ ss://...@jp.example.com:8388#JP-东京-01
 
 节点名称是后续分组的依据。
 
+### 1.1b Snell 来源（Surge 专属）
+
+Snell 服务（如 jinqians/snell.sh 搭建）不提供标准订阅 URL，只产出 Surge 风格的单行节点配置。为支持这类来源，系统提供独立的 `sources.snell` 段，接受纯文本 URL：
+
+```yaml
+sources:
+  snell:
+    - url: "https://my-server.com/snell-nodes.txt"
+```
+
+URL 返回内容（纯文本，按行）：
+
+```
+HK-Snell = snell, 1.2.3.4, 57891, psk=xxx, version=4, reuse=true, tfo=true
+JP-Snell = snell, 9.10.11.12, 443, psk=zzz, version=4, shadow-tls-password=sss, shadow-tls-sni=www.microsoft.com, shadow-tls-version=3
+```
+
+关键特性：
+
+- **只进入 Surge 输出**：Clash Meta 主线不支持 Snell v4/v5（jinqians 默认版本），Clash 渲染会自动过滤 Snell 节点并级联清理空组
+- **全字段支持**：包括 ShadowTLS（Surge 独有）、reuse、tfo、obfs、udp-relay 等
+- 节点参与与 SS 订阅共享的去重池、`filters.exclude` 过滤、区域组 regex 匹配
+- 可作为 `relay_through` 的链式上游
+- **失败可定位**：单行解析失败会报整源错误，消息附带脱敏后的来源 URL 和 1-based 物理行号；原始解析根因保留在错误链中
+
 ### 1.2 自定义代理节点
 
 不来自订阅、手动定义的节点（如机房专线、ISP 代理）：
@@ -32,8 +57,8 @@ ss://...@jp.example.com:8388#JP-东京-01
 自定义代理无法直连，需声明"通过哪些节点中转"。三种筛选中转节点的方式：
 
 - **group** — 引用已定义的节点组（如 `🇭🇰 Hong Kong`）
-- **select** — 用正则从订阅节点中直接筛选（如 `(港|HK)`）
-- **all** — 使用全部订阅节点
+- **select** — 用正则从拉取类节点（订阅 + Snell）中直接筛选（如 `(港|HK)`）
+- **all** — 使用全部拉取类节点
 
 工具自动将筛选到的每个节点展开为链式路径：
 
@@ -161,7 +186,7 @@ HK-03 → HK-ISP
 - Clash Meta 配置文件（.yaml）
 - Surge 配置文件（.conf）
 
-两者的面板结构、路由行为完全一致，只是语法不同。输出格式不在配置文件中指定，由请求参数决定。
+两者的面板结构、路由行为在目标格式都支持的协议范围内保持一致，只是语法不同。Snell 是已知例外：只进入 Surge 输出，Clash 会在渲染入口做级联过滤。输出格式不在配置文件中指定，由请求参数决定。
 
 请求参数语义：
 
@@ -186,6 +211,8 @@ base_url: "https://my-server.com"
 sources:
   subscriptions:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
+  snell:
+    - url: "https://my-server.com/snell-nodes.txt"
   custom_proxies:
     - name: HK-ISP
       type: socks5
@@ -194,7 +221,7 @@ sources:
       username: tXJ695acaa15
       password: 4jtE3Mq7d0zcoO
       relay_through: # 经由中转，自动生成 🔗 HK-ISP 链式节点组
-        type: group # group — 引用节点组 | select — 正则筛选 | all — 全部节点
+        type: group # group — 引用节点组 | select — 正则筛选拉取类节点 | all — 全部拉取类节点
         name: 🇭🇰 Hong Kong # group 时填组名，select 时改为 match: "(港|HK)"
         strategy: select # 链式组策略，必须显式指定 select/url-test
 
@@ -218,7 +245,7 @@ groups:
   # 🔗 HK-ISP 由 relay_through 自动生成，无需定义
 
 # 服务组：key = 组名，value = 有序出口列表（第一个是默认推荐）
-# 可引用：节点组名、其他服务组名、🔗 链式组名、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + 自定义代理，不含链式节点）、@auto（自动补充剩余成员）
+# 可引用：节点组名、其他服务组名、🔗 链式组名、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + Snell 节点 + 自定义代理，不含链式节点）、@auto（自动补充剩余成员）
 # @auto 展开为：全部节点组（声明序）→ 包含 @all 的服务组（声明序）→ DIRECT（去重、排除自身）
 # REJECT 不在 @auto 中；如需使用，必须显式写在成员列表里
 # 同一 entry 中 @auto 最多出现一次；@auto 与 @all 不能在同一 entry 中同时使用
@@ -273,7 +300,7 @@ fallback: 🐟 FINAL # 未匹配任何规则的流量走这里（Clash 生成 MA
 ```
 配置段落                         →    客户端面板
 ────────                             ────────
-sources                         →    节点池（订阅节点 + 自定义节点 + 链式节点）
+sources                         →    节点池（订阅节点 + Snell 节点 + 自定义节点 + 链式节点）
 groups                          →    节点组层：🇭🇰 Hong Kong, 🔗 HK-ISP, ...
 routing                         →    服务组层：📺 Netflix, 📲 Telegram, ...
 rulesets + rules + fallback     →    自动路由（用户无感）
@@ -292,7 +319,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 代理链             | 支持，作为 source 上的可选声明            | 不常用但重要                     |
 | 链式节点组         | 不计入 @all                               | 防止节点膨胀                     |
 | 链式节点组使用方式 | 与地区组完全一致，可被服务组引用          | 无特殊限制                       |
-| 路由自动补充       | `@auto` 展开为节点组+@all 服务组+DIRECT | 消除 routing 冗余，链式组自动可用 |
+| 路由自动补充       | `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT | 消除 routing 冗余，链式组自动可用 |
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
 | Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG` 并继承请求中的 `token` / `filename` | 用户显式控制，无需依赖反向代理头 |

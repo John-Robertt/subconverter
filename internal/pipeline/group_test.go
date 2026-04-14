@@ -602,3 +602,66 @@ func TestGroup_ProxiesMergeOrder(t *testing.T) {
 		t.Errorf("proxy[2].Kind = %q, want chained", result.Proxies[2].Kind)
 	}
 }
+
+// T-GRP-SNELL-001: Snell nodes participate in region group regex matching
+// alongside subscription nodes. Guards against a future change that narrows
+// isFetchedKind/fetchedProxies back to KindSubscription only.
+func TestGroup_SnellParticipatesInRegionMatch(t *testing.T) {
+	proxies := []model.Proxy{
+		makeSubProxy("HK-01"),
+		{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
+		{Name: "SG-Snell", Type: "snell", Server: "5.6.7.8", Port: 8989, Params: map[string]string{"psk": "y", "version": "4"}, Kind: model.KindSnell},
+		makeCustomProxyModel("MY-PROXY"),
+	}
+
+	cfg := &config.Config{
+		Groups: mustGroupsMap(t, `
+"HK": { match: "(HK)", strategy: select }
+"SG": { match: "(SG)", strategy: select }
+`),
+	}
+
+	result, err := Group(proxies, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// HK group should contain HK-01 (sub) and HK-Snell (snell).
+	hk := result.NodeGroups[0]
+	if hk.Name != "HK" {
+		t.Fatalf("group[0].Name = %q, want HK", hk.Name)
+	}
+	gotHK := map[string]bool{}
+	for _, m := range hk.Members {
+		gotHK[m] = true
+	}
+	if !gotHK["HK-01"] || !gotHK["HK-Snell"] {
+		t.Errorf("HK members = %v, want both HK-01 and HK-Snell", hk.Members)
+	}
+
+	// SG group should contain SG-Snell only.
+	sg := result.NodeGroups[1]
+	if len(sg.Members) != 1 || sg.Members[0] != "SG-Snell" {
+		t.Errorf("SG members = %v, want [SG-Snell]", sg.Members)
+	}
+
+	// Custom proxy must not appear in any region group.
+	for _, g := range result.NodeGroups {
+		for _, m := range g.Members {
+			if m == "MY-PROXY" {
+				t.Errorf("custom proxy MY-PROXY leaked into region group %q", g.Name)
+			}
+		}
+	}
+
+	// @all expansion includes snell nodes.
+	gotAll := map[string]bool{}
+	for _, n := range result.AllProxies {
+		gotAll[n] = true
+	}
+	for _, want := range []string{"HK-01", "HK-Snell", "SG-Snell", "MY-PROXY"} {
+		if !gotAll[want] {
+			t.Errorf("AllProxies missing %q (got %v)", want, result.AllProxies)
+		}
+	}
+}

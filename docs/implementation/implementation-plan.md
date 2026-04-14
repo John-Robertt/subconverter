@@ -42,7 +42,7 @@
 | 编号 | 需求 |
 |------|------|
 | `REQ-01` | 支持单用户、单配置文件运行模式 |
-| `REQ-02` | 支持多个 SS 订阅源 |
+| `REQ-02` | 支持多个 SS 订阅源与 Snell 来源 |
 | `REQ-03` | 支持自定义代理节点 |
 | `REQ-04` | 支持链式节点与链式组生成 |
 | `REQ-05` | 链式组属于节点组，且策略显式声明 |
@@ -53,7 +53,7 @@
 | `REQ-10` | 同一中间表示输出 Clash Meta 与 Surge |
 | `REQ-11` | 提供 `/generate` 与 `/healthz` |
 | `REQ-12` | 配置、引用和循环依赖等错误可校验和报告 |
-| `REQ-13` | `@auto` 自动补充 routing 成员（节点组+@all 服务组+DIRECT） |
+| `REQ-13` | `@auto` 自动补充 routing 成员（节点组+包含 `@all` 的服务组+DIRECT） |
 
 ### 里程碑编号
 
@@ -239,14 +239,16 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 目标
 
-建立稳定的原始节点输入能力，确保系统能正确获取并清洗订阅节点。
+建立稳定的原始节点输入能力，确保系统能正确获取并清洗订阅与 Snell 原始节点。
 
 ### 工作项
 
 - 实现订阅抓取器
 - 实现 TTL 缓存
 - 实现 SS URI 解析器
+- 实现 Snell Surge 行解析器
 - 实现多订阅顺序拉取（顺序保证去重后缀确定性）
+- 实现 Snell 来源逐行扫描、整源报错与定位信息包装
 - 将自定义代理转换为原始节点
 - 实现过滤逻辑
 
@@ -257,8 +259,9 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
   - `cache.go`：`CachedFetcher`（TTL 缓存装饰器，实现 `Fetcher` 接口，可注入时钟）
 - `internal/pipeline`：
   - `ssuri.go`：SIP002 风格 SS URI 解析器，支持 base64/base64url 与 plain userinfo，并保留 plugin 结构
-  - `source.go`：Source 阶段编排——拉取→解码→解析→跨订阅去重→自定义代理转换→名称冲突检查
-  - `filter.go`：Filter 阶段——`exclude` 正则仅作用于 `KindSubscription` 节点
+  - `snell_line.go`：Surge 风格 Snell 单行解析器，支持注释/空行跳过与严格错误
+  - `source.go`：Source 阶段编排——订阅拉取/解码 + Snell 来源逐行扫描→跨来源去重→自定义代理转换→名称冲突检查
+  - `filter.go`：Filter 阶段——`exclude` 正则作用于拉取类节点（`KindSubscription` + `KindSnell`）
 - `testdata/subscriptions/sample_sub2.txt`：第二份订阅 fixture（含重名 HK-01，用于去重测试）
 - 外部依赖：无新增
 
@@ -269,21 +272,32 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ 支持合法 SS URI 解析（padded/unpadded base64、URL 编码中文 fragment、password 含冒号）
 - ✅ 当前实现进一步支持 SIP002 风格 plain userinfo、query 参数与通用 plugin 解析
 - ✅ 非法 SS URI 可识别并返回 `*errtype.BuildError{Phase: "source"}`（含端口范围 1-65535 校验）
+- ✅ 支持合法 Snell Surge 行解析（含空白变体、ShadowTLS、未知键保留）
+- ✅ Snell 来源按原始文本逐行扫描；单行失败整源报错，消息携带脱敏 URL 与 1-based 物理行号，内层解析错误保留在 `BuildError.Cause`
 - ✅ 多订阅结果可合并，跨订阅重名自动追加 ②③ 后缀，且二轮去重解决生成名与原始名碰撞
-- ✅ `exclude` 仅影响订阅节点
+- ✅ `exclude` 影响全部拉取类节点（订阅 + Snell）
 - ✅ 自定义代理不受过滤影响（即使名称匹配 exclude 正则）
 - ✅ 缓存命中与失效行为符合预期（可注入时钟验证）
-- ✅ 自定义代理与订阅节点重名时返回错误
+- ✅ 自定义代理与拉取类节点（订阅 / Snell）重名时返回错误，并指明冲突源 kind
 - ✅ 混合有效/无效 URI 时跳过无效行，保留有效节点
 - ✅ 空订阅（0 个有效节点）返回错误
+- ✅ 空 Snell 来源（0 个有效节点）返回错误
 - ✅ `go test ./...` 全部通过
 
 ### 对应测试
 
 - `T-SRC-001`：合法 SS URI 解析 → `TestParseSSURI_Valid`（当前已覆盖 plain userinfo、query、plugin 与转义场景）
 - `T-SRC-002`：非法 SS URI 报错 → `TestParseSSURI_Invalid`（当前已覆盖 query 编码与 plugin 转义错误）
+- `T-SNELL-001`：合法 Snell Surge 行解析 → `TestParseSnellSurgeLine_Valid`
+- `T-SNELL-002`：Snell 注释/空行跳过 → `TestParseSnellSurgeLine_Skip`
+- `T-SNELL-003`：非法 Snell 行报错 → `TestParseSnellSurgeLine_Invalid`
+- `T-SNELL-004`：Snell 重复键 last-wins → `TestParseSnellSurgeLine_DuplicateKey`
 - `T-SRC-003`：多订阅合并 → `TestSource_MultiSubscriptionMerge`
+- `T-SRC-SNELL-001`：Snell 来源转换 → `TestSource_SnellSource`
+- `T-SRC-SNELL-003`：Snell 单行失败路径 → `TestSource_SnellSource_MalformedLineFailsFast`
+- `T-SRC-SNELL-004`：空 Snell 来源 → `TestSource_SnellSource_EmptyReported`
 - `T-FLT-001`：`exclude` 过滤订阅节点 → `TestFilter_ExcludeSubscriptionNodes`
+- `T-FLT-SNELL`：`exclude` 过滤 Snell 节点 → `TestFilter_SnellNodesFiltered`
 - `T-FLT-002`：自定义代理不参与过滤 → `TestFilter_CustomProxiesNotFiltered`
 - `T-SRC-004`：缓存 TTL 命中与失效 → `TestCachedFetcher_TTLHitAndMiss`
 - `T-SRC-005`：去重后缀碰撞解决 → `TestSource_DedupSuffixCollision`
@@ -356,18 +370,20 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 验收项
 
-- ✅ 地区组能按正则匹配节点（仅订阅节点参与匹配）
+- ✅ 地区组能按正则匹配节点（全部拉取类节点参与匹配：订阅 + Snell）
 - ✅ 链式展开支持 `group`、`select`、`all` 三种模式
 - ✅ 链式组策略来自 `relay_through.strategy`
 - ✅ 链式组出现在节点组层（`Scope: ScopeNode`）
 - ✅ 链式组命名为 `🔗 <custom_proxy.name>`（config-schema.md 约定）
 - ✅ 链式节点属性（Type/Server/Port/Params/Dialer）正确传递
+- ✅ Snell 节点可作为 `relay_through` 的有效上游
 - ✅ `@all` 不包含链式节点
+- ✅ `@all` 包含全部原始节点（订阅 + Snell + 自定义）
 - ✅ 服务组能引用节点组、服务组、`DIRECT`、`REJECT`
 - ✅ `@all` 在服务组 Members 中正确展开
 - ✅ ruleset 与 fallback 能绑定到目标服务组
 - ✅ 内联规则 Policy 从最后逗号后提取
-- ✅ `@auto` 展开为节点组+@all 服务组+DIRECT（声明序）
+- ✅ `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT（声明序）
 - ✅ `@auto` 自动去重，组不包含自身
 - ✅ `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
 - ✅ 同一 entry 中重复 `@auto` 会被静态校验拒绝
@@ -388,6 +404,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `T-GRP-008`：多个链式组 → `TestGroup_MultipleChainedGroups`
 - `T-GRP-009`：链式节点属性 → `TestGroup_ChainedNodeProperties`
 - `T-GRP-010`：合并顺序 → `TestGroup_ProxiesMergeOrder`
+- `T-GRP-SNELL-001`：Snell 参与地区组匹配 → `TestGroup_SnellParticipatesInRegionMatch`
 - `T-RTE-001`：服务组声明序 → `TestRoute_ServiceGroups`
 - `T-RTE-002`：`@all` 展开 → `TestRoute_AllExpansion`
 - `T-RTE-003`：ruleset 映射 → `TestRoute_Rulesets`
@@ -400,7 +417,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - `T-RTE-010`：@auto 首选+补充 → `TestRoute_AutoFillWithPreferred`
 - `T-RTE-011`：@auto 排除自身 → `TestRoute_AutoFillExcludesSelf`
 - `T-RTE-012`：@auto 含链式组 → `TestRoute_AutoFillIncludesChainedGroups`
-- `T-RTE-013`：@auto 含@all 服务组 → `TestRoute_AutoFillIncludesAllRouteGroups`
+- `T-RTE-013`：@auto 含包含 `@all` 的服务组 → `TestRoute_AutoFillIncludesAllRouteGroups`
 - `T-RTE-014`：@auto 展开顺序 → `TestRoute_AutoFillOrder`
 - `T-RTE-015`：无@auto 向后兼容 → `TestRoute_NoAutoFill`
 - `T-CFG-006`：同一 entry 中重复 @auto 报错 → `TestValidate_RoutingAutoRepeatedRejected`
@@ -415,15 +432,16 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 |------|------|------|
 | 链式组命名 | `🔗 ` + custom proxy name（系统前缀） | config-schema.md 明确约定 |
 | 链式节点命名 | `{upstream}→{custom}`（含 `→` 字符） | 天然与普通节点名不冲突 |
-| 地区组匹配范围 | 仅 KindSubscription 节点 | 自定义代理由用户显式管理 |
+| 地区组匹配范围 | 全部拉取类节点（KindSubscription + KindSnell） | 自定义代理由用户显式管理，Snell 节点与订阅节点共享地区语义 |
 | Params 隔离 | 每个链式节点独立 `make(map[string]string)` | 防止共享篡改 |
 | 空组处理 | Group/Route 阶段不报错 | 留给 M4 ValidateGraph |
 | @all 计算时机 | 在链式节点生成前，从原始 proxies 收集 | 天然排除链式节点 |
+| 链式上游池 | 仅拉取类节点（KindSubscription + KindSnell） | 自定义代理不能再作为上游，避免链式派生继续扩散 |
 | 服务组策略 | 固定 `"select"` | 设计约定 |
 | Rule Policy 提取 | `strings.LastIndex(raw, ",")` | 透传方案，只提取 Policy 用于引用校验 |
 | 结果类型 | GroupResult / RouteResult 独立结构体 | 便于测试和后续 Pipeline 组装 |
 | @auto 展开位置 | Route 阶段（`expandAutoFill`），在 `@all` 展开之前 | Route 阶段有 GroupResult（节点组列表），是唯一正确的展开点 |
-| @auto 补充池顺序 | 节点组（声明序）→ @all 服务组（声明序）→ DIRECT | `REJECT` 需由用户显式决定是否加入 |
+| @auto 补充池顺序 | 节点组（声明序）→ 包含 `@all` 的服务组（声明序）→ DIRECT | `REJECT` 需由用户显式决定是否加入 |
 | REJECT 处理 | 不参与 @auto 自动补充，位置由用户显式控制 | 避免把拒绝策略隐式塞进所有服务组 |
 | @auto 次数限制 | 同一 entry 最多一次，由 config.Validate 拦截 | 多次出现没有额外语义，只会增加歧义 |
 | @auto 与 @all 互斥 | 同一 entry 静态校验拦截 | 两者语义不同（组级 vs 节点级），混用无合理场景 |
@@ -734,7 +752,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 正式编码前应优先验证这些高风险问题：
 
 - SS 链接样本是否存在不兼容格式
-- `relay_through.select` 是否只作用于订阅节点
+- `relay_through.select` / `all` 已确认作用于全部拉取类节点（订阅 + Snell）
 - 节点名和组名冲突时的错误策略
 - Clash Meta 与 Surge 的链式字段映射是否稳定
 - ruleset 在两种客户端中的引用是否需要额外命名规范

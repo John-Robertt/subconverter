@@ -34,7 +34,17 @@ type providerEntry struct {
 // Clash renders a Pipeline into Clash Meta YAML.
 // If baseTemplate is non-nil, generated sections are injected into the template;
 // otherwise only generated sections are output.
+//
+// Snell nodes are filtered out of the Clash view (see filterForClash): they
+// only appear in Surge output because Clash Meta mainline does not support
+// Snell v4/v5. Groups, rulesets, and rules that reference only filtered
+// nodes are cascaded out automatically.
 func Clash(p *model.Pipeline, baseTemplate []byte) ([]byte, error) {
+	p, err := filterForClash(p)
+	if err != nil {
+		return nil, err
+	}
+
 	generated, providers, err := buildClashSections(p)
 	if err != nil {
 		return nil, err

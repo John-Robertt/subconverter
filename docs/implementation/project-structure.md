@@ -42,7 +42,7 @@ subconverter/
 `internal/errtype`
 
 - 五类错误定义（ConfigError、FetchError、ResourceError、BuildError、RenderError）
-- 横跨所有业务包的共享错误类型
+- 横跨所有业务包的共享错误类型；`BuildError` / `RenderError` 等可通过 `Cause` 保留内层根因链
 
 `internal/model`
 
@@ -50,19 +50,19 @@ subconverter/
 
 `internal/fetch`
 
-- 订阅拉取
+- 远程来源拉取
 - TTL 缓存
 - 统一资源加载（`LoadResource`：按 URL 前缀分发本地/远程）
 
 `internal/pipeline`
 
-- 各阶段转换
+- SS / Snell 来源解析、各阶段转换
 - 图级校验
 - 管道编排
 
 `internal/render`
 
-- Clash Meta 渲染器（yaml.Node API + 底版模板合并）
+- Clash Meta 渲染器（yaml.Node API + 底版模板合并 + Snell 级联过滤）
 - Surge 渲染器（INI section 切分替换 + 底版模板合并）
 
 `internal/server`
@@ -84,6 +84,7 @@ cmd/subconverter
 server
   -> pipeline
   -> render
+  -> errtype
 
 pipeline
   -> config
@@ -93,6 +94,10 @@ pipeline
 
 render
   -> model
+  -> errtype
+
+fetch
+  -> errtype
 
 config
   -> errtype

@@ -2,7 +2,7 @@
 
 ## 概述
 
-本系统是一个使用 Go 实现的单用户 HTTP 服务。它读取一份用户 YAML 配置，拉取 SS 订阅源，结合自定义代理、节点分组、服务路由和远程规则集，生成 Clash Meta 或 Surge 配置文件。
+本系统是一个使用 Go 实现的单用户 HTTP 服务。它读取一份用户 YAML 配置，拉取 SS 订阅源和 Snell 来源，结合自定义代理、节点分组、服务路由和远程规则集，生成 Clash Meta 或 Surge 配置文件。
 
 系统目标：
 
@@ -31,7 +31,7 @@
 - 若服务端启用了访问 token，请求需附带 `token` 查询参数
 
 ```text
-config.yaml + subscriptions
+config.yaml + remote sources
         │
         ▼
    subconverter
@@ -46,7 +46,7 @@ config.yaml + subscriptions
 
 系统围绕三类对象组织：
 
-- 节点：订阅节点、自定义节点、链式节点
+- 节点：订阅节点、Snell 节点（仅 Surge 输出）、自定义节点、链式节点
 - 组：节点组、服务组
 - 路由规则：远程规则集、内联规则、fallback
 
@@ -79,8 +79,8 @@ LoadConfig
 
 - `LoadConfig`：读取并解析用户 YAML
 - `ValidateConfig`：校验字段合法性和配置结构完整性
-- `Source`：拉取订阅并解析原始节点
-- `Filter`：对订阅节点执行过滤
+- `Source`：拉取远程来源并解析原始节点
+- `Filter`：对拉取类节点执行过滤
 - `Group`：构建地区组和链式组，产出节点组层
 - `Route`：构建服务组、规则集与 fallback
 - `ValidateGraph`：检查引用关系、循环依赖和展开结果
@@ -135,7 +135,7 @@ cmd/subconverter
     ├─► rules        ──► 内联规则
     └─► fallback     ──► 兜底出口
 
-订阅节点 + 自定义节点
+订阅节点 + Snell 节点 + 自定义节点
     │
     ▼
 统一中间表示
@@ -148,7 +148,8 @@ cmd/subconverter
 
 - `groups`、`routing`、`rulesets` 都要保留书写顺序
 - `@all` 只展开原始节点，不包含链式节点
-- `@auto` 展开为自动补充池（节点组 → @all 服务组 → DIRECT），自动去重且排除自身
+- 原始节点 = 订阅节点 + Snell 节点 + 自定义节点
+- `@auto` 展开为自动补充池（节点组 → 包含 `@all` 的服务组 → DIRECT），自动去重且排除自身
 - `REJECT` 不在 `@auto` 补充池中；如需使用，必须显式声明
 - 链式组由自定义代理派生，但在节点组层中与地区组平级
 
@@ -167,7 +168,7 @@ cmd/subconverter
 | 链式组建模 | 属于节点组，由 `custom_proxies[].relay_through` 派生 | 与用户心智一致，配置归属清晰 |
 | 链式组策略声明 | 写在 `relay_through.strategy` | 派生关系就近声明，避免 `groups` 出现异类结构 |
 | `@all` 范围 | 仅原始节点，不含链式节点 | 控制节点膨胀 |
-| `@auto` 语义 | 自动补充节点组 + @all 服务组 + DIRECT，去重、排除自身 | 消除 routing 冗余，链式组自动可用 |
+| `@auto` 语义 | 自动补充节点组 + 包含 `@all` 的服务组 + DIRECT，去重、排除自身 | 消除 routing 冗余，链式组自动可用 |
 | `REJECT` 声明方式 | 不在 `@auto` 中，必须由用户显式声明 | `REJECT` 是策略选择，不应被隐式补入 |
 | `@auto` 次数限制 | 同一 routing entry 中最多出现一次 | 避免多次替换带来的歧义 |
 | `@auto` 与 `@all` 互斥 | 同一 routing entry 中不能同时使用 | 语义不同，混用会产生歧义 |
@@ -187,7 +188,7 @@ cmd/subconverter
 
 - 节点名称匹配完全依赖用户正则，错误正则会导致分组为空或误分组
 - 服务组和节点组存在引用关系，需要显式做图校验
-- 链式展开可能造成节点数量快速增长，需要限制其只来源于订阅节点
+- 链式展开可能造成节点数量快速增长，需要限制其只来源于拉取类节点（订阅节点 + Snell 节点）
 - 若部署时启用了 token，客户端必须稳定携带同一 token；否则 Surge 自动更新会失效
 
 边界约束：

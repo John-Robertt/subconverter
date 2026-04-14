@@ -40,6 +40,26 @@ func TestValidate_InvalidSubscriptionURL(t *testing.T) {
 	assertFieldError(t, Validate(&cfg), "sources.subscriptions[0].url")
 }
 
+func TestValidate_MissingSnellURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.Snell = []SnellSource{{URL: ""}}
+	assertFieldError(t, Validate(&cfg), "sources.snell[0].url")
+}
+
+func TestValidate_InvalidSnellURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.Snell = []SnellSource{{URL: "ftp://example.com/nodes.txt"}}
+	assertFieldError(t, Validate(&cfg), "sources.snell[0].url")
+}
+
+func TestValidate_ValidSnellURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.Snell = []SnellSource{{URL: "https://example.com/snell.txt"}}
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
 func TestValidate_MissingCustomProxyName(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{{

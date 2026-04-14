@@ -359,3 +359,49 @@ func TestValidateGraph_AutoTokenAccepted(t *testing.T) {
 		t.Errorf("@auto should be accepted in raw routing members, got: %v", err)
 	}
 }
+
+// T-VAL-SNELL-001: ValidateGraph happy path with KindSnell proxies. Guards
+// against KindSnell being excluded from namespace registration or @all
+// validation, which would cause Snell references to look like dangling
+// identifiers.
+func TestValidateGraph_WithSnellProxy(t *testing.T) {
+	gr := &GroupResult{
+		Proxies: []model.Proxy{
+			{Name: "HK-01", Kind: model.KindSubscription},
+			{Name: "HK-Snell", Kind: model.KindSnell},
+			{Name: "SG-Snell", Kind: model.KindSnell},
+		},
+		NodeGroups: []model.ProxyGroup{
+			{Name: "HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01", "HK-Snell"}},
+			{Name: "SG", Scope: model.ScopeNode, Strategy: "select", Members: []string{"SG-Snell"}},
+		},
+		AllProxies: []string{"HK-01", "HK-Snell", "SG-Snell"},
+	}
+	rr := &RouteResult{
+		RouteGroups: []model.ProxyGroup{
+			{Name: "Quick", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"HK", "SG", "DIRECT"}},
+			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"Quick", "DIRECT"}},
+		},
+		Fallback: "Final",
+		RawRouteMembers: map[string][]string{
+			"Quick": {"HK", "SG", "DIRECT"},
+			"Final": {"Quick", "DIRECT"},
+		},
+	}
+
+	p, err := ValidateGraph(gr, rr)
+	if err != nil {
+		t.Fatalf("ValidateGraph with Snell proxies failed: %v", err)
+	}
+	if len(p.Proxies) != 3 {
+		t.Errorf("Proxies count = %d, want 3", len(p.Proxies))
+	}
+	// Snell nodes must be present in the returned Pipeline.
+	names := map[string]bool{}
+	for _, px := range p.Proxies {
+		names[px.Name] = true
+	}
+	if !names["HK-Snell"] || !names["SG-Snell"] {
+		t.Errorf("Snell proxies missing from validated Pipeline: %v", names)
+	}
+}

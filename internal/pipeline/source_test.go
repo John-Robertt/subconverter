@@ -439,3 +439,191 @@ func TestSource_NoSubscriptionsOnlyCustom(t *testing.T) {
 		t.Errorf("Name = %q, want PROXY-1", proxies[0].Name)
 	}
 }
+
+// T-SRC-SNELL-001: Snell source yields Kind=KindSnell proxies.
+func TestSource_SnellSource(t *testing.T) {
+	body := []byte("HK-Snell = snell, 1.2.3.4, 57891, psk=xxx, version=4, reuse=true\n" +
+		"# comment line\n" +
+		"\n" +
+		"SG-Snell = snell, 5.6.7.8, 8989, psk=yyy, version=4\n")
+	cfg := baseCfg()
+	cfg.Sources.Snell = []config.SnellSource{
+		{URL: "https://example.com/snell-nodes.txt"},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://example.com/snell-nodes.txt": body,
+	}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(proxies) != 2 {
+		t.Fatalf("got %d proxies, want 2", len(proxies))
+	}
+	if proxies[0].Name != "HK-Snell" || proxies[0].Kind != model.KindSnell {
+		t.Errorf("proxies[0] = {Name: %q, Kind: %q}, want {HK-Snell, snell}", proxies[0].Name, proxies[0].Kind)
+	}
+	if proxies[1].Name != "SG-Snell" || proxies[1].Type != "snell" {
+		t.Errorf("proxies[1] = {Name: %q, Type: %q}, want {SG-Snell, snell}", proxies[1].Name, proxies[1].Type)
+	}
+	if proxies[0].Params["psk"] != "xxx" {
+		t.Errorf("proxies[0].Params[psk] = %q, want xxx", proxies[0].Params["psk"])
+	}
+}
+
+// T-SRC-SNELL-002: Subscriptions and Snell sources share the name dedup pool.
+func TestSource_SnellAndSubscriptionDeduped(t *testing.T) {
+	// SS subscription with name "HK-01".
+	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01")
+	// Snell source with the same name.
+	snellBody := []byte("HK-01 = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
+
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
+	cfg.Sources.Snell = []config.SnellSource{{URL: "https://example.com/snell.txt"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://sub.example.com/api":   subBody,
+		"https://example.com/snell.txt": snellBody,
+	}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(proxies) != 2 {
+		t.Fatalf("got %d proxies, want 2", len(proxies))
+	}
+	// Subscription is fetched first, so it keeps the original name.
+	if proxies[0].Name != "HK-01" {
+		t.Errorf("proxies[0].Name = %q, want HK-01", proxies[0].Name)
+	}
+	// Snell source gets the circled-2 suffix.
+	if proxies[1].Name != "HK-01②" {
+		t.Errorf("proxies[1].Name = %q, want HK-01②", proxies[1].Name)
+	}
+}
+
+// T-SRC-SNELL-MULTI: Multiple Snell sources share the name-dedup pool;
+// duplicate names across sources get incrementing circled suffixes in
+// declaration order.
+func TestSource_MultiSnellSourcesDeduped(t *testing.T) {
+	url1 := "https://snell.example.com/a.txt"
+	url2 := "https://snell.example.com/b.txt"
+	body1 := []byte("SG-01 = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
+	body2 := []byte("SG-01 = snell, 5.6.7.8, 8989, psk=yyy, version=4\n")
+
+	cfg := baseCfg()
+	cfg.Sources.Snell = []config.SnellSource{{URL: url1}, {URL: url2}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		url1: body1,
+		url2: body2,
+	}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(proxies) != 2 {
+		t.Fatalf("got %d proxies, want 2", len(proxies))
+	}
+	// First Snell source keeps original name.
+	if proxies[0].Name != "SG-01" {
+		t.Errorf("proxies[0].Name = %q, want SG-01", proxies[0].Name)
+	}
+	// Second Snell source gets circled-2 suffix.
+	if proxies[1].Name != "SG-01②" {
+		t.Errorf("proxies[1].Name = %q, want SG-01②", proxies[1].Name)
+	}
+	// Both are KindSnell.
+	for i, px := range proxies {
+		if px.Kind != model.KindSnell {
+			t.Errorf("proxies[%d].Kind = %q, want snell", i, px.Kind)
+		}
+	}
+}
+
+// T-SRC-SNELL-003: Malformed Snell line fails fast (no silent skip).
+func TestSource_SnellSource_MalformedLineFailsFast(t *testing.T) {
+	body := []byte("# comment\n" +
+		"\n" +
+		"HK = snell, 1.2.3.4, 57891, psk=xxx, version=4\n" +
+		"INVALID = snell, 1.2.3.4, no-port-here\n") // malformed
+
+	cfg := baseCfg()
+	cfg.Sources.Snell = []config.SnellSource{{URL: "https://example.com/snell.txt?token=secret"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://example.com/snell.txt?token=secret": body,
+	}}
+
+	_, err := Source(context.Background(), cfg, f)
+	if err == nil {
+		t.Fatal("expected error from malformed Snell line")
+	}
+	var buildErr *errtype.BuildError
+	if !errors.As(err, &buildErr) {
+		t.Fatalf("err type = %T, want *errtype.BuildError", err)
+	}
+	if buildErr.Code != errtype.CodeBuildSnellLineInvalid {
+		t.Errorf("Code = %q, want %q", buildErr.Code, errtype.CodeBuildSnellLineInvalid)
+	}
+	if !strings.Contains(buildErr.Message, `Snell 来源 "https://example.com/snell.txt" 第 4 行解析失败`) {
+		t.Errorf("message should include sanitized URL and physical line number, got: %s", buildErr.Message)
+	}
+	if strings.Contains(buildErr.Message, "secret") {
+		t.Errorf("message leaked secret token: %s", buildErr.Message)
+	}
+	if strings.Contains(buildErr.Message, "build error [source]") {
+		t.Errorf("message should embed inner detail without build error prefix: %s", buildErr.Message)
+	}
+
+	inner := errors.Unwrap(buildErr)
+	var innerBuildErr *errtype.BuildError
+	if !errors.As(inner, &innerBuildErr) {
+		t.Fatalf("inner err type = %T, want *errtype.BuildError", inner)
+	}
+	if innerBuildErr == buildErr {
+		t.Fatal("outer BuildError should wrap the inner parse error, not itself")
+	}
+	if innerBuildErr.Code != errtype.CodeBuildSnellLineInvalid {
+		t.Errorf("inner Code = %q, want %q", innerBuildErr.Code, errtype.CodeBuildSnellLineInvalid)
+	}
+	if !strings.Contains(innerBuildErr.Message, `port "no-port-here" 不是整数`) {
+		t.Errorf("inner message should preserve parser detail, got: %s", innerBuildErr.Message)
+	}
+}
+
+// T-SRC-SNELL-004: Empty Snell source (all lines commented out) returns FetchError.
+func TestSource_SnellSource_EmptyReported(t *testing.T) {
+	body := []byte("# only comments here\n\n// nothing else\n")
+
+	cfg := baseCfg()
+	cfg.Sources.Snell = []config.SnellSource{{URL: "https://example.com/snell.txt?token=secret"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://example.com/snell.txt?token=secret": body,
+	}}
+
+	_, err := Source(context.Background(), cfg, f)
+	if err == nil {
+		t.Fatal("expected error for empty Snell source")
+	}
+	var fe *errtype.FetchError
+	if !errors.As(err, &fe) {
+		t.Fatalf("err type = %T, want *errtype.FetchError", err)
+	}
+	if fe.Code != errtype.CodeFetchSubscriptionEmpty {
+		t.Errorf("Code = %q, want %q", fe.Code, errtype.CodeFetchSubscriptionEmpty)
+	}
+	// URL in error message must be sanitized (no raw token).
+	if strings.Contains(fe.URL, "secret") {
+		t.Errorf("FetchError.URL leaked secret: %q", fe.URL)
+	}
+}

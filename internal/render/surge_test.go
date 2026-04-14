@@ -247,3 +247,141 @@ func TestSurge_GroupOrderRouteBeforeNode(t *testing.T) {
 		t.Error("route groups should be rendered before node groups")
 	}
 }
+
+// T-SURGE-SNELL-001: Snell proxy renders with the fixed key order.
+func TestSurge_SnellProxy_BasicFields(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-Snell",
+			Type:   "snell",
+			Server: "1.2.3.4",
+			Port:   57891,
+			Params: map[string]string{
+				"psk":     "xxx",
+				"version": "4",
+				"reuse":   "true",
+				"tfo":     "true",
+			},
+			Kind: model.KindSnell,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+	output := string(got)
+
+	// Expected: fixed key order (psk, version, reuse, tfo) regardless of map insertion order.
+	want := "HK-Snell = snell, 1.2.3.4, 57891, psk=xxx, version=4, reuse=true, tfo=true"
+	if !strings.Contains(output, want) {
+		t.Errorf("Snell proxy not rendered correctly.\nwant substring:\n%s\ngot:\n%s", want, output)
+	}
+}
+
+// T-SURGE-SNELL-002: ShadowTLS fields appear after base fields in declared order.
+func TestSurge_SnellProxy_ShadowTLS(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "JP-Snell",
+			Type:   "snell",
+			Server: "9.10.11.12",
+			Port:   443,
+			Params: map[string]string{
+				"psk":                 "zzz",
+				"version":             "4",
+				"shadow-tls-password": "sss",
+				"shadow-tls-sni":      "www.microsoft.com",
+				"shadow-tls-version":  "3",
+			},
+			Kind: model.KindSnell,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+	output := string(got)
+
+	want := "JP-Snell = snell, 9.10.11.12, 443, psk=zzz, version=4, shadow-tls-password=sss, shadow-tls-sni=www.microsoft.com, shadow-tls-version=3"
+	if !strings.Contains(output, want) {
+		t.Errorf("ShadowTLS not rendered correctly.\nwant substring:\n%s\ngot:\n%s", want, output)
+	}
+}
+
+// T-SURGE-SNELL-004: Snell node + managed header + base template共存。
+// Verifies that #!MANAGED-CONFIG appears exactly once (not duplicated by the
+// template merge) and Snell proxy lines land in the [Proxy] section.
+func TestSurge_SnellWithManagedHeader(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			{
+				Name:   "HK-Snell",
+				Type:   "snell",
+				Server: "1.2.3.4",
+				Port:   57891,
+				Params: map[string]string{"psk": "x", "version": "4", "reuse": "true"},
+				Kind:   model.KindSnell,
+			},
+		},
+		RouteGroups: []model.ProxyGroup{
+			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"HK-Snell", "DIRECT"}},
+		},
+		Fallback: "Final",
+	}
+
+	baseTemplate := []byte("[General]\nloglevel = notify\n\n[Proxy]\n# placeholder\n\n[Proxy Group]\n# placeholder\n\n[Rule]\n# placeholder\n")
+	managedURL := "https://my-server.com/generate?format=surge&filename=surge.conf"
+
+	got, err := Surge(p, managedURL, baseTemplate)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+	out := string(got)
+
+	// Managed header must appear exactly once.
+	if c := strings.Count(out, "#!MANAGED-CONFIG "); c != 1 {
+		t.Errorf("#!MANAGED-CONFIG count = %d, want 1:\n%s", c, out)
+	}
+	// Snell proxy line must land in output.
+	if !strings.Contains(out, "HK-Snell = snell, 1.2.3.4, 57891, psk=x, version=4, reuse=true") {
+		t.Errorf("Snell proxy line missing from Surge output:\n%s", out)
+	}
+	// Base template's [General] section must survive.
+	if !strings.Contains(out, "loglevel = notify") {
+		t.Errorf("base template [General] section should be preserved:\n%s", out)
+	}
+}
+
+// T-SURGE-SNELL-003: Unknown Params keys are not emitted (fixed-list renderer).
+func TestSurge_SnellProxy_UnknownKeyDropped(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "X",
+			Type:   "snell",
+			Server: "1.1.1.1",
+			Port:   443,
+			Params: map[string]string{
+				"psk":         "abc",
+				"future-knob": "42",
+			},
+			Kind: model.KindSnell,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+	output := string(got)
+	if strings.Contains(output, "future-knob") {
+		t.Errorf("unknown key leaked into output:\n%s", output)
+	}
+	if !strings.Contains(output, "X = snell, 1.1.1.1, 443, psk=abc") {
+		t.Errorf("base fields missing:\n%s", output)
+	}
+}

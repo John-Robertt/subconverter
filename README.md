@@ -1,21 +1,22 @@
 # SubConverter
 
-将 Shadowsocks 订阅转换为 Clash Meta 和 Surge 代理配置的单二进制 HTTP 服务。
+将 Shadowsocks 订阅与 Snell 节点源转换为 Clash Meta 和 Surge 代理配置的单二进制 HTTP 服务。
 
-SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源，执行过滤与分组，定义服务路由策略，最终渲染为 Clash Meta YAML 或 Surge conf——两种格式语义等价，仅语法不同。
+SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源和 Snell 来源，执行过滤与分组，定义服务路由策略，最终渲染为 Clash Meta YAML 或 Surge conf。两种输出尽量共享同一语义；若目标格式不支持某类协议，则按格式能力处理（如 Snell 仅进入 Surge 输出）。
 
 ## 功能特性
 
 - **多订阅源** — 支持多个 SS 订阅源合并，跨订阅自动去重
+- **Snell 来源** — 支持拉取纯文本 Snell 节点清单；Snell 节点仅进入 Surge 输出，Clash 会做级联过滤
 - **SIP002 兼容** — 支持常见 SS URI 变体，包括 base64/plain userinfo、query 参数和 plugin 声明
 - **自定义代理** — 在订阅之外定义 socks5/http 代理节点（如专线、ISP 代理）
 - **链式代理** — 通过 `relay_through` 配置上游中转，支持三种选择模式：`group`、`select`、`all`
-- **节点过滤** — 正则排除订阅节点（如到期提醒、流量统计等信息性节点）
-- **地区分组** — 按正则将节点组织为地区组，支持 `select`（手选）或 `url-test`（自动选延迟最低）策略
-- **服务路由** — 为每个服务定义出口偏好顺序（Telegram、Netflix、YouTube 等），`@auto` 自动补充节点组、`@all` 服务组和 `DIRECT`，`REJECT` 需手动声明
+- **节点过滤** — 正则排除拉取类节点（订阅 + Snell，如到期提醒、流量统计等信息性节点）
+- **地区分组** — 按正则将拉取类节点组织为地区组，支持 `select`（手选）或 `url-test`（自动选延迟最低）策略
+- **服务路由** — 为每个服务定义出口偏好顺序（Telegram、Netflix、YouTube 等），`@auto` 自动补充节点组、包含 `@all` 的服务组和 `DIRECT`，`REJECT` 需手动声明
 - **远程规则集** — 将规则集 URL 绑定到路由组（URL 透传，由客户端运行时拉取）
 - **内联规则** — 直接编写路由规则，与远程规则集并用
-- **双格式输出** — 同一份配置生成 Clash Meta YAML 和 Surge conf
+- **双格式输出** — 同一份配置生成 Clash Meta YAML 和 Surge conf；格式不支持的协议按能力差异处理
 - **模板合并** — 将生成内容注入底版模板，保留 DNS/TUN 等通用设置
 - **缓存** — 基于 TTL 的内存缓存，加速订阅和模板拉取
 - **优雅关闭** — 正确处理 SIGINT/SIGTERM 信号
@@ -159,7 +160,7 @@ make build
 
 ## 配置
 
-SubConverter 使用单个 YAML 文件声明全部输入：订阅源、自定义代理、节点分组、服务路由、规则集和兜底策略。
+SubConverter 使用单个 YAML 文件声明全部输入：订阅源、Snell 来源、自定义代理、节点分组、服务路由、规则集和兜底策略。
 
 ```yaml
 base_url: "https://my-server.com" # 可选：用于 Surge 托管配置头
@@ -171,6 +172,8 @@ templates:
 sources:
   subscriptions:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx" # 订阅体应为 base64 编码的 SS URI 列表（SIP002 兼容）
+  snell:
+    - url: "https://my-server.com/snell-nodes.txt" # 纯文本 Snell 节点清单；单行失败会报脱敏 URL + 物理行号
   custom_proxies:
     - name: HK-ISP
       type: socks5
@@ -184,15 +187,15 @@ sources:
         strategy: select
 
 filters:
-  exclude: "(过期|剩余流量)" # 正则排除订阅节点
+  exclude: "(过期|剩余流量)" # 正则排除拉取类节点（订阅 + Snell）
 
 groups:
   🇭🇰 Hong Kong: { match: "(港|HK|Hong Kong)", strategy: select }
   🇯🇵 Japan: { match: "(日本|JP|Japan)", strategy: url-test }
 
 routing:
-  🚀 快速选择: ["@auto"] # @auto 自动补充：全部节点组 + @all 服务组 + DIRECT（每个 entry 最多一次）
-  🚀 手动切换: ["@all"] # @all 展开为全部原始节点（不含链式节点）
+  🚀 快速选择: ["@auto"] # @auto 自动补充：全部节点组 + 包含 @all 的服务组 + DIRECT（每个 entry 最多一次）
+  🚀 手动切换: ["@all"] # @all 展开为全部原始节点（订阅 + Snell + 自定义代理，不含链式节点）
   📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto", REJECT] # REJECT 不在 @auto 中，按需要手动添加
   🐟 FINAL: ["@auto"]
 
@@ -217,7 +220,7 @@ fallback: 🐟 FINAL # 未匹配任何规则的流量走这里
 | ----------- | ----------------------------------- | ---- |
 | `base_url`  | 外部服务地址，用于 Surge 托管配置头 | 否   |
 | `templates` | Clash Meta / Surge 输出的底版模板   | 否   |
-| `sources`   | 订阅 URL 和自定义代理定义           | 是   |
+| `sources`   | 订阅 URL、Snell 来源和自定义代理定义 | 是   |
 | `filters`   | 正则排除节点                        | 否   |
 | `groups`    | 地区节点组，含匹配正则和策略        | 是   |
 | `routing`   | 服务路由组，含出口偏好顺序          | 是   |
@@ -253,7 +256,7 @@ subconverter/
   cmd/subconverter/      入口、命令行参数、优雅关闭
   internal/
     config/              YAML 解析、有序 Map、静态校验
-    errtype/             类型化错误（Config、Fetch、Build、Render）
+    errtype/             类型化错误（Config、Fetch、Resource、Build、Render）
     fetch/               HTTP 拉取器、TTL 缓存、资源加载
     model/               格式无关的中间表示
     pipeline/            处理阶段：source、filter、group、route、validate

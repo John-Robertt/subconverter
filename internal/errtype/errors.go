@@ -28,6 +28,7 @@ const (
 	CodeBuildCustomNameConflict Code = "build_custom_name_conflict"
 	CodeBuildRuleFormatInvalid  Code = "build_rule_format_invalid"
 	CodeBuildSSURIInvalid       Code = "build_ss_uri_invalid"
+	CodeBuildSnellLineInvalid   Code = "build_snell_line_invalid"
 	CodeBuildValidationFailed   Code = "build_validation_failed"
 
 	CodeRenderTemplateParseFailed Code = "render_template_parse_failed"
@@ -35,6 +36,7 @@ const (
 	CodeRenderYAMLEncodeFailed    Code = "render_yaml_encode_failed"
 	CodeRenderYAMLFinalizeFailed  Code = "render_yaml_finalize_failed"
 	CodeRenderSurgeProxyInvalid   Code = "render_surge_proxy_invalid"
+	CodeRenderClashFallbackEmpty  Code = "render_clash_fallback_empty"
 )
 
 // ConfigError indicates invalid configuration: bad YAML syntax,
@@ -89,15 +91,20 @@ func (e *ResourceError) Unwrap() error {
 }
 
 // BuildError indicates a failure during pipeline construction
-// (group building, route assembly, graph validation).
+// (source parsing, group building, route assembly, graph validation).
 type BuildError struct {
 	Code    Code
 	Phase   string // e.g. "group", "route", "validate"
 	Message string
+	Cause   error
 }
 
 func (e *BuildError) Error() string {
 	return fmt.Sprintf("build error [%s]: %s", e.Phase, e.Message)
+}
+
+func (e *BuildError) Unwrap() error {
+	return e.Cause
 }
 
 // RenderError indicates a failure during output generation.

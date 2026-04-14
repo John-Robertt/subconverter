@@ -63,6 +63,13 @@ func TestBuildError(t *testing.T) {
 	}
 }
 
+func TestBuildErrorUnwrap(t *testing.T) {
+	e := &BuildError{Code: CodeBuildValidationFailed, Phase: "group", Message: "链式节点组为空", Cause: io.ErrUnexpectedEOF}
+	if !errors.Is(e, io.ErrUnexpectedEOF) {
+		t.Error("BuildError should unwrap to its Cause")
+	}
+}
+
 func TestRenderError(t *testing.T) {
 	e := &RenderError{Code: CodeRenderTemplateParseFailed, Format: "clash", Message: "底版模板解析失败", Cause: io.EOF}
 	want := `render error [clash]: 底版模板解析失败`
@@ -96,5 +103,12 @@ func TestRenderErrorNilCause(t *testing.T) {
 	e := &RenderError{Code: CodeRenderTemplateInvalid, Format: "clash", Message: "底版模板格式无效"}
 	if e.Unwrap() != nil {
 		t.Error("RenderError with nil Cause should unwrap to nil")
+	}
+}
+
+func TestBuildErrorNilCause(t *testing.T) {
+	e := &BuildError{Code: CodeBuildValidationFailed, Phase: "group", Message: "链式节点组为空"}
+	if e.Unwrap() != nil {
+		t.Error("BuildError with nil Cause should unwrap to nil")
 	}
 }

@@ -24,6 +24,16 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	// sources.snell
+	for i, s := range cfg.Sources.Snell {
+		field := fmt.Sprintf("sources.snell[%d].url", i)
+		if s.URL == "" {
+			c.add(field, "必填")
+		} else {
+			c.validateHTTPURL(field, s.URL)
+		}
+	}
+
 	// sources.custom_proxies
 	seen := make(map[string]bool)
 	for i, cp := range cfg.Sources.CustomProxies {

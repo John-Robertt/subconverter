@@ -120,6 +120,31 @@ func TestFilter_NoMatch(t *testing.T) {
 	}
 }
 
+// T-FLT-SNELL: Snell nodes share subscription-like filtering semantics.
+func TestFilter_SnellNodesFiltered(t *testing.T) {
+	proxies := []model.Proxy{
+		makeProxy("HK-Snell", model.KindSnell),
+		makeProxy("过期-Snell", model.KindSnell),
+		makeProxy("HK-01", model.KindSubscription),
+		makeProxy("过期-sub", model.KindSubscription),
+	}
+
+	result, err := Filter(proxies, "过期")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result) != 2 {
+		t.Fatalf("got %d proxies, want 2 (过期-Snell and 过期-sub both filtered)", len(result))
+	}
+	wantNames := []string{"HK-Snell", "HK-01"}
+	for i, want := range wantNames {
+		if result[i].Name != want {
+			t.Errorf("result[%d].Name = %q, want %q", i, result[i].Name, want)
+		}
+	}
+}
+
 func TestFilter_ChainedProxiesNotFiltered(t *testing.T) {
 	proxies := []model.Proxy{
 		makeProxy("过期-chain", model.KindChained),

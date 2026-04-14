@@ -7,10 +7,11 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// Filter executes pipeline stage 4: apply exclude regex to subscription nodes.
+// Filter executes pipeline stage 4: apply exclude regex to fetched nodes.
 //
-// Only nodes with Kind=KindSubscription are subject to filtering. Custom proxies
-// and any other kinds pass through unconditionally.
+// Filtering covers all nodes sourced via remote fetch (Kind=KindSubscription
+// or Kind=KindSnell). Custom proxies and any other kinds pass through
+// unconditionally.
 //
 // If excludePattern is empty, all proxies pass through unchanged.
 func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error) {
@@ -29,10 +30,16 @@ func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error)
 
 	result := make([]model.Proxy, 0, len(proxies))
 	for _, p := range proxies {
-		if p.Kind == model.KindSubscription && re.MatchString(p.Name) {
+		if isFetchedKind(p.Kind) && re.MatchString(p.Name) {
 			continue
 		}
 		result = append(result, p)
 	}
 	return result, nil
+}
+
+// isFetchedKind reports whether a proxy Kind was sourced via remote fetch
+// (subscription or Snell source). These kinds participate in name filtering.
+func isFetchedKind(k model.ProxyKind) bool {
+	return k == model.KindSubscription || k == model.KindSnell
 }

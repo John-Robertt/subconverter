@@ -16,6 +16,27 @@ const (
 	surgeManagedInterval  = 86400
 )
 
+// surgeSnellKeyOrder fixes the order in which Snell parameters are emitted
+// into the Surge proxy line, so output is deterministic (required for
+// golden-file comparison) and aligned with jinqians/snell.sh output style.
+// Unknown keys present in Proxy.Params are intentionally not emitted: Snell
+// lines only originate from ParseSnellSurgeLine, which is the single entry
+// point for this type, so the set of legitimate keys is finite and known.
+var surgeSnellKeyOrder = []string{
+	"psk",
+	"version",
+	"obfs",
+	"obfs-host",
+	"obfs-uri",
+	"reuse",
+	"tfo",
+	"udp-relay",
+	"udp-port",
+	"shadow-tls-password",
+	"shadow-tls-sni",
+	"shadow-tls-version",
+}
+
 // sectionHeaderRe matches INI-style section headers like [Proxy].
 var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
 
@@ -94,6 +115,13 @@ func renderSurgeProxy(px model.Proxy) (string, error) {
 		password := px.Params["password"]
 		if username != "" || password != "" {
 			parts = append(parts, username, password)
+		}
+	case "snell":
+		parts = append(parts, px.Name+" = snell", px.Server, fmt.Sprintf("%d", px.Port))
+		for _, k := range surgeSnellKeyOrder {
+			if v := px.Params[k]; v != "" {
+				parts = append(parts, k+"="+v)
+			}
 		}
 	default:
 		parts = append(parts, px.Name+" = "+px.Type, px.Server, fmt.Sprintf("%d", px.Port))

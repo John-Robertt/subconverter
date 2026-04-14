@@ -23,8 +23,8 @@ templates:
 各段职责：
 
 - `base_url`：声明服务的外部可访问地址（可选）
-- `sources`：声明订阅源和自定义代理
-- `filters`：定义订阅节点过滤规则
+- `sources`：声明订阅源、Snell 来源和自定义代理
+- `filters`：定义拉取类节点过滤规则
 - `groups`：声明地区节点组
 - `routing`：声明服务组和出口优先级
 - `rulesets`：将远程规则集 URL 绑定到服务组
@@ -40,6 +40,8 @@ templates:
 sources:
   subscriptions:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
+  snell:
+    - url: "https://my-server.com/snell-nodes.txt"
   custom_proxies:
     - name: HK-ISP
       type: socks5
@@ -58,6 +60,22 @@ sources:
 - `url` 必填，必须为 HTTP(S) URL
 - 支持多个订阅源
 - 每个订阅源返回 SS 节点列表
+
+### snell
+
+- `url` 必填，必须为 HTTP(S) URL
+- 支持多个 Snell 来源
+- URL 返回纯文本内容，每行一条 Surge 风格的 Snell 节点声明：
+
+  ```
+  NAME = snell, SERVER, PORT, psk=..., version=..., [其他可选键]
+  ```
+
+- 可选字段：`version`、`obfs`、`obfs-host`、`obfs-uri`、`reuse`、`tfo`、`udp-relay`、`udp-port`、`shadow-tls-password`、`shadow-tls-sni`、`shadow-tls-version`
+- 空行和以 `#` / `//` 开头的注释行会被跳过；单行解析失败时整源报错（与 SS 订阅的静默跳过不同——Snell 来源通常是小规模手工清单，严格报错更有利于发现拼写问题）
+- 单行解析失败的错误消息会附带脱敏后的来源 URL 与 1-based 物理行号；原始解析根因保留在 `BuildError.Cause`
+- 节点名参与与订阅节点共享的跨源去重池（重复名追加 ②③... 后缀）
+- Snell 节点**只进入 Surge 输出**；Clash 输出会过滤掉这些节点及级联清理的空组、失效链式节点、空规则。详见 `rendering.md`
 
 ### custom_proxies
 
@@ -80,8 +98,8 @@ sources:
 语义：
 
 - `group`：使用某个已定义节点组中的全部成员作为上游
-- `select`：用正则从订阅节点中选择上游
-- `all`：使用全部订阅节点作为上游
+- `select`：用正则从拉取类节点（订阅 + Snell）中选择上游
+- `all`：使用全部拉取类节点作为上游
 
 结果：
 
@@ -101,7 +119,7 @@ filters:
 约束：
 
 - `exclude` 可选，值为正则表达式
-- 仅作用于订阅节点
+- 作用于拉取类节点（订阅 + Snell）
 - 不作用于自定义代理和链式节点
 
 ---
@@ -128,6 +146,7 @@ groups:
 说明：
 
 - `groups` 只声明地区节点组
+- 地区组的 `match` 作用于过滤后的拉取类节点（订阅 + Snell）
 - 链式组不写在 `groups` 中，由 `relay_through` 派生
 - 所有节点组都必须显式声明策略，不允许隐式默认值
 
@@ -165,7 +184,7 @@ routing:
 - key 为服务组名
 - value 为有序列表
 - 服务组策略固定为 `select`
-- `@all` 展开为全部原始节点（订阅节点 + 自定义代理），不包含链式节点
+- `@all` 展开为全部原始节点（订阅节点 + Snell 节点 + 自定义代理），不包含链式节点
 - 自定义代理即使声明了 `relay_through`，仍属于原始节点，必须被 `@all` 包含
 - 用户配置中不允许直接写原始代理名；若需要“全部原始节点”，必须通过 `@all` 展开
 - `@auto` 展开为自动补充池，替换其所在位置。池内容按顺序：全部节点组名（地区组 + 链式组，按声明序）→ 包含 `@all` 的服务组名（按声明序）→ `DIRECT`
