@@ -20,16 +20,18 @@ const (
 
 	CodeResourceLocalReadFailed Code = "resource_local_read_failed"
 
-	CodeBuildFilterRegexInvalid Code = "build_filter_regex_invalid"
-	CodeBuildGroupRegexInvalid  Code = "build_group_regex_invalid"
-	CodeBuildRelayGroupMissing  Code = "build_relay_group_missing"
-	CodeBuildRelayRegexInvalid  Code = "build_relay_regex_invalid"
-	CodeBuildRelayTypeInvalid   Code = "build_relay_type_invalid"
-	CodeBuildCustomNameConflict Code = "build_custom_name_conflict"
-	CodeBuildRuleFormatInvalid  Code = "build_rule_format_invalid"
-	CodeBuildSSURIInvalid       Code = "build_ss_uri_invalid"
-	CodeBuildSnellLineInvalid   Code = "build_snell_line_invalid"
-	CodeBuildValidationFailed   Code = "build_validation_failed"
+	CodeBuildFilterRegexInvalid     Code = "build_filter_regex_invalid"
+	CodeBuildGroupRegexInvalid      Code = "build_group_regex_invalid"
+	CodeBuildRelayGroupMissing      Code = "build_relay_group_missing"
+	CodeBuildRelayRegexInvalid      Code = "build_relay_regex_invalid"
+	CodeBuildRelayTypeInvalid       Code = "build_relay_type_invalid"
+	CodeBuildCustomNameConflict     Code = "build_custom_name_conflict"
+	CodeBuildRuleFormatInvalid      Code = "build_rule_format_invalid"
+	CodeBuildSSURIInvalid           Code = "build_ss_uri_invalid"
+	CodeBuildSnellLineInvalid       Code = "build_snell_line_invalid"
+	CodeBuildVLessURIInvalid        Code = "build_vless_uri_invalid"
+	CodeBuildVLessSourceLineInvalid Code = "build_vless_source_line_invalid"
+	CodeBuildValidationFailed       Code = "build_validation_failed"
 
 	CodeRenderTemplateParseFailed Code = "render_template_parse_failed"
 	CodeRenderTemplateInvalid     Code = "render_template_invalid"
@@ -37,6 +39,7 @@ const (
 	CodeRenderYAMLFinalizeFailed  Code = "render_yaml_finalize_failed"
 	CodeRenderSurgeProxyInvalid   Code = "render_surge_proxy_invalid"
 	CodeRenderClashFallbackEmpty  Code = "render_clash_fallback_empty"
+	CodeRenderSurgeFallbackEmpty  Code = "render_surge_fallback_empty"
 )
 
 // ConfigError indicates invalid configuration: bad YAML syntax,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -625,5 +626,286 @@ func TestSource_SnellSource_EmptyReported(t *testing.T) {
 	// URL in error message must be sanitized (no raw token).
 	if strings.Contains(fe.URL, "secret") {
 		t.Errorf("FetchError.URL leaked secret: %q", fe.URL)
+	}
+}
+
+// --- VLESS source tests ---
+
+// vlessURIFor builds a minimal valid vless:// URI for test fixtures.
+func vlessURIFor(name, server string, port int) string {
+	return fmt.Sprintf("vless://11111111-2222-3333-4444-555555555555@%s:%d?security=tls&sni=%s&type=tcp#%s",
+		server, port, server, name)
+}
+
+// T-SRC-VLESS-SRC-001: Basic VLESS source yields correct proxies, skipping
+// comments and blank lines along the way.
+func TestSource_VLessSourceBasic(t *testing.T) {
+	body := []byte("# vless nodes\n" +
+		"\n" +
+		vlessURIFor("HK-VL", "hk.example.com", 443) + "\n" +
+		"// second block\n" +
+		vlessURIFor("SG-VL", "sg.example.com", 443) + "\n")
+
+	cfg := baseCfg()
+	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://example.com/vless.txt": body,
+	}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(proxies) != 2 {
+		t.Fatalf("got %d proxies, want 2", len(proxies))
+	}
+	if proxies[0].Name != "HK-VL" || proxies[0].Kind != model.KindVLess {
+		t.Errorf("proxies[0] = {%q, %q}, want {HK-VL, vless}", proxies[0].Name, proxies[0].Kind)
+	}
+	if proxies[1].Name != "SG-VL" || proxies[1].Type != "vless" {
+		t.Errorf("proxies[1] = {%q, %q}, want {SG-VL, vless}", proxies[1].Name, proxies[1].Type)
+	}
+}
+
+// T-SRC-VLESS-SRC-002: Unknown transport falls back to tcp and non-none
+// encryption survives source parsing.
+func TestSource_VLessUnknownTypeFallsBackAndEncryptionPassesThrough(t *testing.T) {
+	body := []byte(
+		"vless://11111111-2222-3333-4444-555555555555@hk.example.com:443?security=tls&sni=hk.example.com&type=quic&encryption=mlkem768x25519plus.native#HK-VL\n",
+	)
+
+	cfg := baseCfg()
+	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://example.com/vless.txt": body,
+	}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("got %d proxies, want 1", len(proxies))
+	}
+	if proxies[0].Params["network"] != "tcp" {
+		t.Errorf("Params[network] = %q, want tcp fallback", proxies[0].Params["network"])
+	}
+	if proxies[0].Params["encryption"] != "mlkem768x25519plus.native" {
+		t.Errorf("Params[encryption] = %q, want passthrough", proxies[0].Params["encryption"])
+	}
+}
+
+// T-SRC-VLESS-SRC-003: Malformed VLESS line fails fast (strict mode like Snell).
+func TestSource_VLessBadLineAbortsSource(t *testing.T) {
+	body := []byte("# header\n" +
+		vlessURIFor("HK-VL", "hk.example.com", 443) + "\n" +
+		"vless://not-a-uuid@example.com:443?type=tcp#bad\n") // bad uuid
+
+	cfg := baseCfg()
+	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt?token=secret"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://example.com/vless.txt?token=secret": body,
+	}}
+
+	_, err := Source(context.Background(), cfg, f)
+	if err == nil {
+		t.Fatal("expected error from malformed VLESS line")
+	}
+	var be *errtype.BuildError
+	if !errors.As(err, &be) {
+		t.Fatalf("err type = %T, want *errtype.BuildError", err)
+	}
+	if be.Code != errtype.CodeBuildVLessSourceLineInvalid {
+		t.Errorf("Code = %q, want %q", be.Code, errtype.CodeBuildVLessSourceLineInvalid)
+	}
+	// Unwrap: inner err is the per-URI parse error with CodeBuildVLessURIInvalid.
+	var inner *errtype.BuildError
+	if !errors.As(errors.Unwrap(be), &inner) {
+		t.Fatalf("inner err not a BuildError")
+	}
+	if inner.Code != errtype.CodeBuildVLessURIInvalid {
+		t.Errorf("inner Code = %q, want %q", inner.Code, errtype.CodeBuildVLessURIInvalid)
+	}
+	if !strings.Contains(be.Message, `VLESS 来源 "https://example.com/vless.txt" 第 3 行解析失败`) {
+		t.Errorf("message should include sanitized URL and line number, got: %s", be.Message)
+	}
+	if strings.Contains(be.Message, "secret") {
+		t.Errorf("message leaked secret token: %s", be.Message)
+	}
+}
+
+// T-SRC-VLESS-SRC-004: All-comments VLESS source reports empty.
+func TestSource_VLessSource_EmptyReported(t *testing.T) {
+	body := []byte("# only comments\n\n// nothing else\n")
+
+	cfg := baseCfg()
+	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt?token=secret"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://example.com/vless.txt?token=secret": body,
+	}}
+
+	_, err := Source(context.Background(), cfg, f)
+	if err == nil {
+		t.Fatal("expected error for empty VLESS source")
+	}
+	var fe *errtype.FetchError
+	if !errors.As(err, &fe) {
+		t.Fatalf("err type = %T, want *errtype.FetchError", err)
+	}
+	if fe.Code != errtype.CodeFetchSubscriptionEmpty {
+		t.Errorf("Code = %q, want %q", fe.Code, errtype.CodeFetchSubscriptionEmpty)
+	}
+	if !strings.Contains(fe.Message, "VLESS") {
+		t.Errorf("message should mention VLESS, got: %s", fe.Message)
+	}
+	if strings.Contains(fe.URL, "secret") {
+		t.Errorf("FetchError.URL leaked secret: %q", fe.URL)
+	}
+}
+
+// T-SRC-VLESS-SRC-005: Subscription, Snell and VLESS sources share a single
+// dedup pool.
+func TestSource_VLessSharesDedupPoolWithSSAndSnell(t *testing.T) {
+	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01")
+	snellBody := []byte("HK-01 = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
+	vlessBody := []byte(vlessURIFor("HK-01", "hk.example.com", 443) + "\n")
+
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
+	cfg.Sources.Snell = []config.SnellSource{{URL: "https://snell.example.com/s.txt"}}
+	cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://sub.example.com/api":     subBody,
+		"https://snell.example.com/s.txt": snellBody,
+		"https://vless.example.com/v.txt": vlessBody,
+	}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(proxies) != 3 {
+		t.Fatalf("got %d proxies, want 3", len(proxies))
+	}
+	// FetchOrder fallback: subscriptions, snell, vless (alphabetical-ish default).
+	// So SS "HK-01" first, Snell "HK-01②" second, VLESS "HK-01③" third.
+	wantNames := []string{"HK-01", "HK-01②", "HK-01③"}
+	for i, want := range wantNames {
+		if proxies[i].Name != want {
+			t.Errorf("proxies[%d].Name = %q, want %q", i, proxies[i].Name, want)
+		}
+	}
+}
+
+// T-SRC-VLESS-SRC-006: A custom proxy with the same name as a VLESS source
+// node is rejected via checkNameConflicts; the error message identifies
+// the conflict source as "VLESS 来源" (describeFetchedKind).
+func TestSource_VLessCustomNameConflictError(t *testing.T) {
+	vlessBody := []byte(vlessURIFor("HK-01", "hk.example.com", 443) + "\n")
+
+	cfg := baseCfg()
+	cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
+	cfg.Sources.CustomProxies = []config.CustomProxy{{
+		Name:   "HK-01",
+		Type:   "socks5",
+		Server: "1.2.3.4",
+		Port:   1080,
+	}}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://vless.example.com/v.txt": vlessBody,
+	}}
+
+	_, err := Source(context.Background(), cfg, f)
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	if !strings.Contains(err.Error(), "VLESS 来源") {
+		t.Errorf("error message should identify VLESS source, got: %s", err.Error())
+	}
+}
+
+// TestSource_UnknownFetchKindErrors guards the Source() switch default
+// branch: if Sources.FetchOrder contains a typo/unsupported kind, Source()
+// surfaces a BuildError instead of silently skipping. Production YAML paths
+// cannot hit this (UnmarshalYAML rejects unknown keys upfront), but in-
+// memory Config construction in tests or future extensions can.
+func TestSource_UnknownFetchKindErrors(t *testing.T) {
+	cfg := baseCfg()
+	cfg.Sources.FetchOrder = []string{"hysteria"} // typo / future kind
+
+	f := &fakeFetcher{}
+
+	_, err := Source(context.Background(), cfg, f)
+	if err == nil {
+		t.Fatal("expected error for unknown fetch-kind, got nil")
+	}
+	var be *errtype.BuildError
+	if !errors.As(err, &be) {
+		t.Fatalf("err type = %T, want *errtype.BuildError", err)
+	}
+	if be.Code != errtype.CodeBuildValidationFailed {
+		t.Errorf("Code = %q, want %q", be.Code, errtype.CodeBuildValidationFailed)
+	}
+	if !strings.Contains(be.Message, `"hysteria"`) {
+		t.Errorf("message should quote the bad kind, got: %s", be.Message)
+	}
+}
+
+// T-SRC-VLESS-SRC-007: Source traversal follows Sources.FetchOrder.
+//
+// Declaring order snell→vless→subscriptions should yield the node slice in
+// the same category order. The test inspects the observed order against
+// different FetchOrder permutations, proving the switch-dispatch honors
+// the user's YAML layout.
+func TestSource_RespectsFetchOrder(t *testing.T) {
+	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@sub.example.com:8388#SS-01")
+	snellBody := []byte("SNELL-01 = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
+	vlessBody := []byte(vlessURIFor("VL-01", "v.example.com", 443) + "\n")
+
+	cases := []struct {
+		name  string
+		order []string
+		want  []string
+	}{
+		{"snell first", []string{"snell", "vless", "subscriptions"}, []string{"SNELL-01", "VL-01", "SS-01"}},
+		{"vless first", []string{"vless", "subscriptions", "snell"}, []string{"VL-01", "SS-01", "SNELL-01"}},
+		{"subs first", []string{"subscriptions", "snell", "vless"}, []string{"SS-01", "SNELL-01", "VL-01"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := baseCfg()
+			cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
+			cfg.Sources.Snell = []config.SnellSource{{URL: "https://snell.example.com/s.txt"}}
+			cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
+			cfg.Sources.FetchOrder = tc.order
+
+			f := &fakeFetcher{responses: map[string][]byte{
+				"https://sub.example.com/api":     subBody,
+				"https://snell.example.com/s.txt": snellBody,
+				"https://vless.example.com/v.txt": vlessBody,
+			}}
+
+			proxies, err := Source(context.Background(), cfg, f)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(proxies) != 3 {
+				t.Fatalf("got %d proxies, want 3", len(proxies))
+			}
+			for i, want := range tc.want {
+				if proxies[i].Name != want {
+					t.Errorf("proxies[%d].Name = %q, want %q", i, proxies[i].Name, want)
+				}
+			}
+		})
 	}
 }

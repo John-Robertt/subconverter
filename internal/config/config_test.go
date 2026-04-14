@@ -4,6 +4,8 @@ import (
 	"context"
 	"slices"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 const exampleConfigPath = "../../configs/base_config.yaml"
@@ -154,6 +156,103 @@ func TestIntegration_SpotCheckValues(t *testing.T) {
 	cp := cfg.Sources.CustomProxies[0]
 	if cp.RelayThrough.Name != "🇭🇰 Hong Kong" {
 		t.Errorf("RelayThrough.Name = %q", cp.RelayThrough.Name)
+	}
+}
+
+// TestSources_FetchOrderPreserved: FetchOrder records fetch-kind keys in YAML
+// declaration order. Subscriptions/snell/vless each appear exactly when (and
+// in the order) they are declared. custom_proxies does not enter FetchOrder.
+func TestSources_FetchOrderPreserved(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+		want []string
+	}{
+		{
+			name: "snell_then_vless_then_subscriptions",
+			yaml: `
+snell:
+  - url: https://example.com/snell.txt
+vless:
+  - url: https://example.com/vless.txt
+subscriptions:
+  - url: https://example.com/sub
+`,
+			want: []string{"snell", "vless", "subscriptions"},
+		},
+		{
+			name: "subscriptions_only",
+			yaml: `
+subscriptions:
+  - url: https://example.com/sub
+`,
+			want: []string{"subscriptions"},
+		},
+		{
+			name: "vless_then_snell_with_custom_proxies_between",
+			yaml: `
+vless:
+  - url: https://example.com/vless.txt
+custom_proxies:
+  - name: local
+    type: socks5
+    server: 127.0.0.1
+    port: 1080
+snell:
+  - url: https://example.com/snell.txt
+`,
+			want: []string{"vless", "snell"}, // custom_proxies excluded
+		},
+		{
+			name: "empty_sections_still_recorded",
+			yaml: `
+vless:
+snell:
+`,
+			want: []string{"vless", "snell"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var s Sources
+			if err := yaml.Unmarshal([]byte(tc.yaml), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if !slices.Equal(s.FetchOrder, tc.want) {
+				t.Errorf("FetchOrder = %v, want %v", s.FetchOrder, tc.want)
+			}
+		})
+	}
+}
+
+// TestSources_RejectsDuplicateKey: the same top-level key appearing twice
+// (e.g. `vless:` declared twice in one sources block) is an error.
+func TestSources_RejectsDuplicateKey(t *testing.T) {
+	y := `
+vless:
+  - url: https://a.example/v.txt
+vless:
+  - url: https://b.example/v.txt
+`
+	var s Sources
+	err := yaml.Unmarshal([]byte(y), &s)
+	if err == nil {
+		t.Fatal("expected duplicate-key error, got nil")
+	}
+}
+
+// TestSources_RejectsUnknownKey: typos like `vles` or `subscrition` fail loudly
+// rather than being silently ignored.
+func TestSources_RejectsUnknownKey(t *testing.T) {
+	y := `
+vles:
+  - url: https://example.com/v.txt
+`
+	var s Sources
+	err := yaml.Unmarshal([]byte(y), &s)
+	if err == nil {
+		t.Fatal("expected unknown-key error, got nil")
 	}
 }
 

@@ -39,7 +39,9 @@ func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error)
 }
 
 // isFetchedKind reports whether a proxy Kind was sourced via remote fetch
-// (subscription or Snell source). These kinds participate in name filtering.
+// (subscription, Snell, or VLESS source). These kinds participate in name
+// filtering, region-group regex matching, chain upstream candidacy, and
+// @all expansion.
 func isFetchedKind(k model.ProxyKind) bool {
-	return k == model.KindSubscription || k == model.KindSnell
+	return k == model.KindSubscription || k == model.KindSnell || k == model.KindVLess
 }

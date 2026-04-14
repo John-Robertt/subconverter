@@ -34,6 +34,16 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	// sources.vless
+	for i, s := range cfg.Sources.VLess {
+		field := fmt.Sprintf("sources.vless[%d].url", i)
+		if s.URL == "" {
+			c.add(field, "必填")
+		} else {
+			c.validateHTTPURL(field, s.URL)
+		}
+	}
+
 	// sources.custom_proxies
 	seen := make(map[string]bool)
 	for i, cp := range cfg.Sources.CustomProxies {

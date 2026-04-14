@@ -60,6 +60,26 @@ func TestValidate_ValidSnellURL(t *testing.T) {
 	}
 }
 
+func TestValidate_MissingVLessURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.VLess = []VLessSource{{URL: ""}}
+	assertFieldError(t, Validate(&cfg), "sources.vless[0].url")
+}
+
+func TestValidate_InvalidVLessURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.VLess = []VLessSource{{URL: "ftp://example.com/vless.txt"}}
+	assertFieldError(t, Validate(&cfg), "sources.vless[0].url")
+}
+
+func TestValidate_ValidVLessURL(t *testing.T) {
+	cfg := validBase()
+	cfg.Sources.VLess = []VLessSource{{URL: "https://example.com/vless.txt"}}
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
 func TestValidate_MissingCustomProxyName(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{{

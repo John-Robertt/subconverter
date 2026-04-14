@@ -145,6 +145,32 @@ func TestFilter_SnellNodesFiltered(t *testing.T) {
 	}
 }
 
+// T-FLT-VLESS: VLESS nodes share subscription-like filtering semantics.
+// Guards the isFetchedKind extension — if someone narrows it back to only
+// Subscription/Snell, this test trips.
+func TestFilter_ExcludesVLessNodesByName(t *testing.T) {
+	proxies := []model.Proxy{
+		makeProxy("HK-VL", model.KindVLess),
+		makeProxy("过期-VL", model.KindVLess),
+		makeProxy("HK-01", model.KindSubscription),
+	}
+
+	result, err := Filter(proxies, "过期")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result) != 2 {
+		t.Fatalf("got %d proxies, want 2 (过期-VL filtered)", len(result))
+	}
+	wantNames := []string{"HK-VL", "HK-01"}
+	for i, want := range wantNames {
+		if result[i].Name != want {
+			t.Errorf("result[%d].Name = %q, want %q", i, result[i].Name, want)
+		}
+	}
+}
+
 func TestFilter_ChainedProxiesNotFiltered(t *testing.T) {
 	proxies := []model.Proxy{
 		makeProxy("过期-chain", model.KindChained),

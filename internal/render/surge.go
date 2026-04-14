@@ -43,7 +43,18 @@ var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
 // Surge renders a Pipeline into Surge conf format.
 // managedURL is used for the #!MANAGED-CONFIG header (empty = omit header).
 // If baseTemplate is non-nil, generated sections replace corresponding sections in the template.
+//
+// VLESS nodes are filtered out of the Surge view (see filterForSurge): they
+// only appear in Clash Meta output because Surge does not natively support
+// VLESS. Groups, rulesets, and rules that reference only filtered nodes are
+// cascaded out automatically; if the fallback group is emptied, a
+// CodeRenderSurgeFallbackEmpty RenderError is returned.
 func Surge(p *model.Pipeline, managedURL string, baseTemplate []byte) ([]byte, error) {
+	p, err := filterForSurge(p)
+	if err != nil {
+		return nil, err
+	}
+
 	proxySection, err := buildSurgeProxies(p.Proxies)
 	if err != nil {
 		return nil, err

@@ -12,30 +12,71 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// Source executes pipeline stage 3: fetch subscriptions, parse SS URIs,
-// convert custom proxies, and deduplicate names.
+// defaultFetchOrder is the fallback traversal order when Sources.FetchOrder
+// is empty (in-memory Config instances from tests that skip YAML unmarshal).
+// YAML-loaded configs populate FetchOrder from declaration order instead.
+var defaultFetchOrder = []string{"subscriptions", "snell", "vless"}
+
+// Source executes pipeline stage 3: fetch subscriptions / Snell / VLESS
+// sources, convert custom proxies, and deduplicate names.
 //
-// It processes subscriptions sequentially in declaration order to guarantee
-// deterministic deduplication suffixes. Fetch errors are fail-fast; individual
-// malformed SS URIs within a subscription are skipped, but a subscription
-// yielding zero valid nodes is an error.
+// Traversal order within the three fetch-kinds follows cfg.Sources.FetchOrder,
+// which reflects the YAML declaration order (e.g. `snell:` then `vless:`
+// then `subscriptions:` yields that exact node ordering in the output). When
+// FetchOrder is empty (unit-test Configs built in memory), a deterministic
+// default is used.
+//
+// Sources are processed sequentially to guarantee deterministic dedup
+// suffixes. Fetch errors are fail-fast; individual malformed SS URIs within
+// a subscription are skipped, but a subscription yielding zero valid nodes
+// is an error. VLESS and Snell sources abort on any single-line parse
+// failure (small hand-curated lists — strict failure surfaces typos early).
 func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) ([]model.Proxy, error) {
 	var subProxies []model.Proxy
 
-	for _, sub := range cfg.Sources.Subscriptions {
-		proxies, err := fetchSubscription(ctx, fetcher, sub.URL)
-		if err != nil {
-			return nil, err
-		}
-		subProxies = append(subProxies, proxies...)
+	order := cfg.Sources.FetchOrder
+	if len(order) == 0 {
+		order = defaultFetchOrder
 	}
 
-	for _, s := range cfg.Sources.Snell {
-		proxies, err := fetchSnellSource(ctx, fetcher, s.URL)
-		if err != nil {
-			return nil, err
+	for _, kind := range order {
+		switch kind {
+		case "subscriptions":
+			for _, sub := range cfg.Sources.Subscriptions {
+				proxies, err := fetchSubscription(ctx, fetcher, sub.URL)
+				if err != nil {
+					return nil, err
+				}
+				subProxies = append(subProxies, proxies...)
+			}
+		case "snell":
+			for _, s := range cfg.Sources.Snell {
+				proxies, err := fetchSnellSource(ctx, fetcher, s.URL)
+				if err != nil {
+					return nil, err
+				}
+				subProxies = append(subProxies, proxies...)
+			}
+		case "vless":
+			for _, s := range cfg.Sources.VLess {
+				proxies, err := fetchVLessSource(ctx, fetcher, s.URL)
+				if err != nil {
+					return nil, err
+				}
+				subProxies = append(subProxies, proxies...)
+			}
+		default:
+			// FetchOrder should only ever contain keys from sourceFetchKeys
+			// (enforced by Sources.UnmarshalYAML). Reaching this branch
+			// means an in-memory Config set FetchOrder directly with a
+			// typo/unknown kind — surface it instead of silently dropping
+			// the source.
+			return nil, &errtype.BuildError{
+				Code:    errtype.CodeBuildValidationFailed,
+				Phase:   "source",
+				Message: fmt.Sprintf("unknown fetch-kind %q in Sources.FetchOrder (check Sources.UnmarshalYAML and defaultFetchOrder)", kind),
+			}
 		}
-		subProxies = append(subProxies, proxies...)
 	}
 
 	subProxies = deduplicateNames(subProxies)
@@ -143,6 +184,62 @@ func wrapSnellSourceParseError(sanitizedURL string, lineNo int, parseErr error) 
 		Code:    errtype.CodeBuildSnellLineInvalid,
 		Phase:   "source",
 		Message: fmt.Sprintf(`Snell 来源 %q 第 %d 行解析失败：%s`, sanitizedURL, lineNo, detail),
+		Cause:   parseErr,
+	}
+}
+
+// fetchVLessSource fetches a URL whose body is plain text with one
+// `vless://` URI per line. Blank lines and comment lines (`#`, `//`) are
+// skipped; any other line that fails to parse aborts the entire source
+// with a BuildError, matching the strict Snell behaviour.
+//
+// A source yielding zero valid nodes is reported as CodeFetchSubscriptionEmpty,
+// mirroring the subscription and Snell paths.
+//
+// Parse-failure errors carry the 1-based physical line number from the
+// original body and the sanitized URL (subscription tokens redacted).
+func fetchVLessSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string) ([]model.Proxy, error) {
+	body, err := fetcher.Fetch(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var proxies []model.Proxy
+	sanitizedURL := fetch.SanitizeURL(rawURL)
+	for lineNo, rawLine := range strings.Split(string(body), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+			continue
+		}
+		proxy, parseErr := ParseVLessURI(line)
+		if parseErr != nil {
+			return nil, wrapVLessSourceParseError(sanitizedURL, lineNo+1, parseErr)
+		}
+		proxies = append(proxies, proxy)
+	}
+
+	if len(proxies) == 0 {
+		return nil, &errtype.FetchError{
+			Code:    errtype.CodeFetchSubscriptionEmpty,
+			URL:     fetch.SanitizeURL(rawURL),
+			Message: "VLESS 来源未产生任何有效节点",
+		}
+	}
+
+	return proxies, nil
+}
+
+func wrapVLessSourceParseError(sanitizedURL string, lineNo int, parseErr error) error {
+	detail := parseErr.Error()
+	var buildErr *errtype.BuildError
+	if errors.As(parseErr, &buildErr) {
+		detail = buildErr.Message
+	}
+
+	return &errtype.BuildError{
+		Code:    errtype.CodeBuildVLessSourceLineInvalid,
+		Phase:   "source",
+		Message: fmt.Sprintf(`VLESS 来源 %q 第 %d 行解析失败：%s`, sanitizedURL, lineNo, detail),
 		Cause:   parseErr,
 	}
 }
@@ -275,6 +372,8 @@ func describeFetchedKind(k model.ProxyKind) string {
 		return "订阅"
 	case model.KindSnell:
 		return "Snell 来源"
+	case model.KindVLess:
+		return "VLESS 来源"
 	default:
 		return "远程拉取"
 	}

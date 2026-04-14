@@ -665,3 +665,120 @@ func TestGroup_SnellParticipatesInRegionMatch(t *testing.T) {
 		}
 	}
 }
+
+// T-GROUP-VLESS-001 + T-GROUP-VLESS-003: VLESS nodes participate in region
+// group regex matching and are included in @all (mirror Snell behaviour).
+func TestGroup_VLessParticipatesInRegionMatch(t *testing.T) {
+	proxies := []model.Proxy{
+		makeSubProxy("HK-01"),
+		{Name: "HK-VL", Type: "vless", Server: "hk.example.com", Port: 443,
+			Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp"},
+			Kind:   model.KindVLess},
+		{Name: "SG-VL", Type: "vless", Server: "sg.example.com", Port: 443,
+			Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp"},
+			Kind:   model.KindVLess},
+		makeCustomProxyModel("MY-PROXY"),
+	}
+
+	cfg := &config.Config{
+		Groups: mustGroupsMap(t, `
+"HK": { match: "(HK)", strategy: select }
+"SG": { match: "(SG)", strategy: select }
+`),
+	}
+
+	result, err := Group(proxies, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// HK group should contain HK-01 (sub) and HK-VL (vless).
+	hk := result.NodeGroups[0]
+	if hk.Name != "HK" {
+		t.Fatalf("group[0].Name = %q, want HK", hk.Name)
+	}
+	gotHK := map[string]bool{}
+	for _, m := range hk.Members {
+		gotHK[m] = true
+	}
+	if !gotHK["HK-01"] || !gotHK["HK-VL"] {
+		t.Errorf("HK members = %v, want both HK-01 and HK-VL", hk.Members)
+	}
+
+	// SG group should contain SG-VL only.
+	sg := result.NodeGroups[1]
+	if len(sg.Members) != 1 || sg.Members[0] != "SG-VL" {
+		t.Errorf("SG members = %v, want [SG-VL]", sg.Members)
+	}
+
+	// Custom proxy must not appear in any region group.
+	for _, g := range result.NodeGroups {
+		for _, m := range g.Members {
+			if m == "MY-PROXY" {
+				t.Errorf("custom proxy MY-PROXY leaked into region group %q", g.Name)
+			}
+		}
+	}
+
+	// @all expansion includes VLESS nodes.
+	gotAll := map[string]bool{}
+	for _, n := range result.AllProxies {
+		gotAll[n] = true
+	}
+	for _, want := range []string{"HK-01", "HK-VL", "SG-VL", "MY-PROXY"} {
+		if !gotAll[want] {
+			t.Errorf("AllProxies missing %q (got %v)", want, result.AllProxies)
+		}
+	}
+}
+
+// T-GROUP-VLESS-002: VLESS nodes are valid upstreams for relay_through
+// chains. Custom proxies with relay_through{type:all} produce chained
+// proxies whose Dialer points at the VLESS node's name.
+func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
+	proxies := []model.Proxy{
+		{Name: "HK-VL", Type: "vless", Server: "hk.example.com", Port: 443,
+			Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp"},
+			Kind:   model.KindVLess},
+	}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			CustomProxies: []config.CustomProxy{{
+				Name:   "MY-CHAIN",
+				Type:   "socks5",
+				Server: "127.0.0.1",
+				Port:   1080,
+				RelayThrough: &config.RelayThrough{
+					Type:     "all",
+					Strategy: "select",
+				},
+			}},
+		},
+	}
+
+	result, err := Group(proxies, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Expect exactly one chained proxy with Dialer=HK-VL.
+	var chained model.Proxy
+	found := false
+	for _, p := range result.Proxies {
+		if p.Kind == model.KindChained {
+			chained = p
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("no chained proxy generated; Proxies=%v", result.Proxies)
+	}
+	if chained.Dialer != "HK-VL" {
+		t.Errorf("chained.Dialer = %q, want HK-VL", chained.Dialer)
+	}
+	if chained.Name != "HK-VL→MY-CHAIN" {
+		t.Errorf("chained.Name = %q, want HK-VL→MY-CHAIN", chained.Name)
+	}
+}

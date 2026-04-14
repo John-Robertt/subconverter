@@ -50,6 +50,53 @@ rule-provider 命名规则（两阶段分配）：
    - 生成的后缀名若与其他 URL 的自然名称碰撞，则继续递增直到不冲突
 3. provider 名称仅用于 Clash Meta 输出的内部引用，不影响语义
 
+### VLESS 渲染
+
+Clash Meta 是 VLESS 的主要目标格式。字段按固定顺序输出：
+
+```
+name / type:vless / server / port / uuid / network / udp:true
+  → flow（非空才输出）
+  → alpn（逗号分隔串展开为 YAML 列表）
+  → encryption（非空才输出）
+  → 若 security ∈ {tls, reality}：tls:true / servername / client-fingerprint
+  → 若 security == reality：reality-opts:{ public-key / short-id }
+  → dialer-proxy（链式节点）
+```
+
+URI query 到 Params 的命名映射由解析器完成（见 `config-schema.md` 的 `sources.vless`），Clash 渲染器直接按目标键读取：
+
+| URI query | Params key | Clash YAML key | 备注 |
+|-----------|-----------|----------------|------|
+| UUID (userinfo) | `uuid` | `uuid` | 必填，标准 UUID |
+| `security` | `security` | —（分支判定）| none/tls/reality |
+| `encryption` | `encryption` | `encryption` | 非空时透传并输出 |
+| `flow` | `flow` | `flow` | 空则不输出 |
+| `type` | `network` | `network` | 已知值 `tcp`/`ws`/`http`/`h2`/`grpc`/`xhttp` 原样保留；缺失或未知值回落到 `tcp` |
+| `sni` | `servername` | `servername` | 仅在 tls/reality 时输出 |
+| `fp` | `client-fingerprint` | `client-fingerprint` | 仅在 tls/reality 时输出 |
+| `alpn` | `alpn` | `alpn` | 展开为 YAML 列表 |
+| `pbk` | `reality-public-key` | `reality-opts.public-key` | 仅在 reality 时 |
+| `sid` | `reality-short-id` | `reality-opts.short-id` | 仅在 reality 时（可空） |
+| `spx` | `reality-spider-x` | —（不输出） | 宽松存入，forward compat |
+
+每种非 tcp 的 `network` 值都会触发渲染器输出对应的 `*-opts` 块。URI 里的 `path` / `host` / `serviceName` / `mode` 由 parser **按 network 分发**到 transport-specific Params 键，渲染器按键直接输出，无运行时分派：
+
+| network | 相关 URI query | 对应 Params key | 对应 Clash `*-opts` 位置 |
+|---------|---------------|----------------|-----------------------|
+| `tcp`   | — | — | 不输出 `*-opts` |
+| `ws`    | `path` / `host` | `ws-path` / `ws-host` | `ws-opts.path` / `ws-opts.headers.Host` |
+| `http`  | `path` / `host` | `http-path` / `http-host` | `http-opts.path[0]` / `http-opts.headers.Host[0]` |
+| `h2`    | `path` / `host` | `h2-path` / `h2-host` | `h2-opts.path` / `h2-opts.host[0]` |
+| `grpc`  | `serviceName` | `grpc-service-name` | `grpc-opts.grpc-service-name` |
+| `xhttp` | `mode` / `path` / `host` | `xhttp-mode` / `xhttp-path` / `xhttp-host` | `xhttp-opts.{mode,path,host}` |
+
+若 network 已指定但所有对应 Params 键为空（如 `type=ws` 但 URI 未带 `path`/`host`），渲染器**省略整个 `*-opts` 块**——Clash 客户端对该值视为默认空 opts，语义等价。
+
+Parser 会校验 `security` 只接受 `none`/`tls`/`reality`；`encryption` 在非空时不做值校验、直接透传，以匹配 Mihomo 当前支持的扩展模式。传输层高级字段（如 `packet-encoding`、`ws-opts.max-early-data`、`grpc-opts.ping-interval`）以及 TLS 扩展字段（如 `support-x25519mlkem768`）当前 iteration 不消费——`sources.vless` 仍是“一行一个 URI”的输入模型，本次未为这些字段定义稳定 query 契约。
+
+**关于 Params 键命名**：transport-specific 键（`ws-path`、`ws-host`、`h2-path`、`h2-host`、`http-path`、`http-host`、`grpc-service-name`、`xhttp-path`、`xhttp-host`、`xhttp-mode`）是 **network-qualified** 的前缀键，**不是 URI 查询的原始键名**。原因：VLESS URI 里的 `path` / `host` 在不同 `type` 下对应 Clash 中不同的 `*-opts` 嵌套位置（例如 `ws-opts.path` vs `h2-opts.path`）；parser 在 query 解析时按 network 分发到具体键，让渲染器按键直接读取，避免"同名不同位"的运行时分派。tcp 没有传输层 opts 块，不产生前缀键。该命名规则是 CLAUDE.md "Params 的 key 名称保持目标格式原样" 原则的一个**网络受限例外**——由 Clash 的配置结构决定，而非 parser/renderer 的风格选择。
+
 ### Snell 过滤
 
 Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。渲染器在入口做级联过滤：
@@ -66,7 +113,7 @@ Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。渲
 - 受已删除上游牵连的链式节点标记为 `NAME(chained) ← [<upstream>]`
 - 共享掉落子图会正常展开；`(cycle)` 只表示真实递归保护命中，而不是普通共享引用
 
-过滤算法作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Surge 渲染使用未过滤的 Pipeline。
+过滤算法作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；`filterForClash` 是共享 cascade 引擎 `filterByDroppedTypes`（见 `internal/render/filter_cascade.go`）的薄包装，该引擎同时支撑 Surge 侧的 VLESS 过滤（见下文「VLESS 过滤」）。
 
 ---
 
@@ -103,6 +150,18 @@ Snell 节点专属 Surge 输出（Clash 视图过滤掉 Snell 节点，见上文
 - `psk` 必填；其他字段可选，值为空时整条键值对不输出
 - `Params` 中的未知键**不输出**（渲染器只遍历固定列表）；这使解析器可以保持宽松地接纳新 Surge 选项，但渲染层的扩充需要显式更新 `surgeSnellKeyOrder`
 - 全字段支持 ShadowTLS（Surge 独有），Clash 不消费
+
+### VLESS 过滤
+
+Surge 不原生支持 VLESS。渲染器在入口做级联过滤（对称于 Clash 侧过滤 Snell）：
+
+1. 剔除 `Type=="vless"` 的节点
+2. 剔除链式节点中 `Dialer` 属于已剔除集合的节点
+3. 对每个节点组 / 服务组，剔除 Members 中属于已剔除集合的名字；若 Members 清空则该组自身被剔除。迭代到不动点
+4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
+5. 若 `fallback` 所指服务组在级联中被清空，返回 `RenderError`（`CodeRenderSurgeFallbackEmpty`），错误消息附带清空路径（VLESS 根节点标记为 `NAME(vless)`，链式节点标记为 `NAME(chained) ← [<upstream>]`）
+
+算法由共享 cascade 引擎 `filterByDroppedTypes` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Clash 渲染使用未过滤的 Pipeline。
 
 ---
 
@@ -152,7 +211,7 @@ Snell 节点专属 Surge 输出（Clash 视图过滤掉 Snell 节点，见上文
 - 同样的规则排列顺序
 - 同样的 fallback 语义
 - 同样的 `@auto` 和 `@all` 展开结果
-- 对目标格式不支持的协议，按格式能力做显式处理（当前 Snell 为 Surge-only）
+- 对目标格式不支持的协议，按格式能力做显式处理：Snell 为 Surge-only（Clash 侧级联过滤），VLESS 为 Clash-only（Surge 侧级联过滤）——两种方向由同一个共享 cascade 引擎（`internal/render/filter_cascade.go`）实现
 
 ---
 

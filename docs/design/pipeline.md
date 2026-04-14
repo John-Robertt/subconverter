@@ -67,7 +67,7 @@ LoadConfig
 职责：
 
 - 拉取所有远程来源
-- 解析 SS 节点与 Snell 节点
+- 解析 SS 节点、Snell 节点、VLESS 节点
 - 将自定义代理转换为原始节点对象
 
 输入：
@@ -98,6 +98,24 @@ Snell 来源解析：
 - 报错消息包含脱敏后的来源 URL 与 1-based 物理行号；外层 `BuildError` 负责提供来源上下文，内层解析错误通过 `Cause` 保留根因链
 - Snell 节点与订阅节点共享同一跨源去重池（同名节点按出现顺序追加 ②③... 后缀）
 - 与订阅一起在 Filter 阶段参与 `filters.exclude` 过滤，在 Group 阶段参与区域组 regex 匹配，可作为 `relay_through` 的链式上游
+
+VLESS 来源解析：
+
+- URL 返回纯文本（非 base64），每行一条标准 VLESS URI：`vless://UUID@SERVER:PORT[?query][#NAME]`
+- 节点 `Type="vless"`、`Kind=KindVLess`；URI query 按 Clash 目标命名写入 `Params`（如 `sni→servername`、`fp→client-fingerprint`、`pbk→reality-public-key`），渲染器无需命名映射
+- `type`（传输层）按 Mihomo 兼容语义归一化：已知值 `tcp`/`ws`/`http`/`h2`/`grpc`/`xhttp` 原样保留，缺失或未知值回落到 `tcp`
+- `security` 只接受 `none`/`tls`/`reality`；`encryption` 非空时透传并保留到 `Params`
+- 空行与 `#` / `//` 注释行跳过；单行解析失败整源报错（策略与 Snell 对齐）
+- 报错消息与 Snell 等价：脱敏后的来源 URL + 1-based 物理行号，外层 `BuildError` 通过 `Cause` 保留内层根因
+- VLESS 节点与订阅节点、Snell 节点共享同一跨源去重池
+- 在 Filter / Group / ValidateGraph 中的行为与订阅节点一致；可作为 `relay_through` 链式上游
+- 当前 URI 契约不扩展到 `packet-encoding`、`support-x25519mlkem768` 等未显式定义 query 映射的 Mihomo 字段
+
+来源遍历顺序：
+
+- `sources` 下的 `subscriptions` / `snell` / `vless` 三类 key 按 YAML 书写顺序记录到 `Sources.FetchOrder`，Source 阶段按此顺序调度拉取
+- 例如 YAML 中声明顺序为 `snell → vless → subscriptions`，则最终 proxy slice 的相对顺序也是 snell 节点 → vless 节点 → 订阅节点
+- 未在 YAML 中声明的 key 不进入 FetchOrder；当 FetchOrder 为空（in-memory 构造的测试 Config）时回退到默认顺序 `subscriptions → snell → vless`
 
 ---
 
@@ -145,9 +163,9 @@ Snell 来源解析：
 
 子步骤执行顺序：
 
-1. **构建地区节点组**：根据 `groups` 定义，用正则匹配过滤后的拉取类节点（订阅 + Snell），生成地区节点组
+1. **构建地区节点组**：根据 `groups` 定义，用正则匹配过滤后的拉取类节点（订阅 + Snell + VLESS），生成地区节点组
 2. **构建链式节点和链式组**：根据 `relay_through` 定义，利用已构建的地区组（`type=group` 时）或正则匹配（`type=select` 时）确定上游节点，展开链式节点并生成链式组
-3. **计算 `@all`**：收集全部原始节点（订阅节点 + Snell 节点 + 自定义节点），不把链式节点写入结果
+3. **计算 `@all`**：收集全部原始节点（订阅节点 + Snell 节点 + VLESS 节点 + 自定义节点），不把链式节点写入结果
 
 顺序理由：步骤 2 依赖步骤 1 的产出（`relay_through.type=group` 需要引用已构建的地区组）。步骤 3 只要来源限定为原始节点，就可以天然排除链式节点；实现上可在链式生成前后计算，但结果语义必须一致。
 
@@ -156,8 +174,8 @@ Snell 来源解析：
 - 链式组属于节点组
 - 链式组策略取自 `relay_through.strategy`
 - `@all` 只包含原始节点，不包含链式节点
-- 原始节点包括订阅节点、Snell 节点和自定义节点；自定义节点即使声明了 `relay_through`，也仍属于 `@all`
-- 链式展开的上游只来自拉取类节点（订阅 + Snell）
+- 原始节点包括订阅节点、Snell 节点、VLESS 节点和自定义节点；自定义节点即使声明了 `relay_through`，也仍属于 `@all`
+- 链式展开的上游只来自拉取类节点（订阅 + Snell + VLESS）
 
 ---
 

@@ -26,6 +26,7 @@
 
 - `subscriptions[].url` 必填
 - `snell[].url` 必填，必须为 HTTP(S) URL
+- `vless[].url` 必填，必须为 HTTP(S) URL
 - `custom_proxies[].name/type/server` 必填
 - `custom_proxies[].port` 必须为正整数
 - `custom_proxies` 之间名称不能重复
@@ -57,12 +58,15 @@
 
 - 订阅拉取结果不得为空（0 个有效节点视为上游订阅内容错误）
 - Snell 来源拉取结果不得为空（0 个有效节点报同类错误）
+- VLESS 来源拉取结果不得为空（0 个有效节点报同类错误）
 - Snell 来源中单行解析失败整源报错（与 SS 订阅的静默跳过不同，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
-- 自定义代理名称不得与订阅或 Snell 节点名称冲突（错误消息会指明冲突源的 kind）
+- VLESS 来源中单行解析失败整源报错（与 Snell 一致，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
+- 自定义代理名称不得与订阅、Snell 或 VLESS 节点名称冲突（错误消息会指明冲突源的 kind）
 - `relay_through.type=group` 引用的节点组必须存在
-- SS URI 中端口值必须在 1-65535 范围内；Snell 节点的 port 字段同理
+- SS URI 中端口值必须在 1-65535 范围内；Snell / VLESS 节点的 port 字段同理
 - 非法 SS URI、非法 fragment 编码、非法 query 编码、损坏的 plugin 参数都属于 Source 阶段构建期错误
 - Snell 行格式错误（缺 `=`、type 非 snell、缺必填 psk 等）属于 Source 阶段构建期错误
+- VLESS URI 中非法 UUID、非法 `security`、非法端口等属于 Source 阶段构建期错误；未知 `type` 不报错，而是按 Mihomo 兼容语义回落到 `tcp`
 
 ---
 
@@ -108,6 +112,7 @@
 
 - `BuildError` 的 `Error()` 文本格式保持稳定；需要补充来源上下文时，可通过 `Cause` / `Unwrap()` 保留内层根因链
 - 当前 Snell 单行失败路径采用“外层 `BuildError` 提供来源 URL + 物理行号，内层解析错误保留具体语法原因”的模式
+- 当前 VLESS 单行失败路径采用与 Snell 相同的“外层 `BuildError` 提供来源 URL + 物理行号，内层解析错误保留具体语法原因”的模式
 
 HTTP 层映射：
 
@@ -129,13 +134,13 @@ HTTP 层映射：
 
 当前 `ValidateGraph` 在构建与引用层面是**格式无关**的：同一份 GroupResult + RouteResult 无论输出 Clash 还是 Surge 都使用相同校验规则。
 
-但 Clash 渲染器对 Snell 节点做级联过滤（见 `rendering.md` 的 "Snell 过滤"），可能把在 ValidateGraph 看来"合法"的 fallback 服务组在 render 阶段清空，导致：
+但渲染层存在 format-specific 过滤：Clash 渲染器会对 Snell 节点做级联过滤，Surge 渲染器会对 VLESS 节点做级联过滤（见 `rendering.md` 的 "Snell 过滤" / "VLESS 过滤"），这可能把在 ValidateGraph 看来"合法"的 fallback 服务组在 render 阶段清空，导致：
 
 - build 阶段无异常
-- render 阶段抛 `CodeRenderClashFallbackEmpty`（错误消息附带清空路径作为补偿）
+- render 阶段抛 `CodeRenderClashFallbackEmpty` 或 `CodeRenderSurgeFallbackEmpty`（错误消息附带清空路径作为补偿）
 
-**影响**：用户看到的错误被"晚报"——表面是 RenderError，根因是"Snell 节点构成了关键路径"。
+**影响**：用户看到的错误被"晚报"——表面是 RenderError，根因是"被目标格式过滤掉的协议节点构成了关键路径"。
 
-**缓解**：Render 层的错误消息携带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY(chained) ← [HK-Snell(snell)]]]`），用户可据此回改配置。
+**缓解**：Render 层的错误消息携带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY(chained) ← [HK-Snell(snell)]]]` 或 `FINAL ← [HK ← [HK-VL(vless)]]`），用户可据此回改配置。
 
 **后续改进方向（未实施）**：若未来引入更多 format-specific 过滤（如某格式不支持新协议），应把当前 render 层的视图过滤抽象为 "per-format validation hook"，在 `ValidateGraph` 阶段按输出格式做一次图校验，避免裂痕扩散。当前规模下保持现状。

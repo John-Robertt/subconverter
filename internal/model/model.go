@@ -6,6 +6,7 @@ type ProxyKind string
 const (
 	KindSubscription ProxyKind = "subscription"
 	KindSnell        ProxyKind = "snell"
+	KindVLess        ProxyKind = "vless"
 	KindCustom       ProxyKind = "custom"
 	KindChained      ProxyKind = "chained"
 )
@@ -21,7 +22,7 @@ const (
 // Proxy represents a single proxy node in the intermediate representation.
 type Proxy struct {
 	Name   string
-	Type   string // e.g. "ss", "socks5", "http", "snell"
+	Type   string // e.g. "ss", "socks5", "http", "snell", "vless"
 	Server string
 	Port   int
 	Params map[string]string // type-specific parameters (cipher, password, etc.)

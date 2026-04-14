@@ -56,14 +56,14 @@ subconverter/
 
 `internal/pipeline`
 
-- SS / Snell 来源解析、各阶段转换
+- SS / Snell / VLESS 来源解析、各阶段转换
 - 图级校验
 - 管道编排
 
 `internal/render`
 
-- Clash Meta 渲染器（yaml.Node API + 底版模板合并 + Snell 级联过滤）
-- Surge 渲染器（INI section 切分替换 + 底版模板合并）
+- Clash Meta 渲染器（yaml.Node API + 底版模板合并 + Snell 级联过滤 + VLESS 渲染）
+- Surge 渲染器（INI section 切分替换 + 底版模板合并 + VLESS 级联过滤）
 
 `internal/server`
 

@@ -70,6 +70,28 @@ func TestBuildErrorUnwrap(t *testing.T) {
 	}
 }
 
+func TestBuildErrorWithVLessURIInvalid(t *testing.T) {
+	e := &BuildError{Code: CodeBuildVLessURIInvalid, Phase: "source", Message: `VLESS URI "vless://..." 无效：缺少 @ 分隔符`}
+	want := `build error [source]: VLESS URI "vless://..." 无效：缺少 @ 分隔符`
+	if got := e.Error(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if e.Code != CodeBuildVLessURIInvalid {
+		t.Errorf("code = %q, want %q", e.Code, CodeBuildVLessURIInvalid)
+	}
+}
+
+func TestBuildErrorWithVLessSourceLineInvalid(t *testing.T) {
+	e := &BuildError{Code: CodeBuildVLessSourceLineInvalid, Phase: "source", Message: `VLESS 来源 "https://ex.com/v.txt" 第 3 行解析失败：invalid UUID`}
+	want := `build error [source]: VLESS 来源 "https://ex.com/v.txt" 第 3 行解析失败：invalid UUID`
+	if got := e.Error(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if e.Code != CodeBuildVLessSourceLineInvalid {
+		t.Errorf("code = %q, want %q", e.Code, CodeBuildVLessSourceLineInvalid)
+	}
+}
+
 func TestRenderError(t *testing.T) {
 	e := &RenderError{Code: CodeRenderTemplateParseFailed, Format: "clash", Message: "底版模板解析失败", Cause: io.EOF}
 	want := `render error [clash]: 底版模板解析失败`
@@ -82,6 +104,17 @@ func TestRenderErrorUnwrap(t *testing.T) {
 	e := &RenderError{Code: CodeRenderYAMLEncodeFailed, Format: "surge", Message: "写入失败", Cause: io.EOF}
 	if !errors.Is(e, io.EOF) {
 		t.Error("RenderError should unwrap to its Cause")
+	}
+}
+
+func TestRenderErrorWithSurgeFallbackEmpty(t *testing.T) {
+	e := &RenderError{Code: CodeRenderSurgeFallbackEmpty, Format: "surge", Message: `fallback 服务组 "FINAL" 在 Surge 输出中成员为空`}
+	want := `render error [surge]: fallback 服务组 "FINAL" 在 Surge 输出中成员为空`
+	if got := e.Error(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if e.Code != CodeRenderSurgeFallbackEmpty {
+		t.Errorf("code = %q, want %q", e.Code, CodeRenderSurgeFallbackEmpty)
 	}
 }
 

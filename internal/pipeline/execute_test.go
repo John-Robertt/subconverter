@@ -305,3 +305,168 @@ func TestExecute_FilterExcludes(t *testing.T) {
 		}
 	}
 }
+
+// T-EXECUTE-VLESS-001: Mixed subscription + VLESS source end-to-end.
+// Pipeline should carry both kinds; region groups match across kinds; unknown
+// VLESS transport falls back to tcp; non-none encryption is preserved; and
+// FetchOrder (default fallback here since cfg built in-memory) produces
+// subscription → snell → vless ordering.
+func TestExecute_VLessEndToEnd(t *testing.T) {
+	subURL := "https://sub.example.com/api"
+	subBody := makeSubResponse(
+		"ss://YWVzLTI1Ni1jZmI6cGFzcw@hk.example.com:8388#HK-01",
+	)
+
+	vlessURL := "https://vless.example.com/nodes.txt"
+	vlessBody := []byte(
+		"# reality nodes\n" +
+			"vless://11111111-2222-3333-4444-555555555555@hk.example.com:443?security=tls&sni=hk.example.com&type=quic&encryption=mlkem768x25519plus.native#HK-VL\n" +
+			"vless://11111111-2222-3333-4444-555555555555@sg.example.com:443?security=tls&sni=sg.example.com&type=tcp#SG-VL\n")
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		subURL:   subBody,
+		vlessURL: vlessBody,
+	}}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			Subscriptions: []config.Subscription{{URL: subURL}},
+			VLess:         []config.VLessSource{{URL: vlessURL}},
+		},
+		Groups: mustGroupsMap(t,
+			`"HK": { match: "(HK)", strategy: select }
+"SG": { match: "(SG)", strategy: select }`,
+		),
+		Routing: mustRoutingMap(t,
+			`"proxy": ["HK", "SG", "DIRECT"]
+"final": ["proxy", "DIRECT"]`,
+		),
+		Fallback: "final",
+	}
+
+	p, err := Execute(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 1 ss + 2 vless
+	if len(p.Proxies) != 3 {
+		t.Fatalf("got %d proxies, want 3", len(p.Proxies))
+	}
+
+	vlessCount, subCount := 0, 0
+	var (
+		hkVL    model.Proxy
+		foundHK bool
+	)
+	for _, px := range p.Proxies {
+		switch px.Kind {
+		case model.KindVLess:
+			vlessCount++
+			if px.Type != "vless" {
+				t.Errorf("KindVLess proxy %q has Type=%q, want vless", px.Name, px.Type)
+			}
+			if px.Name == "HK-VL" {
+				hkVL = px
+				foundHK = true
+			}
+		case model.KindSubscription:
+			subCount++
+		}
+	}
+	if vlessCount != 2 {
+		t.Errorf("vless proxies = %d, want 2", vlessCount)
+	}
+	if subCount != 1 {
+		t.Errorf("subscription proxies = %d, want 1", subCount)
+	}
+	if !foundHK {
+		t.Fatal("HK-VL proxy not found")
+	}
+	if hkVL.Params["network"] != "tcp" {
+		t.Errorf("HK-VL network = %q, want tcp fallback", hkVL.Params["network"])
+	}
+	if hkVL.Params["encryption"] != "mlkem768x25519plus.native" {
+		t.Errorf("HK-VL encryption = %q, want passthrough value", hkVL.Params["encryption"])
+	}
+
+	// HK region group: HK-01 (ss) + HK-VL (vless).
+	var hk *model.ProxyGroup
+	for i, g := range p.NodeGroups {
+		if g.Name == "HK" {
+			hk = &p.NodeGroups[i]
+			break
+		}
+	}
+	if hk == nil {
+		t.Fatal("HK region group not found")
+	}
+	wantHK := map[string]bool{"HK-01": true, "HK-VL": true}
+	gotHK := map[string]bool{}
+	for _, m := range hk.Members {
+		gotHK[m] = true
+	}
+	for m := range wantHK {
+		if !gotHK[m] {
+			t.Errorf("HK group missing %q (got %v)", m, hk.Members)
+		}
+	}
+}
+
+// T-EXECUTE-VLESS-003: VLESS node is a valid upstream for relay_through
+// chaining (sibling of TestExecute_SnellAsRelayThroughUpstream).
+func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
+	vlessURL := "https://vless.example.com/nodes.txt"
+	vlessBody := []byte(
+		"vless://11111111-2222-3333-4444-555555555555@hk.example.com:443?security=tls&sni=hk.example.com&type=tcp#HK-VL\n")
+
+	f := &fakeFetcher{responses: map[string][]byte{vlessURL: vlessBody}}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			VLess: []config.VLessSource{{URL: vlessURL}},
+			CustomProxies: []config.CustomProxy{{
+				Name: "MY-PROXY", Type: "socks5", Server: "10.0.0.1", Port: 1080,
+				Username: "u", Password: "p",
+				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
+			}},
+		},
+		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
+		Routing:  mustRoutingMap(t, `"proxy": ["HK", "🔗 MY-PROXY", "DIRECT"]`),
+		Fallback: "proxy",
+	}
+
+	p, err := Execute(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var chained *model.Proxy
+	for i, px := range p.Proxies {
+		if px.Kind == model.KindChained {
+			chained = &p.Proxies[i]
+			break
+		}
+	}
+	if chained == nil {
+		t.Fatal("no chained proxy found; VLESS should have been a valid upstream")
+	}
+	if chained.Name != "HK-VL→MY-PROXY" {
+		t.Errorf("chained.Name = %q, want HK-VL→MY-PROXY", chained.Name)
+	}
+	if chained.Dialer != "HK-VL" {
+		t.Errorf("chained.Dialer = %q, want HK-VL (the vless upstream)", chained.Dialer)
+	}
+
+	// @all includes original vless node, not the chained derivative.
+	inAll := map[string]bool{}
+	for _, n := range p.AllProxies {
+		inAll[n] = true
+	}
+	if !inAll["HK-VL"] {
+		t.Error("AllProxies should include HK-VL (original node)")
+	}
+	if inAll["HK-VL→MY-PROXY"] {
+		t.Error("AllProxies must not include chained node")
+	}
+}
