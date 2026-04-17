@@ -100,8 +100,10 @@ LoadConfig
 cmd/subconverter
   └─► internal/server
         ├─► internal/config
+        │     └─► internal/ssparse
         ├─► internal/pipeline
-        │     └─► internal/fetch
+        │     ├─► internal/fetch
+        │     └─► internal/ssparse
         ├─► internal/render
         └─► internal/model
 ```
@@ -111,6 +113,7 @@ cmd/subconverter
 - `config`：配置加载（支持本地/远程）、保序解析、静态校验
 - `model`：格式无关的中间表示
 - `fetch`：订阅拉取、缓存、统一资源加载（`LoadResource`：按前缀分发本地文件读取或 HTTP 拉取）
+- `ssparse`：Shadowsocks URI 解析（SIP002 body 解析、plugin query 解析），被 `config` 和 `pipeline` 共享
 - `pipeline`：Source / Filter / Group / Route / ValidateGraph 编排
 - `render`：Clash Meta 与 Surge 渲染器（支持底版模板合并）
 - `server`：HTTP 接口和错误映射

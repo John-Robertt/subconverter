@@ -121,7 +121,8 @@ func buildChainedNodesAndGroups(
 				Type:   cp.Type,
 				Server: cp.Server,
 				Port:   cp.Port,
-				Params: buildCustomParams(cp),
+				Params: copyParams(cp.Params),
+				Plugin: copyPlugin(cp.Plugin),
 				Kind:   model.KindChained,
 				Dialer: upstream.Name,
 			}

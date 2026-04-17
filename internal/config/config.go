@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/John-Robertt/subconverter/internal/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -141,15 +142,53 @@ func (s *Sources) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-// CustomProxy is a user-defined proxy node.
+// CustomProxy is a user-defined proxy node declared via a protocol URL.
+//
+// YAML fields: name (required), url (required), relay_through (optional).
+// Internal fields (Type, Server, Port, Params, Plugin) are populated by
+// UnmarshalYAML from the URL. Supported schemes: ss://, socks5://, http://.
 type CustomProxy struct {
+	// Populated from YAML.
+	URL          string        `yaml:"url"`
 	Name         string        `yaml:"name"`
-	Type         string        `yaml:"type"` // "socks5" | "http"
-	Server       string        `yaml:"server"`
-	Port         int           `yaml:"port"`
-	Username     string        `yaml:"username,omitempty"`
-	Password     string        `yaml:"password,omitempty"`
 	RelayThrough *RelayThrough `yaml:"relay_through,omitempty"`
+
+	// Populated from URL parsing (not from YAML directly).
+	Type     string            `yaml:"-"` // "ss" | "socks5" | "http"
+	Server   string            `yaml:"-"`
+	Port     int               `yaml:"-"`
+	Params   map[string]string `yaml:"-"` // cipher/password for ss; username/password for socks5/http
+	Plugin   *model.Plugin     `yaml:"-"` // ss only, from ?plugin= query
+	ParseErr error             `yaml:"-"` // deferred to validate stage
+}
+
+func (cp *CustomProxy) UnmarshalYAML(node *yaml.Node) error {
+	var raw struct {
+		URL          string        `yaml:"url"`
+		Name         string        `yaml:"name"`
+		RelayThrough *RelayThrough `yaml:"relay_through,omitempty"`
+	}
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+
+	cp.URL = raw.URL
+	cp.Name = raw.Name
+	cp.RelayThrough = raw.RelayThrough
+
+	if cp.URL != "" {
+		result, err := parseProxyURL(cp.URL)
+		if err != nil {
+			cp.ParseErr = err
+			return nil
+		}
+		cp.Type = result.Type
+		cp.Server = result.Server
+		cp.Port = result.Port
+		cp.Params = result.Params
+		cp.Plugin = result.Plugin
+	}
+	return nil
 }
 
 // RelayThrough defines how a custom proxy chains through upstream nodes.

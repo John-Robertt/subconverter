@@ -195,9 +195,7 @@ vless:
   - url: https://example.com/vless.txt
 custom_proxies:
   - name: local
-    type: socks5
-    server: 127.0.0.1
-    port: 1080
+    url: socks5://127.0.0.1:1080
 snell:
   - url: https://example.com/snell.txt
 `,

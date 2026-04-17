@@ -118,7 +118,7 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 		return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("invalid UUID %q", userinfo))
 	}
 
-	server, portStr, err := parseSSHostPort(hostport)
+	server, portStr, err := splitHostPort(hostport)
 	if err != nil {
 		return model.Proxy{}, vlessURIError(raw, err.Error())
 	}

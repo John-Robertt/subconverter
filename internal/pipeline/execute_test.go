@@ -192,8 +192,9 @@ func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 		Sources: config.Sources{
 			Snell: []config.SnellSource{{URL: snellURL}},
 			CustomProxies: []config.CustomProxy{{
-				Name: "MY-PROXY", Type: "socks5", Server: "10.0.0.1", Port: 1080,
-				Username: "u", Password: "p",
+				URL: "socks5://u:p@10.0.0.1:1080", Name: "MY-PROXY",
+				Type: "socks5", Server: "10.0.0.1", Port: 1080,
+				Params: map[string]string{"username": "u", "password": "p"},
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}},
 		},
@@ -427,8 +428,9 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 		Sources: config.Sources{
 			VLess: []config.VLessSource{{URL: vlessURL}},
 			CustomProxies: []config.CustomProxy{{
-				Name: "MY-PROXY", Type: "socks5", Server: "10.0.0.1", Port: 1080,
-				Username: "u", Password: "p",
+				URL: "socks5://u:p@10.0.0.1:1080", Name: "MY-PROXY",
+				Type: "socks5", Server: "10.0.0.1", Port: 1080,
+				Params: map[string]string{"username": "u", "password": "p"},
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}},
 		},
@@ -496,7 +498,8 @@ func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 		Sources: config.Sources{
 			Subscriptions: []config.Subscription{{URL: subURL}},
 			CustomProxies: []config.CustomProxy{{
-				Name: "HK-ISP", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				URL: "socks5://1.1.1.1:1080", Name: "HK-ISP",
+				Type: "socks5", Server: "1.1.1.1", Port: 1080,
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}},
 		},
@@ -519,5 +522,183 @@ func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 	// chain + region group name.
 	if !strings.Contains(err.Error(), `节点组 "HK-ISP" 重复声明`) {
 		t.Errorf("error should mention duplicate node group HK-ISP, got: %v", err)
+	}
+}
+
+// T-EXEC-SS-01: SS custom proxy end-to-end (no relay_through).
+//
+// Verifies that an ss-typed custom_proxy traverses the full pipeline and
+// surfaces in Proxies + AllProxies as a KindCustom node with cipher/password
+// in Params, while staying out of region group regex matching.
+func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
+	subURL := "https://sub.example.com/api"
+	subBody := makeSubResponse(
+		"ss://YWVzLTI1Ni1jZmI6cGFzcw@hk.example.com:8388#HK-01",
+	)
+
+	f := &fakeFetcher{responses: map[string][]byte{subURL: subBody}}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			Subscriptions: []config.Subscription{{URL: subURL}},
+			CustomProxies: []config.CustomProxy{{
+				URL: "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388", Name: "MY-SS",
+				Type: "ss", Server: "1.2.3.4", Port: 8388,
+				Params: map[string]string{"cipher": "aes-256-gcm", "password": "mypass"},
+			}},
+		},
+		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
+		Routing:  mustRoutingMap(t, `"proxy": ["HK", "@all", "DIRECT"]`),
+		Fallback: "proxy",
+	}
+
+	p, err := Execute(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	// MY-SS appears in Proxies as KindCustom with ss type.
+	var mySS *model.Proxy
+	for i := range p.Proxies {
+		if p.Proxies[i].Name == "MY-SS" {
+			mySS = &p.Proxies[i]
+			break
+		}
+	}
+	if mySS == nil {
+		t.Fatal("MY-SS missing from Proxies")
+	}
+	if mySS.Type != "ss" {
+		t.Errorf("MY-SS Type = %q, want ss", mySS.Type)
+	}
+	if mySS.Kind != model.KindCustom {
+		t.Errorf("MY-SS Kind = %q, want custom", mySS.Kind)
+	}
+	if mySS.Params["cipher"] != "aes-256-gcm" || mySS.Params["password"] != "mypass" {
+		t.Errorf("MY-SS Params = %v", mySS.Params)
+	}
+
+	// MY-SS appears in @all expansion.
+	foundInAll := false
+	for _, name := range p.AllProxies {
+		if name == "MY-SS" {
+			foundInAll = true
+			break
+		}
+	}
+	if !foundInAll {
+		t.Error("MY-SS missing from AllProxies")
+	}
+
+	// MY-SS does NOT appear in HK region group (KindCustom is excluded
+	// from region regex matching).
+	for _, g := range p.NodeGroups {
+		if g.Name != "HK" {
+			continue
+		}
+		for _, m := range g.Members {
+			if m == "MY-SS" {
+				t.Errorf("MY-SS leaked into HK region group; KindCustom must not match region regex")
+			}
+		}
+	}
+}
+
+// T-EXEC-SS-02: SS custom proxy chained end-to-end (with relay_through + plugin).
+//
+// Verifies that an ss-typed custom_proxy with relay_through generates
+// KindChained nodes that inherit Type=ss + cipher/password + plugin from the
+// chain template, do NOT appear as standalone proxies, and feed into a chain
+// group named after cp.Name.
+func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
+	subURL := "https://sub.example.com/api"
+	subBody := makeSubResponse(
+		"ss://YWVzLTI1Ni1jZmI6cGFzcw@hk.example.com:8388#HK-01",
+		"ss://YWVzLTI1Ni1jZmI6cGFzcw@hk2.example.com:8388#HK-02",
+	)
+
+	f := &fakeFetcher{responses: map[string][]byte{subURL: subBody}}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			Subscriptions: []config.Subscription{{URL: subURL}},
+			CustomProxies: []config.CustomProxy{{
+				URL: "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp",
+				Name: "SS-Chain",
+				Type: "ss", Server: "1.2.3.4", Port: 8388,
+				Params: map[string]string{"cipher": "aes-256-gcm", "password": "chainpass"},
+				Plugin: &model.Plugin{Name: "obfs-local", Opts: map[string]string{"obfs": "http"}},
+				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
+			}},
+		},
+		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
+		Routing:  mustRoutingMap(t, `"proxy": ["HK", "SS-Chain", "DIRECT"]`),
+		Fallback: "proxy",
+	}
+
+	p, err := Execute(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	// Chain template itself does NOT appear as a standalone proxy.
+	for _, px := range p.Proxies {
+		if px.Name == "SS-Chain" {
+			t.Errorf("SS-Chain should not exist as a standalone proxy; it's a chain template")
+		}
+	}
+
+	// Chained nodes exist: HK-01→SS-Chain and HK-02→SS-Chain.
+	wantChained := map[string]bool{"HK-01→SS-Chain": false, "HK-02→SS-Chain": false}
+	for _, px := range p.Proxies {
+		if _, want := wantChained[px.Name]; !want {
+			continue
+		}
+		wantChained[px.Name] = true
+		if px.Type != "ss" {
+			t.Errorf("chained %q Type = %q, want ss", px.Name, px.Type)
+		}
+		if px.Kind != model.KindChained {
+			t.Errorf("chained %q Kind = %q, want chained", px.Name, px.Kind)
+		}
+		if px.Params["cipher"] != "aes-256-gcm" || px.Params["password"] != "chainpass" {
+			t.Errorf("chained %q Params = %v", px.Name, px.Params)
+		}
+		if px.Plugin == nil {
+			t.Errorf("chained %q lost Plugin from chain template", px.Name)
+		} else if px.Plugin.Name != "obfs-local" || px.Plugin.Opts["obfs"] != "http" {
+			t.Errorf("chained %q Plugin = %+v", px.Name, px.Plugin)
+		}
+		if px.Dialer == "" {
+			t.Errorf("chained %q missing Dialer", px.Name)
+		}
+	}
+	for name, found := range wantChained {
+		if !found {
+			t.Errorf("chained node %q not found in Proxies", name)
+		}
+	}
+
+	// Chain group "SS-Chain" exists in NodeGroups containing both chained members.
+	var chainGroup *model.ProxyGroup
+	for i := range p.NodeGroups {
+		if p.NodeGroups[i].Name == "SS-Chain" {
+			chainGroup = &p.NodeGroups[i]
+			break
+		}
+	}
+	if chainGroup == nil {
+		t.Fatal("chain group SS-Chain missing from NodeGroups")
+	}
+	if len(chainGroup.Members) != 2 {
+		t.Errorf("chain group has %d members, want 2", len(chainGroup.Members))
+	}
+
+	// SS-Chain does NOT enter @all expansion (chained nodes excluded; chain
+	// template doesn't produce a standalone node).
+	for _, name := range p.AllProxies {
+		if name == "SS-Chain" || strings.Contains(name, "→SS-Chain") {
+			t.Errorf("chain-related %q leaked into @all", name)
+		}
 	}
 }

@@ -242,11 +242,7 @@ sources:
     - url: "https://my-server.com/vless-nodes.txt"
   custom_proxies:
     - name: 🔗 HK-ISP # 链式组名 = name 原样值；如需视觉前缀（🔗/⚡/CHAIN-）自行写入 name
-      type: socks5
-      server: 154.197.1.1
-      port: 45002
-      username: tXJ695acaa15
-      password: 4jtE3Mq7d0zcoO
+      url: socks5://tXJ695acaa15:4jtE3Mq7d0zcoO@154.197.1.1:45002 # 支持 ss:// / socks5:// / http://
       relay_through: # 声明后仅作链式模板，不作独立 KindCustom 节点
         type: group # group — 引用节点组 | select — 正则筛选拉取类节点 | all — 全部拉取类节点
         name: 🇭🇰 Hong Kong # group 时填组名，select 时改为 match: "(港|HK)"

@@ -21,6 +21,30 @@ func validBase() Config {
 	return cfg
 }
 
+// testCustomProxy builds a CustomProxy with pre-parsed internal fields,
+// simulating what UnmarshalYAML would produce from a given URL.
+// For tests that bypass YAML decoding, both URL and parsed fields must be set.
+func testCustomProxy(name, rawURL string, rt *RelayThrough) CustomProxy {
+	cp := CustomProxy{
+		URL:          rawURL,
+		Name:         name,
+		RelayThrough: rt,
+	}
+	if rawURL != "" {
+		result, err := parseProxyURL(rawURL)
+		if err != nil {
+			cp.ParseErr = err
+		} else {
+			cp.Type = result.Type
+			cp.Server = result.Server
+			cp.Port = result.Port
+			cp.Params = result.Params
+			cp.Plugin = result.Plugin
+		}
+	}
+	return cp
+}
+
 func TestValidate_ValidConfig(t *testing.T) {
 	cfg := validBase()
 	if err := Validate(&cfg); err != nil {
@@ -80,134 +104,178 @@ func TestValidate_ValidVLessURL(t *testing.T) {
 	}
 }
 
+// ---- custom_proxies: URL mode ----
+
 func TestValidate_MissingCustomProxyName(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Type: "socks5", Server: "1.2.3.4", Port: 1080,
-	}}
+	cp := testCustomProxy("", "socks5://1.2.3.4:1080", nil)
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].name")
 }
 
-func TestValidate_MissingCustomProxyType(t *testing.T) {
+func TestValidate_MissingCustomProxyURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Server: "1.2.3.4", Port: 1080,
-	}}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].type")
+	cfg.Sources.CustomProxies = []CustomProxy{{Name: "p1"}}
+	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
 }
 
-func TestValidate_InvalidCustomProxyType(t *testing.T) {
+func TestValidate_InvalidCustomProxyScheme(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "vmess", Server: "1.2.3.4", Port: 1080,
-	}}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].type")
+	cp := testCustomProxy("p1", "vmess://1.2.3.4:1080", nil)
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
+	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
 }
 
-func TestValidate_MissingCustomProxyServer(t *testing.T) {
+func TestValidate_CustomProxySocks5Valid(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Port: 1080,
-	}}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].server")
-}
-
-func TestValidate_InvalidCustomProxyPort(t *testing.T) {
-	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 0,
-	}}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].port")
-}
-
-func TestValidate_CustomProxyPortExceeds65535(t *testing.T) {
-	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 70000,
-	}}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].port")
-}
-
-func TestValidate_CustomProxyPortBoundary65535(t *testing.T) {
-	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 65535,
-	}}
+	cp := testCustomProxy("p1", "socks5://user:pass@1.2.3.4:1080", nil)
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	if err := Validate(&cfg); err != nil {
-		t.Errorf("port 65535 should be valid, got %v", err)
+		t.Errorf("expected nil, got %v", err)
 	}
+}
+
+func TestValidate_CustomProxyHTTPValid(t *testing.T) {
+	cfg := validBase()
+	cp := testCustomProxy("p1", "http://user:pass@1.2.3.4:8080", nil)
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func TestValidate_CustomProxySSValid(t *testing.T) {
+	cfg := validBase()
+	cp := testCustomProxy("p1", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388", nil)
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func TestValidate_CustomProxySSWithPlugin(t *testing.T) {
+	cfg := validBase()
+	cp := testCustomProxy("p1", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp", nil)
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func TestValidate_CustomProxySSFragmentIgnored(t *testing.T) {
+	cfg := validBase()
+	cp := testCustomProxy("MY-NODE", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388#OtherName", nil)
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+	if cp.Name != "MY-NODE" {
+		t.Errorf("Name = %q, want %q (fragment should be ignored)", cp.Name, "MY-NODE")
+	}
+}
+
+func TestValidate_CustomProxySSMissingCipher(t *testing.T) {
+	cfg := validBase()
+	// Construct a manually broken SS proxy: has password but no cipher
+	cp := CustomProxy{
+		URL:    "ss://broken@1.2.3.4:8388",
+		Name:   "p1",
+		Type:   "ss",
+		Server: "1.2.3.4",
+		Port:   8388,
+		Params: map[string]string{"password": "mypass"},
+	}
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
+	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
+}
+
+func TestValidate_CustomProxySSMissingPassword(t *testing.T) {
+	cfg := validBase()
+	cp := CustomProxy{
+		URL:    "ss://broken@1.2.3.4:8388",
+		Name:   "p1",
+		Type:   "ss",
+		Server: "1.2.3.4",
+		Port:   8388,
+		Params: map[string]string{"cipher": "aes-256-gcm"},
+	}
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
+	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
 }
 
 func TestValidate_DuplicateCustomProxyNames(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{
-		{Name: "dup", Type: "socks5", Server: "1.2.3.4", Port: 1080},
-		{Name: "dup", Type: "http", Server: "5.6.7.8", Port: 8080},
+		testCustomProxy("dup", "socks5://1.2.3.4:1080", nil),
+		testCustomProxy("dup", "http://5.6.7.8:8080", nil),
 	}
 	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[1].name")
+}
+
+func TestValidate_CustomProxySSWithRelayThrough(t *testing.T) {
+	cfg := validBase()
+	cp := testCustomProxy("chain-ss", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388",
+		&RelayThrough{Type: "all", Strategy: "select"})
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
+	if err := Validate(&cfg); err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
 }
 
 func TestValidate_RelayThroughMissingStrategy(t *testing.T) {
 	// T-CFG-004
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 1080,
-		RelayThrough: &RelayThrough{Type: "all"},
-	}}
+	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
+		&RelayThrough{Type: "all"})
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "relay_through.strategy")
 }
 
 func TestValidate_RelayThroughInvalidStrategy(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 1080,
-		RelayThrough: &RelayThrough{Type: "all", Strategy: "random"},
-	}}
+	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
+		&RelayThrough{Type: "all", Strategy: "random"})
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "relay_through.strategy")
 }
 
 func TestValidate_RelayThroughMissingType(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 1080,
-		RelayThrough: &RelayThrough{Strategy: "select"},
-	}}
+	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
+		&RelayThrough{Strategy: "select"})
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "relay_through.type")
 }
 
 func TestValidate_RelayThroughInvalidType(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 1080,
-		RelayThrough: &RelayThrough{Type: "invalid", Strategy: "select"},
-	}}
+	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
+		&RelayThrough{Type: "invalid", Strategy: "select"})
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "relay_through.type")
 }
 
 func TestValidate_RelayThroughGroupMissingName(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 1080,
-		RelayThrough: &RelayThrough{Type: "group", Strategy: "select"},
-	}}
+	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
+		&RelayThrough{Type: "group", Strategy: "select"})
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "relay_through.name")
 }
 
 func TestValidate_RelayThroughSelectMissingMatch(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 1080,
-		RelayThrough: &RelayThrough{Type: "select", Strategy: "select"},
-	}}
+	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
+		&RelayThrough{Type: "select", Strategy: "select"})
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "relay_through.match")
 }
 
 func TestValidate_RelayThroughSelectInvalidRegex(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.CustomProxies = []CustomProxy{{
-		Name: "p1", Type: "socks5", Server: "1.2.3.4", Port: 1080,
-		RelayThrough: &RelayThrough{Type: "select", Strategy: "select", Match: "[invalid"},
-	}}
+	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
+		&RelayThrough{Type: "select", Strategy: "select", Match: "[invalid"})
+	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "relay_through.match")
 }
 
@@ -308,15 +376,12 @@ func TestValidate_MultipleErrors(t *testing.T) {
 
 // --- helpers ---
 
-// assertFieldError checks that err is non-nil and contains a ConfigError
-// whose Field contains the given substring.
 func assertFieldError(t *testing.T, err error, fieldSubstr string) {
 	t.Helper()
 	if err == nil {
 		t.Fatalf("expected error containing field %q, got nil", fieldSubstr)
 	}
 
-	// Walk joined errors to find a matching ConfigError
 	for _, e := range unwrapAll(err) {
 		var ce *errtype.ConfigError
 		if errors.As(e, &ce) && strings.Contains(ce.Field, fieldSubstr) {
@@ -326,7 +391,6 @@ func assertFieldError(t *testing.T, err error, fieldSubstr string) {
 	t.Errorf("no ConfigError with field containing %q in: %v", fieldSubstr, err)
 }
 
-// unwrapAll extracts individual errors from errors.Join results.
 func unwrapAll(err error) []error {
 	type joinedError interface{ Unwrap() []error }
 	if je, ok := err.(joinedError); ok {
@@ -335,7 +399,6 @@ func unwrapAll(err error) []error {
 	return []error{err}
 }
 
-// mustOrderedMap unmarshals a YAML snippet into an OrderedMap.
 func mustOrderedMap[V any](yamlStr string) OrderedMap[V] {
 	var m OrderedMap[V]
 	if err := yaml.Unmarshal([]byte(yamlStr), &m); err != nil {

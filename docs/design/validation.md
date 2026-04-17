@@ -27,9 +27,9 @@
 - `subscriptions[].url` 必填
 - `snell[].url` 必填，必须为 HTTP(S) URL
 - `vless[].url` 必填，必须为 HTTP(S) URL
-- `custom_proxies[].name/type/server` 必填
-- `custom_proxies[].port` 必须为正整数
-- `custom_proxies` 之间名称不能重复
+- `custom_proxies[].name` 必填，且互不重复
+- `custom_proxies[].url` 必填；scheme 必须是 `ss://`、`socks5://` 或 `http://`；URL 解析失败（host/port 缺失、port 越界、SS userinfo 解码失败、SS plugin 选项格式错误等）记为字段错误
+- `custom_proxies[].url` 为 SS 时还需含 `cipher` + `password`（base64/明文 userinfo 解码后必须形如 `method:password`）
 - `groups[*].match` 必填
 - `groups[*].strategy` 必填且只能是 `select` 或 `url-test`
 - `relay_through.type` 必填

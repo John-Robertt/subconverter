@@ -52,16 +52,17 @@ func Validate(cfg *Config) error {
 		if cp.Name == "" {
 			c.add(prefix+".name", "必填")
 		}
-		if cp.Type == "" {
-			c.add(prefix+".type", "必填")
-		} else if cp.Type != "socks5" && cp.Type != "http" {
-			c.add(prefix+".type", fmt.Sprintf("必须为 socks5 或 http，当前为 %q", cp.Type))
-		}
-		if cp.Server == "" {
-			c.add(prefix+".server", "必填")
-		}
-		if cp.Port <= 0 || cp.Port > 65535 {
-			c.add(prefix+".port", "必须为 1-65535 范围内的整数")
+		if cp.URL == "" {
+			c.add(prefix+".url", "必填")
+		} else if cp.ParseErr != nil {
+			c.add(prefix+".url", cp.ParseErr.Error())
+		} else if cp.Type == "ss" {
+			if cp.Params["cipher"] == "" {
+				c.add(prefix+".url", "SS URI 缺少加密方式（cipher）")
+			}
+			if cp.Params["password"] == "" {
+				c.add(prefix+".url", "SS URI 缺少密码")
+			}
 		}
 
 		if cp.Name != "" {

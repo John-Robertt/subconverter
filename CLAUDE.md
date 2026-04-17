@@ -17,7 +17,7 @@ LoadConfig → ValidateConfig → Source → Filter → Group → Route → Vali
 
 **包边界**（依赖单向）：
 ```
-cmd/subconverter → internal/server → internal/{config,pipeline,render,model,fetch,errtype}
+cmd/subconverter → internal/server → internal/{config,pipeline,render,model,fetch,errtype,ssparse}
 ```
 `model` 和 `errtype` 不依赖其他业务包。`render` 不反向依赖 `config`。
 

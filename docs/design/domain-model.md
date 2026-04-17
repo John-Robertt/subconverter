@@ -37,7 +37,7 @@
 | `KindSubscription` | SS 订阅拉取 | `ss` | ✓ | ✓ | ✓ |
 | `KindSnell` | Snell 来源拉取（Surge 专属） | `snell` | ✓ | ✓ | ✓ |
 | `KindVLess` | VLESS 来源拉取（Clash 专属） | `vless` | ✓ | ✓ | ✓ |
-| `KindCustom` | 用户手工声明，且**未**设 `relay_through` | `socks5`, `http` | ✗（名字已显式） | ✗ | ✓ |
+| `KindCustom` | 用户手工声明，且**未**设 `relay_through` | `ss`, `socks5`, `http` | ✗（名字已显式） | ✗ | ✓ |
 | `KindChained` | `custom_proxy` 带 `relay_through` 派生 | 继承自 custom_proxy | ✗ | ✗ | ✗ |
 
 > 带 `relay_through` 的 custom_proxy 本身不产生 `KindCustom` 节点——它仅作为链式模板被 Group 阶段消费，生成 `KindChained` 节点和一个同名链式组。用户若需"直连 + 中继"两种入口，声明两条不同 `name` 的 custom_proxies。

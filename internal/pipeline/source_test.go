@@ -162,12 +162,12 @@ func TestSource_CustomProxyConversion(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.CustomProxies = []config.CustomProxy{
 		{
-			Name:     "HK-ISP",
-			Type:     "socks5",
-			Server:   "154.197.1.1",
-			Port:     45002,
-			Username: "user1",
-			Password: "pass1",
+			URL:    "socks5://user1:pass1@154.197.1.1:45002",
+			Name:   "HK-ISP",
+			Type:   "socks5",
+			Server: "154.197.1.1",
+			Port:   45002,
+			Params: map[string]string{"username": "user1", "password": "pass1"},
 		},
 	}
 
@@ -200,6 +200,49 @@ func TestSource_CustomProxyConversion(t *testing.T) {
 	}
 }
 
+// T-SRC-SS-01: SS custom proxy conversion preserves cipher/password/plugin.
+func TestSource_CustomProxySSConversion(t *testing.T) {
+	cfg := baseCfg()
+	cfg.Sources.CustomProxies = []config.CustomProxy{
+		{
+			URL:    "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388",
+			Name:   "MY-SS",
+			Type:   "ss",
+			Server: "1.2.3.4",
+			Port:   8388,
+			Params: map[string]string{"cipher": "aes-256-gcm", "password": "mypass"},
+		},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(proxies) != 1 {
+		t.Fatalf("got %d proxies, want 1", len(proxies))
+	}
+
+	p := proxies[0]
+	if p.Type != "ss" {
+		t.Errorf("Type = %q, want ss", p.Type)
+	}
+	if p.Kind != model.KindCustom {
+		t.Errorf("Kind = %q, want %q", p.Kind, model.KindCustom)
+	}
+	if p.Params["cipher"] != "aes-256-gcm" {
+		t.Errorf("cipher = %q", p.Params["cipher"])
+	}
+	if p.Params["password"] != "mypass" {
+		t.Errorf("password = %q", p.Params["password"])
+	}
+	if _, ok := p.Params["username"]; ok {
+		t.Error("ss proxy should not have username in Params")
+	}
+}
+
 // Custom proxies with relay_through are chain templates, not standalone
 // proxies. Source must skip them in convertCustomProxies so their cp.Name
 // is free to serve as the chain group name without colliding in the shared
@@ -208,10 +251,12 @@ func TestSource_CustomProxyWithRelayThroughIsNotConvertedToKindCustom(t *testing
 	cfg := baseCfg()
 	cfg.Sources.CustomProxies = []config.CustomProxy{
 		{
-			Name: "DIRECT-ONLY", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+			URL: "socks5://1.1.1.1:1080", Name: "DIRECT-ONLY",
+			Type: "socks5", Server: "1.1.1.1", Port: 1080,
 		},
 		{
-			Name: "RELAY-ONLY", Type: "socks5", Server: "2.2.2.2", Port: 1080,
+			URL: "socks5://2.2.2.2:1080", Name: "RELAY-ONLY",
+			Type: "socks5", Server: "2.2.2.2", Port: 1080,
 			RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 		},
 	}
@@ -244,7 +289,7 @@ func TestSource_CustomVsSubscriptionConflict(t *testing.T) {
 		{URL: "https://sub.example.com"},
 	}
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{Name: "HK-ISP", Type: "socks5", Server: "1.2.3.4", Port: 1080},
+		{URL: "socks5://1.2.3.4:1080", Name: "HK-ISP", Type: "socks5", Server: "1.2.3.4", Port: 1080},
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{
@@ -379,7 +424,7 @@ func TestSource_SubscriptionAndCustomCombined(t *testing.T) {
 		{URL: "https://sub.example.com"},
 	}
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{Name: "MY-PROXY", Type: "http", Server: "10.0.0.1", Port: 8080},
+		{URL: "http://10.0.0.1:8080", Name: "MY-PROXY", Type: "http", Server: "10.0.0.1", Port: 8080},
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{
@@ -459,7 +504,7 @@ func TestSource_DedupSuffixCollision(t *testing.T) {
 func TestSource_NoSubscriptionsOnlyCustom(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{Name: "PROXY-1", Type: "socks5", Server: "1.1.1.1", Port: 1080},
+		{URL: "socks5://1.1.1.1:1080", Name: "PROXY-1", Type: "socks5", Server: "1.1.1.1", Port: 1080},
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{}}
@@ -849,10 +894,8 @@ func TestSource_VLessCustomNameConflictError(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
 	cfg.Sources.CustomProxies = []config.CustomProxy{{
-		Name:   "HK-01",
-		Type:   "socks5",
-		Server: "1.2.3.4",
-		Port:   1080,
+		URL: "socks5://1.2.3.4:1080", Name: "HK-01",
+		Type: "socks5", Server: "1.2.3.4", Port: 1080,
 	}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
@@ -997,7 +1040,8 @@ func TestSource_ChainGroupNameConflictsWithFetchedNode(t *testing.T) {
 			cfg := baseCfg()
 			tc.setupCfg(cfg)
 			cfg.Sources.CustomProxies = []config.CustomProxy{{
-				Name: sharedName, Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				URL: "socks5://1.1.1.1:1080", Name: sharedName,
+				Type: "socks5", Server: "1.1.1.1", Port: 1080,
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}}
 

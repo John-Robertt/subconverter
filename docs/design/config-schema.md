@@ -46,11 +46,7 @@ sources:
     - url: "https://my-server.com/vless-nodes.txt"
   custom_proxies:
     - name: HK-ISP
-      type: socks5
-      server: 154.197.1.1
-      port: 45002
-      username: user
-      password: pass
+      url: socks5://user:pass@154.197.1.1:45002
       relay_through:
         type: group
         name: 🇭🇰 Hong Kong
@@ -100,11 +96,31 @@ sources:
 
 ### custom_proxies
 
-- 用于声明不来自订阅的代理节点
-- 当前支持 `socks5`、`http`
-- 可带认证信息
-- 可选声明 `relay_through`
-- `name` 同时充当多重标识：无 `relay_through` 时是代理节点名；带 `relay_through` 时是链式组名（见下）
+每条 `custom_proxy` 由 `name` + `url` 两个必填字段定义，可选 `relay_through`。
+
+```yaml
+custom_proxies:
+  - name: 🔗 HK-ISP
+    url: socks5://user:pass@154.197.1.1:45002
+  - name: MY-SS
+    url: "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp"
+  - name: US-HTTP
+    url: http://user:pass@10.0.0.1:8080
+```
+
+字段约束：
+
+- `name` 必填。同时充当多重标识：无 `relay_through` 时是代理节点名；带 `relay_through` 时是链式组名（见下）
+- `url` 必填。支持三种 scheme：
+  - `ss://userinfo@server:port[?plugin=...]`：SIP002 Shadowsocks。`userinfo` 可以是 base64 编码的 `method:password`，也可以是 percent-encoded 明文。`?plugin=` query 由"plugin 名称 + 分号分隔的 KEY=VALUE 选项"组成（参考 SS 客户端通用约定）。URI 末尾的 `#fragment` 节点名**会被静默忽略**，统一以外层 `name` 字段为准
+  - `socks5://[user:pass@]server:port`：SOCKS5
+  - `http://[user:pass@]server:port`：HTTP
+- `relay_through` 可选
+
+校验规则：
+
+- `name` 重复报错；`url` 缺失或不能解析（含 scheme 不识别、host/port 缺失、SS URI 缺少 cipher/password 等）报错
+- `url` 解析在配置加载阶段完成，错误延迟到 `Validate` 阶段聚合输出，便于一次性发现多条配置问题
 
 ### relay_through
 

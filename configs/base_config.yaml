@@ -60,12 +60,12 @@ sources:
   # 不来自订阅、手动定义的节点（如机房专线、ISP 代理）。
   #
   # 字段说明：
-  #   name:     节点名称（不能与订阅节点或其他自定义代理重名）
-  #   type:     代理类型，可选 socks5 | http
-  #   server:   服务器地址
-  #   port:     端口号
-  #   username: 认证用户名（可选）
-  #   password: 认证密码（可选）
+  #   name:  节点名称（不能与订阅节点或其他自定义代理重名）
+  #   url:   代理协议链接，支持 ss://、socks5://、http://
+  #          - ss:      SIP002 格式 ss://base64(method:password)@server:port[?plugin=...][#ignored]
+  #          - socks5:  socks5://[user:pass@]server:port
+  #          - http:    http://[user:pass@]server:port
+  #          SS URI 中的 #fragment 节点名会被忽略，以 name 字段为准。
   #
   # relay_through（可选）：声明链式代理——通过指定的上游节点中转。
   #   声明后，系统会以 cp.name 为组名自动生成链式节点组（组名即 name 原样值），
@@ -87,11 +87,7 @@ sources:
 
   custom_proxies:
     - name: 🔗 HK-ISP
-      type: socks5
-      server: 154.197.1.1
-      port: 45002
-      username: user
-      password: pass
+      url: socks5://user:pass@154.197.1.1:45002
       relay_through:
         type: group
         name: "🇭🇰 Hong Kong"

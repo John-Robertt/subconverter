@@ -332,25 +332,39 @@ func convertCustomProxies(cps []config.CustomProxy) []model.Proxy {
 			Type:   cp.Type,
 			Server: cp.Server,
 			Port:   cp.Port,
-			Params: buildCustomParams(cp),
+			Params: copyParams(cp.Params),
+			Plugin: copyPlugin(cp.Plugin),
 			Kind:   model.KindCustom,
 		})
 	}
 	return proxies
 }
 
-// buildCustomParams builds a fresh Params map from a CustomProxy config.
-// Each call allocates a new map to prevent sharing between proxies.
-// Used by both Source stage (convertCustomProxies) and Group stage (chained node generation).
-func buildCustomParams(cp config.CustomProxy) map[string]string {
-	params := make(map[string]string)
-	if cp.Username != "" {
-		params["username"] = cp.Username
+// copyParams returns a shallow copy of a Params map to prevent sharing
+// between proxies. Used by both Source stage and Group stage.
+func copyParams(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
 	}
-	if cp.Password != "" {
-		params["password"] = cp.Password
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
 	}
-	return params
+	return dst
+}
+
+func copyPlugin(src *model.Plugin) *model.Plugin {
+	if src == nil {
+		return nil
+	}
+	dst := &model.Plugin{Name: src.Name}
+	if len(src.Opts) > 0 {
+		dst.Opts = make(map[string]string, len(src.Opts))
+		for k, v := range src.Opts {
+			dst.Opts[k] = v
+		}
+	}
+	return dst
 }
 
 // checkNameConflicts verifies that no custom_proxy name collides with a

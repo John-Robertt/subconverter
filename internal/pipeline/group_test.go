@@ -137,12 +137,10 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
 				{
-					Name:     "HK-ISP",
-					Type:     "socks5",
-					Server:   "154.197.1.1",
-					Port:     45002,
-					Username: "user1",
-					Password: "pass1",
+					URL:  "socks5://user1:pass1@154.197.1.1:45002",
+					Name: "HK-ISP",
+					Type: "socks5", Server: "154.197.1.1", Port: 45002,
+					Params: map[string]string{"username": "user1", "password": "pass1"},
 					RelayThrough: &config.RelayThrough{
 						Type:     "group",
 						Name:     "🇭🇰 Hong Kong",
@@ -225,10 +223,9 @@ func TestGroup_ChainedTypeSelect(t *testing.T) {
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
 				{
-					Name:   "PROXY-A",
-					Type:   "http",
-					Server: "10.0.0.1",
-					Port:   8080,
+					URL:  "http://10.0.0.1:8080",
+					Name: "PROXY-A",
+					Type: "http", Server: "10.0.0.1", Port: 8080,
 					RelayThrough: &config.RelayThrough{
 						Type:     "select",
 						Match:    "(HK|SG)",
@@ -276,10 +273,9 @@ func TestGroup_ChainedTypeAll(t *testing.T) {
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
 				{
-					Name:   "PROXY-B",
-					Type:   "socks5",
-					Server: "1.1.1.1",
-					Port:   1080,
+					URL:  "socks5://1.1.1.1:1080",
+					Name: "PROXY-B",
+					Type: "socks5", Server: "1.1.1.1", Port: 1080,
 					RelayThrough: &config.RelayThrough{
 						Type:     "all",
 						Strategy: "select",
@@ -322,16 +318,14 @@ func TestGroup_AllProxiesExcludesChained(t *testing.T) {
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
 				{
-					Name:   "MY-PROXY",
-					Type:   "socks5",
-					Server: "1.1.1.1",
-					Port:   1080,
+					URL:  "socks5://1.1.1.1:1080",
+					Name: "MY-PROXY",
+					Type: "socks5", Server: "1.1.1.1", Port: 1080,
 				},
 				{
-					Name:   "CHAIN-PROXY",
-					Type:   "socks5",
-					Server: "2.2.2.2",
-					Port:   1080,
+					URL:  "socks5://2.2.2.2:1080",
+					Name: "CHAIN-PROXY",
+					Type: "socks5", Server: "2.2.2.2", Port: 1080,
 					RelayThrough: &config.RelayThrough{
 						Type:     "all",
 						Strategy: "select",
@@ -382,10 +376,9 @@ func TestGroup_ChainedGroupRefNotFound(t *testing.T) {
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
 				{
-					Name:   "PROXY-X",
-					Type:   "socks5",
-					Server: "1.1.1.1",
-					Port:   1080,
+					URL:  "socks5://1.1.1.1:1080",
+					Name: "PROXY-X",
+					Type: "socks5", Server: "1.1.1.1", Port: 1080,
 					RelayThrough: &config.RelayThrough{
 						Type:     "group",
 						Name:     "🇰🇷 Korea",
@@ -424,7 +417,7 @@ func TestGroup_NoChaining(t *testing.T) {
 `),
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{Name: "MY-PROXY", Type: "socks5", Server: "1.1.1.1", Port: 1080},
+				{URL: "socks5://1.1.1.1:1080", Name: "MY-PROXY", Type: "socks5", Server: "1.1.1.1", Port: 1080},
 			},
 		},
 	}
@@ -462,11 +455,13 @@ func TestGroup_MultipleChainedGroups(t *testing.T) {
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
 				{
-					Name: "ISP-A", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+					URL: "socks5://1.1.1.1:1080", Name: "ISP-A",
+					Type: "socks5", Server: "1.1.1.1", Port: 1080,
 					RelayThrough: &config.RelayThrough{Type: "group", Name: "🇭🇰 Hong Kong", Strategy: "select"},
 				},
 				{
-					Name: "ISP-B", Type: "http", Server: "2.2.2.2", Port: 8080,
+					URL: "http://2.2.2.2:8080", Name: "ISP-B",
+					Type: "http", Server: "2.2.2.2", Port: 8080,
 					RelayThrough: &config.RelayThrough{Type: "all", Strategy: "url-test"},
 				},
 			},
@@ -511,12 +506,10 @@ func TestGroup_ChainedNodeProperties(t *testing.T) {
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
 				{
-					Name:     "AUTH-PROXY",
-					Type:     "socks5",
-					Server:   "10.0.0.1",
-					Port:     9090,
-					Username: "admin",
-					Password: "secret",
+					URL:  "socks5://admin:secret@10.0.0.1:9090",
+					Name: "AUTH-PROXY",
+					Type: "socks5", Server: "10.0.0.1", Port: 9090,
+					Params: map[string]string{"username": "admin", "password": "secret"},
 					RelayThrough: &config.RelayThrough{
 						Type:     "all",
 						Strategy: "select",
@@ -563,6 +556,71 @@ func TestGroup_ChainedNodeProperties(t *testing.T) {
 	}
 }
 
+// T-GRP-SS-01: SS chain template plugin propagation to chained nodes.
+//
+// Verifies that an ss-typed custom_proxy with a plugin propagates the plugin
+// into every chained node derived from it. Without explicit propagation,
+// chained ss nodes would silently drop their obfs/v2ray-plugin spec.
+func TestGroup_ChainedSSNodePluginPropagation(t *testing.T) {
+	proxies := []model.Proxy{
+		makeSubProxy("HK-01"),
+		makeSubProxy("SG-01"),
+	}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			CustomProxies: []config.CustomProxy{
+				{
+					URL:  "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp",
+					Name: "SS-Chain",
+					Type: "ss", Server: "1.2.3.4", Port: 8388,
+					Params: map[string]string{"cipher": "aes-256-gcm", "password": "chainpass"},
+					Plugin: &model.Plugin{
+						Name: "obfs-local",
+						Opts: map[string]string{"obfs": "http", "obfs-host": "example.com"},
+					},
+					RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
+				},
+			},
+		},
+	}
+
+	result, err := Group(proxies, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	chainedCount := 0
+	for _, px := range result.Proxies {
+		if px.Kind != model.KindChained {
+			continue
+		}
+		chainedCount++
+		if px.Type != "ss" {
+			t.Errorf("chained %q Type = %q, want ss", px.Name, px.Type)
+		}
+		if px.Params["cipher"] != "aes-256-gcm" || px.Params["password"] != "chainpass" {
+			t.Errorf("chained %q Params = %v", px.Name, px.Params)
+		}
+		if _, ok := px.Params["username"]; ok {
+			t.Errorf("chained %q ss node should not carry username in Params", px.Name)
+		}
+		if px.Plugin == nil {
+			t.Errorf("chained %q dropped Plugin from chain template", px.Name)
+			continue
+		}
+		if px.Plugin.Name != "obfs-local" {
+			t.Errorf("chained %q Plugin.Name = %q", px.Name, px.Plugin.Name)
+		}
+		if px.Plugin.Opts["obfs"] != "http" || px.Plugin.Opts["obfs-host"] != "example.com" {
+			t.Errorf("chained %q Plugin.Opts = %v", px.Name, px.Plugin.Opts)
+		}
+	}
+	if chainedCount != 2 {
+		t.Errorf("got %d chained nodes, want 2 (one per upstream)", chainedCount)
+	}
+}
+
 // T-GRP-010: Proxies merge order (original first, then chained)
 func TestGroup_ProxiesMergeOrder(t *testing.T) {
 	proxies := []model.Proxy{
@@ -574,7 +632,8 @@ func TestGroup_ProxiesMergeOrder(t *testing.T) {
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
 				{
-					Name: "MY-PROXY", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+					URL: "socks5://1.1.1.1:1080", Name: "MY-PROXY",
+					Type: "socks5", Server: "1.1.1.1", Port: 1080,
 					RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 				},
 			},
@@ -745,10 +804,9 @@ func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{{
-				Name:   "MY-CHAIN",
-				Type:   "socks5",
-				Server: "127.0.0.1",
-				Port:   1080,
+				URL:  "socks5://127.0.0.1:1080",
+				Name: "MY-CHAIN",
+				Type: "socks5", Server: "127.0.0.1", Port: 1080,
 				RelayThrough: &config.RelayThrough{
 					Type:     "all",
 					Strategy: "select",
@@ -792,7 +850,8 @@ func TestGroup_ChainedGroupNameEqualsCustomProxyName(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{{
-				Name: "HK-ISP", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				URL: "socks5://1.1.1.1:1080", Name: "HK-ISP",
+				Type: "socks5", Server: "1.1.1.1", Port: 1080,
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}},
 		},
@@ -823,7 +882,8 @@ func TestGroup_ChainedGroupNamePreservesUserEmojiPrefix(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{{
-				Name: "🔗 HK-ISP", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				URL: "socks5://1.1.1.1:1080", Name: "🔗 HK-ISP",
+				Type: "socks5", Server: "1.1.1.1", Port: 1080,
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}},
 		},

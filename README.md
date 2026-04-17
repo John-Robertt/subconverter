@@ -179,11 +179,7 @@ sources:
     - url: "https://my-server.com/vless-nodes.txt" # 纯文本 VLESS URI 清单；单行失败会报脱敏 URL + 物理行号
   custom_proxies:
     - name: 🔗 HK-ISP # 声明 relay_through 时 name 即链式组名（原样使用，需要视觉前缀自行写入）
-      type: socks5
-      server: 154.197.1.1
-      port: 45002
-      username: user
-      password: pass
+      url: socks5://user:pass@154.197.1.1:45002 # 支持 ss:// / socks5:// / http://；SS URI 中的 #fragment 会被忽略
       relay_through: # 可选：声明后 cp 仅作链式模板，不产生独立代理
         type: group
         name: "🇭🇰 Hong Kong"
