@@ -9,11 +9,6 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// chainedGroupPrefix is prepended to the custom proxy name to form
-// the auto-generated chained group name.
-// Defined in config-schema.md: "组名为 🔗 <custom_proxy.name>"
-const chainedGroupPrefix = "🔗 "
-
 // GroupResult holds the output of the Group stage (pipeline stage 5).
 type GroupResult struct {
 	Proxies    []model.Proxy      // all proxies: original + chained
@@ -135,7 +130,7 @@ func buildChainedNodesAndGroups(
 		}
 
 		chainGroups = append(chainGroups, model.ProxyGroup{
-			Name:     chainedGroupPrefix + cp.Name,
+			Name:     cp.Name,
 			Scope:    model.ScopeNode,
 			Strategy: rt.Strategy,
 			Members:  members,

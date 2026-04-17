@@ -136,7 +136,7 @@ VLESS 来源解析：
 
 说明：
 
-- 过滤对象是拉取类节点（`KindSubscription` + `KindSnell`）
+- 过滤对象是拉取类节点（`KindSubscription` + `KindSnell` + `KindVLess`）
 - 自定义代理和链式节点不参与过滤
 
 ---
@@ -165,7 +165,7 @@ VLESS 来源解析：
 
 1. **构建地区节点组**：根据 `groups` 定义，用正则匹配过滤后的拉取类节点（订阅 + Snell + VLESS），生成地区节点组
 2. **构建链式节点和链式组**：根据 `relay_through` 定义，利用已构建的地区组（`type=group` 时）或正则匹配（`type=select` 时）确定上游节点，展开链式节点并生成链式组
-3. **计算 `@all`**：收集全部原始节点（订阅节点 + Snell 节点 + VLESS 节点 + 自定义节点），不把链式节点写入结果
+3. **计算 `@all`**：收集全部原始节点（订阅节点 + Snell 节点 + VLESS 节点 + **不带 `relay_through` 的自定义节点**），不把链式节点写入结果
 
 顺序理由：步骤 2 依赖步骤 1 的产出（`relay_through.type=group` 需要引用已构建的地区组）。步骤 3 只要来源限定为原始节点，就可以天然排除链式节点；实现上可在链式生成前后计算，但结果语义必须一致。
 
@@ -174,7 +174,7 @@ VLESS 来源解析：
 - 链式组属于节点组
 - 链式组策略取自 `relay_through.strategy`
 - `@all` 只包含原始节点，不包含链式节点
-- 原始节点包括订阅节点、Snell 节点、VLESS 节点和自定义节点；自定义节点即使声明了 `relay_through`，也仍属于 `@all`
+- 原始节点包括订阅节点、Snell 节点、VLESS 节点和**不带 `relay_through`** 的自定义节点；带 `relay_through` 的自定义代理仅作链式模板（不产生 `KindCustom`），因而也不进入 `@all`
 - 链式展开的上游只来自拉取类节点（订阅 + Snell + VLESS）
 
 ---

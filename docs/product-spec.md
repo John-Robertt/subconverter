@@ -241,13 +241,13 @@ sources:
   vless:
     - url: "https://my-server.com/vless-nodes.txt"
   custom_proxies:
-    - name: HK-ISP
+    - name: 🔗 HK-ISP # 链式组名 = name 原样值；如需视觉前缀（🔗/⚡/CHAIN-）自行写入 name
       type: socks5
       server: 154.197.1.1
       port: 45002
       username: tXJ695acaa15
       password: 4jtE3Mq7d0zcoO
-      relay_through: # 经由中转，自动生成 🔗 HK-ISP 链式节点组
+      relay_through: # 声明后仅作链式模板，不作独立 KindCustom 节点
         type: group # group — 引用节点组 | select — 正则筛选拉取类节点 | all — 全部拉取类节点
         name: 🇭🇰 Hong Kong # group 时填组名，select 时改为 match: "(港|HK)"
         strategy: select # 链式组策略，必须显式指定 select/url-test
@@ -269,10 +269,10 @@ groups:
       match: "(美国|波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|US|USA|United States)",
       strategy: select,
     }
-  # 🔗 HK-ISP 由 relay_through 自动生成，无需定义
+  # 链式组（上例 "🔗 HK-ISP"）由 relay_through 自动生成，组名 = custom_proxies.name 原样，无需在此定义
 
 # 服务组：key = 组名，value = 有序出口列表（第一个是默认推荐）
-# 可引用：节点组名、其他服务组名、🔗 链式组名、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + Snell 节点 + VLESS 节点 + 自定义代理，不含链式节点）、@auto（自动补充剩余成员）
+# 可引用：节点组名、其他服务组名、链式组名（custom_proxies.name 原样，如 "🔗 HK-ISP"）、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + Snell 节点 + VLESS 节点 + 无 relay_through 的自定义代理；不含链式节点）、@auto（自动补充剩余成员）
 # @auto 展开为：全部节点组（声明序）→ 包含 @all 的服务组（声明序）→ DIRECT（去重、排除自身）
 # REJECT 不在 @auto 中；如需使用，必须显式写在成员列表里
 # 同一 entry 中 @auto 最多出现一次；@auto 与 @all 不能在同一 entry 中同时使用

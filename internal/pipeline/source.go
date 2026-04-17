@@ -81,11 +81,15 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) ([]m
 
 	subProxies = deduplicateNames(subProxies)
 
-	customProxies := convertCustomProxies(cfg.Sources.CustomProxies)
-
-	if err := checkNameConflicts(subProxies, customProxies); err != nil {
+	// Verify name conflicts against the *original* custom_proxies (including
+	// chain templates with relay_through set), since chain templates do not
+	// produce KindCustom proxies but their name still claims a slot in the
+	// shared namespace as a chain group name.
+	if err := checkNameConflicts(subProxies, cfg.Sources.CustomProxies); err != nil {
 		return nil, err
 	}
+
+	customProxies := convertCustomProxies(cfg.Sources.CustomProxies)
 
 	return append(subProxies, customProxies...), nil
 }
@@ -312,10 +316,17 @@ func deduplicatedName(base string, seq int) string {
 }
 
 // convertCustomProxies converts config.CustomProxy entries to model.Proxy objects.
-// RelayThrough is not processed here (deferred to Group stage in M3).
+//
+// Entries with RelayThrough set are *skipped*: they serve only as chain
+// templates in the Group stage (which generates chained nodes + a chain group
+// named cp.Name). Emitting a KindCustom proxy for them would collide with the
+// chain group name in the shared namespace.
 func convertCustomProxies(cps []config.CustomProxy) []model.Proxy {
 	proxies := make([]model.Proxy, 0, len(cps))
 	for _, cp := range cps {
+		if cp.RelayThrough != nil {
+			continue
+		}
 		proxies = append(proxies, model.Proxy{
 			Name:   cp.Name,
 			Type:   cp.Type,
@@ -342,23 +353,35 @@ func buildCustomParams(cp config.CustomProxy) map[string]string {
 	return params
 }
 
-// checkNameConflicts verifies that no custom proxy name collides with a
-// fetched node name (subscription or Snell source). The error message
-// identifies which kind of fetched source owns the conflicting name so users
-// can fix the right side.
-func checkNameConflicts(fetched, customProxies []model.Proxy) error {
+// checkNameConflicts verifies that no custom_proxy name collides with a
+// fetched node name (subscription / Snell / VLESS). The error message
+// distinguishes two cases because they belong to *different* namespaces and
+// the user has to fix different sections of the YAML:
+//
+//   - cp without relay_through: cp.Name is a direct KindCustom proxy name,
+//     colliding with a fetched proxy name.
+//   - cp with relay_through: cp.Name is a chain group name (no KindCustom
+//     proxy is emitted), colliding with a fetched proxy name — the fix is
+//     to rename either the custom_proxy or filter out the fetched node.
+func checkNameConflicts(fetched []model.Proxy, customProxies []config.CustomProxy) error {
 	fetchedIndex := make(map[string]model.ProxyKind, len(fetched))
 	for _, p := range fetched {
 		fetchedIndex[p.Name] = p.Kind
 	}
 
 	for _, cp := range customProxies {
-		if kind, exists := fetchedIndex[cp.Name]; exists {
-			return &errtype.BuildError{
-				Code:    errtype.CodeBuildCustomNameConflict,
-				Phase:   "source",
-				Message: fmt.Sprintf("自定义代理名 %q 与%s节点重名", cp.Name, describeFetchedKind(kind)),
-			}
+		kind, exists := fetchedIndex[cp.Name]
+		if !exists {
+			continue
+		}
+		label := "自定义代理名"
+		if cp.RelayThrough != nil {
+			label = "链式组名"
+		}
+		return &errtype.BuildError{
+			Code:    errtype.CodeBuildCustomNameConflict,
+			Phase:   "source",
+			Message: fmt.Sprintf("%s %q 与%s节点重名", label, cp.Name, describeFetchedKind(kind)),
 		}
 	}
 	return nil

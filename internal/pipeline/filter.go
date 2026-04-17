@@ -9,9 +9,9 @@ import (
 
 // Filter executes pipeline stage 4: apply exclude regex to fetched nodes.
 //
-// Filtering covers all nodes sourced via remote fetch (Kind=KindSubscription
-// or Kind=KindSnell). Custom proxies and any other kinds pass through
-// unconditionally.
+// Filtering covers all nodes sourced via remote fetch (KindSubscription /
+// KindSnell / KindVLess — see isFetchedKind). Custom proxies and any other
+// kinds pass through unconditionally.
 //
 // If excludePattern is empty, all proxies pass through unchanged.
 func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error) {

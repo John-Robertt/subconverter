@@ -178,13 +178,13 @@ sources:
   vless:
     - url: "https://my-server.com/vless-nodes.txt" # 纯文本 VLESS URI 清单；单行失败会报脱敏 URL + 物理行号
   custom_proxies:
-    - name: HK-ISP
+    - name: 🔗 HK-ISP # 声明 relay_through 时 name 即链式组名（原样使用，需要视觉前缀自行写入）
       type: socks5
       server: 154.197.1.1
       port: 45002
       username: user
       password: pass
-      relay_through: # 可选：链式代理
+      relay_through: # 可选：声明后 cp 仅作链式模板，不产生独立代理
         type: group
         name: "🇭🇰 Hong Kong"
         strategy: select
@@ -198,7 +198,7 @@ groups:
 
 routing:
   🚀 快速选择: ["@auto"] # @auto 自动补充：全部节点组 + 包含 @all 的服务组 + DIRECT（每个 entry 最多一次）
-  🚀 手动切换: ["@all"] # @all 展开为全部原始节点（订阅 + Snell + VLESS + 自定义代理，不含链式节点）
+  🚀 手动切换: ["@all"] # @all 展开为全部原始节点（订阅 + Snell + VLESS + 不带 relay_through 的自定义代理；不含链式节点）
   📲 Telegram: [🇭🇰 Hong Kong, 🚀 快速选择, "@auto", REJECT] # REJECT 不在 @auto 中，按需要手动添加
   🐟 FINAL: ["@auto"]
 

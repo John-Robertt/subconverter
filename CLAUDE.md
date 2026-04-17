@@ -24,8 +24,8 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 **关键不变量**（修改时必须维持）：
 - 节点名全局唯一（跨订阅两轮去重）
 - 节点组名和服务组名共享命名空间，互斥
-- 链式节点上游只来自"拉取类"节点（`KindSubscription` / `KindSnell`）
-- `@all` 仅含原始节点（不含链式）
+- 链式节点上游只来自"拉取类"节点（`KindSubscription` / `KindSnell` / `KindVLess`）
+- `@all` 仅含原始节点：订阅 / Snell / VLESS / **不带 `relay_through`** 的 custom_proxy；不含链式节点；带 `relay_through` 的 custom_proxy 是链式模板（仅派生 `KindChained` + 同名链式组），不产出 `KindCustom`，不进入 `@all`
 - `groups` / `routing` / `rulesets` 三段**保序**
 
 **详细设计**：`docs/architecture.md` + `docs/design/*.md`。修改前先读对应文档，不要凭直觉改动——该项目已把多数决策写进文档，文档与代码的偏离本身是 bug。
@@ -101,7 +101,7 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 - 命名：`Test<Package>_<Scenario>`；顶部注释加 `T-<DOMAIN>-<NN>` id（规则见 `docs/implementation/testing-strategy.md`）
 - **表驱动测试优先**：cases slice + `t.Run(tt.name, ...)`
 - 断言含上下文：失败消息带 got/want + 相关 state，便于 debug
-- **YAML 断言避坑**：astral-plane 字符（如 🔗 U+1F517）被 go-yaml 转成 `\UXXXX`；emoji 组名用 ASCII 前缀（`GRP_`/`SVC_`）测试更稳定
+- **YAML 断言避坑**：astral-plane 字符（如 🇭🇰 国旗 U+1F1ED+U+1F1F0，或 🔗 U+1F517）被 go-yaml 转成 `\UXXXX`；emoji 组名用 ASCII 前缀（`GRP_`/`SVC_`）测试更稳定。YAML 路径上的比对尤其敏感；纯 Go fixture（直接构造结构体 + 字符串字面量断言）可安全使用任意 emoji
 - 新 feature 的测试文件命名与现有风格保持一致：`<feature>_test.go`
 
 ### Plan 文件闭环

@@ -104,6 +104,7 @@ sources:
 - 当前支持 `socks5`、`http`
 - 可带认证信息
 - 可选声明 `relay_through`
+- `name` 同时充当多重标识：无 `relay_through` 时是代理节点名；带 `relay_through` 时是链式组名（见下）
 
 ### relay_through
 
@@ -125,8 +126,9 @@ sources:
 结果：
 
 - 系统为每个上游节点生成一个链式节点
-- 系统自动生成一个链式节点组，组名为 `🔗 <custom_proxy.name>`
+- 系统自动生成一个链式节点组，组名 = `custom_proxy.name` 原样值（无任何前缀，若希望组名带视觉标识如 `🔗 `，由用户自行写入 `name`）
 - 链式组属于节点组，策略取自 `relay_through.strategy`
+- 带 `relay_through` 的 `custom_proxy` 仅作为链式模板，不再作为独立 `KindCustom` 代理出现在 `proxies` 列表和 `@all` 中；如需同时保留"直连 + 链式"两种入口，应声明两条 `custom_proxies` 条目（名字必须不同）
 
 ---
 
@@ -205,8 +207,8 @@ routing:
 - key 为服务组名
 - value 为有序列表
 - 服务组策略固定为 `select`
-- `@all` 展开为全部原始节点（订阅节点 + Snell 节点 + VLESS 节点 + 自定义代理），不包含链式节点
-- 自定义代理即使声明了 `relay_through`，仍属于原始节点，必须被 `@all` 包含
+- `@all` 展开为全部原始节点（订阅节点 + Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义代理），不包含链式节点
+- 带 `relay_through` 的自定义代理仅作链式模板，不以独立代理形式出现在 `proxies` 里，因而也不进入 `@all`
 - 用户配置中不允许直接写原始代理名；若需要“全部原始节点”，必须通过 `@all` 展开
 - `@auto` 展开为自动补充池，替换其所在位置。池内容按顺序：全部节点组名（地区组 + 链式组，按声明序）→ 包含 `@all` 的服务组名（按声明序）→ `DIRECT`
 - `@auto` 自动去重：已在同一 entry 中出现的项不会重复；组不包含自身

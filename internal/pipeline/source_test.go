@@ -200,6 +200,42 @@ func TestSource_CustomProxyConversion(t *testing.T) {
 	}
 }
 
+// Custom proxies with relay_through are chain templates, not standalone
+// proxies. Source must skip them in convertCustomProxies so their cp.Name
+// is free to serve as the chain group name without colliding in the shared
+// namespace (代理 / 节点组 / 服务组).
+func TestSource_CustomProxyWithRelayThroughIsNotConvertedToKindCustom(t *testing.T) {
+	cfg := baseCfg()
+	cfg.Sources.CustomProxies = []config.CustomProxy{
+		{
+			Name: "DIRECT-ONLY", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+		},
+		{
+			Name: "RELAY-ONLY", Type: "socks5", Server: "2.2.2.2", Port: 1080,
+			RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
+		},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{}}
+
+	proxies, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(proxies) != 1 {
+		t.Fatalf("got %d proxies, want 1 (RELAY-ONLY must be skipped)", len(proxies))
+	}
+	if proxies[0].Name != "DIRECT-ONLY" {
+		t.Errorf("surviving proxy = %q, want DIRECT-ONLY", proxies[0].Name)
+	}
+	for _, p := range proxies {
+		if p.Name == "RELAY-ONLY" {
+			t.Errorf("RELAY-ONLY leaked into Source output; chain-template custom proxies must not produce KindCustom entries")
+		}
+	}
+}
+
 func TestSource_CustomVsSubscriptionConflict(t *testing.T) {
 	sub := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-ISP")
 
@@ -905,6 +941,91 @@ func TestSource_RespectsFetchOrder(t *testing.T) {
 				if proxies[i].Name != want {
 					t.Errorf("proxies[%d].Name = %q, want %q", i, proxies[i].Name, want)
 				}
+			}
+		})
+	}
+}
+
+// A custom_proxy with relay_through becomes a chain group (not a direct
+// proxy). If its Name collides with a fetched node name, the error must
+// surface at the Source stage (not later at ValidateGraph) and distinguish
+// "链式组名" from "自定义代理名", so the user fixes the correct YAML section.
+//
+// Table covers all three fetched kinds (subscription / Snell / VLESS) to
+// guarantee describeFetchedKind routing stays wired for chain-template cp.
+func TestSource_ChainGroupNameConflictsWithFetchedNode(t *testing.T) {
+	const sharedName = "HK-EDGE"
+
+	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#" + sharedName)
+	snellBody := []byte(sharedName + " = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
+	vlessBody := []byte(vlessURIFor(sharedName, "hk.example.com", 443) + "\n")
+
+	cases := []struct {
+		name        string
+		setupCfg    func(*config.Config)
+		responses   map[string][]byte
+		wantKindTag string // expected Chinese label from describeFetchedKind
+	}{
+		{
+			name: "subscription",
+			setupCfg: func(cfg *config.Config) {
+				cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
+			},
+			responses:   map[string][]byte{"https://sub.example.com/api": subBody},
+			wantKindTag: "订阅",
+		},
+		{
+			name: "snell",
+			setupCfg: func(cfg *config.Config) {
+				cfg.Sources.Snell = []config.SnellSource{{URL: "https://snell.example.com/s.txt"}}
+			},
+			responses:   map[string][]byte{"https://snell.example.com/s.txt": snellBody},
+			wantKindTag: "Snell 来源",
+		},
+		{
+			name: "vless",
+			setupCfg: func(cfg *config.Config) {
+				cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
+			},
+			responses:   map[string][]byte{"https://vless.example.com/v.txt": vlessBody},
+			wantKindTag: "VLESS 来源",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := baseCfg()
+			tc.setupCfg(cfg)
+			cfg.Sources.CustomProxies = []config.CustomProxy{{
+				Name: sharedName, Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
+			}}
+
+			f := &fakeFetcher{responses: tc.responses}
+
+			_, err := Source(context.Background(), cfg, f)
+			if err == nil {
+				t.Fatal("expected conflict error, got nil")
+			}
+
+			var be *errtype.BuildError
+			if !errors.As(err, &be) {
+				t.Fatalf("err type = %T, want *errtype.BuildError", err)
+			}
+			if be.Code != errtype.CodeBuildCustomNameConflict {
+				t.Errorf("Code = %q, want %q", be.Code, errtype.CodeBuildCustomNameConflict)
+			}
+			if !strings.Contains(be.Message, "链式组名") {
+				t.Errorf("message should identify the cp as a chain group, got: %s", be.Message)
+			}
+			if strings.Contains(be.Message, "自定义代理名") {
+				t.Errorf("message should NOT use the direct-proxy label for a chain-template cp, got: %s", be.Message)
+			}
+			if !strings.Contains(be.Message, sharedName) {
+				t.Errorf("message should quote the conflicting name %q, got: %s", sharedName, be.Message)
+			}
+			if !strings.Contains(be.Message, tc.wantKindTag) {
+				t.Errorf("message should identify fetched kind %q, got: %s", tc.wantKindTag, be.Message)
 			}
 		})
 	}

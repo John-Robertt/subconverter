@@ -128,7 +128,6 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
 		makeSubProxy("HK-02"),
-		makeCustomProxyModel("HK-ISP"),
 	}
 
 	cfg := &config.Config{
@@ -165,8 +164,8 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 	}
 
 	chainGroup := result.NodeGroups[1]
-	if chainGroup.Name != "🔗 HK-ISP" {
-		t.Errorf("chain group name = %q, want %q", chainGroup.Name, "🔗 HK-ISP")
+	if chainGroup.Name != "HK-ISP" {
+		t.Errorf("chain group name = %q, want %q", chainGroup.Name, "HK-ISP")
 	}
 	if chainGroup.Scope != model.ScopeNode {
 		t.Errorf("chain group scope = %q, want %q", chainGroup.Scope, model.ScopeNode)
@@ -185,13 +184,14 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 		}
 	}
 
-	// Verify chained proxy properties.
-	// Original proxies (3) + chained (2) = 5 total.
-	if len(result.Proxies) != 5 {
-		t.Fatalf("got %d proxies, want 5", len(result.Proxies))
+	// 2 sub + 2 chained = 4. Source stage drops custom proxies with
+	// relay_through (see convertCustomProxies), so HK-ISP never enters the
+	// proxy list as a KindCustom entry.
+	if len(result.Proxies) != 4 {
+		t.Fatalf("got %d proxies, want 4", len(result.Proxies))
 	}
 
-	chained := result.Proxies[3] // first chained proxy
+	chained := result.Proxies[2] // first chained proxy
 	if chained.Name != "HK-01→HK-ISP" {
 		t.Errorf("chained.Name = %q, want %q", chained.Name, "HK-01→HK-ISP")
 	}
@@ -484,11 +484,11 @@ func TestGroup_MultipleChainedGroups(t *testing.T) {
 	}
 
 	// Chain groups follow region groups, in custom proxy declaration order.
-	if result.NodeGroups[1].Name != "🔗 ISP-A" {
-		t.Errorf("group[1].Name = %q, want %q", result.NodeGroups[1].Name, "🔗 ISP-A")
+	if result.NodeGroups[1].Name != "ISP-A" {
+		t.Errorf("group[1].Name = %q, want %q", result.NodeGroups[1].Name, "ISP-A")
 	}
-	if result.NodeGroups[2].Name != "🔗 ISP-B" {
-		t.Errorf("group[2].Name = %q, want %q", result.NodeGroups[2].Name, "🔗 ISP-B")
+	if result.NodeGroups[2].Name != "ISP-B" {
+		t.Errorf("group[2].Name = %q, want %q", result.NodeGroups[2].Name, "ISP-B")
 	}
 
 	// ISP-A chains through HK group (1 member: HK-01).
@@ -780,5 +780,75 @@ func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 	}
 	if chained.Name != "HK-VL→MY-CHAIN" {
 		t.Errorf("chained.Name = %q, want HK-VL→MY-CHAIN", chained.Name)
+	}
+}
+
+// Chain group name is the custom proxy name verbatim — no system-injected
+// prefix. Guards against regressions that would reintroduce a 🔗 (or any
+// other) hard-coded marker in front of cp.Name.
+func TestGroup_ChainedGroupNameEqualsCustomProxyName(t *testing.T) {
+	proxies := []model.Proxy{makeSubProxy("HK-01")}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			CustomProxies: []config.CustomProxy{{
+				Name: "HK-ISP", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
+			}},
+		},
+	}
+
+	result, err := Group(proxies, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.NodeGroups) != 1 {
+		t.Fatalf("got %d node groups, want 1", len(result.NodeGroups))
+	}
+	if got := result.NodeGroups[0].Name; got != "HK-ISP" {
+		t.Errorf("chain group name = %q, want %q (no prefix)", got, "HK-ISP")
+	}
+}
+
+// A user-supplied emoji prefix in cp.Name must flow through verbatim to the
+// chain group name — the system never adds or strips visual markers. This
+// is the positive companion to the regression guard above: users who *want*
+// a 🔗 (or any other decoration) get exactly what they wrote.
+//
+// Built in Go directly (not YAML) to sidestep the astral-plane escape issue
+// flagged in CLAUDE.md §"YAML 断言避坑".
+func TestGroup_ChainedGroupNamePreservesUserEmojiPrefix(t *testing.T) {
+	proxies := []model.Proxy{makeSubProxy("HK-01")}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			CustomProxies: []config.CustomProxy{{
+				Name: "🔗 HK-ISP", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
+			}},
+		},
+	}
+
+	result, err := Group(proxies, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.NodeGroups) != 1 {
+		t.Fatalf("got %d node groups, want 1", len(result.NodeGroups))
+	}
+	if got := result.NodeGroups[0].Name; got != "🔗 HK-ISP" {
+		t.Errorf("chain group name = %q, want %q (user prefix preserved)", got, "🔗 HK-ISP")
+	}
+	// The chained proxy name still uses cp.Name verbatim after the "→".
+	wantChainedName := "HK-01→🔗 HK-ISP"
+	found := false
+	for _, p := range result.Proxies {
+		if p.Kind == model.KindChained && p.Name == wantChainedName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("chained proxy %q not found in proxies; got %+v", wantChainedName, result.Proxies)
 	}
 }

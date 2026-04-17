@@ -28,7 +28,7 @@ func TestLoad_ExampleConfig(t *testing.T) {
 	}
 
 	cp := cfg.Sources.CustomProxies[0]
-	if cp.Name != "HK-ISP" || cp.Type != "socks5" || cp.Port != 45002 {
+	if cp.Name != "🔗 HK-ISP" || cp.Type != "socks5" || cp.Port != 45002 {
 		t.Errorf("CustomProxy = %+v", cp)
 	}
 	if cp.RelayThrough == nil {

@@ -155,7 +155,7 @@ func TestValidateGraph_EmptyChainedGroup(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !containsError(err, `链式节点组 "🔗 MY-PROXY" 没有成员`) {
+	if !containsError(err, `节点组 "🔗 MY-PROXY" 没有成员`) {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -403,5 +403,43 @@ func TestValidateGraph_WithSnellProxy(t *testing.T) {
 	}
 	if !names["HK-Snell"] || !names["SG-Snell"] {
 		t.Errorf("Snell proxies missing from validated Pipeline: %v", names)
+	}
+}
+
+// Without the 🔗 prefix, a custom proxy name (used as a chain group name when
+// relay_through is set) shares the namespace with region groups and route
+// groups. If a user picks a cp.Name already used by a region group,
+// ValidateGraph must surface the collision — users relied on 🔗 to keep
+// them apart before, so this guards the fallback path.
+func TestValidateGraph_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
+	gr := &GroupResult{
+		Proxies: []model.Proxy{
+			{Name: "HK-01", Kind: model.KindSubscription},
+			{Name: "HK-01→HK", Kind: model.KindChained, Dialer: "HK-01"},
+		},
+		NodeGroups: []model.ProxyGroup{
+			// Region group "HK" declared by the user.
+			{Name: "HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01"}},
+			// Chain group "HK" auto-generated because some cp.Name is also "HK".
+			{Name: "HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01→HK"}},
+		},
+		AllProxies: []string{"HK-01"},
+	}
+	rr := &RouteResult{
+		RouteGroups: []model.ProxyGroup{
+			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"HK", "DIRECT"}},
+		},
+		Fallback: "Final",
+		RawRouteMembers: map[string][]string{
+			"Final": {"HK", "DIRECT"},
+		},
+	}
+
+	_, err := ValidateGraph(gr, rr)
+	if err == nil {
+		t.Fatal("expected collision error")
+	}
+	if !containsError(err, `节点组 "HK" 重复声明`) {
+		t.Errorf("error = %v, want duplicate-declaration for HK", err)
 	}
 }

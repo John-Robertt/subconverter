@@ -3,7 +3,6 @@ package pipeline
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
@@ -44,11 +43,7 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 	// 3. Empty node groups.
 	for _, g := range gr.NodeGroups {
 		if len(g.Members) == 0 {
-			if strings.HasPrefix(g.Name, chainedGroupPrefix) {
-				c.add(fmt.Sprintf("链式节点组 %q 没有成员", g.Name))
-			} else {
-				c.add(fmt.Sprintf("节点组 %q 没有成员", g.Name))
-			}
+			c.add(fmt.Sprintf("节点组 %q 没有成员", g.Name))
 		}
 	}
 

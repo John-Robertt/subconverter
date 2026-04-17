@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/John-Robertt/subconverter/internal/config"
@@ -197,7 +198,7 @@ func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 			}},
 		},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
-		Routing:  mustRoutingMap(t, `"proxy": ["HK", "🔗 MY-PROXY", "DIRECT"]`),
+		Routing:  mustRoutingMap(t, `"proxy": ["HK", "MY-PROXY", "DIRECT"]`),
 		Fallback: "proxy",
 	}
 
@@ -432,7 +433,7 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 			}},
 		},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
-		Routing:  mustRoutingMap(t, `"proxy": ["HK", "🔗 MY-PROXY", "DIRECT"]`),
+		Routing:  mustRoutingMap(t, `"proxy": ["HK", "MY-PROXY", "DIRECT"]`),
 		Fallback: "proxy",
 	}
 
@@ -468,5 +469,55 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 	}
 	if inAll["HK-VL→MY-PROXY"] {
 		t.Error("AllProxies must not include chained node")
+	}
+}
+
+// End-to-end guard: if a user declares a region group and a chain-template
+// custom_proxy with the same name, the collision must surface via Execute —
+// specifically at the ValidateGraph stage, since Source only checks cp.Name
+// against fetched node names (different namespace) and Group generates both
+// groups without per-stage collision checks.
+//
+// This pairs with TestValidateGraph_ChainGroupNameCollidesWithRegionGroup
+// (unit test on a hand-crafted GroupResult) by exercising the full YAML →
+// Pipeline path.
+func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
+	subURL := "https://sub.example.com/api"
+	body := makeSubResponse(
+		"ss://YWVzLTI1Ni1jZmI6cGFzcw@hk.example.com:8388#HK-01",
+	)
+
+	f := &fakeFetcher{responses: map[string][]byte{subURL: body}}
+
+	// Both a region group named "HK-ISP" and a chain-template cp named
+	// "HK-ISP" — the chain template will try to create a node group with the
+	// same name, triggering a duplicate-declaration error at ValidateGraph.
+	cfg := &config.Config{
+		Sources: config.Sources{
+			Subscriptions: []config.Subscription{{URL: subURL}},
+			CustomProxies: []config.CustomProxy{{
+				Name: "HK-ISP", Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
+			}},
+		},
+		Groups:   mustGroupsMap(t, `"HK-ISP": { match: "(HK)", strategy: select }`),
+		Routing:  mustRoutingMap(t, `"proxy": ["HK-ISP", "DIRECT"]`),
+		Fallback: "proxy",
+	}
+
+	_, err := Execute(context.Background(), cfg, f)
+	if err == nil {
+		t.Fatal("expected duplicate-group error, got nil")
+	}
+
+	var be *errtype.BuildError
+	if !errors.As(err, &be) {
+		t.Fatalf("err type = %T, want *errtype.BuildError", err)
+	}
+	// ValidateGraph aggregates all collector messages into BuildError.Message,
+	// including the "重复声明" entry emitted by registerName for the duplicate
+	// chain + region group name.
+	if !strings.Contains(err.Error(), `节点组 "HK-ISP" 重复声明`) {
+		t.Errorf("error should mention duplicate node group HK-ISP, got: %v", err)
 	}
 }

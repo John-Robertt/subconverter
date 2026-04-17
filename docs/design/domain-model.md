@@ -37,8 +37,10 @@
 | `KindSubscription` | SS 订阅拉取 | `ss` | ✓ | ✓ | ✓ |
 | `KindSnell` | Snell 来源拉取（Surge 专属） | `snell` | ✓ | ✓ | ✓ |
 | `KindVLess` | VLESS 来源拉取（Clash 专属） | `vless` | ✓ | ✓ | ✓ |
-| `KindCustom` | 用户手工声明 | `socks5`, `http` | ✗（名字已显式） | ✗ | ✓ |
-| `KindChained` | `relay_through` 派生 | 继承自 custom_proxy | ✗ | ✗ | ✗ |
+| `KindCustom` | 用户手工声明，且**未**设 `relay_through` | `socks5`, `http` | ✗（名字已显式） | ✗ | ✓ |
+| `KindChained` | `custom_proxy` 带 `relay_through` 派生 | 继承自 custom_proxy | ✗ | ✗ | ✗ |
+
+> 带 `relay_through` 的 custom_proxy 本身不产生 `KindCustom` 节点——它仅作为链式模板被 Group 阶段消费，生成 `KindChained` 节点和一个同名链式组。用户若需"直连 + 中继"两种入口，声明两条不同 `name` 的 custom_proxies。
 
 建议属性：
 
@@ -81,7 +83,7 @@
 |---------|------|------|
 | 节点组名 | `🇭🇰 Hong Kong` | `groups` 段定义 |
 | 服务组名 | `🚀 快速选择` | `routing` 段互引用 |
-| 链式组名 | `🔗 HK-ISP` | `relay_through` 派生 |
+| 链式组名 | `HK-ISP`（或 `🔗 HK-ISP` 等用户自选命名） | `relay_through` 派生，组名 = `custom_proxy.name` 原样 |
 | 原始节点名 | `HK-01` / `HK-Snell` / `HK-VL` | `@all` 展开后的具体原始节点（订阅 / Snell / VLESS / 自定义） |
 | 保留策略 | `DIRECT`、`REJECT` | 内置 |
 

@@ -385,7 +385,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ 链式展开支持 `group`、`select`、`all` 三种模式
 - ✅ 链式组策略来自 `relay_through.strategy`
 - ✅ 链式组出现在节点组层（`Scope: ScopeNode`）
-- ✅ 链式组命名为 `🔗 <custom_proxy.name>`（config-schema.md 约定）
+- ✅ 链式组命名 = `custom_proxy.name` 原样值，无系统注入前缀（详见 config-schema.md；2026-04-17 从原 `🔗 <custom_proxy.name>` 改为直接使用 name）
 - ✅ 链式节点属性（Type/Server/Port/Params/Dialer）正确传递
 - ✅ Snell 节点可作为 `relay_through` 的有效上游
 - ✅ VLESS 节点可作为 `relay_through` 的有效上游
@@ -444,7 +444,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 | 决策 | 结论 | 原因 |
 |------|------|------|
-| 链式组命名 | `🔗 ` + custom proxy name（系统前缀） | config-schema.md 明确约定 |
+| 链式组命名 | `custom_proxy.name` 原样值（无系统前缀） | 命名决定权交还用户；2026-04-17 从旧决策"系统自动前缀 `🔗 `"改为当前方案，同时带 `relay_through` 的 cp 不再生成 KindCustom 代理，避免名称与链式组在共享命名空间冲突 |
 | 链式节点命名 | `{upstream}→{custom}`（含 `→` 字符） | 天然与普通节点名不冲突 |
 | 地区组匹配范围 | 全部拉取类节点（KindSubscription + KindSnell + KindVLess） | 自定义代理由用户显式管理，拉取类节点共享地区语义 |
 | Params 隔离 | 每个链式节点独立 `make(map[string]string)` | 防止共享篡改 |
@@ -491,7 +491,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 ### 风险
 
 - 链式展开边界和组引用边界最容易出错（已通过 10 个 Group 测试覆盖）
-- 节点名与组名冲突时需要明确错误策略（`🔗 ` 前缀提供命名空间隔离）
+- 节点名与组名冲突时需要明确错误策略；由 ValidateGraph 的 `buildNamespaceIndex` 统一报告（2026-04-17 去掉 `🔗 ` 自动前缀后，带 `relay_through` 的 cp 不再生成 KindCustom 代理，避免 cp.Name 与链式组名在共享命名空间碰撞）
 
 ---
 
