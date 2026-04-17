@@ -194,7 +194,7 @@ func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 			CustomProxies: []config.CustomProxy{{
 				URL: "socks5://u:p@10.0.0.1:1080", Name: "MY-PROXY",
 				Type: "socks5", Server: "10.0.0.1", Port: 1080,
-				Params: map[string]string{"username": "u", "password": "p"},
+				Params:       map[string]string{"username": "u", "password": "p"},
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}},
 		},
@@ -430,7 +430,7 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 			CustomProxies: []config.CustomProxy{{
 				URL: "socks5://u:p@10.0.0.1:1080", Name: "MY-PROXY",
 				Type: "socks5", Server: "10.0.0.1", Port: 1080,
-				Params: map[string]string{"username": "u", "password": "p"},
+				Params:       map[string]string{"username": "u", "password": "p"},
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}},
 		},
@@ -623,11 +623,11 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 		Sources: config.Sources{
 			Subscriptions: []config.Subscription{{URL: subURL}},
 			CustomProxies: []config.CustomProxy{{
-				URL: "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp",
+				URL:  "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp",
 				Name: "SS-Chain",
 				Type: "ss", Server: "1.2.3.4", Port: 8388,
-				Params: map[string]string{"cipher": "aes-256-gcm", "password": "chainpass"},
-				Plugin: &model.Plugin{Name: "obfs-local", Opts: map[string]string{"obfs": "http"}},
+				Params:       map[string]string{"cipher": "aes-256-gcm", "password": "chainpass"},
+				Plugin:       &model.Plugin{Name: "obfs-local", Opts: map[string]string{"obfs": "http"}},
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}},
 		},

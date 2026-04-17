@@ -8,15 +8,15 @@ import (
 
 func TestParseBody_Valid(t *testing.T) {
 	tests := []struct {
-		name          string
-		body          string
-		keepFragment  bool
-		wantName      string
-		wantServer    string
-		wantPort      int
-		wantCipher    string
-		wantPassword  string
-		wantPlugin    *model.Plugin
+		name         string
+		body         string
+		keepFragment bool
+		wantName     string
+		wantServer   string
+		wantPort     int
+		wantCipher   string
+		wantPassword string
+		wantPlugin   *model.Plugin
 	}{
 		{
 			name:         "base64 userinfo",
