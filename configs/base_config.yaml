@@ -46,21 +46,47 @@ templates:
 
 sources:
   # ---------- 订阅源 ----------
-  # 每个订阅返回 base64 编码的 SS 节点列表。
+  # 每个订阅返回 SS 节点列表（base64 编码或明文 URI 列表均可）。
   # 支持多个订阅，节点按顺序合并，跨订阅重名自动追加后缀（②③...）。
   # url 必填，必须为 http:// 或 https:// 开头。
   # 这里的 token 是上游订阅服务自己的 token，和本服务 `/generate`
   # 的访问 token 是两回事。
+  # 单行解析失败会静默跳过（与 Snell / VLESS 来源的整源报错策略不同）。
 
   subscriptions:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
     # - url: "https://sub2.example.com/api/v1/client/subscribe?token=yyy"
 
+  # ---------- Snell 来源（Surge 专属）----------
+  # 每行一条 Surge 风格的 Snell 节点声明：
+  #   NAME = snell, SERVER, PORT, psk=..., version=..., [其他可选键]
+  # 可选键：version / obfs / obfs-host / obfs-uri / reuse / tfo / udp-relay /
+  #        udp-port / shadow-tls-password / shadow-tls-sni / shadow-tls-version
+  # 空行与 # / // 注释行跳过；单行解析失败整源报错（与 SS 订阅静默跳过策略不同，
+  # 原因：Snell 清单通常是小规模手工维护，严格报错更利于发现拼写问题）。
+  # 节点名与订阅 / VLESS 共享同一跨源去重池；可作为 relay_through 的链式上游。
+  # Snell 节点仅进入 Surge 输出；Clash 输出会级联过滤掉这些节点及依赖它们的组/规则。
+  #
+  snell:
+    - url: "https://my-server.com/snell-nodes.txt"
+
+  # ---------- VLESS 来源（Clash Meta 专属）----------
+  # 每行一条标准 VLESS URI：
+  #   vless://UUID@SERVER:PORT?security=...&sni=...&type=...#NODE_NAME
+  # 支持的 query：security（none/tls/reality）/ encryption / flow / type /
+  #              sni / fp / alpn / pbk / sid / spx
+  # 空行与 # / // 注释行跳过；单行解析失败整源报错（策略与 Snell 一致）。
+  # 节点名与订阅 / Snell 共享同一跨源去重池；可作为 relay_through 的链式上游。
+  # VLESS 节点仅进入 Clash Meta 输出；Surge 输出会级联过滤掉这些节点及依赖它们的组/规则。
+  #
+  vless:
+    - url: "https://my-server.com/vless-nodes.txt"
+
   # ---------- 自定义代理 ----------
   # 不来自订阅、手动定义的节点（如机房专线、ISP 代理）。
   #
   # 字段说明：
-  #   name:  节点名称（不能与订阅节点或其他自定义代理重名）
+  #   name:  节点名称（不能与拉取类节点（订阅 / Snell / VLESS）或其他自定义代理重名）
   #   url:   代理协议链接，支持 ss://、socks5://、http://
   #          - ss:      SIP002 格式 ss://base64(method:password)@server:port[?plugin=...][#ignored]
   #          - socks5:  socks5://[user:pass@]server:port
@@ -75,8 +101,8 @@ sources:
   #
   #   type: 筛选上游节点的方式
   #     group  — 引用已定义的节点组（需填 name）
-  #     select — 用正则从订阅节点中筛选（需填 match）
-  #     all    — 使用全部订阅节点
+  #     select — 用正则从拉取类节点（订阅 / Snell / VLESS）中筛选（需填 match）
+  #     all    — 使用全部拉取类节点（订阅 / Snell / VLESS）
   #
   #   strategy: 链式组的策略，必填
   #     select   — 用户手动选节点
@@ -95,8 +121,8 @@ sources:
 
 # ==================== 节点过滤（可选）====================
 #
-# exclude: 正则表达式，匹配的订阅节点会被排除。
-# 仅作用于订阅节点，不影响自定义代理和链式节点。
+# exclude: 正则表达式，匹配的拉取类节点会被排除。
+# 仅作用于拉取类节点（订阅 / Snell / VLESS），不影响自定义代理和链式节点。
 # 常用于过滤订阅中的信息性节点（到期提醒、流量统计等）。
 
 filters:
@@ -104,11 +130,11 @@ filters:
 
 # ==================== 节点组 ====================
 #
-# 定义地区节点组。每个组按正则匹配订阅节点。
+# 定义地区节点组。每个组按正则匹配过滤后的拉取类节点（订阅 / Snell / VLESS）。
 # 书写顺序 = 客户端面板显示顺序。
 #
 # 字段说明：
-#   match:    正则表达式，匹配订阅节点名称
+#   match:    正则表达式，匹配拉取类节点名称
 #   strategy: 必填，可选 select | url-test
 #     select   — 用户手动选节点
 #     url-test — 自动选延迟最低的节点
