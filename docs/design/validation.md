@@ -134,6 +134,7 @@ HTTP 层映射：
 - `target.ForClash`：剔除 Snell 节点及其级联影响
 - `target.ForSurge`：剔除 VLESS 节点及其级联影响
 - 若 `fallback` 在目标格式视图中被清空，立即返回带清空路径的错误
+- 级联过滤的诊断路径格式（`(snell)`、`(chained)`、`(cycle)` 等标记）详见 `rendering.md` §级联过滤
 
 这样分层后：
 

@@ -163,6 +163,16 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 **本地预检命令**：`gofmt -l . && go vet ./...`——在 `git commit` 前跑一次可避免大部分 CI 格式类失败。
 
+### 文档术语一致性
+
+**本项目先例**（为何放项目级而非全局）：`relay_through` 语义扩展后，`pipeline.md` 和 `config-schema.md` 的"原始节点"定义已更新为"不带 `relay_through` 的自定义节点"，但 `architecture.md`、`domain-model.md`、`testing-strategy.md`、`implementation-plan.md` 仍沿用旧定义"自定义节点"——概要层文档滞后于细节层是最常见的漂移模式。
+
+核心术语（如"原始节点""拉取类节点"）的**定义变更**时，必须全文搜索所有出现处：
+
+- `grep -rn "原始节点\|拉取类节点\|@all" docs/` 列出全部引用点
+- **概要层文档**（`architecture.md`、决策表）最易遗漏——它们在首次撰写时正确，但后续扩展时通常只改细节层
+- 检查范围包括：`docs/`、`CLAUDE.md`、`configs/base_config.yaml` 注释
+
 ### 语义变更优先 rename
 
 **本项目先例**（为何放项目级而非全局）：`isFetchedKind` 的语义从"仅订阅"扩展到"订阅 / Snell / VLESS"，若只改注释而不 rename，grep 到该函数的新成员会错误推断其仅处理订阅。
@@ -236,3 +246,4 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - [ ] **包间依赖变更** → 见 §新增来源类型 · 文档与示例同步：`docs/architecture.md` 模块边界图和 `docs/implementation/project-structure.md` 依赖方向图已同步更新
 - [ ] **测试跨边界导入** → 见 §测试：测试文件未导入同层或上层业务包（如 render 测试不导入 pipeline）
 - [ ] **删除代码后的清理** → 见 §CI 流水线检查：已确认无未使用的 test helper 函数、无多余 import、无尾部空行（`gofmt -l .` 通过）
+- [ ] **核心术语定义变更** → 见 §文档术语一致性：对变更术语全文搜索，确认所有出现处（含概要层文档）均已同步

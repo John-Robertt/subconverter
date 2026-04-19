@@ -22,7 +22,7 @@
 - Snell 节点可作为 `relay_through` 上游
 - VLESS 节点可作为 `relay_through` 上游
 - `@all` 不包含链式节点
-- `@all` 包含全部原始节点（订阅 + Snell + VLESS + 自定义）
+- `@all` 包含全部原始节点（订阅 + Snell + VLESS + 不带 `relay_through` 的自定义）
 - `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT，去重且排除自身
 - `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
 - 同一 entry 内重复 `@auto` 会被静态校验拒绝

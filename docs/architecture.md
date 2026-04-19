@@ -184,7 +184,7 @@ internal/render
 
 - `groups`、`routing`、`rulesets` 都要保留书写顺序
 - `@all` 只展开原始节点，不包含链式节点
-- 原始节点 = 订阅节点 + Snell 节点 + VLESS 节点 + 自定义节点
+- 原始节点 = 订阅节点 + Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
 - `@auto` 展开为自动补充池（节点组 → 包含 `@all` 的服务组 → DIRECT），自动去重且排除自身
 - `REJECT` 不在 `@auto` 补充池中；如需使用，必须显式声明
 - 链式组由自定义代理派生，但在节点组层中与地区组平级

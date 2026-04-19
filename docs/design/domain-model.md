@@ -93,7 +93,7 @@
 | 节点组名 | `🇭🇰 Hong Kong` | `groups` 段定义 |
 | 服务组名 | `🚀 快速选择` | `routing` 段互引用 |
 | 链式组名 | `HK-ISP`（或 `🔗 HK-ISP` 等用户自选命名） | `relay_through` 派生，组名 = `custom_proxy.name` 原样 |
-| 原始节点名 | `HK-01` / `HK-Snell` / `HK-VL` | `@all` 展开后的具体原始节点（订阅 / Snell / VLESS / 自定义） |
+| 原始节点名 | `HK-01` / `HK-Snell` / `HK-VL` | `@all` 展开后的具体原始节点（订阅 / Snell / VLESS / 不带 `relay_through` 的自定义） |
 | 保留策略 | `DIRECT`、`REJECT` | 内置 |
 
 说明：
@@ -172,7 +172,7 @@
 - 每个组名称唯一
 - 节点组名和服务组名共享同一命名空间，不允许重名
 - 链式节点只能引用拉取类节点（订阅 / Snell / VLESS）作为上游
-- `@all` 只包含原始节点（订阅 / Snell / VLESS / 自定义）
+- `@all` 只包含原始节点（订阅 / Snell / VLESS / 不带 `relay_through` 的自定义）
 - 节点组和服务组的名称都可被服务组引用
 - fallback 必须引用已存在服务组
 

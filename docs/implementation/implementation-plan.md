@@ -392,7 +392,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - ✅ Snell 节点可作为 `relay_through` 的有效上游
 - ✅ VLESS 节点可作为 `relay_through` 的有效上游
 - ✅ `@all` 不包含链式节点
-- ✅ `@all` 包含全部原始节点（订阅 + Snell + VLESS + 自定义）
+- ✅ `@all` 包含全部原始节点（订阅 + Snell + VLESS + 不带 `relay_through` 的自定义）
 - ✅ 服务组能引用节点组、服务组、`DIRECT`、`REJECT`
 - ✅ `@all` 在服务组 Members 中正确展开
 - ✅ ruleset 与 fallback 能绑定到目标服务组
