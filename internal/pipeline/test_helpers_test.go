@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"testing"
 
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/fetch"
@@ -41,11 +40,3 @@ func customProxy(name, rawURL string, rt *config.RelayThrough) config.CustomProx
 	}
 }
 
-func requireGroupResult(t *testing.T, cfg *config.Config, proxies []model.Proxy) *GroupResult {
-	t.Helper()
-	result, err := groupFromConfig(cfg, proxies)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	return result
-}
