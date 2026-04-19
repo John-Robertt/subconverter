@@ -22,7 +22,7 @@ subconverter/
 │   ├── proxyparse/
 │   ├── render/
 │   ├── ssparse/
-│   └── server/
+│   ├── server/
 │   └── target/
 ├── configs/
 │   ├── base_config.yaml

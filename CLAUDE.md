@@ -17,13 +17,18 @@
 **管道阶段**：
 
 ```
-LoadConfig → ValidateConfig → Source → Filter → Group → Route → ValidateGraph → Render
+LoadConfig → ValidateConfig → Build(Source → Filter → Group → Route → ValidateGraph) → Target → Render
 ```
 
 **包边界**（依赖单向）：
 
 ```
-cmd/subconverter → internal/server → internal/{config,pipeline,render,model,fetch,errtype,ssparse}
+cmd/subconverter → internal/{config,fetch,generate,server}
+internal/server → internal/{generate,errtype}
+internal/generate → internal/{config,fetch,pipeline,target,render}
+internal/pipeline → internal/{config,fetch,model,errtype,proxyparse,ssparse}
+internal/render → internal/{model,errtype}
+internal/target → internal/{model,errtype}
 ```
 
 `model` 和 `errtype` 不依赖其他业务包。`render` 不反向依赖 `config`。
@@ -64,7 +69,7 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
    | `internal/pipeline/group.go` 的 `buildChainedNodesAndGroups`               | 是否可作为链式上游？                                                  |
    | `internal/pipeline/source.go` 的 `deduplicateNames` / `checkNameConflicts` | 是否与其他 Kind 共享去重池？冲突检测范围？                            |
    | `internal/pipeline/validate.go`                                            | 是否纳入命名空间检查？                                                |
-   | `internal/render/clash_filter.go` 的 `filterForClash`                      | 新 Kind 是否需在 Clash 渲染前剔除？级联影响 fallback / 规则 / ruleset |
+   | `internal/target/filter_cascade.go` 的 `filterByDroppedTypes`（经 `target.ForClash`）| 新 Kind 是否需在 Clash Target 投影前剔除？级联影响 fallback / 规则 / ruleset |
    | `internal/render/surge.go` 的 `renderSurgeProxy` switch                    | 新 Kind 是否支持 Surge？不支持时走 `RenderError` 还是提前过滤         |
 
 4. 更新相关函数/变量的 doc comment（历史注释可能写 "只含 KindSubscription"，必须同步改）
@@ -78,14 +83,14 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 2. `internal/render/surge.go` 的 `renderSurgeProxy` switch 加 case
 3. 若协议**只支持某一输出格式**，选一种策略：
    - **A 报错**：不支持方的渲染器 case 返回 `RenderError`（参考 SS v2ray-plugin 在 Surge 的处理）
-   - **B 过滤**：不支持方做"视图过滤"，参考 `internal/render/clash_filter.go` 的级联剔除
+   - **B 过滤**：不支持方做"视图过滤"，参考 `internal/target/filter_cascade.go` 的级联剔除
 4. 字段顺序：在 Surge 里用 `xxxKeyOrder` slice 固定（golden 比对依赖确定性输出）
 5. Params 的 key 名称**保持目标格式原样**（如 Snell 的 `shadow-tls-password`），避免在解析/渲染两处做命名映射
 6. 更新 `docs/design/rendering.md` 的映射表
 
 ### 新增来源类型（类比 `sources.snell`）
 
-因为来源类型引入新的 `ProxyKind` 并贯穿整条管道（Source → Filter → Group → Render），新增来源必须在**每个管道阶段验证其行为**，并同步文档与配置示例以防信息断层。
+因为来源类型引入新的 `ProxyKind` 并贯穿整条管道（Source → Filter → Group → Target → Render），新增来源必须在**每个管道阶段验证其行为**，并同步文档与配置示例以防信息断层。
 
 **最小测试集**（缺一项就不算完成）：
 
@@ -190,8 +195,8 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 > **触及时行动**：新增 format-specific 过滤时 → 重新评估是否引入 per-format validation hook（让 ValidateGraph 接受 `formatHint` 参数）。
 
-- **现象**：Build 阶段"合法"的配置，在某一输出格式的 render 阶段可能失败（如 Snell 节点让 Clash fallback 被级联清空）
-- **报错路径**：`filterForClash` 在 render 入口返回 `CodeRenderClashFallbackEmpty`
+- **现象**：Build 阶段"合法"的配置，在某一输出格式的 Target 阶段可能失败（如 Snell 节点让 Clash fallback 被级联清空）
+- **报错路径**：`target.ForClash`（内部调用 `filterByDroppedTypes`）在 Target 阶段返回 `CodeRenderClashFallbackEmpty`
 - **影响**：错误被"晚报"；调试时用户看到 render 错而非 build 错
 - **缓解方案（未实施）**：引入 per-format validation hook，让 ValidateGraph 接受 `formatHint` 参数，对每种输出格式跑一次图校验。当前规模下不必处理，但**新增 format-specific 过滤时应重新评估**
 
@@ -204,17 +209,17 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - **权衡**：好处是解析器不随目标格式版本迭代；代价是用户 typo 的键不会报错
 - **如果你在考虑严格模式**：需同时改解析器 + 渲染器 + 错误码，以及决定向后兼容策略。优先扩充 `xxxKeyOrder` 而非引入白名单拒绝
 
-### 3. 协议格式专属性导致 render 阶段级联过滤
+### 3. 协议格式专属性导致 Target 阶段级联过滤
 
-> **触及时行动**：新增格式专属协议 → 复用 `clash_filter.go` / `surge.go` 现有过滤策略；同步补跨格式过滤测试（至少覆盖级联效应）。
+> **触及时行动**：新增格式专属协议 → 复用 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes` 过滤策略；同步补跨格式过滤测试（至少覆盖级联效应）。
 
-- **现象**：Snell 仅支持 Surge、VLESS 仅支持 Clash。不支持方在 render 入口做"视图过滤"（非 build 阶段拒绝），导致只在特定输出格式下触发错误，而非 ValidateGraph 阶段
+- **现象**：Snell 仅支持 Surge、VLESS 仅支持 Clash。不支持方在 Target 阶段做"视图过滤"（非 Build 阶段拒绝），导致只在特定输出格式下触发错误，而非 ValidateGraph 阶段
 - **报错路径**：
-  - Clash 走 `internal/render/clash_filter.go` 的 `filterForClash`，可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeRenderClashFallbackEmpty` 等错误
-  - Surge 走 `internal/render/surge.go` 的 `renderSurgeProxy`，返回 `RenderError`
+  - Clash 走 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes`（经 `target.ForClash`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeRenderClashFallbackEmpty` 等错误
+  - Surge 走 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes`（经 `target.ForSurge`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeRenderSurgeFallbackEmpty` 等错误
 - **影响**：build 阶段"合法"的配置在 render 阶段失败；调试需读级联链（"FINAL 为空 ← SVC_X 为空 ← GRP_SG 被过滤 ← 仅含 Snell 节点"）
 - **与局限 1 的关系**：同属"ValidateGraph 不感知格式"的具体表现。缓解方案共享：per-format validation hook
-- **新增格式专属协议时**：复用 `clash_filter.go` / `surge.go` 的现有过滤策略；同步补跨格式过滤测试（至少覆盖"该协议节点在另一格式下被过滤后 fallback / 规则的级联效应"）
+- **新增格式专属协议时**：复用 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes` 过滤策略；同步补跨格式过滤测试（至少覆盖"该协议节点在另一格式下被过滤后 fallback / 规则的级联效应"）
 
 ---
 
