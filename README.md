@@ -231,20 +231,18 @@ fallback: 🐟 FINAL # 未匹配任何规则的流量走这里
 
 ## 架构
 
-SubConverter 通过 8 阶段流水线处理配置：
+SubConverter 分为启动期和请求期两阶段处理配置：
 
 ```
-YAML 配置
-    |
-    v
-LoadConfig --> ValidateConfig --> Source --> Filter
-                                               |
-                                               v
-Clash Meta <-- Render <-- ValidateGraph <-- Route <-- Group
-Surge conf
+启动期:
+LoadConfig --> Prepare (produces RuntimeConfig)
+
+请求期:
+Build(Source --> Filter --> Group --> Route --> ValidateGraph)
+  --> Target --> Render --> Clash Meta / Surge conf
 ```
 
-每个阶段变换或充实一个共享的中间表示（`model.Pipeline`）。渲染器仅依赖这一格式无关的模型，不依赖配置类型，从而保证 Clash Meta 和 Surge 输出的语义一致性。
+启动期通过 `Prepare` 完成静态校验、正则编译、URL 解析和 `@auto` 展开，产出不可变的 `RuntimeConfig`。请求期管道在此基础上拉取订阅、构建格式无关的中间表示（`model.Pipeline`），再由 Target/Render 投影为目标格式输出。
 
 详细架构说明参见 [`docs/architecture.md`](docs/architecture.md)。
 
@@ -254,7 +252,7 @@ Surge conf
 subconverter/
   cmd/subconverter/      入口、命令行参数、优雅关闭
   internal/
-    config/              YAML 解析、有序 Map、静态校验
+    config/              YAML 解析、有序 Map、静态校验、启动期预计算（Prepare → RuntimeConfig）
     errtype/             类型化错误（Config、Fetch、Resource、Build、Render）
     fetch/               HTTP 拉取器、TTL 缓存、资源加载
     model/               格式无关的中间表示
