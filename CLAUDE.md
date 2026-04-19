@@ -15,22 +15,27 @@
 **定位**：Go 单二进制 HTTP 服务。读取一份 YAML 配置 → 拉取订阅 → 生成 Clash Meta / Surge 配置文件。
 
 **管道阶段**：
+
 ```
 LoadConfig → ValidateConfig → Source → Filter → Group → Route → ValidateGraph → Render
 ```
 
 **包边界**（依赖单向）：
+
 ```
 cmd/subconverter → internal/server → internal/{config,pipeline,render,model,fetch,errtype,ssparse}
 ```
+
 `model` 和 `errtype` 不依赖其他业务包。`render` 不反向依赖 `config`。
 
 **核心术语**（下游章节会反复使用）：
+
 - **拉取类节点** = `KindSubscription` / `KindSnell` / `KindVLess`（Source 阶段从外部拉取或解析得到）
 - **原始节点** = 拉取类节点 + 不带 `relay_through` 的 custom_proxy
 - **链式节点** = `KindChained`（由带 `relay_through` 的 custom_proxy 作为模板派生）
 
 **关键不变量**（修改时必须维持）：
+
 - 节点名全局唯一（跨订阅两轮去重）
 - 节点组名和服务组名共享命名空间，互斥
 - 链式节点上游只能是拉取类节点
@@ -51,16 +56,17 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 2. `grep -rn "p\.Kind\|model\.Kind" --include="*.go" internal/` 列出全部分派点
 3. **判定原则**：每个分派点的本质问题是——新 Kind 在此处的行为与既有 Kind 是否相同？不同则必须处理。按此原则对以下**已知**分派点逐个评估（非完备清单，遇到未列出的 Kind 敏感点时用同一原则判断）：
 
-   | 分派点 | 关注问题 |
-   |-------|---------|
-   | `internal/pipeline/filter.go` 的 `isFetchedKind` | 新 Kind 是否参与 `filters.exclude` 过滤？ |
-   | `internal/pipeline/group.go` 的 `fetchedProxies` | 是否参与区域组 regex 匹配？ |
-   | `internal/pipeline/group.go` 的 `computeAllProxies` | 是否进入 `@all`？ |
-   | `internal/pipeline/group.go` 的 `buildChainedNodesAndGroups` | 是否可作为链式上游？ |
-   | `internal/pipeline/source.go` 的 `deduplicateNames` / `checkNameConflicts` | 是否与其他 Kind 共享去重池？冲突检测范围？ |
-   | `internal/pipeline/validate.go` | 是否纳入命名空间检查？ |
-   | `internal/render/clash_filter.go` 的 `filterForClash` | 新 Kind 是否需在 Clash 渲染前剔除？级联影响 fallback / 规则 / ruleset |
-   | `internal/render/surge.go` 的 `renderSurgeProxy` switch | 新 Kind 是否支持 Surge？不支持时走 `RenderError` 还是提前过滤 |
+   | 分派点                                                                     | 关注问题                                                              |
+   | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+   | `internal/pipeline/filter.go` 的 `isFetchedKind`                           | 新 Kind 是否参与 `filters.exclude` 过滤？                             |
+   | `internal/pipeline/group.go` 的 `fetchedProxies`                           | 是否参与区域组 regex 匹配？                                           |
+   | `internal/pipeline/group.go` 的 `computeAllProxies`                        | 是否进入 `@all`？                                                     |
+   | `internal/pipeline/group.go` 的 `buildChainedNodesAndGroups`               | 是否可作为链式上游？                                                  |
+   | `internal/pipeline/source.go` 的 `deduplicateNames` / `checkNameConflicts` | 是否与其他 Kind 共享去重池？冲突检测范围？                            |
+   | `internal/pipeline/validate.go`                                            | 是否纳入命名空间检查？                                                |
+   | `internal/render/clash_filter.go` 的 `filterForClash`                      | 新 Kind 是否需在 Clash 渲染前剔除？级联影响 fallback / 规则 / ruleset |
+   | `internal/render/surge.go` 的 `renderSurgeProxy` switch                    | 新 Kind 是否支持 Surge？不支持时走 `RenderError` 还是提前过滤         |
+
 4. 更新相关函数/变量的 doc comment（历史注释可能写 "只含 KindSubscription"，必须同步改）
 5. 写 group-level 回归测试（`TestGroup_<NewKind>ParticipatesInRegionMatch` 之类），防止 `isFetchedKind` 等 helper 被改窄导致静默回归
 
@@ -82,6 +88,7 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 因为来源类型引入新的 `ProxyKind` 并贯穿整条管道（Source → Filter → Group → Render），新增来源必须在**每个管道阶段验证其行为**，并同步文档与配置示例以防信息断层。
 
 **最小测试集**（缺一项就不算完成）：
+
 - [ ] 解析器单测：valid / invalid / skip（注释/空行）/ 重复键 / 边界（端口越界）
 - [ ] Source 阶段：与其他来源**共享去重池**的测试
 - [ ] Source 阶段：单行失败路径 + 整源为空路径，URL 必须脱敏
@@ -94,6 +101,7 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 - [ ] 配置校验：`sources.<new>[].url` 空 / 非 HTTP(S) 报错
 
 **文档与示例同步**（与测试同等重要；已出现过 Snell/VLESS 扩展时 `configs/base_config.yaml` 被漏更新的先例）：
+
 - [ ] `configs/base_config.yaml`：为新 `sources.<kind>` 增加注释示例块（即使整块注释掉也要写，向用户声明该来源存在）
 - [ ] `configs/base_config.yaml`：核对既有注释中"订阅节点"等窄化措辞——`filters` / `groups.match` / `custom_proxies.name` 唯一性 / `relay_through` 的 `select`/`all` 描述均应表述为"拉取类节点（订阅 / Snell / VLESS...）"
 - [ ] `docs/design/config-schema.md`：顶层 `sources` 段、字段约束、校验规则
@@ -136,14 +144,26 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 **本项目先例**（为何放项目级而非全局）：Snell / VLESS 扩展时 plan 含"可选的测试补充"类条目未二次决策，连带导致 `configs/base_config.yaml` 示例被漏更新。
 
 实现完成后必须回读 `~/.claude/plans/<plan-id>.md`：
+
 - 每个标记为"可选/推荐"的条目必须**二次决策**，收敛为"已做"或"不做 + 理由"
 - 决定"不做"时，在 plan 文件"范围削减"小节写明理由，便于后续审查
+
+### CI 流水线检查
+
+Release workflow 按以下顺序执行，任一步失败则阻断后续 job（binaries / docker）：
+
+1. **`golangci-lint`**（含 `unused` linter）：检测**包括 `_test.go` 在内**的未使用函数/变量——Go 编译器不报错，但 CI 会拒绝
+2. **`gofmt -l .`**：严格格式检查，文件末尾多余空行即失败
+3. **`go test ./...`** + **`go vet ./...`**
+
+**本地预检命令**：`gofmt -l . && go vet ./...`——在 `git commit` 前跑一次可避免大部分 CI 格式类失败。
 
 ### 语义变更优先 rename
 
 **本项目先例**（为何放项目级而非全局）：`isFetchedKind` 的语义从"仅订阅"扩展到"订阅 / Snell / VLESS"，若只改注释而不 rename，grep 到该函数的新成员会错误推断其仅处理订阅。
 
 函数/变量的**行为语义**变化时，优先 rename 函数/变量名：
+
 - 函数名是调用点的锚点，注释会随时间漂移
 - 正例：新增同名 helper 同时覆盖新老语义，或改名为更贴合新语义的名称
 
@@ -210,3 +230,4 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 - [ ] **格式专属协议改动** → 见 §已知架构局限 #3：已测级联效应
 - [ ] **包间依赖变更** → 见 §新增来源类型 · 文档与示例同步：`docs/architecture.md` 模块边界图和 `docs/implementation/project-structure.md` 依赖方向图已同步更新
 - [ ] **测试跨边界导入** → 见 §测试：测试文件未导入同层或上层业务包（如 render 测试不导入 pipeline）
+- [ ] **删除代码后的清理** → 见 §CI 流水线检查：已确认无未使用的 test helper 函数、无多余 import、无尾部空行（`gofmt -l .` 通过）
