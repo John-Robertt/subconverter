@@ -102,6 +102,7 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 - [ ] `docs/design/validation.md`：静态 / 构建期校验条目
 - [ ] `docs/design/rendering.md`：若协议只支持某格式，补"XX 过滤"小节
 - [ ] `docs/architecture.md`：若影响 `@all` / `@auto` 语义或"原始节点"定义，同步关键决策表
+- [ ] **依赖图同步**：若新增或变更了包间 import，同步更新 `docs/architecture.md` 模块边界图和 `docs/implementation/project-structure.md` 依赖方向图（已出现过 Snell/VLESS 扩展引入 `config -> fetch/model/ssparse` 等依赖但未同步文档的先例）
 
 ### 新增错误码
 
@@ -128,6 +129,7 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 - 断言含上下文：失败消息带 got/want + 相关 state，便于 debug
 - **YAML 断言避坑**：astral-plane 字符（如 🇭🇰 国旗 U+1F1ED+U+1F1F0，或 🔗 U+1F517）被 go-yaml 转成 `\UXXXX`；emoji 组名用 ASCII 前缀（`GRP_`/`SVC_`）测试更稳定。YAML 路径上的比对尤其敏感；纯 Go fixture（直接构造结构体 + 字符串字面量断言）可安全使用任意 emoji
 - 新 feature 的测试文件命名与现有风格保持一致：`<feature>_test.go`
+- **测试不跨架构边界导入**：测试文件的 import 应只用被测包的直接依赖（`model`、`errtype` 等叶包），不应导入同层或上层业务包（如 `render` 测试不应导入 `pipeline`）。需要复杂测试输入时，用 `model.Proxy` 等字面量手工构造而非调用其他业务包的解析器——这既保持边界清晰，也让测试输入的含义一目了然
 
 ### Plan 文件闭环
 
@@ -206,3 +208,5 @@ cmd/subconverter → internal/server → internal/{config,pipeline,render,model,
 - [ ] **函数行为语义变化** → 见 §语义变更优先 rename：已 rename 函数/变量名而非仅改注释（锚点一致性）
 - [ ] **Plan 文件含"可选/推荐"条目** → 见 §Plan 文件闭环：已收敛为"已做"或"不做 + 理由"，不留模糊词汇
 - [ ] **格式专属协议改动** → 见 §已知架构局限 #3：已测级联效应
+- [ ] **包间依赖变更** → 见 §新增来源类型 · 文档与示例同步：`docs/architecture.md` 模块边界图和 `docs/implementation/project-structure.md` 依赖方向图已同步更新
+- [ ] **测试跨边界导入** → 见 §测试：测试文件未导入同层或上层业务包（如 render 测试不导入 pipeline）
