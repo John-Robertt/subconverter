@@ -31,11 +31,8 @@ func TestLoad_ExampleConfig(t *testing.T) {
 	if cp.Name != "🔗 HK-ISP" {
 		t.Errorf("CustomProxy.Name = %q, want %q", cp.Name, "🔗 HK-ISP")
 	}
-	if cp.Type != "socks5" || cp.Server != "154.197.1.1" || cp.Port != 45002 {
-		t.Errorf("CustomProxy parsed fields: Type=%q Server=%q Port=%d", cp.Type, cp.Server, cp.Port)
-	}
-	if cp.Params["username"] != "user" || cp.Params["password"] != "pass" {
-		t.Errorf("CustomProxy.Params = %v", cp.Params)
+	if cp.URL != "socks5://user:pass@154.197.1.1:45002" {
+		t.Errorf("CustomProxy.URL = %q", cp.URL)
 	}
 	if cp.RelayThrough == nil {
 		t.Fatal("RelayThrough is nil")

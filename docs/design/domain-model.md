@@ -22,6 +22,12 @@
 
 中间表示层是整个系统的稳定边界。
 
+补充边界：
+
+- 用户配置层中的 `custom_proxies` 只保留原始 YAML 字段（`name` / `url` / `relay_through`）
+- `url` 解析得到的 `type/server/port/params/plugin` 属于构建期瞬时结果，由 `proxyparse` / `pipeline.Source` 消费，不回写到 `Config`
+- `ChainTemplate` 是 Group 阶段使用的运行期结构，不属于稳定领域模型
+
 ---
 
 ## 核心实体

@@ -21,28 +21,12 @@ func validBase() Config {
 	return cfg
 }
 
-// testCustomProxy builds a CustomProxy with pre-parsed internal fields,
-// simulating what UnmarshalYAML would produce from a given URL.
-// For tests that bypass YAML decoding, both URL and parsed fields must be set.
 func testCustomProxy(name, rawURL string, rt *RelayThrough) CustomProxy {
-	cp := CustomProxy{
+	return CustomProxy{
 		URL:          rawURL,
 		Name:         name,
 		RelayThrough: rt,
 	}
-	if rawURL != "" {
-		result, err := parseProxyURL(rawURL)
-		if err != nil {
-			cp.ParseErr = err
-		} else {
-			cp.Type = result.Type
-			cp.Server = result.Server
-			cp.Port = result.Port
-			cp.Params = result.Params
-			cp.Plugin = result.Plugin
-		}
-	}
-	return cp
 }
 
 func TestValidate_ValidConfig(t *testing.T) {
@@ -176,29 +160,14 @@ func TestValidate_CustomProxySSFragmentIgnored(t *testing.T) {
 
 func TestValidate_CustomProxySSMissingCipher(t *testing.T) {
 	cfg := validBase()
-	// Construct a manually broken SS proxy: has password but no cipher
-	cp := CustomProxy{
-		URL:    "ss://broken@1.2.3.4:8388",
-		Name:   "p1",
-		Type:   "ss",
-		Server: "1.2.3.4",
-		Port:   8388,
-		Params: map[string]string{"password": "mypass"},
-	}
+	cp := CustomProxy{URL: "ss://YmFkcGFzcw@1.2.3.4:8388", Name: "p1"}
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
 }
 
 func TestValidate_CustomProxySSMissingPassword(t *testing.T) {
 	cfg := validBase()
-	cp := CustomProxy{
-		URL:    "ss://broken@1.2.3.4:8388",
-		Name:   "p1",
-		Type:   "ss",
-		Server: "1.2.3.4",
-		Port:   8388,
-		Params: map[string]string{"cipher": "aes-256-gcm"},
-	}
+	cp := CustomProxy{URL: "ss://YWVzLTI1Ni1nY206@1.2.3.4:8388", Name: "p1"}
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
 }

@@ -22,7 +22,7 @@ func TestRoute_ServiceGroups(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, &GroupResult{AllProxies: []string{"HK-01", "SG-01"}})
+	result, err := routeFromConfig(cfg, &GroupResult{AllProxies: []string{"HK-01", "SG-01"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestRoute_AllExpansion(t *testing.T) {
 
 	allProxies := []string{"HK-01", "SG-01", "JP-01"}
 
-	result, err := Route(cfg, &GroupResult{AllProxies: allProxies})
+	result, err := routeFromConfig(cfg, &GroupResult{AllProxies: allProxies})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRoute_Rulesets(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, &GroupResult{})
+	result, err := routeFromConfig(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestRoute_RulesParsing(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, &GroupResult{})
+	result, err := routeFromConfig(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestRoute_RuleNoComma(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	_, err := Route(cfg, &GroupResult{})
+	_, err := routeFromConfig(cfg, &GroupResult{})
 	if err == nil {
 		t.Fatal("expected error for rule without comma")
 	}
@@ -191,7 +191,7 @@ func TestRoute_Fallback(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, &GroupResult{})
+	result, err := routeFromConfig(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestRoute_EmptyRouting(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, &GroupResult{})
+	result, err := routeFromConfig(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestRoute_AllExpansionEmpty(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, &GroupResult{})
+	result, err := routeFromConfig(cfg, &GroupResult{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestRoute_RawMembersPreserved(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, &GroupResult{AllProxies: []string{"HK-01", "SG-01"}})
+	result, err := routeFromConfig(cfg, &GroupResult{AllProxies: []string{"HK-01", "SG-01"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestRoute_AutoFillBasic(t *testing.T) {
 		AllProxies: []string{"HK-01", "SG-01", "HK-ISP"},
 	}
 
-	result, err := Route(cfg, gr)
+	result, err := routeFromConfig(cfg, gr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestRoute_AutoFillWithPreferred(t *testing.T) {
 		AllProxies: []string{"HK-01", "SG-01"},
 	}
 
-	result, err := Route(cfg, gr)
+	result, err := routeFromConfig(cfg, gr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -400,7 +400,7 @@ func TestRoute_AutoFillPreservesManualRejectPlacement(t *testing.T) {
 				Fallback: "🐟 FINAL",
 			}
 
-			result, err := Route(cfg, gr)
+			result, err := routeFromConfig(cfg, gr)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -435,7 +435,7 @@ func TestRoute_AutoFillExcludesSelf(t *testing.T) {
 		AllProxies: []string{"HK-01"},
 	}
 
-	result, err := Route(cfg, gr)
+	result, err := routeFromConfig(cfg, gr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -466,7 +466,7 @@ func TestRoute_AutoFillIncludesChainedGroups(t *testing.T) {
 		},
 	}
 
-	result, err := Route(cfg, gr)
+	result, err := routeFromConfig(cfg, gr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestRoute_AutoFillIncludesAllRouteGroups(t *testing.T) {
 		AllProxies: []string{"HK-01"},
 	}
 
-	result, err := Route(cfg, gr)
+	result, err := routeFromConfig(cfg, gr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -538,7 +538,7 @@ func TestRoute_AutoFillOrder(t *testing.T) {
 		},
 	}
 
-	result, err := Route(cfg, gr)
+	result, err := routeFromConfig(cfg, gr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -576,7 +576,7 @@ func TestRoute_NoAutoFill(t *testing.T) {
 		},
 	}
 
-	result, err := Route(cfg, gr)
+	result, err := routeFromConfig(cfg, gr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -602,7 +602,7 @@ func TestRoute_NilGroupResult(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := Route(cfg, nil)
+	result, err := routeFromConfig(cfg, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
+	"github.com/John-Robertt/subconverter/internal/generate"
 	"github.com/John-Robertt/subconverter/internal/server"
 	"gopkg.in/yaml.v3"
 )
@@ -92,7 +93,8 @@ func validFetcher() *fakeFetcher {
 // startTestServer creates and starts a test HTTP server.
 func startTestServer(t *testing.T, cfg *config.Config, f *fakeFetcher) *httptest.Server {
 	t.Helper()
-	srv := server.New(cfg, f, server.Options{})
+	gen := generate.New(cfg, f, generate.Options{})
+	srv := server.New(gen, server.Options{})
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts
@@ -100,7 +102,8 @@ func startTestServer(t *testing.T, cfg *config.Config, f *fakeFetcher) *httptest
 
 func startTestServerWithOptions(t *testing.T, cfg *config.Config, f *fakeFetcher, opts server.Options) *httptest.Server {
 	t.Helper()
-	srv := server.New(cfg, f, opts)
+	gen := generate.New(cfg, f, generate.Options{AccessToken: opts.AccessToken})
+	srv := server.New(gen, opts)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts

@@ -10,12 +10,33 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/fetch"
 	"github.com/John-Robertt/subconverter/internal/model"
+	"github.com/John-Robertt/subconverter/internal/proxyparse"
 )
 
 // defaultFetchOrder is the fallback traversal order when Sources.FetchOrder
 // is empty (in-memory Config instances from tests that skip YAML unmarshal).
 // YAML-loaded configs populate FetchOrder from declaration order instead.
 var defaultFetchOrder = []string{"subscriptions", "snell", "vless"}
+
+// ChainTemplate is the runtime form of a relay_through custom proxy. It is
+// produced by Source and expanded into chained proxies by Group.
+type ChainTemplate struct {
+	Name         string
+	Type         string
+	Server       string
+	Port         int
+	Params       map[string]string
+	Plugin       *model.Plugin
+	RelayThrough *config.RelayThrough
+}
+
+// SourceResult is the output of the Source stage. Proxies contains all
+// original proxies (fetched + standalone custom); ChainTemplates carries
+// relay_through declarations for the Group stage.
+type SourceResult struct {
+	Proxies        []model.Proxy
+	ChainTemplates []ChainTemplate
+}
 
 // Source executes pipeline stage 3: fetch subscriptions / Snell / VLESS
 // sources, convert custom proxies, and deduplicate names.
@@ -31,8 +52,8 @@ var defaultFetchOrder = []string{"subscriptions", "snell", "vless"}
 // a subscription are skipped, but a subscription yielding zero valid nodes
 // is an error. VLESS and Snell sources abort on any single-line parse
 // failure (small hand-curated lists — strict failure surfaces typos early).
-func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) ([]model.Proxy, error) {
-	var subProxies []model.Proxy
+func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*SourceResult, error) {
+	var fetchedProxies []model.Proxy
 
 	order := cfg.Sources.FetchOrder
 	if len(order) == 0 {
@@ -47,7 +68,7 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) ([]m
 				if err != nil {
 					return nil, err
 				}
-				subProxies = append(subProxies, proxies...)
+				fetchedProxies = append(fetchedProxies, proxies...)
 			}
 		case "snell":
 			for _, s := range cfg.Sources.Snell {
@@ -55,7 +76,7 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) ([]m
 				if err != nil {
 					return nil, err
 				}
-				subProxies = append(subProxies, proxies...)
+				fetchedProxies = append(fetchedProxies, proxies...)
 			}
 		case "vless":
 			for _, s := range cfg.Sources.VLess {
@@ -63,7 +84,7 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) ([]m
 				if err != nil {
 					return nil, err
 				}
-				subProxies = append(subProxies, proxies...)
+				fetchedProxies = append(fetchedProxies, proxies...)
 			}
 		default:
 			// FetchOrder should only ever contain keys from sourceFetchKeys
@@ -79,19 +100,25 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) ([]m
 		}
 	}
 
-	subProxies = deduplicateNames(subProxies)
+	fetchedProxies = deduplicateNames(fetchedProxies)
 
 	// Verify name conflicts against the *original* custom_proxies (including
 	// chain templates with relay_through set), since chain templates do not
 	// produce KindCustom proxies but their name still claims a slot in the
 	// shared namespace as a chain group name.
-	if err := checkNameConflicts(subProxies, cfg.Sources.CustomProxies); err != nil {
+	if err := checkNameConflicts(fetchedProxies, cfg.Sources.CustomProxies); err != nil {
 		return nil, err
 	}
 
-	customProxies := convertCustomProxies(cfg.Sources.CustomProxies)
+	customProxies, chainTemplates, err := convertCustomProxies(cfg.Sources.CustomProxies)
+	if err != nil {
+		return nil, err
+	}
 
-	return append(subProxies, customProxies...), nil
+	proxies := make([]model.Proxy, 0, len(fetchedProxies)+len(customProxies))
+	proxies = append(proxies, fetchedProxies...)
+	proxies = append(proxies, customProxies...)
+	return &SourceResult{Proxies: proxies, ChainTemplates: chainTemplates}, nil
 }
 
 // fetchSubscription fetches a single subscription URL, decodes the base64
@@ -315,29 +342,44 @@ func deduplicatedName(base string, seq int) string {
 	return fmt.Sprintf("%s(%d)", base, seq)
 }
 
-// convertCustomProxies converts config.CustomProxy entries to model.Proxy objects.
-//
-// Entries with RelayThrough set are *skipped*: they serve only as chain
-// templates in the Group stage (which generates chained nodes + a chain group
-// named cp.Name). Emitting a KindCustom proxy for them would collide with the
-// chain group name in the shared namespace.
-func convertCustomProxies(cps []config.CustomProxy) []model.Proxy {
+// convertCustomProxies parses custom_proxies into either standalone custom
+// proxies or chain templates for later expansion in Group.
+func convertCustomProxies(cps []config.CustomProxy) ([]model.Proxy, []ChainTemplate, error) {
 	proxies := make([]model.Proxy, 0, len(cps))
+	chainTemplates := make([]ChainTemplate, 0, len(cps))
 	for _, cp := range cps {
+		parsed, err := proxyparse.ParseURL(cp.URL)
+		if err != nil {
+			return nil, nil, &errtype.BuildError{
+				Code:    errtype.CodeBuildValidationFailed,
+				Phase:   "source",
+				Message: fmt.Sprintf("custom_proxy %q 的 URL 解析失败：%v", cp.Name, err),
+				Cause:   err,
+			}
+		}
 		if cp.RelayThrough != nil {
+			chainTemplates = append(chainTemplates, ChainTemplate{
+				Name:         cp.Name,
+				Type:         parsed.Type,
+				Server:       parsed.Server,
+				Port:         parsed.Port,
+				Params:       copyParams(parsed.Params),
+				Plugin:       convertPluginSpec(parsed.Plugin),
+				RelayThrough: cp.RelayThrough,
+			})
 			continue
 		}
 		proxies = append(proxies, model.Proxy{
 			Name:   cp.Name,
-			Type:   cp.Type,
-			Server: cp.Server,
-			Port:   cp.Port,
-			Params: copyParams(cp.Params),
-			Plugin: copyPlugin(cp.Plugin),
+			Type:   parsed.Type,
+			Server: parsed.Server,
+			Port:   parsed.Port,
+			Params: copyParams(parsed.Params),
+			Plugin: convertPluginSpec(parsed.Plugin),
 			Kind:   model.KindCustom,
 		})
 	}
-	return proxies
+	return proxies, chainTemplates, nil
 }
 
 // copyParams returns a shallow copy of a Params map to prevent sharing
@@ -354,6 +396,20 @@ func copyParams(src map[string]string) map[string]string {
 }
 
 func copyPlugin(src *model.Plugin) *model.Plugin {
+	if src == nil {
+		return nil
+	}
+	dst := &model.Plugin{Name: src.Name}
+	if len(src.Opts) > 0 {
+		dst.Opts = make(map[string]string, len(src.Opts))
+		for k, v := range src.Opts {
+			dst.Opts[k] = v
+		}
+	}
+	return dst
+}
+
+func convertPluginSpec(src *proxyparse.PluginSpec) *model.Plugin {
 	if src == nil {
 		return nil
 	}

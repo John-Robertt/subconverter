@@ -9,9 +9,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/John-Robertt/subconverter/internal/fetch"
-	"github.com/John-Robertt/subconverter/internal/pipeline"
-	"github.com/John-Robertt/subconverter/internal/render"
+	"github.com/John-Robertt/subconverter/internal/generate"
 )
 
 const maxFilenameLength = 255
@@ -37,58 +35,20 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := pipeline.Execute(r.Context(), s.cfg, s.fetcher)
+	result, err := s.generator.Generate(r.Context(), generate.Request{
+		Format:   format,
+		Filename: filename,
+	})
 	if err != nil {
 		code, msg := presentError(err)
-		log.Printf("pipeline error: %v", err)
+		log.Printf("generate error: %v", err)
 		writeError(w, code, msg)
 		return
 	}
 
-	// Load template if configured.
-	var templatePath string
-	switch format {
-	case "clash":
-		templatePath = s.cfg.Templates.Clash
-	case "surge":
-		templatePath = s.cfg.Templates.Surge
-	}
-
-	var tmpl []byte
-	if templatePath != "" {
-		tmpl, err = fetch.LoadResource(r.Context(), templatePath, s.fetcher)
-		if err != nil {
-			code, msg := presentError(err)
-			log.Printf("template load error: %v", err)
-			writeError(w, code, msg)
-			return
-		}
-	}
-
-	// Render.
-	var output []byte
-	switch format {
-	case "clash":
-		output, err = render.Clash(p, tmpl)
-	case "surge":
-		output, err = render.Surge(p, buildManagedURL(s.cfg.BaseURL, filename, s.opts.AccessToken), tmpl)
-	}
-	if err != nil {
-		code, msg := presentError(err)
-		log.Printf("render error: %v", err)
-		writeError(w, code, msg)
-		return
-	}
-
-	// Write response.
-	switch format {
-	case "clash":
-		w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
-	case "surge":
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	}
-	w.Header().Set("Content-Disposition", contentDispositionValue(filename))
-	_, _ = w.Write(output)
+	w.Header().Set("Content-Type", result.ContentType)
+	w.Header().Set("Content-Disposition", contentDispositionValue(result.Filename))
+	_, _ = w.Write(result.Body)
 }
 
 // handleHealthz returns 200 OK for health checks.
@@ -181,27 +141,6 @@ func expectedExtension(format string) string {
 	default:
 		return ""
 	}
-}
-
-func buildManagedURL(baseURL, filename, accessToken string) string {
-	if baseURL == "" {
-		return ""
-	}
-
-	base, err := url.Parse(baseURL)
-	if err != nil {
-		return ""
-	}
-	base.Path = "/generate"
-	base.RawPath = ""
-
-	params := []string{"format=surge"}
-	if accessToken != "" {
-		params = append(params, "token="+url.QueryEscape(accessToken))
-	}
-	params = append(params, "filename="+url.QueryEscape(filename))
-	base.RawQuery = strings.Join(params, "&")
-	return base.String()
 }
 
 func contentDispositionValue(filename string) string {

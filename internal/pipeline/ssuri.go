@@ -44,9 +44,23 @@ func ParseSSURI(raw string) (model.Proxy, error) {
 			"cipher":   r.Cipher,
 			"password": r.Password,
 		},
-		Plugin: r.Plugin,
+		Plugin: convertSSPlugin(r.Plugin),
 		Kind:   model.KindSubscription,
 	}, nil
+}
+
+func convertSSPlugin(src *ssparse.PluginSpec) *model.Plugin {
+	if src == nil {
+		return nil
+	}
+	dst := &model.Plugin{Name: src.Name}
+	if len(src.Opts) > 0 {
+		dst.Opts = make(map[string]string, len(src.Opts))
+		for k, v := range src.Opts {
+			dst.Opts[k] = v
+		}
+	}
+	return dst
 }
 
 func ssError(uri, reason string) error {

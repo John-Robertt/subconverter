@@ -71,7 +71,7 @@ func TestGroup_RegionGroupMatching(t *testing.T) {
 `),
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -136,22 +136,16 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 `),
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL:  "socks5://user1:pass1@154.197.1.1:45002",
-					Name: "HK-ISP",
-					Type: "socks5", Server: "154.197.1.1", Port: 45002,
-					Params: map[string]string{"username": "user1", "password": "pass1"},
-					RelayThrough: &config.RelayThrough{
-						Type:     "group",
-						Name:     "🇭🇰 Hong Kong",
-						Strategy: "select",
-					},
-				},
+				customProxy("HK-ISP", "socks5://user1:pass1@154.197.1.1:45002", &config.RelayThrough{
+					Type:     "group",
+					Name:     "🇭🇰 Hong Kong",
+					Strategy: "select",
+				}),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -216,27 +210,21 @@ func TestGroup_ChainedTypeSelect(t *testing.T) {
 		makeSubProxy("HK-01"),
 		makeSubProxy("SG-01"),
 		makeSubProxy("JP-01"),
-		makeCustomProxyModel("PROXY-A"),
 	}
 
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL:  "http://10.0.0.1:8080",
-					Name: "PROXY-A",
-					Type: "http", Server: "10.0.0.1", Port: 8080,
-					RelayThrough: &config.RelayThrough{
-						Type:     "select",
-						Match:    "(HK|SG)",
-						Strategy: "url-test",
-					},
-				},
+				customProxy("PROXY-A", "http://10.0.0.1:8080", &config.RelayThrough{
+					Type:     "select",
+					Match:    "(HK|SG)",
+					Strategy: "url-test",
+				}),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -266,26 +254,20 @@ func TestGroup_ChainedTypeAll(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
 		makeSubProxy("SG-01"),
-		makeCustomProxyModel("PROXY-B"),
 	}
 
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL:  "socks5://1.1.1.1:1080",
-					Name: "PROXY-B",
-					Type: "socks5", Server: "1.1.1.1", Port: 1080,
-					RelayThrough: &config.RelayThrough{
-						Type:     "all",
-						Strategy: "select",
-					},
-				},
+				customProxy("PROXY-B", "socks5://1.1.1.1:1080", &config.RelayThrough{
+					Type:     "all",
+					Strategy: "select",
+				}),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -311,31 +293,21 @@ func TestGroup_AllProxiesExcludesChained(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
 		makeSubProxy("SG-01"),
-		makeCustomProxyModel("MY-PROXY"),
 	}
 
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL:  "socks5://1.1.1.1:1080",
-					Name: "MY-PROXY",
-					Type: "socks5", Server: "1.1.1.1", Port: 1080,
-				},
-				{
-					URL:  "socks5://2.2.2.2:1080",
-					Name: "CHAIN-PROXY",
-					Type: "socks5", Server: "2.2.2.2", Port: 1080,
-					RelayThrough: &config.RelayThrough{
-						Type:     "all",
-						Strategy: "select",
-					},
-				},
+				customProxy("MY-PROXY", "socks5://1.1.1.1:1080", nil),
+				customProxy("CHAIN-PROXY", "socks5://2.2.2.2:1080", &config.RelayThrough{
+					Type:     "all",
+					Strategy: "select",
+				}),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -375,21 +347,16 @@ func TestGroup_ChainedGroupRefNotFound(t *testing.T) {
 `),
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL:  "socks5://1.1.1.1:1080",
-					Name: "PROXY-X",
-					Type: "socks5", Server: "1.1.1.1", Port: 1080,
-					RelayThrough: &config.RelayThrough{
-						Type:     "group",
-						Name:     "🇰🇷 Korea",
-						Strategy: "select",
-					},
-				},
+				customProxy("PROXY-X", "socks5://1.1.1.1:1080", &config.RelayThrough{
+					Type:     "group",
+					Name:     "🇰🇷 Korea",
+					Strategy: "select",
+				}),
 			},
 		},
 	}
 
-	_, err := Group(proxies, cfg)
+	_, err := groupFromConfig(cfg, proxies)
 	if err == nil {
 		t.Fatal("expected error for non-existent group reference")
 	}
@@ -408,7 +375,6 @@ func TestGroup_NoChaining(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
 		makeSubProxy("SG-01"),
-		makeCustomProxyModel("MY-PROXY"),
 	}
 
 	cfg := &config.Config{
@@ -417,12 +383,12 @@ func TestGroup_NoChaining(t *testing.T) {
 `),
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{URL: "socks5://1.1.1.1:1080", Name: "MY-PROXY", Type: "socks5", Server: "1.1.1.1", Port: 1080},
+				customProxy("MY-PROXY", "socks5://1.1.1.1:1080", nil),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -454,21 +420,13 @@ func TestGroup_MultipleChainedGroups(t *testing.T) {
 `),
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL: "socks5://1.1.1.1:1080", Name: "ISP-A",
-					Type: "socks5", Server: "1.1.1.1", Port: 1080,
-					RelayThrough: &config.RelayThrough{Type: "group", Name: "🇭🇰 Hong Kong", Strategy: "select"},
-				},
-				{
-					URL: "http://2.2.2.2:8080", Name: "ISP-B",
-					Type: "http", Server: "2.2.2.2", Port: 8080,
-					RelayThrough: &config.RelayThrough{Type: "all", Strategy: "url-test"},
-				},
+				customProxy("ISP-A", "socks5://1.1.1.1:1080", &config.RelayThrough{Type: "group", Name: "🇭🇰 Hong Kong", Strategy: "select"}),
+				customProxy("ISP-B", "http://2.2.2.2:8080", &config.RelayThrough{Type: "all", Strategy: "url-test"}),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -505,21 +463,15 @@ func TestGroup_ChainedNodeProperties(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL:  "socks5://admin:secret@10.0.0.1:9090",
-					Name: "AUTH-PROXY",
-					Type: "socks5", Server: "10.0.0.1", Port: 9090,
-					Params: map[string]string{"username": "admin", "password": "secret"},
-					RelayThrough: &config.RelayThrough{
-						Type:     "all",
-						Strategy: "select",
-					},
-				},
+				customProxy("AUTH-PROXY", "socks5://admin:secret@10.0.0.1:9090", &config.RelayThrough{
+					Type:     "all",
+					Strategy: "select",
+				}),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -570,22 +522,15 @@ func TestGroup_ChainedSSNodePluginPropagation(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL:  "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp",
-					Name: "SS-Chain",
-					Type: "ss", Server: "1.2.3.4", Port: 8388,
-					Params: map[string]string{"cipher": "aes-256-gcm", "password": "chainpass"},
-					Plugin: &model.Plugin{
-						Name: "obfs-local",
-						Opts: map[string]string{"obfs": "http", "obfs-host": "example.com"},
-					},
-					RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-				},
+				customProxy("SS-Chain", "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp%3Bobfs-host%3Dexample.com", &config.RelayThrough{
+					Type:     "all",
+					Strategy: "select",
+				}),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -631,16 +576,12 @@ func TestGroup_ProxiesMergeOrder(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			CustomProxies: []config.CustomProxy{
-				{
-					URL: "socks5://1.1.1.1:1080", Name: "MY-PROXY",
-					Type: "socks5", Server: "1.1.1.1", Port: 1080,
-					RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-				},
+				customProxy("CHAIN-PROXY", "socks5://1.1.1.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
 			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -659,6 +600,9 @@ func TestGroup_ProxiesMergeOrder(t *testing.T) {
 	// Chained proxy last.
 	if result.Proxies[2].Kind != model.KindChained {
 		t.Errorf("proxy[2].Kind = %q, want chained", result.Proxies[2].Kind)
+	}
+	if result.Proxies[2].Name != "HK-01→CHAIN-PROXY" {
+		t.Errorf("proxy[2].Name = %q, want HK-01→CHAIN-PROXY", result.Proxies[2].Name)
 	}
 }
 
@@ -680,7 +624,7 @@ func TestGroup_SnellParticipatesInRegionMatch(t *testing.T) {
 `),
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -746,7 +690,7 @@ func TestGroup_VLessParticipatesInRegionMatch(t *testing.T) {
 `),
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -803,19 +747,16 @@ func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			CustomProxies: []config.CustomProxy{{
-				URL:  "socks5://127.0.0.1:1080",
-				Name: "MY-CHAIN",
-				Type: "socks5", Server: "127.0.0.1", Port: 1080,
-				RelayThrough: &config.RelayThrough{
+			CustomProxies: []config.CustomProxy{
+				customProxy("MY-CHAIN", "socks5://127.0.0.1:1080", &config.RelayThrough{
 					Type:     "all",
 					Strategy: "select",
-				},
-			}},
+				}),
+			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -849,15 +790,13 @@ func TestGroup_ChainedGroupNameEqualsCustomProxyName(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			CustomProxies: []config.CustomProxy{{
-				URL: "socks5://1.1.1.1:1080", Name: "HK-ISP",
-				Type: "socks5", Server: "1.1.1.1", Port: 1080,
-				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-			}},
+			CustomProxies: []config.CustomProxy{
+				customProxy("HK-ISP", "socks5://1.1.1.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
+			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -881,15 +820,13 @@ func TestGroup_ChainedGroupNamePreservesUserEmojiPrefix(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			CustomProxies: []config.CustomProxy{{
-				URL: "socks5://1.1.1.1:1080", Name: "🔗 HK-ISP",
-				Type: "socks5", Server: "1.1.1.1", Port: 1080,
-				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-			}},
+			CustomProxies: []config.CustomProxy{
+				customProxy("🔗 HK-ISP", "socks5://1.1.1.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
+			},
 		},
 	}
 
-	result, err := Group(proxies, cfg)
+	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

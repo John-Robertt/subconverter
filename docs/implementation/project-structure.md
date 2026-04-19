@@ -16,10 +16,14 @@ subconverter/
 │   ├── config/
 │   ├── errtype/
 │   ├── fetch/
+│   ├── generate/
 │   ├── model/
 │   ├── pipeline/
+│   ├── proxyparse/
 │   ├── render/
+│   ├── ssparse/
 │   └── server/
+│   └── target/
 ├── configs/
 │   ├── base_config.yaml
 │   ├── base_clash.yaml
@@ -38,6 +42,7 @@ subconverter/
 - YAML 加载（支持本地路径和远程 URL）
 - 保序映射
 - 静态校验
+- 保持“原始配置层”语义，不持有运行期派生的代理字段
 
 `internal/errtype`
 
@@ -58,12 +63,31 @@ subconverter/
 
 - SS / Snell / VLESS 来源解析、各阶段转换
 - 图级校验
-- 管道编排
+- `Build` 编排（格式无关 IR）
+
+`internal/proxyparse`
+
+- 解析 `custom_proxies[].url`
+- 返回运行期中立结构（type/server/port/params/plugin）
+- 隔离 `config` 与 `model`
 
 `internal/render`
 
-- Clash Meta 渲染器（yaml.Node API + 底版模板合并 + Snell 级联过滤 + VLESS 渲染）
-- Surge 渲染器（INI section 切分替换 + 底版模板合并 + VLESS 级联过滤）
+- Clash Meta / Surge 序列化
+- 底版模板合并
+- 不承担协议级裁剪与图改写
+
+`internal/target`
+
+- Clash / Surge 目标格式投影
+- 协议支持过滤（Snell / VLESS）
+- fallback 清空等格式相关级联校验
+
+`internal/generate`
+
+- 单一“生成配置”应用服务
+- 统一承接 `Build -> Target -> Render`
+- 装配模板加载与 Surge managed URL
 
 `internal/server`
 
@@ -74,7 +98,7 @@ subconverter/
 `internal/ssparse`
 
 - Shadowsocks URI 解析（SIP002 body 解析、plugin query 解析）
-- 被 `config`（自定义代理 URL 解析）和 `pipeline`（SS 订阅 URI 解析）共享
+- 被 `proxyparse`（自定义代理 URL 解析）和 `pipeline`（SS 订阅 URI 解析）共享
 
 ---
 
@@ -82,22 +106,28 @@ subconverter/
 
 ```text
 cmd/subconverter
-  -> server
   -> config
   -> fetch
+  -> generate
+  -> server
 
 server
+  -> generate
+  -> errtype
+
+generate
   -> config
   -> fetch
   -> pipeline
+  -> target
   -> render
-  -> errtype
 
 pipeline
   -> config
   -> fetch
   -> model
   -> errtype
+  -> proxyparse
   -> ssparse
 
 render
@@ -107,14 +137,20 @@ render
 config
   -> errtype
   -> fetch
+  -> proxyparse
+
+target
   -> model
+  -> errtype
+
+proxyparse
   -> ssparse
 
 fetch
   -> errtype
 
 ssparse
-  -> model
+  -> (leaf)
 ```
 
 约束：
@@ -123,3 +159,4 @@ ssparse
 - `errtype` 不依赖其他业务包
 - `render` 不直接读取 YAML 配置
 - `server` 不承担业务转换逻辑
+- `config` 不直接依赖 `model`

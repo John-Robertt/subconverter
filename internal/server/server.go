@@ -1,17 +1,21 @@
 package server
 
 import (
+	"context"
 	"net/http"
 
-	"github.com/John-Robertt/subconverter/internal/config"
-	"github.com/John-Robertt/subconverter/internal/fetch"
+	"github.com/John-Robertt/subconverter/internal/generate"
 )
+
+// Generator abstracts the generation use case behind the HTTP transport.
+type Generator interface {
+	Generate(ctx context.Context, req generate.Request) (*generate.Result, error)
+}
 
 // Server holds the dependencies for the HTTP handlers.
 type Server struct {
-	cfg     *config.Config
-	fetcher fetch.Fetcher
-	opts    Options
+	generator Generator
+	opts      Options
 }
 
 // Options holds runtime-only server behavior toggles.
@@ -19,9 +23,9 @@ type Options struct {
 	AccessToken string
 }
 
-// New creates a Server with the given configuration and fetcher.
-func New(cfg *config.Config, fetcher fetch.Fetcher, opts Options) *Server {
-	return &Server{cfg: cfg, fetcher: fetcher, opts: opts}
+// New creates a Server with the given generator.
+func New(generator Generator, opts Options) *Server {
+	return &Server{generator: generator, opts: opts}
 }
 
 // Handler returns an http.Handler with all routes registered.

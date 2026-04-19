@@ -62,16 +62,16 @@ config.yaml + remote sources
 
 ## 管道模型
 
-系统采用声明式管道架构：
+系统把启动期和请求期拆开：
 
 ```text
+启动期:
 LoadConfig
   -> ValidateConfig
-  -> Source
-  -> Filter
-  -> Group
-  -> Route
-  -> ValidateGraph
+
+请求期:
+Build(Source -> Filter -> Group -> Route -> ValidateGraph)
+  -> Target
   -> Render
 ```
 
@@ -79,17 +79,15 @@ LoadConfig
 
 - `LoadConfig`：读取并解析用户 YAML
 - `ValidateConfig`：校验字段合法性和配置结构完整性
-- `Source`：拉取远程来源并解析原始节点
-- `Filter`：对拉取类节点执行过滤
-- `Group`：构建地区组和链式组，产出节点组层
-- `Route`：构建服务组、规则集与 fallback
-- `ValidateGraph`：检查引用关系、循环依赖和展开结果
-- `Render`：根据目标格式输出 Clash Meta 或 Surge 配置
+- `Build`：构建格式无关 IR，其中 `Source/Filter/Group/Route/ValidateGraph` 仍按阶段拆分
+- `Target`：按目标格式做协议能力裁剪和格式相关图校验
+- `Render`：把已投影的目标格式视图序列化为 Clash Meta 或 Surge 文本
 
 该模型的核心特点：
 
-- 各阶段输入输出清晰，便于单测和定位问题
-- 渲染器只依赖统一中间表示，不直接依赖配置原文
+- 启动期只做一次配置加载与静态校验，请求期不重复触碰 YAML
+- `Build` 产出稳定的格式无关 IR，`Target` 再承接目标格式差异
+- 渲染器只依赖目标格式视图，不直接承担协议过滤与级联裁剪
 - 链式节点在分组阶段生成，避免污染源数据获取逻辑
 
 ---
@@ -98,24 +96,45 @@ LoadConfig
 
 ```text
 cmd/subconverter
+  ├─► internal/config
+  ├─► internal/fetch
+  ├─► internal/generate
   └─► internal/server
-        ├─► internal/config
-        │     ├─► internal/errtype
-        │     ├─► internal/fetch
-        │     ├─► internal/model
-        │     └─► internal/ssparse
-        ├─► internal/pipeline
-        │     ├─► internal/config
-        │     ├─► internal/fetch
-        │     ├─► internal/model
-        │     ├─► internal/errtype
-        │     └─► internal/ssparse
-        ├─► internal/render
-        │     ├─► internal/model
-        │     └─► internal/errtype
-        ├─► internal/fetch
-        │     └─► internal/errtype
-        └─► internal/errtype
+
+internal/server
+  ├─► internal/generate
+  └─► internal/errtype
+
+internal/generate
+  ├─► internal/config
+  ├─► internal/fetch
+  ├─► internal/pipeline
+  ├─► internal/target
+  └─► internal/render
+
+internal/pipeline
+  ├─► internal/config
+  ├─► internal/fetch
+  ├─► internal/model
+  ├─► internal/errtype
+  ├─► internal/proxyparse
+  └─► internal/ssparse
+
+internal/config
+  ├─► internal/errtype
+  ├─► internal/fetch
+  └─► internal/proxyparse
+
+internal/proxyparse
+  └─► internal/ssparse
+
+internal/target
+  ├─► internal/model
+  └─► internal/errtype
+
+internal/render
+  ├─► internal/model
+  └─► internal/errtype
 ```
 
 模块职责：
@@ -123,16 +142,20 @@ cmd/subconverter
 - `config`：配置加载（支持本地/远程）、保序解析、静态校验
 - `model`：格式无关的中间表示
 - `fetch`：订阅拉取、缓存、统一资源加载（`LoadResource`：按前缀分发本地文件读取或 HTTP 拉取）
-- `ssparse`：Shadowsocks URI 解析（SIP002 body 解析、plugin query 解析），被 `config` 和 `pipeline` 共享
-- `pipeline`：Source / Filter / Group / Route / ValidateGraph 编排
-- `render`：Clash Meta 与 Surge 渲染器（支持底版模板合并）
-- `server`：HTTP 接口和错误映射
+- `ssparse`：Shadowsocks URI 解析（SIP002 body 解析、plugin query 解析）
+- `proxyparse`：把 `custom_proxies[].url` 解析成运行期中立结构，隔离 `config` 与 `model`
+- `pipeline`：Build 内的 Source / Filter / Group / Route / ValidateGraph 编排
+- `target`：目标格式投影与格式相关级联校验
+- `render`：Clash Meta 与 Surge 渲染器（支持底版模板合并），只做序列化
+- `generate`：单一“生成配置”应用服务，统一承接请求期编排
+- `server`：HTTP 接口、参数校验和错误映射
 
 依赖原则：
 
 - 依赖方向单向
 - `model` 只承载数据，不依赖其他业务包
 - 渲染层不反向依赖配置层实现细节
+- HTTP 层不直接依赖管道与渲染细节，而是通过 `generate.Service` 进入用例
 
 ---
 
@@ -153,8 +176,8 @@ cmd/subconverter
     ▼
 统一中间表示
     │
-    ├─► Clash Meta 渲染
-    └─► Surge 渲染
+    ├─► Clash 目标投影 ──► Clash Meta 渲染
+    └─► Surge 目标投影 ──► Surge 渲染
 ```
 
 设计要求：

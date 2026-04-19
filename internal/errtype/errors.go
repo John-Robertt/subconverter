@@ -33,13 +33,15 @@ const (
 	CodeBuildVLessSourceLineInvalid Code = "build_vless_source_line_invalid"
 	CodeBuildValidationFailed       Code = "build_validation_failed"
 
-	CodeRenderTemplateParseFailed Code = "render_template_parse_failed"
-	CodeRenderTemplateInvalid     Code = "render_template_invalid"
-	CodeRenderYAMLEncodeFailed    Code = "render_yaml_encode_failed"
-	CodeRenderYAMLFinalizeFailed  Code = "render_yaml_finalize_failed"
-	CodeRenderSurgeProxyInvalid   Code = "render_surge_proxy_invalid"
-	CodeRenderClashFallbackEmpty  Code = "render_clash_fallback_empty"
-	CodeRenderSurgeFallbackEmpty  Code = "render_surge_fallback_empty"
+	CodeRenderTemplateParseFailed    Code = "render_template_parse_failed"
+	CodeRenderTemplateInvalid        Code = "render_template_invalid"
+	CodeRenderYAMLEncodeFailed       Code = "render_yaml_encode_failed"
+	CodeRenderYAMLFinalizeFailed     Code = "render_yaml_finalize_failed"
+	CodeRenderSurgeProxyInvalid      Code = "render_surge_proxy_invalid"
+	CodeRenderClashFallbackEmpty     Code = "render_clash_fallback_empty"
+	CodeRenderSurgeFallbackEmpty     Code = "render_surge_fallback_empty"
+	CodeRenderClashProjectionInvalid Code = "render_clash_projection_invalid"
+	CodeRenderSurgeProjectionInvalid Code = "render_surge_projection_invalid"
 )
 
 // ConfigError indicates invalid configuration: bad YAML syntax,

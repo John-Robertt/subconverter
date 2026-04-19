@@ -128,19 +128,18 @@ HTTP 层映射：
 
 ---
 
-## 已知局限
+## 目标格式投影校验
 
-### 图校验不感知输出格式
+`ValidateGraph` 仍然保持格式无关，只负责统一 IR 上的引用与图结构正确性。目标格式差异则前移到 `Target` 阶段：
 
-当前 `ValidateGraph` 在构建与引用层面是**格式无关**的：同一份 GroupResult + RouteResult 无论输出 Clash 还是 Surge 都使用相同校验规则。
+- `target.ForClash`：剔除 Snell 节点及其级联影响
+- `target.ForSurge`：剔除 VLESS 节点及其级联影响
+- 若 `fallback` 在目标格式视图中被清空，立即返回带清空路径的错误
 
-但渲染层存在 format-specific 过滤：Clash 渲染器会对 Snell 节点做级联过滤，Surge 渲染器会对 VLESS 节点做级联过滤（见 `rendering.md` 的 "Snell 过滤" / "VLESS 过滤"），这可能把在 ValidateGraph 看来"合法"的 fallback 服务组在 render 阶段清空，导致：
+这样分层后：
 
-- build 阶段无异常
-- render 阶段抛 `CodeRenderClashFallbackEmpty` 或 `CodeRenderSurgeFallbackEmpty`（错误消息附带清空路径作为补偿）
+- `Build` 只产出格式无关 IR
+- `Target` 承接 format-specific 过滤与校验
+- `Render` 只负责文本序列化
 
-**影响**：用户看到的错误被"晚报"——表面是 RenderError，根因是"被目标格式过滤掉的协议节点构成了关键路径"。
-
-**缓解**：Render 层的错误消息携带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY(chained) ← [HK-Snell(snell)]]]` 或 `FINAL ← [HK ← [HK-VL(vless)]]`），用户可据此回改配置。
-
-**后续改进方向（未实施）**：若未来引入更多 format-specific 过滤（如某格式不支持新协议），应把当前 render 层的视图过滤抽象为 "per-format validation hook"，在 `ValidateGraph` 阶段按输出格式做一次图校验，避免裂痕扩散。当前规模下保持现状。
+当前错误类型仍沿用 `RenderError` 以保持外部 HTTP 错误语义稳定；其中 fallback 被清空仍使用 `CodeRenderClashFallbackEmpty` / `CodeRenderSurgeFallbackEmpty`，而 Target 阶段的内部不变量异常使用独立 projection 错误码，避免与用户配置触发的 fallback 清空混淆。

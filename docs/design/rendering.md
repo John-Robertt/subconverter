@@ -129,7 +129,7 @@ Plugin 限制：
 
 ### Snell 过滤
 
-Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。渲染器在入口做级联过滤：
+Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。`Target` 阶段会先做级联过滤：
 
 1. 剔除 `Type=="snell"` 的节点
 2. 剔除链式节点中 `Dialer` 属于已剔除集合的节点（失效上游）；诊断路径中这类叶子会标记为 `<name>(chained) ← [<upstream>]`
@@ -143,7 +143,7 @@ Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。渲
 - 受已删除上游牵连的链式节点标记为 `NAME(chained) ← [<upstream>]`
 - 共享掉落子图会正常展开；`(cycle)` 只表示真实递归保护命中，而不是普通共享引用
 
-过滤算法作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；`filterForClash` 是共享 cascade 引擎 `filterByDroppedTypes`（见 `internal/render/filter_cascade.go`）的薄包装，该引擎同时支撑 Surge 侧的 VLESS 过滤（见下文「VLESS 过滤」）。
+过滤算法作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；现在它位于 `internal/target/filter_cascade.go`，由 `target.ForClash` 包装调用。渲染器只接收已经完成 Clash 投影的视图。
 
 ---
 
@@ -183,7 +183,7 @@ Snell 节点专属 Surge 输出（Clash 视图过滤掉 Snell 节点，见上文
 
 ### VLESS 过滤
 
-Surge 不原生支持 VLESS。渲染器在入口做级联过滤（对称于 Clash 侧过滤 Snell）：
+Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 Clash 侧过滤 Snell）：
 
 1. 剔除 `Type=="vless"` 的节点
 2. 剔除链式节点中 `Dialer` 属于已剔除集合的节点
@@ -191,7 +191,7 @@ Surge 不原生支持 VLESS。渲染器在入口做级联过滤（对称于 Clas
 4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
 5. 若 `fallback` 所指服务组在级联中被清空，返回 `RenderError`（`CodeRenderSurgeFallbackEmpty`），错误消息附带清空路径（VLESS 根节点标记为 `NAME(vless)`，链式节点标记为 `NAME(chained) ← [<upstream>]`）
 
-算法由共享 cascade 引擎 `filterByDroppedTypes` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Clash 渲染使用未过滤的 Pipeline。
+算法由共享 cascade 引擎 `filterByDroppedTypes` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Render 阶段只消费已投影后的 Pipeline。
 
 ---
 
@@ -241,7 +241,7 @@ Surge 不原生支持 VLESS。渲染器在入口做级联过滤（对称于 Clas
 - 同样的规则排列顺序
 - 同样的 fallback 语义
 - 同样的 `@auto` 和 `@all` 展开结果
-- 对目标格式不支持的协议，按格式能力做显式处理：Snell 为 Surge-only（Clash 侧级联过滤），VLESS 为 Clash-only（Surge 侧级联过滤）——两种方向由同一个共享 cascade 引擎（`internal/render/filter_cascade.go`）实现
+- 对目标格式不支持的协议，按格式能力做显式处理：Snell 为 Surge-only（Clash 目标投影侧级联过滤），VLESS 为 Clash-only（Surge 目标投影侧级联过滤）——两种方向由同一个共享 cascade 引擎（`internal/target/filter_cascade.go`）实现
 
 ---
 

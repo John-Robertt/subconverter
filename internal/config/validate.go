@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
+	"github.com/John-Robertt/subconverter/internal/proxyparse"
 )
 
 // Validate performs static validation on a loaded Config.
@@ -54,14 +55,17 @@ func Validate(cfg *Config) error {
 		}
 		if cp.URL == "" {
 			c.add(prefix+".url", "必填")
-		} else if cp.ParseErr != nil {
-			c.add(prefix+".url", cp.ParseErr.Error())
-		} else if cp.Type == "ss" {
-			if cp.Params["cipher"] == "" {
-				c.add(prefix+".url", "SS URI 缺少加密方式（cipher）")
-			}
-			if cp.Params["password"] == "" {
-				c.add(prefix+".url", "SS URI 缺少密码")
+		} else {
+			parsed, err := proxyparse.ParseURL(cp.URL)
+			if err != nil {
+				c.add(prefix+".url", err.Error())
+			} else if parsed.Type == "ss" {
+				if parsed.Params["cipher"] == "" {
+					c.add(prefix+".url", "SS URI 缺少加密方式（cipher）")
+				}
+				if parsed.Params["password"] == "" {
+					c.add(prefix+".url", "SS URI 缺少密码")
+				}
 			}
 		}
 

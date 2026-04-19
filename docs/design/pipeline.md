@@ -16,6 +16,7 @@ LoadConfig
   -> Group
   -> Route
   -> ValidateGraph
+  -> Target
   -> Render
 ```
 
@@ -68,7 +69,7 @@ LoadConfig
 
 - 拉取所有远程来源
 - 解析 SS 节点、Snell 节点、VLESS 节点
-- 将自定义代理转换为原始节点对象
+- 将自定义代理转换为原始节点对象或链式模板
 
 输入：
 
@@ -76,7 +77,8 @@ LoadConfig
 
 输出：
 
-- 原始节点集合
+- `SourceResult`
+- 其中包含原始节点集合与供 Group 阶段消费的链式模板
 
 说明：
 
@@ -151,9 +153,8 @@ VLESS 来源解析：
 
 输入：
 
-- 过滤后的节点集合
+- `SourceResult`（其中 `Proxies` 已经过 Filter 阶段处理）
 - 地区节点组定义
-- 自定义代理定义
 
 输出：
 
@@ -235,11 +236,36 @@ VLESS 来源解析：
 
 ---
 
-## Stage 8: Render
+## Stage 8: Target
 
 职责：
 
-- 将统一中间表示映射到目标客户端格式
+- 将格式无关 IR 投影为目标格式视图
+- 做目标格式协议能力过滤
+- 做目标格式特有的级联校验
+
+输入：
+
+- `Pipeline`
+- 目标格式（Clash / Surge）
+
+输出：
+
+- 已投影的目标格式视图
+
+说明：
+
+- Clash 视图会剔除 Snell 节点及其级联影响
+- Surge 视图会剔除 VLESS 节点及其级联影响
+- 若 `fallback` 在目标格式视图中被清空，应在本阶段返回错误，而不是等到 Render
+
+---
+
+## Stage 9: Render
+
+职责：
+
+- 将已投影的目标格式视图序列化为目标客户端格式
 
 输出目标：
 

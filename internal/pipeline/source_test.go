@@ -66,10 +66,11 @@ func TestSource_SingleSubscription(t *testing.T) {
 		"https://sub1.example.com/api?token=secret": body,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 5 {
 		t.Fatalf("got %d proxies, want 5", len(proxies))
@@ -103,10 +104,11 @@ func TestSource_MultiSubscriptionMerge(t *testing.T) {
 		"https://sub2.example.com": body2,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	// sample.txt has 5 nodes, sample_sub2.txt has 2 nodes = 7 total.
 	if len(proxies) != 7 {
@@ -142,10 +144,11 @@ func TestSource_CrossSubscriptionDedup(t *testing.T) {
 		"https://sub3.example.com": sub,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	wantNames := []string{"NODE-A", "NODE-A②", "NODE-A③"}
 	if len(proxies) != len(wantNames) {
@@ -161,22 +164,16 @@ func TestSource_CrossSubscriptionDedup(t *testing.T) {
 func TestSource_CustomProxyConversion(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{
-			URL:    "socks5://user1:pass1@154.197.1.1:45002",
-			Name:   "HK-ISP",
-			Type:   "socks5",
-			Server: "154.197.1.1",
-			Port:   45002,
-			Params: map[string]string{"username": "user1", "password": "pass1"},
-		},
+		customProxy("HK-ISP", "socks5://user1:pass1@154.197.1.1:45002", nil),
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 1 {
 		t.Fatalf("got %d proxies, want 1", len(proxies))
@@ -204,22 +201,16 @@ func TestSource_CustomProxyConversion(t *testing.T) {
 func TestSource_CustomProxySSConversion(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{
-			URL:    "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388",
-			Name:   "MY-SS",
-			Type:   "ss",
-			Server: "1.2.3.4",
-			Port:   8388,
-			Params: map[string]string{"cipher": "aes-256-gcm", "password": "mypass"},
-		},
+		customProxy("MY-SS", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388", nil),
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 1 {
 		t.Fatalf("got %d proxies, want 1", len(proxies))
@@ -250,23 +241,17 @@ func TestSource_CustomProxySSConversion(t *testing.T) {
 func TestSource_CustomProxyWithRelayThroughIsNotConvertedToKindCustom(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{
-			URL: "socks5://1.1.1.1:1080", Name: "DIRECT-ONLY",
-			Type: "socks5", Server: "1.1.1.1", Port: 1080,
-		},
-		{
-			URL: "socks5://2.2.2.2:1080", Name: "RELAY-ONLY",
-			Type: "socks5", Server: "2.2.2.2", Port: 1080,
-			RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-		},
+		customProxy("DIRECT-ONLY", "socks5://1.1.1.1:1080", nil),
+		customProxy("RELAY-ONLY", "socks5://2.2.2.2:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 1 {
 		t.Fatalf("got %d proxies, want 1 (RELAY-ONLY must be skipped)", len(proxies))
@@ -289,7 +274,7 @@ func TestSource_CustomVsSubscriptionConflict(t *testing.T) {
 		{URL: "https://sub.example.com"},
 	}
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{URL: "socks5://1.2.3.4:1080", Name: "HK-ISP", Type: "socks5", Server: "1.2.3.4", Port: 1080},
+		customProxy("HK-ISP", "socks5://1.2.3.4:1080", nil),
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{
@@ -399,10 +384,11 @@ func TestSource_MixedValidInvalidURIs(t *testing.T) {
 		"https://sub.example.com": sub,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	// Invalid line should be skipped, 2 valid nodes remain.
 	if len(proxies) != 2 {
@@ -424,17 +410,18 @@ func TestSource_SubscriptionAndCustomCombined(t *testing.T) {
 		{URL: "https://sub.example.com"},
 	}
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{URL: "http://10.0.0.1:8080", Name: "MY-PROXY", Type: "http", Server: "10.0.0.1", Port: 8080},
+		customProxy("MY-PROXY", "http://10.0.0.1:8080", nil),
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://sub.example.com": sub,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	// 1 subscription + 1 custom = 2 total.
 	if len(proxies) != 2 {
@@ -468,10 +455,11 @@ func TestSource_DedupSuffixCollision(t *testing.T) {
 		"https://sub.example.com": sub,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 3 {
 		t.Fatalf("got %d proxies, want 3", len(proxies))
@@ -504,15 +492,16 @@ func TestSource_DedupSuffixCollision(t *testing.T) {
 func TestSource_NoSubscriptionsOnlyCustom(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.CustomProxies = []config.CustomProxy{
-		{URL: "socks5://1.1.1.1:1080", Name: "PROXY-1", Type: "socks5", Server: "1.1.1.1", Port: 1080},
+		customProxy("PROXY-1", "socks5://1.1.1.1:1080", nil),
 	}
 
 	f := &fakeFetcher{responses: map[string][]byte{}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 1 {
 		t.Fatalf("got %d proxies, want 1", len(proxies))
@@ -537,10 +526,11 @@ func TestSource_SnellSource(t *testing.T) {
 		"https://example.com/snell-nodes.txt": body,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 2 {
 		t.Fatalf("got %d proxies, want 2", len(proxies))
@@ -572,10 +562,11 @@ func TestSource_SnellAndSubscriptionDeduped(t *testing.T) {
 		"https://example.com/snell.txt": snellBody,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 2 {
 		t.Fatalf("got %d proxies, want 2", len(proxies))
@@ -607,10 +598,11 @@ func TestSource_MultiSnellSourcesDeduped(t *testing.T) {
 		url2: body2,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 2 {
 		t.Fatalf("got %d proxies, want 2", len(proxies))
@@ -734,10 +726,11 @@ func TestSource_VLessSourceBasic(t *testing.T) {
 		"https://example.com/vless.txt": body,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 2 {
 		t.Fatalf("got %d proxies, want 2", len(proxies))
@@ -764,10 +757,11 @@ func TestSource_VLessUnknownTypeFallsBackAndEncryptionPassesThrough(t *testing.T
 		"https://example.com/vless.txt": body,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 	if len(proxies) != 1 {
 		t.Fatalf("got %d proxies, want 1", len(proxies))
 	}
@@ -867,10 +861,11 @@ func TestSource_VLessSharesDedupPoolWithSSAndSnell(t *testing.T) {
 		"https://vless.example.com/v.txt": vlessBody,
 	}}
 
-	proxies, err := Source(context.Background(), cfg, f)
+	source, err := Source(context.Background(), cfg, f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	proxies := source.Proxies
 
 	if len(proxies) != 3 {
 		t.Fatalf("got %d proxies, want 3", len(proxies))
@@ -894,8 +889,8 @@ func TestSource_VLessCustomNameConflictError(t *testing.T) {
 	cfg := baseCfg()
 	cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
 	cfg.Sources.CustomProxies = []config.CustomProxy{{
-		URL: "socks5://1.2.3.4:1080", Name: "HK-01",
-		Type: "socks5", Server: "1.2.3.4", Port: 1080,
+		Name: "HK-01",
+		URL:  "socks5://1.2.3.4:1080",
 	}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
@@ -973,10 +968,11 @@ func TestSource_RespectsFetchOrder(t *testing.T) {
 				"https://vless.example.com/v.txt": vlessBody,
 			}}
 
-			proxies, err := Source(context.Background(), cfg, f)
+			source, err := Source(context.Background(), cfg, f)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+			proxies := source.Proxies
 			if len(proxies) != 3 {
 				t.Fatalf("got %d proxies, want 3", len(proxies))
 			}
@@ -1040,8 +1036,8 @@ func TestSource_ChainGroupNameConflictsWithFetchedNode(t *testing.T) {
 			cfg := baseCfg()
 			tc.setupCfg(cfg)
 			cfg.Sources.CustomProxies = []config.CustomProxy{{
-				URL: "socks5://1.1.1.1:1080", Name: sharedName,
-				Type: "socks5", Server: "1.1.1.1", Port: 1080,
+				Name:         sharedName,
+				URL:          "socks5://1.1.1.1:1080",
 				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
 			}}
 

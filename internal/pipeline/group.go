@@ -23,27 +23,31 @@ type GroupResult struct {
 //  1. Build region node groups from groups config
 //  2. Build chained nodes and groups from relay_through definitions
 //  3. Compute @all (original proxy names, excluding chained)
-func Group(proxies []model.Proxy, cfg *config.Config) (*GroupResult, error) {
-	regionGroups, err := buildRegionGroups(proxies, &cfg.Groups)
+func Group(source *SourceResult, groups *config.OrderedMap[config.Group]) (*GroupResult, error) {
+	if source == nil {
+		source = &SourceResult{}
+	}
+
+	regionGroups, err := buildRegionGroups(source.Proxies, groups)
 	if err != nil {
 		return nil, err
 	}
 
 	chainedProxies, chainGroups, err := buildChainedNodesAndGroups(
-		proxies, cfg.Sources.CustomProxies, regionGroups,
+		source.Proxies, source.ChainTemplates, regionGroups,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	allProxies := computeAllProxies(proxies)
+	allProxies := computeAllProxies(source.Proxies)
 
 	nodeGroups := make([]model.ProxyGroup, 0, len(regionGroups)+len(chainGroups))
 	nodeGroups = append(nodeGroups, regionGroups...)
 	nodeGroups = append(nodeGroups, chainGroups...)
 
-	combined := make([]model.Proxy, 0, len(proxies)+len(chainedProxies))
-	combined = append(combined, proxies...)
+	combined := make([]model.Proxy, 0, len(source.Proxies)+len(chainedProxies))
+	combined = append(combined, source.Proxies...)
 	combined = append(combined, chainedProxies...)
 
 	return &GroupResult{
@@ -95,7 +99,7 @@ func buildRegionGroups(proxies []model.Proxy, groups *config.OrderedMap[config.G
 // + KindVLess, see isFetchedKind).
 func buildChainedNodesAndGroups(
 	proxies []model.Proxy,
-	customProxies []config.CustomProxy,
+	chainTemplates []ChainTemplate,
 	regionGroups []model.ProxyGroup,
 ) ([]model.Proxy, []model.ProxyGroup, error) {
 	fetched := fetchedProxies(proxies)
@@ -103,11 +107,8 @@ func buildChainedNodesAndGroups(
 	var chainedProxies []model.Proxy
 	var chainGroups []model.ProxyGroup
 
-	for _, cp := range customProxies {
-		if cp.RelayThrough == nil {
-			continue
-		}
-		rt := cp.RelayThrough
+	for _, template := range chainTemplates {
+		rt := template.RelayThrough
 
 		upstreams, err := resolveUpstreams(fetched, regionGroups, rt)
 		if err != nil {
@@ -117,12 +118,12 @@ func buildChainedNodesAndGroups(
 		var members []string
 		for _, upstream := range upstreams {
 			chained := model.Proxy{
-				Name:   upstream.Name + "→" + cp.Name,
-				Type:   cp.Type,
-				Server: cp.Server,
-				Port:   cp.Port,
-				Params: copyParams(cp.Params),
-				Plugin: copyPlugin(cp.Plugin),
+				Name:   upstream.Name + "→" + template.Name,
+				Type:   template.Type,
+				Server: template.Server,
+				Port:   template.Port,
+				Params: copyParams(template.Params),
+				Plugin: copyPlugin(template.Plugin),
 				Kind:   model.KindChained,
 				Dialer: upstream.Name,
 			}
@@ -131,7 +132,7 @@ func buildChainedNodesAndGroups(
 		}
 
 		chainGroups = append(chainGroups, model.ProxyGroup{
-			Name:     cp.Name,
+			Name:     template.Name,
 			Scope:    model.ScopeNode,
 			Strategy: rt.Strategy,
 			Members:  members,

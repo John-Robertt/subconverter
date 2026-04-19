@@ -2,8 +2,6 @@ package ssparse
 
 import (
 	"testing"
-
-	"github.com/John-Robertt/subconverter/internal/model"
 )
 
 func TestParseBody_Valid(t *testing.T) {
@@ -16,7 +14,7 @@ func TestParseBody_Valid(t *testing.T) {
 		wantPort     int
 		wantCipher   string
 		wantPassword string
-		wantPlugin   *model.Plugin
+		wantPlugin   *PluginSpec
 	}{
 		{
 			name:         "base64 userinfo",
@@ -107,7 +105,7 @@ func TestParseBody_Valid(t *testing.T) {
 			wantPort:     8388,
 			wantCipher:   "aes-256-cfb",
 			wantPassword: "password",
-			wantPlugin:   &model.Plugin{Name: "simple-obfs", Opts: map[string]string{"obfs": "http", "obfs-host": "cdn.example.com"}},
+			wantPlugin:   &PluginSpec{Name: "simple-obfs", Opts: map[string]string{"obfs": "http", "obfs-host": "cdn.example.com"}},
 		},
 		{
 			name:         "v2ray-plugin with flag option",
@@ -118,7 +116,7 @@ func TestParseBody_Valid(t *testing.T) {
 			wantPort:     8388,
 			wantCipher:   "aes-256-cfb",
 			wantPassword: "password",
-			wantPlugin:   &model.Plugin{Name: "v2ray-plugin", Opts: map[string]string{"mode": "websocket", "server": ""}},
+			wantPlugin:   &PluginSpec{Name: "v2ray-plugin", Opts: map[string]string{"mode": "websocket", "server": ""}},
 		},
 		{
 			name:         "escaped plugin option separators",
@@ -129,7 +127,7 @@ func TestParseBody_Valid(t *testing.T) {
 			wantPort:     8388,
 			wantCipher:   "aes-256-cfb",
 			wantPassword: "password",
-			wantPlugin:   &model.Plugin{Name: "simple-obfs", Opts: map[string]string{"obfs": "http", "obfs-host": "cdn=demo;edge"}},
+			wantPlugin:   &PluginSpec{Name: "simple-obfs", Opts: map[string]string{"obfs": "http", "obfs-host": "cdn=demo;edge"}},
 		},
 		{
 			name:         "port boundary 65535",

@@ -75,11 +75,9 @@
 1. 校验 `format`
 2. 若服务端配置了访问 token，校验 `token`
 3. 校验并规范化 `filename`
-4. 读取内存中的配置对象
-5. 执行管道生成中间表示
-6. 根据 `format` 选择渲染器
-7. 若 `format=surge` 且配置了 `base_url`，生成 managed URL：`<base_url>/generate?format=surge[&token=...][&filename=...]`
-8. 返回配置文本
+4. 调用生成服务执行 `Build -> Target -> Render`
+5. 若 `format=surge` 且配置了 `base_url`，由生成服务组装 managed URL：`<base_url>/generate?format=surge[&token=...][&filename=...]`
+6. 返回配置文本
 
 ---
 

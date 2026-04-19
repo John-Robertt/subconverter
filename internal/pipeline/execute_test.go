@@ -191,12 +191,9 @@ func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			Snell: []config.SnellSource{{URL: snellURL}},
-			CustomProxies: []config.CustomProxy{{
-				URL: "socks5://u:p@10.0.0.1:1080", Name: "MY-PROXY",
-				Type: "socks5", Server: "10.0.0.1", Port: 1080,
-				Params:       map[string]string{"username": "u", "password": "p"},
-				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-			}},
+			CustomProxies: []config.CustomProxy{
+				customProxy("MY-PROXY", "socks5://u:p@10.0.0.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
+			},
 		},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
 		Routing:  mustRoutingMap(t, `"proxy": ["HK", "MY-PROXY", "DIRECT"]`),
@@ -427,12 +424,9 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			VLess: []config.VLessSource{{URL: vlessURL}},
-			CustomProxies: []config.CustomProxy{{
-				URL: "socks5://u:p@10.0.0.1:1080", Name: "MY-PROXY",
-				Type: "socks5", Server: "10.0.0.1", Port: 1080,
-				Params:       map[string]string{"username": "u", "password": "p"},
-				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-			}},
+			CustomProxies: []config.CustomProxy{
+				customProxy("MY-PROXY", "socks5://u:p@10.0.0.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
+			},
 		},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
 		Routing:  mustRoutingMap(t, `"proxy": ["HK", "MY-PROXY", "DIRECT"]`),
@@ -497,11 +491,9 @@ func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			Subscriptions: []config.Subscription{{URL: subURL}},
-			CustomProxies: []config.CustomProxy{{
-				URL: "socks5://1.1.1.1:1080", Name: "HK-ISP",
-				Type: "socks5", Server: "1.1.1.1", Port: 1080,
-				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-			}},
+			CustomProxies: []config.CustomProxy{
+				customProxy("HK-ISP", "socks5://1.1.1.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
+			},
 		},
 		Groups:   mustGroupsMap(t, `"HK-ISP": { match: "(HK)", strategy: select }`),
 		Routing:  mustRoutingMap(t, `"proxy": ["HK-ISP", "DIRECT"]`),
@@ -541,11 +533,9 @@ func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			Subscriptions: []config.Subscription{{URL: subURL}},
-			CustomProxies: []config.CustomProxy{{
-				URL: "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388", Name: "MY-SS",
-				Type: "ss", Server: "1.2.3.4", Port: 8388,
-				Params: map[string]string{"cipher": "aes-256-gcm", "password": "mypass"},
-			}},
+			CustomProxies: []config.CustomProxy{
+				customProxy("MY-SS", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388", nil),
+			},
 		},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
 		Routing:  mustRoutingMap(t, `"proxy": ["HK", "@all", "DIRECT"]`),
@@ -622,14 +612,9 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 	cfg := &config.Config{
 		Sources: config.Sources{
 			Subscriptions: []config.Subscription{{URL: subURL}},
-			CustomProxies: []config.CustomProxy{{
-				URL:  "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp",
-				Name: "SS-Chain",
-				Type: "ss", Server: "1.2.3.4", Port: 8388,
-				Params:       map[string]string{"cipher": "aes-256-gcm", "password": "chainpass"},
-				Plugin:       &model.Plugin{Name: "obfs-local", Opts: map[string]string{"obfs": "http"}},
-				RelayThrough: &config.RelayThrough{Type: "all", Strategy: "select"},
-			}},
+			CustomProxies: []config.CustomProxy{
+				customProxy("SS-Chain", "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp", &config.RelayThrough{Type: "all", Strategy: "select"}),
+			},
 		},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
 		Routing:  mustRoutingMap(t, `"proxy": ["HK", "SS-Chain", "DIRECT"]`),

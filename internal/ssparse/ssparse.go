@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/John-Robertt/subconverter/internal/model"
 )
 
 // Result holds the parsed components of an SS URI body.
@@ -18,7 +16,14 @@ type Result struct {
 	Port     int
 	Cipher   string
 	Password string
-	Plugin   *model.Plugin
+	Plugin   *PluginSpec
+}
+
+// PluginSpec is a protocol-agnostic SS plugin declaration parsed from the
+// SIP002 `plugin` query parameter.
+type PluginSpec struct {
+	Name string
+	Opts map[string]string
 }
 
 // ParseBody parses the body of an SS URI (everything after "ss://").
@@ -143,7 +148,7 @@ func decodeBase64Flexible(s string) (string, error) {
 	return "", fmt.Errorf("不是合法的 base64")
 }
 
-func parseQueryPlugin(rawQuery string) (*model.Plugin, error) {
+func parseQueryPlugin(rawQuery string) (*PluginSpec, error) {
 	if rawQuery == "" {
 		return nil, nil
 	}
@@ -161,7 +166,7 @@ func parseQueryPlugin(rawQuery string) (*model.Plugin, error) {
 	return parsePluginSpec(pluginSpec)
 }
 
-func parsePluginSpec(spec string) (*model.Plugin, error) {
+func parsePluginSpec(spec string) (*PluginSpec, error) {
 	parts, err := splitEscaped(spec, ';')
 	if err != nil {
 		return nil, err
@@ -170,7 +175,7 @@ func parsePluginSpec(spec string) (*model.Plugin, error) {
 		return nil, fmt.Errorf("plugin 名称为空")
 	}
 
-	plugin := &model.Plugin{Name: strings.TrimSpace(parts[0])}
+	plugin := &PluginSpec{Name: strings.TrimSpace(parts[0])}
 
 	for _, part := range parts[1:] {
 		part = strings.TrimSpace(part)

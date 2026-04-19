@@ -14,7 +14,7 @@
 //   - Graph-level reference validation (ValidateGraph)
 //
 // Implemented (M5):
-//   - Full pipeline orchestration (Execute)
+//   - Full build orchestration (Build)
 //
 // Design reference: docs/design/pipeline.md
 package pipeline

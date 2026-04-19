@@ -22,25 +22,31 @@ type RouteResult struct {
 
 // Route executes pipeline stage 6: build service groups, rulesets,
 // parse inline rules, and record fallback.
-func Route(cfg *config.Config, gr *GroupResult) (*RouteResult, error) {
+func Route(
+	routing *config.OrderedMap[[]string],
+	rulesets *config.OrderedMap[[]string],
+	rawRules []string,
+	fallback string,
+	gr *GroupResult,
+) (*RouteResult, error) {
 	if gr == nil {
 		gr = &GroupResult{}
 	}
 
-	routeGroups := buildRouteGroups(&cfg.Routing, gr)
-	rulesets := buildRulesets(&cfg.Rulesets)
+	routeGroups := buildRouteGroups(routing, gr)
+	rulesetResults := buildRulesets(rulesets)
 
-	rules, err := parseRules(cfg.Rules)
+	rules, err := parseRules(rawRules)
 	if err != nil {
 		return nil, err
 	}
 
 	return &RouteResult{
 		RouteGroups:     routeGroups,
-		Rulesets:        rulesets,
+		Rulesets:        rulesetResults,
 		Rules:           rules,
-		Fallback:        cfg.Fallback,
-		RawRouteMembers: copyRouteMembers(&cfg.Routing),
+		Fallback:        fallback,
+		RawRouteMembers: copyRouteMembers(routing),
 	}, nil
 }
 

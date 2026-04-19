@@ -22,6 +22,7 @@ import (
 
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/fetch"
+	"github.com/John-Robertt/subconverter/internal/generate"
 	"github.com/John-Robertt/subconverter/internal/server"
 )
 
@@ -81,7 +82,8 @@ func main() {
 	}
 
 	// Start HTTP server.
-	srv := server.New(cfg, cachedFetcher, server.Options{AccessToken: resolvedAccessToken})
+	generator := generate.New(cfg, cachedFetcher, generate.Options{AccessToken: resolvedAccessToken})
+	srv := server.New(generator, server.Options{AccessToken: resolvedAccessToken})
 	httpServer := &http.Server{
 		Addr:              listenAddr,
 		Handler:           srv.Handler(),
