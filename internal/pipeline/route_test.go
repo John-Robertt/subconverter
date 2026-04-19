@@ -176,12 +176,12 @@ func TestRoute_RuleNoComma(t *testing.T) {
 		t.Fatal("expected error for rule without comma")
 	}
 
-	var buildErr *errtype.BuildError
-	if !errors.As(err, &buildErr) {
-		t.Fatalf("error type = %T, want *errtype.BuildError", err)
+	var configErr *errtype.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("error type = %T, want *errtype.ConfigError", err)
 	}
-	if buildErr.Phase != "route" {
-		t.Errorf("Phase = %q, want %q", buildErr.Phase, "route")
+	if configErr.Field != "rules[0]" {
+		t.Errorf("Field = %q, want %q", configErr.Field, "rules[0]")
 	}
 }
 
@@ -250,25 +250,30 @@ func TestRoute_AllExpansionEmpty(t *testing.T) {
 	}
 }
 
-func TestRoute_RawMembersPreserved(t *testing.T) {
+func TestRoute_ResultMembersContainExpandedValuesOnly(t *testing.T) {
 	cfg := &config.Config{
 		Routing: mustRoutingMap(t, `
+"🚀 快速选择": ["@auto"]
 "🚀 手动切换": ["@all"]
-"📲 Telegram": ["🇭🇰 Hong Kong", "DIRECT"]
 `),
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := routeFromConfig(cfg, &GroupResult{AllProxies: []string{"HK-01", "SG-01"}})
+	result, err := routeFromConfig(cfg, &GroupResult{
+		NodeGroups: []model.ProxyGroup{
+			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+		},
+		AllProxies: []string{"HK-01", "SG-01"},
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got := result.RawRouteMembers["🚀 手动切换"]; len(got) != 1 || got[0] != "@all" {
-		t.Fatalf("raw members for 手动切换 = %v, want [@all]", got)
+	if got := result.RouteGroups[0].Members; len(got) != 3 || got[0] != "🇭🇰 Hong Kong" || got[1] != "🚀 手动切换" || got[2] != "DIRECT" {
+		t.Fatalf("快速选择 members = %v, want [🇭🇰 Hong Kong 🚀 手动切换 DIRECT]", got)
 	}
-	if got := result.RawRouteMembers["📲 Telegram"]; len(got) != 2 || got[0] != "🇭🇰 Hong Kong" || got[1] != "DIRECT" {
-		t.Fatalf("raw members for Telegram = %v, want [🇭🇰 Hong Kong DIRECT]", got)
+	if got := result.RouteGroups[1].Members; len(got) != 2 || got[0] != "HK-01" || got[1] != "SG-01" {
+		t.Fatalf("手动切换 members = %v, want [HK-01 SG-01]", got)
 	}
 }
 

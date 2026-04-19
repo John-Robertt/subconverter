@@ -77,12 +77,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
-	if err := config.Validate(cfg); err != nil {
+	runtimeCfg, err := config.Prepare(cfg)
+	if err != nil {
 		log.Fatalf("config validation failed:\n%v", err)
 	}
 
 	// Start HTTP server.
-	generator := generate.New(cfg, cachedFetcher, generate.Options{AccessToken: resolvedAccessToken})
+	generator := generate.New(runtimeCfg, cachedFetcher, generate.Options{AccessToken: resolvedAccessToken})
 	srv := server.New(generator, server.Options{AccessToken: resolvedAccessToken})
 	httpServer := &http.Server{
 		Addr:              listenAddr,

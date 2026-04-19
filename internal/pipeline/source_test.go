@@ -13,6 +13,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
+	"github.com/John-Robertt/subconverter/internal/proxyparse"
 )
 
 // --- test helpers ---
@@ -231,6 +232,38 @@ func TestSource_CustomProxySSConversion(t *testing.T) {
 	}
 	if _, ok := p.Params["username"]; ok {
 		t.Error("ss proxy should not have username in Params")
+	}
+}
+
+func TestSource_ProxyInvariantValidation(t *testing.T) {
+	sources := config.PreparedSources{
+		CustomProxies: []config.PreparedCustomProxy{
+			{
+				Name: "BROKEN-SS",
+				Parsed: proxyparse.Result{
+					Type:   "ss",
+					Server: "1.2.3.4",
+					Port:   8388,
+					Params: map[string]string{"cipher": "aes-256-gcm"},
+				},
+			},
+		},
+	}
+
+	_, err := sourcePrepared(context.Background(), sources, config.StaticNamespace{}, &fakeFetcher{responses: map[string][]byte{}})
+	if err == nil {
+		t.Fatal("expected invariant error, got nil")
+	}
+
+	var buildErr *errtype.BuildError
+	if !errors.As(err, &buildErr) {
+		t.Fatalf("err type = %T, want *errtype.BuildError", err)
+	}
+	if buildErr.Phase != "source" {
+		t.Errorf("Phase = %q, want source", buildErr.Phase)
+	}
+	if !strings.Contains(buildErr.Message, "type=ss 缺少必填参数 password") {
+		t.Fatalf("unexpected message: %s", buildErr.Message)
 	}
 }
 

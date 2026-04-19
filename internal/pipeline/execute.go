@@ -11,24 +11,25 @@ import (
 // Build runs the format-agnostic build pipeline:
 // Source → Filter → Group → Route → ValidateGraph.
 // It returns the assembled Pipeline ready for target projection or rendering.
-func Build(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*model.Pipeline, error) {
-	source, err := Source(ctx, cfg, fetcher)
+func Build(ctx context.Context, cfg *config.RuntimeConfig, fetcher fetch.Fetcher) (*model.Pipeline, error) {
+	source, err := sourcePrepared(ctx, cfg.SourceInput(), cfg.StaticNamespace(), fetcher)
 	if err != nil {
 		return nil, err
 	}
 
-	filtered, err := Filter(source.Proxies, cfg.Filters.Exclude)
+	filtered, err := filterCompiled(source.Proxies, cfg.FilterInput().ExcludePattern)
 	if err != nil {
 		return nil, err
 	}
 	source.Proxies = filtered
 
-	gr, err := Group(source, &cfg.Groups)
+	gr, err := Group(source, cfg.GroupInput())
 	if err != nil {
 		return nil, err
 	}
 
-	rr, err := Route(&cfg.Routing, &cfg.Rulesets, cfg.Rules, cfg.Fallback, gr)
+	routing, rulesets, rules, fallback := cfg.RouteInput()
+	rr, err := Route(routing, rulesets, rules, fallback, gr)
 	if err != nil {
 		return nil, err
 	}

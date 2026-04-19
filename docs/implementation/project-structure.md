@@ -41,8 +41,8 @@ subconverter/
 - 配置结构（含 `Templates` 底版模板声明）
 - YAML 加载（支持本地路径和远程 URL）
 - 保序映射
-- 静态校验
-- 保持“原始配置层”语义，不持有运行期派生的代理字段
+- 静态校验与启动期预计算（`Prepare` 产出不可变 `RuntimeConfig`，含编译后正则、解析后自定义代理、展开后路由成员、静态命名空间）
+- 原始配置层（`Config`）不持有运行期派生的代理字段；预计算层（`RuntimeConfig`）存储启动期产物
 
 `internal/errtype`
 

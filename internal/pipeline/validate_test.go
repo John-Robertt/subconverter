@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
 )
@@ -33,6 +34,49 @@ func validRouteResult() *RouteResult {
 			{Name: "Quick", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"🇭🇰 HK", "🔗 MY-PROXY", "DIRECT"}},
 			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"Quick", "DIRECT"}},
 		},
+		PreparedRouteGroups: []config.PreparedRouteGroup{
+			{
+				Name: "Quick",
+				DeclaredMembers: []config.PreparedRouteMember{
+					{Raw: "🇭🇰 HK", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "🔗 MY-PROXY", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+				ExpandedMembers: []config.PreparedRouteMember{
+					{Raw: "🇭🇰 HK", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "🔗 MY-PROXY", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+			},
+			{
+				Name: "Final",
+				DeclaredMembers: []config.PreparedRouteMember{
+					{Raw: "Quick", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+				ExpandedMembers: []config.PreparedRouteMember{
+					{Raw: "Quick", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+			},
+		},
+		ResolvedRouteGroups: []ResolvedRouteGroup{
+			{
+				Name: "Quick",
+				Members: []config.PreparedRouteMember{
+					{Raw: "🇭🇰 HK", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "🔗 MY-PROXY", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+			},
+			{
+				Name: "Final",
+				Members: []config.PreparedRouteMember{
+					{Raw: "Quick", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+			},
+		},
 		Rulesets: []model.Ruleset{
 			{Policy: "Quick", URLs: []string{"https://example.com/rule.list"}},
 		},
@@ -40,10 +84,6 @@ func validRouteResult() *RouteResult {
 			{Raw: "GEOIP,CN,Final", Policy: "Final"},
 		},
 		Fallback: "Final",
-		RawRouteMembers: map[string][]string{
-			"Quick": []string{"🇭🇰 HK", "🔗 MY-PROXY", "DIRECT"},
-			"Final": []string{"Quick", "DIRECT"},
-		},
 	}
 }
 
@@ -96,7 +136,18 @@ func TestValidateGraph_RouteGroupMemberNotFound(t *testing.T) {
 	gr := validGroupResult()
 	rr := validRouteResult()
 	rr.RouteGroups[0].Members = append(rr.RouteGroups[0].Members, "Nonexistent")
-	rr.RawRouteMembers["Quick"] = append(rr.RawRouteMembers["Quick"], "Nonexistent")
+	rr.PreparedRouteGroups[0].DeclaredMembers = append(rr.PreparedRouteGroups[0].DeclaredMembers, config.PreparedRouteMember{
+		Raw:    "Nonexistent",
+		Origin: config.RouteMemberOriginLiteral,
+	})
+	rr.PreparedRouteGroups[0].ExpandedMembers = append(rr.PreparedRouteGroups[0].ExpandedMembers, config.PreparedRouteMember{
+		Raw:    "Nonexistent",
+		Origin: config.RouteMemberOriginLiteral,
+	})
+	rr.ResolvedRouteGroups[0].Members = append(rr.ResolvedRouteGroups[0].Members, config.PreparedRouteMember{
+		Raw:    "Nonexistent",
+		Origin: config.RouteMemberOriginLiteral,
+	})
 
 	_, err := ValidateGraph(gr, rr)
 	if err == nil {
@@ -221,26 +272,24 @@ func TestValidateGraph_DuplicateRouteGroupNames(t *testing.T) {
 	}
 }
 
-func TestValidateGraph_RouteGroupExplicitProxyMemberRejected(t *testing.T) {
-	gr := validGroupResult()
-	rr := validRouteResult()
-	rr.RawRouteMembers["Quick"] = []string{"HK-01", "DIRECT"}
-	rr.RouteGroups[0].Members = []string{"HK-01", "DIRECT"}
-
-	_, err := ValidateGraph(gr, rr)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !containsError(err, `成员 "HK-01" 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto`) {
-		t.Errorf("error = %v", err)
-	}
-}
-
 func TestValidateGraph_RouteGroupExpandedProxyMembersAllowedViaAtAll(t *testing.T) {
 	gr := validGroupResult()
 	rr := validRouteResult()
-	rr.RawRouteMembers["Quick"] = []string{"@all", "DIRECT"}
 	rr.RouteGroups[0].Members = []string{"HK-01", "SG-01", "MY-PROXY", "DIRECT"}
+	rr.PreparedRouteGroups[0].DeclaredMembers = []config.PreparedRouteMember{
+		{Raw: "@all", Origin: config.RouteMemberOriginLiteral},
+		{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+	}
+	rr.PreparedRouteGroups[0].ExpandedMembers = []config.PreparedRouteMember{
+		{Raw: "@all", Origin: config.RouteMemberOriginLiteral},
+		{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+	}
+	rr.ResolvedRouteGroups[0].Members = []config.PreparedRouteMember{
+		{Raw: "HK-01", Origin: config.RouteMemberOriginAllExpanded},
+		{Raw: "SG-01", Origin: config.RouteMemberOriginAllExpanded},
+		{Raw: "MY-PROXY", Origin: config.RouteMemberOriginAllExpanded},
+		{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+	}
 
 	_, err := ValidateGraph(gr, rr)
 	if err != nil {
@@ -261,52 +310,6 @@ func TestValidateGraph_AllProxiesContainsChainedRejected(t *testing.T) {
 	}
 }
 
-func TestValidateGraph_RulesetPolicyNotFound(t *testing.T) {
-	gr := validGroupResult()
-	rr := validRouteResult()
-	rr.Rulesets = []model.Ruleset{
-		{Policy: "Nonexistent", URLs: []string{"https://example.com/rule.list"}},
-	}
-
-	_, err := ValidateGraph(gr, rr)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !containsError(err, `ruleset 策略 "Nonexistent" 未在 routing 中定义`) {
-		t.Errorf("error = %v", err)
-	}
-}
-
-func TestValidateGraph_RulePolicyNotFound(t *testing.T) {
-	gr := validGroupResult()
-	rr := validRouteResult()
-	rr.Rules = []model.Rule{
-		{Raw: "GEOIP,CN,Missing", Policy: "Missing"},
-	}
-
-	_, err := ValidateGraph(gr, rr)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !containsError(err, `规则策略 "Missing" 未在 routing 中定义`) {
-		t.Errorf("error = %v", err)
-	}
-}
-
-func TestValidateGraph_FallbackNotFound(t *testing.T) {
-	gr := validGroupResult()
-	rr := validRouteResult()
-	rr.Fallback = "NonexistentFallback"
-
-	_, err := ValidateGraph(gr, rr)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !containsError(err, `fallback "NonexistentFallback" 未在 routing 中定义`) {
-		t.Errorf("error = %v", err)
-	}
-}
-
 func TestValidateGraph_DirectRejectAreValid(t *testing.T) {
 	gr := validGroupResult()
 	rr := validRouteResult()
@@ -323,17 +326,27 @@ func TestValidateGraph_MultipleErrors(t *testing.T) {
 	gr.NodeGroups[1].Members = nil // empty chained group
 
 	rr := validRouteResult()
-	rr.Fallback = "Missing"                                                      // bad fallback
 	rr.RouteGroups[0].Members = append(rr.RouteGroups[0].Members, "AlsoMissing") // bad member
-	rr.RawRouteMembers["Quick"] = append(rr.RawRouteMembers["Quick"], "AlsoMissing")
+	rr.PreparedRouteGroups[0].DeclaredMembers = append(rr.PreparedRouteGroups[0].DeclaredMembers, config.PreparedRouteMember{
+		Raw:    "AlsoMissing",
+		Origin: config.RouteMemberOriginLiteral,
+	})
+	rr.PreparedRouteGroups[0].ExpandedMembers = append(rr.PreparedRouteGroups[0].ExpandedMembers, config.PreparedRouteMember{
+		Raw:    "AlsoMissing",
+		Origin: config.RouteMemberOriginLiteral,
+	})
+	rr.ResolvedRouteGroups[0].Members = append(rr.ResolvedRouteGroups[0].Members, config.PreparedRouteMember{
+		Raw:    "AlsoMissing",
+		Origin: config.RouteMemberOriginLiteral,
+	})
 
 	_, err := ValidateGraph(gr, rr)
 	if err == nil {
 		t.Fatal("expected multiple errors")
 	}
 	errs := unwrapAll(err)
-	if len(errs) < 3 {
-		t.Errorf("expected at least 3 errors, got %d: %v", len(errs), err)
+	if len(errs) < 2 {
+		t.Errorf("expected at least 2 errors, got %d: %v", len(errs), err)
 	}
 	// Verify all errors are BuildError with phase "validate".
 	for _, e := range errs {
@@ -343,20 +356,6 @@ func TestValidateGraph_MultipleErrors(t *testing.T) {
 		} else if be.Phase != "validate" {
 			t.Errorf("Phase = %q, want %q", be.Phase, "validate")
 		}
-	}
-}
-
-// TestValidateGraph_AutoTokenAccepted: @auto in raw routing members is accepted
-func TestValidateGraph_AutoTokenAccepted(t *testing.T) {
-	gr := validGroupResult()
-	rr := validRouteResult()
-
-	// Add @auto to raw members of Quick group; the expanded members stay valid.
-	rr.RawRouteMembers["Quick"] = []string{"🇭🇰 HK", "@auto"}
-
-	_, err := ValidateGraph(gr, rr)
-	if err != nil {
-		t.Errorf("@auto should be accepted in raw routing members, got: %v", err)
 	}
 }
 
@@ -383,10 +382,6 @@ func TestValidateGraph_WithSnellProxy(t *testing.T) {
 			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"Quick", "DIRECT"}},
 		},
 		Fallback: "Final",
-		RawRouteMembers: map[string][]string{
-			"Quick": {"HK", "SG", "DIRECT"},
-			"Final": {"Quick", "DIRECT"},
-		},
 	}
 
 	p, err := ValidateGraph(gr, rr)
@@ -430,9 +425,6 @@ func TestValidateGraph_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"HK", "DIRECT"}},
 		},
 		Fallback: "Final",
-		RawRouteMembers: map[string][]string{
-			"Final": {"HK", "DIRECT"},
-		},
 	}
 
 	_, err := ValidateGraph(gr, rr)

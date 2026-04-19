@@ -37,13 +37,13 @@ type Options struct {
 // Service executes the full generation use case from format-agnostic build to
 // target projection and final rendering.
 type Service struct {
-	cfg     *config.Config
+	cfg     *config.RuntimeConfig
 	fetcher fetch.Fetcher
 	opts    Options
 }
 
 // New creates a generation service for one loaded/validated config.
-func New(cfg *config.Config, fetcher fetch.Fetcher, opts Options) *Service {
+func New(cfg *config.RuntimeConfig, fetcher fetch.Fetcher, opts Options) *Service {
 	return &Service{cfg: cfg, fetcher: fetcher, opts: opts}
 }
 
@@ -71,7 +71,8 @@ func (s *Service) generateClash(ctx context.Context, p *model.Pipeline, req Requ
 		return nil, err
 	}
 
-	tmpl, err := s.loadTemplate(ctx, s.cfg.Templates.Clash)
+	templates := s.cfg.Templates()
+	tmpl, err := s.loadTemplate(ctx, templates.Clash)
 	if err != nil {
 		return nil, err
 	}
@@ -93,11 +94,12 @@ func (s *Service) generateSurge(ctx context.Context, p *model.Pipeline, req Requ
 		return nil, err
 	}
 
-	tmpl, err := s.loadTemplate(ctx, s.cfg.Templates.Surge)
+	templates := s.cfg.Templates()
+	tmpl, err := s.loadTemplate(ctx, templates.Surge)
 	if err != nil {
 		return nil, err
 	}
-	body, err := render.Surge(projected, buildManagedURL(s.cfg.BaseURL, req.Filename, s.opts.AccessToken), tmpl)
+	body, err := render.Surge(projected, buildManagedURL(s.cfg.BaseURL(), req.Filename, s.opts.AccessToken), tmpl)
 	if err != nil {
 		return nil, err
 	}

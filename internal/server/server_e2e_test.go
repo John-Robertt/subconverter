@@ -78,6 +78,15 @@ func validConfig(t *testing.T) *config.Config {
 	}
 }
 
+func mustRuntimeConfig(t *testing.T, cfg *config.Config) *config.RuntimeConfig {
+	t.Helper()
+	rt, err := config.Prepare(cfg)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	return rt
+}
+
 // validFetcher returns a fetcher that serves valid subscription data.
 func validFetcher() *fakeFetcher {
 	return &fakeFetcher{
@@ -93,7 +102,7 @@ func validFetcher() *fakeFetcher {
 // startTestServer creates and starts a test HTTP server.
 func startTestServer(t *testing.T, cfg *config.Config, f *fakeFetcher) *httptest.Server {
 	t.Helper()
-	gen := generate.New(cfg, f, generate.Options{})
+	gen := generate.New(mustRuntimeConfig(t, cfg), f, generate.Options{})
 	srv := server.New(gen, server.Options{})
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -102,7 +111,7 @@ func startTestServer(t *testing.T, cfg *config.Config, f *fakeFetcher) *httptest
 
 func startTestServerWithOptions(t *testing.T, cfg *config.Config, f *fakeFetcher, opts server.Options) *httptest.Server {
 	t.Helper()
-	gen := generate.New(cfg, f, generate.Options{AccessToken: opts.AccessToken})
+	gen := generate.New(mustRuntimeConfig(t, cfg), f, generate.Options{AccessToken: opts.AccessToken})
 	srv := server.New(gen, opts)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -353,14 +362,22 @@ func TestE2E_FetchFailure(t *testing.T) {
 	}
 }
 
-// T-E2E-005: Graph validation error returns 400
+// T-E2E-005: Dynamic graph validation error returns 400
 func TestE2E_BuildError(t *testing.T) {
-	// Config passes static validation but fails graph validation:
-	// routing references "NONEXISTENT" which is not a node group, route group, or reserved policy.
+	// Config passes startup preparation but fails request-time graph validation:
+	// HK 节点组在当前远程结果中为空。
 	cfg := validConfig(t)
-	cfg.Routing = mustParseOrderedMapStrings(t, `"proxy": ["NONEXISTENT", "DIRECT"]`)
+	cfg.Sources.Subscriptions = []config.Subscription{{URL: subURL}}
+	cfg.Groups = mustParseOrderedMapGroups(t, `"HK": { match: "(HK)", strategy: select }`)
+	cfg.Routing = mustParseOrderedMapStrings(t, `"proxy": ["HK", "DIRECT"]`)
+	cfg.Fallback = "proxy"
 
-	ts := startTestServer(t, cfg, validFetcher())
+	f := &fakeFetcher{
+		responses: map[string][]byte{
+			subURL: makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzcw@sg.example.com:8388#SG-01"),
+		},
+	}
+	ts := startTestServer(t, cfg, f)
 
 	resp, err := http.Get(ts.URL + "/generate?format=clash")
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
 )
@@ -21,13 +22,20 @@ var reservedPolicies = map[string]bool{
 //  1. Shared namespace collisions and duplicate declarations
 //  2. @all expansion excludes chained proxies
 //  3. Empty node groups (region and chained)
-//  4. Raw routing members only reference allowed object types
-//  5. Expanded route group member reference resolution
+//  4. Declared route members only use allowed reference kinds
+//  5. Resolved route members only reference existing objects
 //  6. Circular references among route groups
-//  7. Ruleset policy existence
-//  8. Rule policy existence
-//  9. Fallback existence
+//
+// Ruleset/rule policy existence and fallback existence are guaranteed by
+// config.Prepare at startup and not re-checked here.
 func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
+	if gr == nil {
+		gr = &GroupResult{}
+	}
+	if rr == nil {
+		rr = &RouteResult{}
+	}
+
 	var c graphCollector
 
 	index := buildNamespaceIndex(&c, gr.Proxies, gr.NodeGroups, rr.RouteGroups)
@@ -47,55 +55,36 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 		}
 	}
 
-	// 4. Raw routing members may only reference node groups, route groups,
-	// reserved policies, @all, or @auto.
-	for _, g := range rr.RouteGroups {
-		rawMembers := g.Members
-		if rr.RawRouteMembers != nil {
-			if members, ok := rr.RawRouteMembers[g.Name]; ok {
-				rawMembers = members
-			}
-		}
-
-		for _, member := range rawMembers {
-			if member == "@all" || member == "@auto" || reservedPolicies[member] || index.nodeGroupNames[member] || index.routeGroupNames[member] {
+	// 4. Declared route member contract.
+	for _, g := range preparedRouteGroups(rr) {
+		for _, member := range g.DeclaredMembers {
+			switch {
+			case member.Raw == "@all", member.Raw == "@auto", reservedPolicies[member.Raw], index.nodeGroupNames[member.Raw], index.routeGroupNames[member.Raw]:
 				continue
+			case index.proxyNames[member.Raw]:
+				c.add(fmt.Sprintf("服务组 %q 的成员 %q 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto", g.Name, member.Raw))
+			default:
+				c.add(fmt.Sprintf("服务组 %q 的成员 %q 不存在", g.Name, member.Raw))
 			}
-			if index.proxyNames[member] {
-				c.add(fmt.Sprintf(
-					"服务组 %q 的成员 %q 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto",
-					g.Name,
-					member,
-				))
-				continue
-			}
-			c.add(fmt.Sprintf("服务组 %q 的成员 %q 不存在", g.Name, member))
 		}
 	}
 
-	// 5. Expanded @all member resolution.
-	for _, g := range rr.RouteGroups {
-		rawMembers := g.Members
-		if rr.RawRouteMembers != nil {
-			if members, ok := rr.RawRouteMembers[g.Name]; ok {
-				rawMembers = members
-			}
-		}
-		if !containsMember(rawMembers, "@all") {
-			continue
-		}
-
-		rawMemberSet := make(map[string]struct{}, len(rawMembers))
-		for _, member := range rawMembers {
-			rawMemberSet[member] = struct{}{}
-		}
-
+	// 5. Resolved route member resolution with provenance.
+	for _, g := range resolvedRouteGroups(rr) {
 		for _, member := range g.Members {
-			if _, presentInRaw := rawMemberSet[member]; presentInRaw {
+			if member.Origin == config.RouteMemberOriginLiteral {
 				continue
 			}
-			if !index.proxyNames[member] {
-				c.add(fmt.Sprintf("服务组 %q 的成员 %q 不存在", g.Name, member))
+			switch {
+			case reservedPolicies[member.Raw], index.nodeGroupNames[member.Raw], index.routeGroupNames[member.Raw]:
+				continue
+			case index.proxyNames[member.Raw]:
+				if allowsProxyReference(member.Origin) {
+					continue
+				}
+				c.add(fmt.Sprintf("服务组 %q 的成员 %q 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto", g.Name, member.Raw))
+			default:
+				c.add(fmt.Sprintf("服务组 %q 的成员 %q 不存在", g.Name, member.Raw))
 			}
 		}
 	}
@@ -105,24 +94,8 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 		c.add(cycle)
 	}
 
-	// 7. Ruleset policy existence.
-	for _, rs := range rr.Rulesets {
-		if !index.routeGroupNames[rs.Policy] {
-			c.add(fmt.Sprintf("ruleset 策略 %q 未在 routing 中定义", rs.Policy))
-		}
-	}
-
-	// 8. Rule policy existence.
-	for _, r := range rr.Rules {
-		if !index.routeGroupNames[r.Policy] && !reservedPolicies[r.Policy] {
-			c.add(fmt.Sprintf("规则策略 %q 未在 routing 中定义", r.Policy))
-		}
-	}
-
-	// 9. Fallback existence.
-	if !index.routeGroupNames[rr.Fallback] {
-		c.add(fmt.Sprintf("fallback %q 未在 routing 中定义", rr.Fallback))
-	}
+	// Checks 7-9 (ruleset/rule policy existence, fallback existence) are
+	// guaranteed by config.Prepare at startup and omitted here.
 
 	if err := c.result(); err != nil {
 		return nil, err
@@ -190,60 +163,62 @@ func buildChainedProxyNameSet(proxies []model.Proxy) map[string]bool {
 	return s
 }
 
-func containsMember(members []string, target string) bool {
-	for _, member := range members {
-		if member == target {
-			return true
-		}
-	}
-	return false
-}
-
-// detectCycle checks for circular references among route groups using
-// DFS with white/gray/black coloring. Returns an error message on cycle,
-// or empty string if no cycle exists.
 func detectCycle(groups []model.ProxyGroup, routeGroupNames map[string]bool) string {
 	adj := make(map[string][]string)
+	order := make([]string, 0, len(groups))
 	for _, g := range groups {
+		order = append(order, g.Name)
 		for _, m := range g.Members {
 			if routeGroupNames[m] {
 				adj[g.Name] = append(adj[g.Name], m)
 			}
 		}
 	}
+	return config.DetectRouteCycle(adj, order)
+}
 
-	const (
-		white = 0
-		gray  = 1
-		black = 2
-	)
-	color := make(map[string]int)
-
-	var dfs func(node string) string
-	dfs = func(node string) string {
-		color[node] = gray
-		for _, neighbor := range adj[node] {
-			switch color[neighbor] {
-			case gray:
-				return fmt.Sprintf("服务组存在循环引用：%s -> %s", node, neighbor)
-			case white:
-				if msg := dfs(neighbor); msg != "" {
-					return msg
-				}
-			}
-		}
-		color[node] = black
-		return ""
+func preparedRouteGroups(rr *RouteResult) []config.PreparedRouteGroup {
+	if len(rr.PreparedRouteGroups) > 0 {
+		return rr.PreparedRouteGroups
 	}
-
-	for _, g := range groups {
-		if color[g.Name] == white {
-			if msg := dfs(g.Name); msg != "" {
-				return msg
-			}
+	result := make([]config.PreparedRouteGroup, 0, len(rr.RouteGroups))
+	for _, group := range rr.RouteGroups {
+		members := make([]config.PreparedRouteMember, 0, len(group.Members))
+		for _, member := range group.Members {
+			members = append(members, config.PreparedRouteMember{
+				Raw:    member,
+				Origin: config.RouteMemberOriginLiteral,
+			})
 		}
+		result = append(result, config.PreparedRouteGroup{
+			Name:            group.Name,
+			DeclaredMembers: members,
+			ExpandedMembers: members,
+		})
 	}
-	return ""
+	return result
+}
+
+func resolvedRouteGroups(rr *RouteResult) []ResolvedRouteGroup {
+	if len(rr.ResolvedRouteGroups) > 0 {
+		return rr.ResolvedRouteGroups
+	}
+	result := make([]ResolvedRouteGroup, 0, len(rr.RouteGroups))
+	for _, group := range rr.RouteGroups {
+		members := make([]config.PreparedRouteMember, 0, len(group.Members))
+		for _, member := range group.Members {
+			members = append(members, config.PreparedRouteMember{
+				Raw:    member,
+				Origin: config.RouteMemberOriginLiteral,
+			})
+		}
+		result = append(result, ResolvedRouteGroup{Name: group.Name, Members: members})
+	}
+	return result
+}
+
+func allowsProxyReference(origin config.RouteMemberOrigin) bool {
+	return origin == config.RouteMemberOriginAutoExpanded || origin == config.RouteMemberOriginAllExpanded
 }
 
 // graphCollector accumulates graph validation errors.

@@ -27,7 +27,7 @@ type ChainTemplate struct {
 	Port         int
 	Params       map[string]string
 	Plugin       *model.Plugin
-	RelayThrough *config.RelayThrough
+	RelayThrough *config.PreparedRelayThrough
 }
 
 // SourceResult is the output of the Source stage. Proxies contains all
@@ -38,10 +38,10 @@ type SourceResult struct {
 	ChainTemplates []ChainTemplate
 }
 
-// Source executes pipeline stage 3: fetch subscriptions / Snell / VLESS
-// sources, convert custom proxies, and deduplicate names.
+// sourcePrepared executes the request-time Source stage against startup-
+// prepared source declarations and static namespace information.
 //
-// Traversal order within the three fetch-kinds follows cfg.Sources.FetchOrder,
+// Traversal order within the three fetch-kinds follows sources.FetchOrder,
 // which reflects the YAML declaration order (e.g. `snell:` then `vless:`
 // then `subscriptions:` yields that exact node ordering in the output). When
 // FetchOrder is empty (unit-test Configs built in memory), a deterministic
@@ -52,10 +52,10 @@ type SourceResult struct {
 // a subscription are skipped, but a subscription yielding zero valid nodes
 // is an error. VLESS and Snell sources abort on any single-line parse
 // failure (small hand-curated lists — strict failure surfaces typos early).
-func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*SourceResult, error) {
+func sourcePrepared(ctx context.Context, sources config.PreparedSources, staticNamespace config.StaticNamespace, fetcher fetch.Fetcher) (*SourceResult, error) {
 	var fetchedProxies []model.Proxy
 
-	order := cfg.Sources.FetchOrder
+	order := sources.FetchOrder
 	if len(order) == 0 {
 		order = defaultFetchOrder
 	}
@@ -63,7 +63,7 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*So
 	for _, kind := range order {
 		switch kind {
 		case "subscriptions":
-			for _, sub := range cfg.Sources.Subscriptions {
+			for _, sub := range sources.Subscriptions {
 				proxies, err := fetchSubscription(ctx, fetcher, sub.URL)
 				if err != nil {
 					return nil, err
@@ -71,7 +71,7 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*So
 				fetchedProxies = append(fetchedProxies, proxies...)
 			}
 		case "snell":
-			for _, s := range cfg.Sources.Snell {
+			for _, s := range sources.Snell {
 				proxies, err := fetchSnellSource(ctx, fetcher, s.URL)
 				if err != nil {
 					return nil, err
@@ -79,7 +79,7 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*So
 				fetchedProxies = append(fetchedProxies, proxies...)
 			}
 		case "vless":
-			for _, s := range cfg.Sources.VLess {
+			for _, s := range sources.VLess {
 				proxies, err := fetchVLessSource(ctx, fetcher, s.URL)
 				if err != nil {
 					return nil, err
@@ -102,22 +102,20 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*So
 
 	fetchedProxies = deduplicateNames(fetchedProxies)
 
-	// Verify name conflicts against the *original* custom_proxies (including
-	// chain templates with relay_through set), since chain templates do not
-	// produce KindCustom proxies but their name still claims a slot in the
-	// shared namespace as a chain group name.
-	if err := checkNameConflicts(fetchedProxies, cfg.Sources.CustomProxies); err != nil {
+	// Reject remote names that collide with startup-known local static names
+	// or reserved policies.
+	if err := checkFetchedNameConflicts(fetchedProxies, staticNamespace); err != nil {
 		return nil, err
 	}
 
-	customProxies, chainTemplates, err := convertCustomProxies(cfg.Sources.CustomProxies)
-	if err != nil {
-		return nil, err
-	}
+	customProxies, chainTemplates := convertCustomProxies(sources.CustomProxies)
 
 	proxies := make([]model.Proxy, 0, len(fetchedProxies)+len(customProxies))
 	proxies = append(proxies, fetchedProxies...)
 	proxies = append(proxies, customProxies...)
+	if err := validateGeneratedProxies("source", proxies); err != nil {
+		return nil, err
+	}
 	return &SourceResult{Proxies: proxies, ChainTemplates: chainTemplates}, nil
 }
 
@@ -342,44 +340,35 @@ func deduplicatedName(base string, seq int) string {
 	return fmt.Sprintf("%s(%d)", base, seq)
 }
 
-// convertCustomProxies parses custom_proxies into either standalone custom
-// proxies or chain templates for later expansion in Group.
-func convertCustomProxies(cps []config.CustomProxy) ([]model.Proxy, []ChainTemplate, error) {
+// convertCustomProxies converts startup-prepared custom proxies into either
+// standalone custom proxies or chain templates for later expansion in Group.
+func convertCustomProxies(cps []config.PreparedCustomProxy) ([]model.Proxy, []ChainTemplate) {
 	proxies := make([]model.Proxy, 0, len(cps))
 	chainTemplates := make([]ChainTemplate, 0, len(cps))
 	for _, cp := range cps {
-		parsed, err := proxyparse.ParseURL(cp.URL)
-		if err != nil {
-			return nil, nil, &errtype.BuildError{
-				Code:    errtype.CodeBuildValidationFailed,
-				Phase:   "source",
-				Message: fmt.Sprintf("custom_proxy %q 的 URL 解析失败：%v", cp.Name, err),
-				Cause:   err,
-			}
-		}
 		if cp.RelayThrough != nil {
 			chainTemplates = append(chainTemplates, ChainTemplate{
 				Name:         cp.Name,
-				Type:         parsed.Type,
-				Server:       parsed.Server,
-				Port:         parsed.Port,
-				Params:       copyParams(parsed.Params),
-				Plugin:       convertPluginSpec(parsed.Plugin),
+				Type:         cp.Parsed.Type,
+				Server:       cp.Parsed.Server,
+				Port:         cp.Parsed.Port,
+				Params:       copyParams(cp.Parsed.Params),
+				Plugin:       convertPluginSpec(cp.Parsed.Plugin),
 				RelayThrough: cp.RelayThrough,
 			})
 			continue
 		}
 		proxies = append(proxies, model.Proxy{
 			Name:   cp.Name,
-			Type:   parsed.Type,
-			Server: parsed.Server,
-			Port:   parsed.Port,
-			Params: copyParams(parsed.Params),
-			Plugin: convertPluginSpec(parsed.Plugin),
+			Type:   cp.Parsed.Type,
+			Server: cp.Parsed.Server,
+			Port:   cp.Parsed.Port,
+			Params: copyParams(cp.Parsed.Params),
+			Plugin: convertPluginSpec(cp.Parsed.Plugin),
 			Kind:   model.KindCustom,
 		})
 	}
-	return proxies, chainTemplates, nil
+	return proxies, chainTemplates
 }
 
 // copyParams returns a shallow copy of a Params map to prevent sharing
@@ -423,35 +412,27 @@ func convertPluginSpec(src *proxyparse.PluginSpec) *model.Plugin {
 	return dst
 }
 
-// checkNameConflicts verifies that no custom_proxy name collides with a
-// fetched node name (subscription / Snell / VLESS). The error message
-// distinguishes two cases because they belong to *different* namespaces and
-// the user has to fix different sections of the YAML:
-//
-//   - cp without relay_through: cp.Name is a direct KindCustom proxy name,
-//     colliding with a fetched proxy name.
-//   - cp with relay_through: cp.Name is a chain group name (no KindCustom
-//     proxy is emitted), colliding with a fetched proxy name — the fix is
-//     to rename either the custom_proxy or filter out the fetched node.
-func checkNameConflicts(fetched []model.Proxy, customProxies []config.CustomProxy) error {
-	fetchedIndex := make(map[string]model.ProxyKind, len(fetched))
+func checkFetchedNameConflicts(fetched []model.Proxy, staticNamespace config.StaticNamespace) error {
 	for _, p := range fetched {
-		fetchedIndex[p.Name] = p.Kind
-	}
-
-	for _, cp := range customProxies {
-		kind, exists := fetchedIndex[cp.Name]
+		label, exists := staticNamespace.Kind(p.Name)
 		if !exists {
 			continue
 		}
-		label := "自定义代理名"
-		if cp.RelayThrough != nil {
-			label = "链式组名"
+		code := errtype.CodeBuildValidationFailed
+		if label == "自定义代理" || label == "链式组" {
+			code = errtype.CodeBuildCustomNameConflict
+		}
+		displayLabel := label
+		switch label {
+		case "自定义代理":
+			displayLabel = "自定义代理名"
+		case "链式组":
+			displayLabel = "链式组名"
 		}
 		return &errtype.BuildError{
-			Code:    errtype.CodeBuildCustomNameConflict,
+			Code:    code,
 			Phase:   "source",
-			Message: fmt.Sprintf("%s %q 与%s节点重名", label, cp.Name, describeFetchedKind(kind)),
+			Message: fmt.Sprintf("%s %q 与%s节点重名", displayLabel, p.Name, describeFetchedKind(p.Kind)),
 		}
 	}
 	return nil

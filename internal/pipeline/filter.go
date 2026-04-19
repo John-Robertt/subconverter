@@ -28,9 +28,17 @@ func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error)
 		}
 	}
 
+	return filterCompiled(proxies, re)
+}
+
+func filterCompiled(proxies []model.Proxy, excludePattern *regexp.Regexp) ([]model.Proxy, error) {
+	if excludePattern == nil {
+		return proxies, nil
+	}
+
 	result := make([]model.Proxy, 0, len(proxies))
 	for _, p := range proxies {
-		if isFetchedKind(p.Kind) && re.MatchString(p.Name) {
+		if isFetchedKind(p.Kind) && excludePattern.MatchString(p.Name) {
 			continue
 		}
 		result = append(result, p)

@@ -120,7 +120,7 @@ custom_proxies:
 校验规则：
 
 - `name` 重复报错；`url` 缺失或不能解析（含 scheme 不识别、host/port 缺失、SS URI 缺少 cipher/password 等）报错
-- `url` 解析在配置加载阶段完成，错误延迟到 `Validate` 阶段聚合输出，便于一次性发现多条配置问题
+- `url` 解析在 `Prepare` 阶段完成，错误聚合输出，便于一次性发现多条配置问题
 
 ### relay_through
 

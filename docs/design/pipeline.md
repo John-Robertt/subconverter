@@ -9,13 +9,12 @@
 ## 总体流程
 
 ```text
+启动期:
 LoadConfig
-  -> ValidateConfig
-  -> Source
-  -> Filter
-  -> Group
-  -> Route
-  -> ValidateGraph
+  -> Prepare (produces RuntimeConfig)
+
+请求期:
+Build(Source -> Filter -> Group -> Route -> ValidateGraph)
   -> Target
   -> Render
 ```
@@ -42,13 +41,17 @@ LoadConfig
 
 ---
 
-## Stage 2: ValidateConfig
+## Stage 2: Prepare
 
 职责：
 
-- 校验字段是否存在
-- 校验字段值是否合法
-- 校验互斥和依赖关系
+- 校验字段是否存在、值是否合法、互斥和依赖关系
+- 编译正则表达式（`groups[*].match`、`filters.exclude`、`relay_through.match`）
+- 解析自定义代理 URL（`custom_proxies[].url`），校验 SS 参数
+- 展开 `@auto`（存入 `ExpandedMembers`），`@all` 保留到请求期 Route 阶段展开
+- 构建静态命名空间（`StaticNamespace`）：注册 DIRECT/REJECT、节点组名、服务组名、自定义代理名、链式组名，检测跨类别命名冲突
+- 检测路由环路
+- 校验 ruleset/rule 策略引用合法性、fallback 存在性
 
 典型检查：
 
@@ -56,10 +59,13 @@ LoadConfig
 - `relay_through.type=select` 时必须有 `match`
 - `relay_through.strategy` 必填
 - 每个地区节点组都必须声明 `strategy`
+- `routing` 成员必须引用节点组、服务组、DIRECT、REJECT、`@all` 或 `@auto`
+- `rulesets` 的 key 必须存在于 `routing`
+- `fallback` 必须引用已定义服务组
 
 输出：
 
-- 结构合法的配置对象
+- 不可变的 `RuntimeConfig`（含编译后的正则、解析后的自定义代理、展开后的路由成员、静态命名空间）
 
 ---
 
@@ -208,7 +214,7 @@ VLESS 来源解析：
 说明：
 
 - 服务组统一为 `select`
-- `@auto` 先于 `@all` 展开：`@auto` 替换为自动补充池（节点组 → 包含 `@all` 的服务组 → DIRECT），然后 `@all` 替换为全部原始节点名
+- `@auto` 在启动期 Prepare 阶段已展开（存入 `PreparedRouteGroup.ExpandedMembers`）；Route 阶段仅展开 `@all` 为具体原始节点名
 - 两种 token 互斥，不可在同一 entry 中同时使用
 
 ---
@@ -217,18 +223,19 @@ VLESS 来源解析：
 
 职责：
 
-- 检查引用关系是否闭合
+- 检查共享命名空间冲突和重复声明
+- 检查 `@all` 展开排除链式节点
+- 检查空节点组（地区组和链式组）
+- 检查路由成员引用合法性（区分原始声明 vs 展开后的成员溯源）
 - 检查服务组之间是否存在循环引用
-- 检查链式组展开结果是否为空
-- 检查 fallback 和 ruleset 绑定是否有效
+
+说明：ruleset/rule 策略存在性和 fallback 存在性由启动期 Prepare 保证，ValidateGraph 不再重复检查。
 
 输入：
 
 - 全部节点
 - 节点组
 - 服务组
-- ruleset
-- fallback
 
 输出：
 

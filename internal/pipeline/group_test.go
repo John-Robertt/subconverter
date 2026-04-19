@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/John-Robertt/subconverter/internal/config"
@@ -246,6 +247,44 @@ func TestGroup_ChainedTypeSelect(t *testing.T) {
 		if chainGroup.Members[i] != want {
 			t.Errorf("Members[%d] = %q, want %q", i, chainGroup.Members[i], want)
 		}
+	}
+}
+
+func TestGroup_ProxyInvariantValidation(t *testing.T) {
+	result, err := Group(&SourceResult{
+		Proxies: []model.Proxy{
+			makeSubProxy("HK-01"),
+		},
+		ChainTemplates: []ChainTemplate{
+			{
+				Name:   "BROKEN-CHAIN",
+				Type:   "ss",
+				Server: "1.2.3.4",
+				Port:   8388,
+				Params: map[string]string{"cipher": "aes-256-gcm"},
+				RelayThrough: &config.PreparedRelayThrough{
+					Type:     "all",
+					Strategy: "select",
+				},
+			},
+		},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected invariant error, got nil")
+	}
+	if result != nil {
+		t.Fatalf("result = %+v, want nil", result)
+	}
+
+	var buildErr *errtype.BuildError
+	if !errors.As(err, &buildErr) {
+		t.Fatalf("err type = %T, want *errtype.BuildError", err)
+	}
+	if buildErr.Phase != "group" {
+		t.Errorf("Phase = %q, want group", buildErr.Phase)
+	}
+	if !strings.Contains(buildErr.Message, "type=ss 缺少必填参数 password") {
+		t.Fatalf("unexpected message: %s", buildErr.Message)
 	}
 }
 

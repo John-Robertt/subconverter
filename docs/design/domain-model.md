@@ -6,27 +6,30 @@
 
 ---
 
-## 三层模型
+## 四层模型
 
-系统使用三层模型：
+系统使用四层模型：
 
-- 用户配置层：直接映射 YAML 结构
-- 中间表示层：表达系统中的节点、组和规则关系
+- 用户配置层（`Config`）：直接映射 YAML 结构
+- 预计算层（`RuntimeConfig`）：启动期由 `Prepare` 产出，含编译后正则、解析后自定义代理、展开后路由成员、静态命名空间
+- 中间表示层（`Pipeline`）：表达系统中的节点、组和规则关系
 - 输出表示层：面向 Clash Meta 或 Surge 的最终文本结构
 
 依赖关系：
 
 ```text
-用户配置层 -> 中间表示层 -> 输出表示层
+用户配置层 -> 预计算层 -> 中间表示层 -> 输出表示层
 ```
 
-中间表示层是整个系统的稳定边界。
+中间表示层是格式无关 IR 的稳定边界；预计算层是启动期与请求期的边界。
 
 补充边界：
 
 - 用户配置层中的 `custom_proxies` 只保留原始 YAML 字段（`name` / `url` / `relay_through`）
-- `url` 解析得到的 `type/server/port/params/plugin` 属于构建期瞬时结果，由 `proxyparse` / `pipeline.Source` 消费，不回写到 `Config`
+- `url` 解析得到的 `type/server/port/params/plugin` 在 `Prepare` 阶段存入 `PreparedCustomProxy.Parsed`，不回写到 `Config`
 - `ChainTemplate` 是 Group 阶段使用的运行期结构，不属于稳定领域模型
+- `PreparedRouteMember` 携带 `RouteMemberOrigin` 枚举（`Literal` / `AutoExpanded` / `AllExpanded`），用于 ValidateGraph 区分用户声明 vs 机器展开的成员
+- `StaticNamespace` 是启动期构建的只读命名空间（DIRECT/REJECT + 节点组 + 服务组 + 自定义代理 + 链式组），用于 Source 阶段检测远程节点名称冲突
 
 ---
 

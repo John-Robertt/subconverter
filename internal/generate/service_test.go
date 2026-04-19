@@ -62,6 +62,15 @@ func validConfig(t *testing.T) *config.Config {
 	}
 }
 
+func mustRuntimeConfig(t *testing.T, cfg *config.Config) *config.RuntimeConfig {
+	t.Helper()
+	rt, err := config.Prepare(cfg)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	return rt
+}
+
 func validFetcher() *fakeFetcher {
 	return &fakeFetcher{
 		responses: map[string][]byte{
@@ -74,7 +83,7 @@ func validFetcher() *fakeFetcher {
 }
 
 func TestServiceGenerateClash(t *testing.T) {
-	svc := New(validConfig(t), validFetcher(), Options{})
+	svc := New(mustRuntimeConfig(t, validConfig(t)), validFetcher(), Options{})
 
 	result, err := svc.Generate(context.Background(), Request{
 		Format:   "clash",
@@ -98,7 +107,7 @@ func TestServiceGenerateClash(t *testing.T) {
 }
 
 func TestServiceGenerateSurgeManagedURL(t *testing.T) {
-	svc := New(validConfig(t), validFetcher(), Options{AccessToken: "secret-token"})
+	svc := New(mustRuntimeConfig(t, validConfig(t)), validFetcher(), Options{AccessToken: "secret-token"})
 
 	result, err := svc.Generate(context.Background(), Request{
 		Format:   "surge",
@@ -120,7 +129,7 @@ func TestServiceGenerateSurgeManagedURL(t *testing.T) {
 }
 
 func TestServiceGenerateUnsupportedFormat(t *testing.T) {
-	svc := New(validConfig(t), validFetcher(), Options{})
+	svc := New(mustRuntimeConfig(t, validConfig(t)), validFetcher(), Options{})
 
 	_, err := svc.Generate(context.Background(), Request{
 		Format:   "quantumultx",

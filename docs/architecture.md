@@ -67,7 +67,7 @@ config.yaml + remote sources
 ```text
 启动期:
 LoadConfig
-  -> ValidateConfig
+  -> Prepare (produces RuntimeConfig)
 
 请求期:
 Build(Source -> Filter -> Group -> Route -> ValidateGraph)
@@ -77,15 +77,15 @@ Build(Source -> Filter -> Group -> Route -> ValidateGraph)
 
 对应职责：
 
-- `LoadConfig`：读取并解析用户 YAML
-- `ValidateConfig`：校验字段合法性和配置结构完整性
+- `LoadConfig`：读取并解析用户 YAML，产出 `Config`
+- `Prepare`：校验字段合法性、编译正则、解析自定义代理 URL、展开 `@auto`、检测命名冲突与路由环路，产出不可变的 `RuntimeConfig`
 - `Build`：构建格式无关 IR，其中 `Source/Filter/Group/Route/ValidateGraph` 仍按阶段拆分
 - `Target`：按目标格式做协议能力裁剪和格式相关图校验
 - `Render`：把已投影的目标格式视图序列化为 Clash Meta 或 Surge 文本
 
 该模型的核心特点：
 
-- 启动期只做一次配置加载与静态校验，请求期不重复触碰 YAML
+- 启动期通过 `Prepare` 完成配置加载、静态校验和预计算（正则编译、URL 解析、`@auto` 展开），请求期使用不可变的 `RuntimeConfig`，不重复触碰 YAML
 - `Build` 产出稳定的格式无关 IR，`Target` 再承接目标格式差异
 - 渲染器只依赖目标格式视图，不直接承担协议过滤与级联裁剪
 - 链式节点在分组阶段生成，避免污染源数据获取逻辑
@@ -139,7 +139,7 @@ internal/render
 
 模块职责：
 
-- `config`：配置加载（支持本地/远程）、保序解析、静态校验
+- `config`：配置加载（支持本地/远程）、保序解析、静态校验、启动期预计算（`Prepare` 产出不可变 `RuntimeConfig`）
 - `model`：格式无关的中间表示
 - `fetch`：订阅拉取、缓存、统一资源加载（`LoadResource`：按前缀分发本地文件读取或 HTTP 拉取）
 - `ssparse`：Shadowsocks URI 解析（SIP002 body 解析、plugin query 解析）

@@ -10,6 +10,8 @@
 
 本计划是 `docs/architecture.md`、`docs/design/*` 和测试策略之间的执行连接层。
 
+> **偏差说明**（2026-04-19）：本文件是各里程碑的历史实施记录。后续重构（两阶段配置：`config.Prepare()` → `RuntimeConfig`）改变了部分实现细节，差异标注为 `[⚠ 偏差]`。当前代码行为以 `docs/design/*.md` 为准。
+
 ---
 
 ## 计划原则
@@ -163,7 +165,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 实现配置结构定义（`Config`、`Sources`、`CustomProxy`、`RelayThrough`、`Group`、`Filters`）
 - 实现 `OrderedMap[V any]` 泛型保序映射
 - 实现 YAML 加载器（`Load`）
-- 实现静态配置校验（`Validate`，12 项校验规则，收集全部错误后一次返回）
+- 实现静态配置校验（`Validate`，12 项校验规则，收集全部错误后一次返回）[⚠ 偏差：当前已重构为 `config.Prepare()`，在校验基础上增加正则编译、URL 解析、`@auto` 展开、命名冲突检测和路由环路检测，产出不可变 `RuntimeConfig`。`Validate` 保留为兼容包装器（已标 Deprecated）]
 - 实现统一中间表示模型（`Proxy`、`ProxyGroup`、`Ruleset`、`Rule`、`Pipeline`）
 - 新增 `base_url` 顶层字段（用于 Surge Managed Profile）
 - 让示例配置可成功加载并通过校验
@@ -229,8 +231,8 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 已知限制
 
-- 静态校验不做跨段引用检查（如 fallback 是否引用 routing 中的 key），留给 M4 图级校验
-- 正则只编译不存储，M2/M3 pipeline 阶段按需重新编译
+- 静态校验不做跨段引用检查（如 fallback 是否引用 routing 中的 key），留给 M4 图级校验 [⚠ 偏差：当前 `Prepare` 已包含跨段引用检查——routing 成员合法性、ruleset/rule 策略存在性、fallback 存在性均在启动期校验，ValidateGraph 不再重复]
+- 正则只编译不存储，M2/M3 pipeline 阶段按需重新编译 [⚠ 偏差：当前 `Prepare` 编译正则并存入 `RuntimeConfig`（如 `PreparedGroup.Match`、`PreparedFilters.ExcludePattern`），请求期直接使用已编译正则]
 - `base_url` 在 M1 做静态格式校验，M5 server 层只负责将其拼接为外部 managed URL
 
 ---
@@ -454,12 +456,12 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 服务组策略 | 固定 `"select"` | 设计约定 |
 | Rule Policy 提取 | `strings.LastIndex(raw, ",")` | 透传方案，只提取 Policy 用于引用校验 |
 | 结果类型 | GroupResult / RouteResult 独立结构体 | 便于测试和后续 Pipeline 组装 |
-| @auto 展开位置 | Route 阶段（`expandAutoFill`），在 `@all` 展开之前 | Route 阶段有 GroupResult（节点组列表），是唯一正确的展开点 |
+| @auto 展开位置 | Route 阶段（`expandAutoFill`），在 `@all` 展开之前 | Route 阶段有 GroupResult（节点组列表），是唯一正确的展开点 | [⚠ 偏差：当前 `@auto` 在启动期 `Prepare` 中展开（`expandPreparedAutoFill`），存入 `PreparedRouteGroup.ExpandedMembers`；Route 阶段仅展开 `@all`] |
 | @auto 补充池顺序 | 节点组（声明序）→ 包含 `@all` 的服务组（声明序）→ DIRECT | `REJECT` 需由用户显式决定是否加入 |
 | REJECT 处理 | 不参与 @auto 自动补充，位置由用户显式控制 | 避免把拒绝策略隐式塞进所有服务组 |
-| @auto 次数限制 | 同一 entry 最多一次，由 config.Validate 拦截 | 多次出现没有额外语义，只会增加歧义 |
+| @auto 次数限制 | 同一 entry 最多一次，由 config.Validate 拦截 | 多次出现没有额外语义，只会增加歧义 | [⚠ 偏差：当前由 `config.Prepare` 拦截] |
 | @auto 与 @all 互斥 | 同一 entry 静态校验拦截 | 两者语义不同（组级 vs 节点级），混用无合理场景 |
-| Route 签名 | `Route(cfg, gr *GroupResult)` | @auto 展开需要 NodeGroups，直接传入 GroupResult |
+| Route 签名 | `Route(cfg, gr *GroupResult)` | @auto 展开需要 NodeGroups，直接传入 GroupResult | [⚠ 偏差：当前签名为 `Route(routing []PreparedRouteGroup, rulesets []PreparedRuleset, rules []PreparedRule, fallback string, gr *GroupResult)`，接收预计算的 Prepared 类型而非 raw Config] |
 | Route nil 保护 | `gr == nil` 时按空 `GroupResult` 处理 | 兼容旧调用方式，避免迁移遗漏导致 panic |
 
 ### 对应需求
@@ -484,9 +486,9 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 已知限制
 
-- 不做大部分图级校验（空组、循环引用、routing/ruleset/fallback 引用不存在等留给 M4）；仅 `relay_through.type=group` 的局部引用在 M3 fail-fast
+- 不做大部分图级校验（空组、循环引用、routing/ruleset/fallback 引用不存在等留给 M4）；仅 `relay_through.type=group` 的局部引用在 M3 fail-fast [⚠ 偏差：routing/ruleset/fallback 引用校验已上移到 `Prepare`，ValidateGraph 仅保留动态图校验]
 - 不组装最终 `model.Pipeline`（留给 M4/M5 orchestrator）
-- 正则编译为防御性检查（静态校验已拦截）
+- 正则编译为防御性检查（静态校验已拦截）[⚠ 偏差：当前 `Prepare` 编译正则并存入 `RuntimeConfig`，Group 阶段使用 `PreparedGroup.Match`]
 
 ### 风险
 
@@ -513,7 +515,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 产物
 
-- `internal/pipeline/validate.go`：ValidateGraph 实现（8 项校验规则，DFS 循环检测，collector 模式收集全部错误）
+- `internal/pipeline/validate.go`：ValidateGraph 实现（8 项校验规则，DFS 循环检测，collector 模式收集全部错误）[⚠ 偏差：当前为 6 项校验——原 checks 7-9（ruleset/rule 策略存在性、fallback 存在性）已上移到 `Prepare`；DFS 环路检测委托给 `config.DetectRouteCycle`]
 - `internal/render/clash.go`：Clash Meta 渲染器（yaml.Node API，模板合并，provider 名称提取/去重）
 - `internal/render/surge.go`：Surge 渲染器（bytes.Buffer，INI section 切分/替换合并）
 - `internal/fetch/resource.go`：`LoadResource` 统一加载函数（按 URL 前缀分发 local/remote）
@@ -569,10 +571,10 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 无底版时行为 | 仅输出生成段 | 降低使用门槛 |
 | rule-provider behavior | `classical` + `format: text` | 兼容文本 ruleset 并保持跨客户端一致语义 |
 | url-test 默认参数 | url=gstatic, interval=300, tolerance=100 | 业界标准 |
-| routing 校验粒度 | 校验原始 `routing` 声明，不接受显式代理名 | 保持“服务组选出口、节点组选节点”的分层，避免 `@all` 展开结果掩盖非法配置 |
-| 图校验命名空间 | 代理名、节点组名、服务组名统一登记校验 | 避免重名导致引用歧义或重复渲染 |
+| routing 校验粒度 | 校验原始 `routing` 声明，不接受显式代理名 | 保持”服务组选出口、节点组选节点”的分层，避免 `@all` 展开结果掩盖非法配置 | [⚠ 偏差：当前 ValidateGraph 区分成员溯源（`RouteMemberOrigin`：Literal/AutoExpanded/AllExpanded），`allowsProxyReference` 允许 `@all`/`@auto` 展开后的代理名] |
+| 图校验命名空间 | 代理名、节点组名、服务组名统一登记校验 | 避免重名导致引用歧义或重复渲染 | [⚠ 偏差：当前静态命名空间冲突检测（DIRECT/REJECT + 节点组 + 服务组 + 自定义代理 + 链式组）已上移到 `Prepare` 的 `StaticNamespace`；ValidateGraph 保留运行期动态冲突检测] |
 | Config.Load 签名 | `(ctx, location, fetcher)` | 支持远程加载，nil fetcher 限定仅本地 |
-| 错误收集 | graphCollector + errors.Join | 与 M1 config.Validate 一致 |
+| 错误收集 | graphCollector + errors.Join | 与 M1 config.Validate 一致 | [⚠ 偏差：M1 现为 `config.Prepare`] |
 
 ### 对应需求
 
@@ -621,7 +623,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 ### 产物
 
 - `internal/pipeline/`:
-  - `execute.go`：`Execute(ctx, cfg, fetcher)` 管道顶层编排，串联 Source→Filter→Group→Route→ValidateGraph
+  - `execute.go`：`Execute(ctx, cfg, fetcher)` 管道顶层编排，串联 Source→Filter→Group→Route→ValidateGraph [⚠ 偏差：当前生产入口为 `Build(ctx, cfg *RuntimeConfig, fetcher)`，接收预计算的 `RuntimeConfig`。`Execute` 保留为测试辅助函数，内部调用 `config.Prepare` 后委托 `Build`]
 - `internal/server/`:
   - `server.go`：`Server` 结构体、`New` 构造函数、`Handler()` 路由注册
   - `handler.go`：`handleGenerate`（管道→模板→渲染→响应）、`handleHealthz`

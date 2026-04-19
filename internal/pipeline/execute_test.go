@@ -70,6 +70,8 @@ func TestExecute_FetchError(t *testing.T) {
 		Sources: config.Sources{
 			Subscriptions: []config.Subscription{{URL: "https://sub.example.com/api"}},
 		},
+		Routing:  mustRoutingMap(t, `"proxy": ["DIRECT"]`),
+		Fallback: "proxy",
 	}
 
 	_, err := Execute(context.Background(), cfg, f)
@@ -469,14 +471,8 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 }
 
 // End-to-end guard: if a user declares a region group and a chain-template
-// custom_proxy with the same name, the collision must surface via Execute —
-// specifically at the ValidateGraph stage, since Source only checks cp.Name
-// against fetched node names (different namespace) and Group generates both
-// groups without per-stage collision checks.
-//
-// This pairs with TestValidateGraph_ChainGroupNameCollidesWithRegionGroup
-// (unit test on a hand-crafted GroupResult) by exercising the full YAML →
-// Pipeline path.
+// custom_proxy with the same name, the collision must now surface at startup
+// preparation time rather than being deferred into the request pipeline.
 func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	body := makeSubResponse(
@@ -505,15 +501,12 @@ func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 		t.Fatal("expected duplicate-group error, got nil")
 	}
 
-	var be *errtype.BuildError
-	if !errors.As(err, &be) {
-		t.Fatalf("err type = %T, want *errtype.BuildError", err)
+	var configErr *errtype.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("err type = %T, want *errtype.ConfigError", err)
 	}
-	// ValidateGraph aggregates all collector messages into BuildError.Message,
-	// including the "重复声明" entry emitted by registerName for the duplicate
-	// chain + region group name.
-	if !strings.Contains(err.Error(), `节点组 "HK-ISP" 重复声明`) {
-		t.Errorf("error should mention duplicate node group HK-ISP, got: %v", err)
+	if !strings.Contains(err.Error(), `名称 "HK-ISP" 同时被 节点组 和 链式组 使用`) {
+		t.Errorf("error should mention startup static-name collision, got: %v", err)
 	}
 }
 

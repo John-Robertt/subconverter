@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"fmt"
-	"regexp"
 
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
@@ -23,7 +22,7 @@ type GroupResult struct {
 //  1. Build region node groups from groups config
 //  2. Build chained nodes and groups from relay_through definitions
 //  3. Compute @all (original proxy names, excluding chained)
-func Group(source *SourceResult, groups *config.OrderedMap[config.Group]) (*GroupResult, error) {
+func Group(source *SourceResult, groups []config.PreparedGroup) (*GroupResult, error) {
 	if source == nil {
 		source = &SourceResult{}
 	}
@@ -49,6 +48,9 @@ func Group(source *SourceResult, groups *config.OrderedMap[config.Group]) (*Grou
 	combined := make([]model.Proxy, 0, len(source.Proxies)+len(chainedProxies))
 	combined = append(combined, source.Proxies...)
 	combined = append(combined, chainedProxies...)
+	if err := validateGeneratedProxies("group", combined); err != nil {
+		return nil, err
+	}
 
 	return &GroupResult{
 		Proxies:    combined,
@@ -62,29 +64,28 @@ func Group(source *SourceResult, groups *config.OrderedMap[config.Group]) (*Grou
 // each group's regex pattern, in groups declaration order. KindCustom and
 // KindChained are excluded from matching: custom proxies are already named
 // exactly by the user, and chained proxies are derived from upstreams.
-func buildRegionGroups(proxies []model.Proxy, groups *config.OrderedMap[config.Group]) ([]model.ProxyGroup, error) {
+func buildRegionGroups(proxies []model.Proxy, groups []config.PreparedGroup) ([]model.ProxyGroup, error) {
 	fetched := fetchedProxies(proxies)
-	result := make([]model.ProxyGroup, 0, groups.Len())
+	result := make([]model.ProxyGroup, 0, len(groups))
 
-	for name, g := range groups.Entries() {
-		re, err := regexp.Compile(g.Match)
-		if err != nil {
+	for _, g := range groups {
+		if g.Match == nil {
 			return nil, &errtype.BuildError{
 				Code:    errtype.CodeBuildGroupRegexInvalid,
 				Phase:   "group",
-				Message: fmt.Sprintf("节点组 %q 的 match 正则无效：%v", name, err),
+				Message: fmt.Sprintf("节点组 %q 的 match 正则无效：启动期未编译成功", g.Name),
 			}
 		}
 
 		var members []string
 		for _, p := range fetched {
-			if re.MatchString(p.Name) {
+			if g.Match.MatchString(p.Name) {
 				members = append(members, p.Name)
 			}
 		}
 
 		result = append(result, model.ProxyGroup{
-			Name:     name,
+			Name:     g.Name,
 			Scope:    model.ScopeNode,
 			Strategy: g.Strategy,
 			Members:  members,
@@ -149,7 +150,7 @@ func buildChainedNodesAndGroups(
 func resolveUpstreams(
 	fetched []model.Proxy,
 	regionGroups []model.ProxyGroup,
-	rt *config.RelayThrough,
+	rt *config.PreparedRelayThrough,
 ) ([]model.Proxy, error) {
 	switch rt.Type {
 	case "group":
@@ -164,17 +165,16 @@ func resolveUpstreams(
 		return resolveMembers(fetched, group.Members), nil
 
 	case "select":
-		re, err := regexp.Compile(rt.Match)
-		if err != nil {
+		if rt.Match == nil {
 			return nil, &errtype.BuildError{
 				Code:    errtype.CodeBuildRelayRegexInvalid,
 				Phase:   "group",
-				Message: fmt.Sprintf("relay_through type=select 的正则无效：%v", err),
+				Message: "relay_through type=select 的正则无效：启动期未编译成功",
 			}
 		}
 		var matched []model.Proxy
 		for _, p := range fetched {
-			if re.MatchString(p.Name) {
+			if rt.Match.MatchString(p.Name) {
 				matched = append(matched, p)
 			}
 		}
