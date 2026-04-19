@@ -52,6 +52,7 @@ subconverter/
 `internal/model`
 
 - 统一中间表示
+- `ValidateProxyInvariant`：集中校验单个 Proxy 的结构不变量（Kind/Type 一致性、Dialer 约束、必填参数），供 pipeline 阶段调用以避免各阶段重复解释部分重叠的校验规则
 
 `internal/fetch`
 
