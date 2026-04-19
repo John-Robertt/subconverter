@@ -71,6 +71,11 @@ subconverter/
 - 参数校验
 - 错误映射
 
+`internal/ssparse`
+
+- Shadowsocks URI 解析（SIP002 body 解析、plugin query 解析）
+- 被 `config`（自定义代理 URL 解析）和 `pipeline`（SS 订阅 URI 解析）共享
+
 ---
 
 ## 依赖方向
@@ -82,6 +87,8 @@ cmd/subconverter
   -> fetch
 
 server
+  -> config
+  -> fetch
   -> pipeline
   -> render
   -> errtype
@@ -91,16 +98,23 @@ pipeline
   -> fetch
   -> model
   -> errtype
+  -> ssparse
 
 render
   -> model
   -> errtype
 
+config
+  -> errtype
+  -> fetch
+  -> model
+  -> ssparse
+
 fetch
   -> errtype
 
-config
-  -> errtype
+ssparse
+  -> model
 ```
 
 约束：

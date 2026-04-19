@@ -100,12 +100,22 @@ LoadConfig
 cmd/subconverter
   └─► internal/server
         ├─► internal/config
+        │     ├─► internal/errtype
+        │     ├─► internal/fetch
+        │     ├─► internal/model
         │     └─► internal/ssparse
         ├─► internal/pipeline
+        │     ├─► internal/config
         │     ├─► internal/fetch
+        │     ├─► internal/model
+        │     ├─► internal/errtype
         │     └─► internal/ssparse
         ├─► internal/render
-        └─► internal/model
+        │     ├─► internal/model
+        │     └─► internal/errtype
+        ├─► internal/fetch
+        │     └─► internal/errtype
+        └─► internal/errtype
 ```
 
 模块职责：

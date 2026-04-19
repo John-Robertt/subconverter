@@ -9,7 +9,6 @@ import (
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
-	"github.com/John-Robertt/subconverter/internal/pipeline"
 	"gopkg.in/yaml.v3"
 )
 
@@ -557,9 +556,19 @@ func TestClash_VlessAlpnListEmission(t *testing.T) {
 
 // T-CLASH-VLESS-006: Unknown URI type is normalized to tcp before render.
 func TestClash_VlessUnknownTypeFallbackRendersAsTCP(t *testing.T) {
-	px, err := pipeline.ParseVLessURI("vless://11111111-2222-3333-4444-555555555555@hk.example.com:443?security=tls&sni=hk.example.com&type=quic&encryption=mlkem768x25519plus.native#VL-TCP-FALLBACK")
-	if err != nil {
-		t.Fatalf("ParseVLessURI: %v", err)
+	px := model.Proxy{
+		Name:   "VL-TCP-FALLBACK",
+		Type:   "vless",
+		Server: "hk.example.com",
+		Port:   443,
+		Params: map[string]string{
+			"uuid":       "11111111-2222-3333-4444-555555555555",
+			"security":   "tls",
+			"servername": "hk.example.com",
+			"network":    "tcp",
+			"encryption": "mlkem768x25519plus.native",
+		},
+		Kind: model.KindVLess,
 	}
 
 	got, err := Clash(&model.Pipeline{
