@@ -39,4 +39,3 @@ func customProxy(name, rawURL string, rt *config.RelayThrough) config.CustomProx
 		RelayThrough: rt,
 	}
 }
-
