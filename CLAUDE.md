@@ -67,10 +67,12 @@ internal/target → internal/{model,errtype}
    | `internal/pipeline/group.go` 的 `fetchedProxies`                           | 是否参与区域组 regex 匹配？                                           |
    | `internal/pipeline/group.go` 的 `computeAllProxies`                        | 是否进入 `@all`？                                                     |
    | `internal/pipeline/group.go` 的 `buildChainedNodesAndGroups`               | 是否可作为链式上游？                                                  |
-   | `internal/pipeline/source.go` 的 `deduplicateNames` / `checkNameConflicts` | 是否与其他 Kind 共享去重池？冲突检测范围？                            |
-   | `internal/pipeline/validate.go`                                            | 是否纳入命名空间检查？                                                |
-   | `internal/target/filter_cascade.go` 的 `filterByDroppedTypes`（经 `target.ForClash`）| 新 Kind 是否需在 Clash Target 投影前剔除？级联影响 fallback / 规则 / ruleset |
-   | `internal/render/surge.go` 的 `renderSurgeProxy` switch                    | 新 Kind 是否支持 Surge？不支持时走 `RenderError` 还是提前过滤         |
+   | `internal/pipeline/source.go` 的 `deduplicateNames` / `checkFetchedNameConflicts` | 是否与其他 Kind 共享去重池？冲突检测范围？                            |
+   | `internal/pipeline/validate.go` 的 `buildChainedProxyNameSet` + `buildNamespaceIndex` | 是否纳入命名空间检查？链式集合判定？                                  |
+   | `internal/model/proxy_invariant.go` 的 `allowedProxyTypesByKind`           | 新 Kind 允许哪些 Type？需新增映射条目                                 |
+   | `internal/model/proxy_invariant.go` 的 `ValidateProxyInvariant` KindChained 分支 | 新 Kind 是否有类似 Dialer 的结构约束？                                |
+
+   > **注意**：`filterByDroppedTypes` 和 `renderSurgeProxy` switch 分派的是 `px.Type`（协议），不是 `px.Kind`。新增 Kind 不需触及这两处。新增协议时见 §新增 Proxy.Type。
 
 4. 更新相关函数/变量的 doc comment（历史注释可能写 "只含 KindSubscription"，必须同步改）
 5. 写 group-level 回归测试（`TestGroup_<NewKind>ParticipatesInRegionMatch` 之类），防止 `isFetchedKind` 等 helper 被改窄导致静默回归
@@ -165,7 +167,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 ### 文档术语一致性
 
-**本项目先例**（为何放项目级而非全局）：`relay_through` 语义扩展后，`pipeline.md` 和 `config-schema.md` 的"原始节点"定义已更新为"不带 `relay_through` 的自定义节点"，但 `architecture.md`、`domain-model.md`、`testing-strategy.md`、`implementation-plan.md` 仍沿用旧定义"自定义节点"——概要层文档滞后于细节层是最常见的漂移模式。
+**本项目先例**（为何放项目级而非全局）：`relay_through` 语义扩展后，"原始节点"定义曾出现概要层文档（`architecture.md`、`domain-model.md`）滞后于细节层（`pipeline.md`、`config-schema.md`）的漂移——概要层在首次撰写时正确，但后续扩展时通常只改细节层。目前所有文档已统一为"不带 `relay_through` 的自定义节点"，但此模式在下次术语变更时仍会复现。
 
 核心术语（如"原始节点""拉取类节点"）的**定义变更**时，必须全文搜索所有出现处：
 
@@ -237,7 +239,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 按本项目历次偏差归纳的尾部自检清单。提交改动前逐条确认：
 
-- [ ] **ProxyKind 枚举变更** → 见 §新增 ProxyKind：已按判定原则逐个评估所有 Kind 敏感分派点（pipeline 层 6 处 + render 层 2 处）
+- [ ] **ProxyKind 枚举变更** → 见 §新增 ProxyKind：已按判定原则逐个评估所有 Kind 敏感分派点（pipeline 层 6 处 + model 层 2 处）
 - [ ] **用户可见错误消息含 URL**：已用 `fetch.SanitizeURL` 脱敏（订阅/链路 URL 常含 token）
 - [ ] **新增来源类型** → 见 §新增来源类型：`configs/base_config.yaml` 已加注释示例块；docs 已同步
 - [ ] **函数行为语义变化** → 见 §语义变更优先 rename：已 rename 函数/变量名而非仅改注释（锚点一致性）
