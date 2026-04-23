@@ -119,6 +119,7 @@ server
 generate
   -> config
   -> fetch
+  -> model
   -> pipeline
   -> target
   -> render
@@ -161,3 +162,4 @@ ssparse
 - `render` 不直接读取 YAML 配置
 - `server` 不承担业务转换逻辑
 - `config` 不直接依赖 `model`
+- `generate` 直接依赖 `model`（用于在 `pipeline.Build` 与 `target.ForXxx` 之间传递 `Pipeline`）

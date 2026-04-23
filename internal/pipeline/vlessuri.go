@@ -76,7 +76,7 @@ var vlessAllowedNetworks = map[string]bool{
 func ParseVLessURI(raw string) (model.Proxy, error) {
 	const prefix = "vless://"
 	if !strings.HasPrefix(raw, prefix) {
-		return model.Proxy{}, vlessURIError(raw, "missing vless:// prefix")
+		return model.Proxy{}, vlessURIError(raw, "缺少 vless:// 前缀")
 	}
 
 	body := raw[len(prefix):]
@@ -88,12 +88,12 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 		body = body[:idx]
 		decoded, err := url.PathUnescape(fragment)
 		if err != nil {
-			return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("invalid fragment encoding: %v", err))
+			return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("fragment 编码无效：%v", err))
 		}
 		name = decoded
 	}
 	if name == "" {
-		return model.Proxy{}, vlessURIError(raw, "missing or empty node name")
+		return model.Proxy{}, vlessURIError(raw, "节点名称为空")
 	}
 
 	// Query.
@@ -109,13 +109,13 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 	// in uncommon fork dialects.
 	atIdx := strings.LastIndex(body, "@")
 	if atIdx < 0 {
-		return model.Proxy{}, vlessURIError(raw, "missing @ separator")
+		return model.Proxy{}, vlessURIError(raw, "缺少 @ 分隔符")
 	}
 	userinfo := body[:atIdx]
 	hostport := body[atIdx+1:]
 
 	if !uuidRe.MatchString(userinfo) {
-		return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("invalid UUID %q", userinfo))
+		return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("UUID 无效 %q", userinfo))
 	}
 
 	server, portStr, err := splitHostPort(hostport)
@@ -123,14 +123,14 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 		return model.Proxy{}, vlessURIError(raw, err.Error())
 	}
 	if server == "" {
-		return model.Proxy{}, vlessURIError(raw, "empty server host")
+		return model.Proxy{}, vlessURIError(raw, "server 为空")
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("invalid port %q", portStr))
+		return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("端口 %q 不是整数", portStr))
 	}
 	if port < 1 || port > 65535 {
-		return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("port %d out of range 1-65535", port))
+		return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("端口 %d 超出 1-65535 范围", port))
 	}
 
 	params := map[string]string{
@@ -140,7 +140,7 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 	if query != "" {
 		values, err := url.ParseQuery(query)
 		if err != nil {
-			return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("invalid query string: %v", err))
+			return model.Proxy{}, vlessURIError(raw, fmt.Sprintf("query 参数无效：%v", err))
 		}
 		if err := applyVLessQuery(values, params); err != nil {
 			return model.Proxy{}, vlessURIError(raw, err.Error())
@@ -178,7 +178,7 @@ func applyVLessQuery(values url.Values, params map[string]string) error {
 		switch uriKey {
 		case "security":
 			if v != "none" && v != "tls" && v != "reality" {
-				return fmt.Errorf("unsupported security %q (expected none/tls/reality)", v)
+				return fmt.Errorf("security %q 不支持（仅接受 none/tls/reality）", v)
 			}
 		}
 

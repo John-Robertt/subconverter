@@ -83,10 +83,28 @@ func TestIntegration_RulesetsOrder(t *testing.T) {
 	}
 }
 
-func TestIntegration_ValidateExampleConfig(t *testing.T) {
+func TestIntegration_PrepareExampleConfig(t *testing.T) {
 	cfg := mustLoadExample(t)
-	if err := Validate(cfg); err != nil {
-		t.Errorf("Validate example config: %v", err)
+	rt, err := Prepare(cfg)
+	if err != nil {
+		t.Fatalf("Prepare example config: %v", err)
+	}
+
+	ns := rt.StaticNamespace()
+	for _, name := range []string{"DIRECT", "REJECT"} {
+		if kind, ok := ns.Kind(name); !ok || kind != staticKindReserved {
+			t.Errorf("StaticNamespace %s = (%q, %v), want (%q, true)", name, kind, ok, staticKindReserved)
+		}
+	}
+	for _, name := range cfg.Groups.Keys() {
+		if kind, ok := ns.Kind(name); !ok || kind != staticKindNodeGroup {
+			t.Errorf("StaticNamespace group %s = (%q, %v), want (%q, true)", name, kind, ok, staticKindNodeGroup)
+		}
+	}
+	for _, name := range cfg.Routing.Keys() {
+		if kind, ok := ns.Kind(name); !ok || kind != staticKindRouteGroup {
+			t.Errorf("StaticNamespace route %s = (%q, %v), want (%q, true)", name, kind, ok, staticKindRouteGroup)
+		}
 	}
 }
 

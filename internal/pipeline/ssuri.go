@@ -23,7 +23,7 @@ import (
 func ParseSSURI(raw string) (model.Proxy, error) {
 	const prefix = "ss://"
 	if !strings.HasPrefix(raw, prefix) {
-		return model.Proxy{}, ssError(raw, "missing ss:// prefix")
+		return model.Proxy{}, ssError(raw, "缺少 ss:// 前缀")
 	}
 
 	r, err := ssparse.ParseBody(raw[len(prefix):], true)
@@ -32,7 +32,7 @@ func ParseSSURI(raw string) (model.Proxy, error) {
 	}
 
 	if r.Name == "" {
-		return model.Proxy{}, ssError(raw, "missing or empty node name")
+		return model.Proxy{}, ssError(raw, "节点名称为空")
 	}
 
 	return model.Proxy{

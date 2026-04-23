@@ -17,7 +17,14 @@
 **管道阶段**：
 
 ```
-LoadConfig → ValidateConfig → Build(Source → Filter → Group → Route → ValidateGraph) → Target → Render
+启动期:
+LoadConfig
+  -> Prepare (produces RuntimeConfig)
+
+请求期:
+Build(Source -> Filter -> Group -> Route -> ValidateGraph)
+  -> Target
+  -> Render
 ```
 
 **包边界**（依赖单向）：
@@ -25,7 +32,7 @@ LoadConfig → ValidateConfig → Build(Source → Filter → Group → Route �
 ```
 cmd/subconverter → internal/{config,fetch,generate,server}
 internal/server → internal/{generate,errtype}
-internal/generate → internal/{config,fetch,pipeline,target,render}
+internal/generate → internal/{config,fetch,model,pipeline,target,render}
 internal/pipeline → internal/{config,fetch,model,errtype,proxyparse,ssparse}
 internal/render → internal/{model,errtype}
 internal/target → internal/{model,errtype}

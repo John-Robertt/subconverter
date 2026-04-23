@@ -1,11 +1,15 @@
 // Package config handles YAML configuration loading, order-preserving
-// map parsing, and static field validation.
+// map parsing, static field validation, and startup preparation.
 //
-// Responsibilities (to be implemented in M1):
-//   - Config struct definitions
-//   - OrderedMap for groups, routing, rulesets
-//   - YAML loader
+// Responsibilities:
+//   - Config struct definitions and YAML deserialization
+//   - OrderedMap for groups, routing, rulesets (preserving declaration order)
+//   - YAML loader (local file or HTTP URL via fetch.LoadResource)
 //   - Static validation (required fields, enums, regex compilation)
+//   - Prepare: validates config completeness (name uniqueness, routing
+//     member references) and produces immutable RuntimeConfig (compiled
+//     regexes, parsed custom proxy URLs, expanded @auto, static namespace,
+//     cycle detection)
 //
 // Design reference: docs/design/config-schema.md
 package config

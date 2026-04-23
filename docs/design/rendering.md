@@ -61,6 +61,7 @@ name / type:vless / server / port / uuid / network / udp:true
   → encryption（非空才输出）
   → 若 security ∈ {tls, reality}：tls:true / servername / client-fingerprint
   → 若 security == reality：reality-opts:{ public-key / short-id }
+  → transport-specific *-opts（ws-opts / http-opts / h2-opts / grpc-opts / xhttp-opts，详见下表）
   → dialer-proxy（链式节点）
 ```
 

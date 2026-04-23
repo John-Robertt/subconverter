@@ -98,7 +98,7 @@
 
 说明：
 
-- `@auto` 在 Route 阶段展开为节点组名、包含 `@all` 的服务组名、DIRECT 后写入 Members
+- `@auto` 在启动期 Prepare 阶段展开（存入 `PreparedRouteGroup.ExpandedMembers`）；Route 阶段仅展开 `@all` 为具体原始节点名
 - `@all` 在 Route 阶段展开为具体节点名后写入 Members
 - 中间表示中不出现 `@all` 或 `@auto` 字面值
 - Members 中的字符串统一在同一命名空间中解析（节点名、组名、保留字共享一个查找空间）

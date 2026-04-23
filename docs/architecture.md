@@ -108,6 +108,7 @@ internal/server
 internal/generate
   ├─► internal/config
   ├─► internal/fetch
+  ├─► internal/model
   ├─► internal/pipeline
   ├─► internal/target
   └─► internal/render

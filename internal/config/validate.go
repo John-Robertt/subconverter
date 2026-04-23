@@ -9,13 +9,6 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
-// Deprecated: Use Prepare instead. Validate is a compatibility wrapper that
-// calls Prepare and discards the RuntimeConfig.
-func Validate(cfg *Config) error {
-	_, err := Prepare(cfg)
-	return err
-}
-
 func (c *collector) validateHTTPURL(field, rawURL string) {
 	parsed, err := url.ParseRequestURI(rawURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {

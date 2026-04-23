@@ -29,311 +29,414 @@ func testCustomProxy(name, rawURL string, rt *RelayThrough) CustomProxy {
 	}
 }
 
-func TestValidate_ValidConfig(t *testing.T) {
+func TestPrepare_ValidConfig(t *testing.T) {
 	cfg := validBase()
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+
+	groups := rt.GroupInput()
+	if len(groups) == 0 || groups[0].Match == nil {
+		t.Fatal("group regex not compiled")
+	}
+	if !groups[0].Match.MatchString("HK-01") {
+		t.Error("compiled regex should match HK-01")
+	}
+	if kind, ok := rt.StaticNamespace().Kind("HK"); !ok || kind != staticKindNodeGroup {
+		t.Errorf("StaticNamespace HK = (%q, %v), want (%q, true)", kind, ok, staticKindNodeGroup)
+	}
+	if kind, ok := rt.StaticNamespace().Kind("DIRECT"); !ok || kind != staticKindReserved {
+		t.Errorf("StaticNamespace DIRECT = (%q, %v), want (%q, true)", kind, ok, staticKindReserved)
+	}
+	if kind, ok := rt.StaticNamespace().Kind("proxy"); !ok || kind != staticKindRouteGroup {
+		t.Errorf("StaticNamespace proxy = (%q, %v), want (%q, true)", kind, ok, staticKindRouteGroup)
 	}
 }
 
-func TestValidate_MissingSubscriptionURL(t *testing.T) {
+func TestPrepare_MissingSubscriptionURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.Subscriptions = []Subscription{{URL: ""}}
-	assertFieldError(t, Validate(&cfg), "sources.subscriptions[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.subscriptions[0].url")
 }
 
-func TestValidate_InvalidSubscriptionURL(t *testing.T) {
+func TestPrepare_InvalidSubscriptionURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.Subscriptions = []Subscription{{URL: "not-a-url"}}
-	assertFieldError(t, Validate(&cfg), "sources.subscriptions[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.subscriptions[0].url")
 }
 
-func TestValidate_MissingSnellURL(t *testing.T) {
+func TestPrepare_MissingSnellURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.Snell = []SnellSource{{URL: ""}}
-	assertFieldError(t, Validate(&cfg), "sources.snell[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.snell[0].url")
 }
 
-func TestValidate_InvalidSnellURL(t *testing.T) {
+func TestPrepare_InvalidSnellURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.Snell = []SnellSource{{URL: "ftp://example.com/nodes.txt"}}
-	assertFieldError(t, Validate(&cfg), "sources.snell[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.snell[0].url")
 }
 
-func TestValidate_ValidSnellURL(t *testing.T) {
+func TestPrepare_ValidSnellURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.Snell = []SnellSource{{URL: "https://example.com/snell.txt"}}
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	if len(rt.SourceInput().Snell) != 1 || rt.SourceInput().Snell[0].URL != "https://example.com/snell.txt" {
+		t.Errorf("Snell source not preserved: %+v", rt.SourceInput().Snell)
 	}
 }
 
-func TestValidate_MissingVLessURL(t *testing.T) {
+func TestPrepare_MissingVLessURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.VLess = []VLessSource{{URL: ""}}
-	assertFieldError(t, Validate(&cfg), "sources.vless[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.vless[0].url")
 }
 
-func TestValidate_InvalidVLessURL(t *testing.T) {
+func TestPrepare_InvalidVLessURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.VLess = []VLessSource{{URL: "ftp://example.com/vless.txt"}}
-	assertFieldError(t, Validate(&cfg), "sources.vless[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.vless[0].url")
 }
 
-func TestValidate_ValidVLessURL(t *testing.T) {
+func TestPrepare_ValidVLessURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.VLess = []VLessSource{{URL: "https://example.com/vless.txt"}}
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	if len(rt.SourceInput().VLess) != 1 || rt.SourceInput().VLess[0].URL != "https://example.com/vless.txt" {
+		t.Errorf("VLess source not preserved: %+v", rt.SourceInput().VLess)
 	}
 }
 
 // ---- custom_proxies: URL mode ----
 
-func TestValidate_MissingCustomProxyName(t *testing.T) {
+func TestPrepare_MissingCustomProxyName(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("", "socks5://1.2.3.4:1080", nil)
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].name")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.custom_proxies[0].name")
 }
 
-func TestValidate_MissingCustomProxyURL(t *testing.T) {
+func TestPrepare_MissingCustomProxyURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{{Name: "p1"}}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.custom_proxies[0].url")
 }
 
-func TestValidate_InvalidCustomProxyScheme(t *testing.T) {
+func TestPrepare_InvalidCustomProxyScheme(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "vmess://1.2.3.4:1080", nil)
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.custom_proxies[0].url")
 }
 
-func TestValidate_CustomProxySocks5Valid(t *testing.T) {
+func TestPrepare_CustomProxySocks5Valid(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "socks5://user:pass@1.2.3.4:1080", nil)
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	parsed := rt.SourceInput().CustomProxies[0].Parsed
+	if parsed.Type != "socks5" {
+		t.Errorf("parsed type = %q, want socks5", parsed.Type)
+	}
+	if kind, ok := rt.StaticNamespace().Kind("p1"); !ok || kind != staticKindCustom {
+		t.Errorf("StaticNamespace p1 = (%q, %v), want (%q, true)", kind, ok, staticKindCustom)
 	}
 }
 
-func TestValidate_CustomProxyHTTPValid(t *testing.T) {
+func TestPrepare_CustomProxyHTTPValid(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "http://user:pass@1.2.3.4:8080", nil)
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	parsed := rt.SourceInput().CustomProxies[0].Parsed
+	if parsed.Type != "http" {
+		t.Errorf("parsed type = %q, want http", parsed.Type)
 	}
 }
 
-func TestValidate_CustomProxySSValid(t *testing.T) {
+func TestPrepare_CustomProxySSValid(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388", nil)
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	parsed := rt.SourceInput().CustomProxies[0].Parsed
+	if parsed.Params["cipher"] != "aes-256-gcm" {
+		t.Errorf("cipher = %q, want aes-256-gcm", parsed.Params["cipher"])
+	}
+	if parsed.Params["password"] != "mypass" {
+		t.Errorf("password = %q, want mypass", parsed.Params["password"])
 	}
 }
 
-func TestValidate_CustomProxySSWithPlugin(t *testing.T) {
+func TestPrepare_CustomProxySSWithPlugin(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp", nil)
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	plugin := rt.SourceInput().CustomProxies[0].Parsed.Plugin
+	if plugin == nil {
+		t.Fatal("plugin should not be nil")
+	}
+	if plugin.Opts["obfs"] != "http" {
+		t.Errorf("plugin obfs = %q, want http", plugin.Opts["obfs"])
 	}
 }
 
-func TestValidate_CustomProxySSFragmentIgnored(t *testing.T) {
+func TestPrepare_CustomProxySSFragmentIgnored(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("MY-NODE", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388#OtherName", nil)
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
 	}
-	if cp.Name != "MY-NODE" {
-		t.Errorf("Name = %q, want %q (fragment should be ignored)", cp.Name, "MY-NODE")
+	if rt.SourceInput().CustomProxies[0].Name != "MY-NODE" {
+		t.Errorf("Name = %q, want MY-NODE (fragment should be ignored)", rt.SourceInput().CustomProxies[0].Name)
 	}
 }
 
-func TestValidate_CustomProxySSMissingCipher(t *testing.T) {
+func TestPrepare_CustomProxySSMissingCipher(t *testing.T) {
 	cfg := validBase()
 	cp := CustomProxy{URL: "ss://YmFkcGFzcw@1.2.3.4:8388", Name: "p1"}
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.custom_proxies[0].url")
 }
 
-func TestValidate_CustomProxySSMissingPassword(t *testing.T) {
+func TestPrepare_CustomProxySSMissingPassword(t *testing.T) {
 	cfg := validBase()
 	cp := CustomProxy{URL: "ss://YWVzLTI1Ni1nY206@1.2.3.4:8388", Name: "p1"}
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[0].url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.custom_proxies[0].url")
 }
 
-func TestValidate_DuplicateCustomProxyNames(t *testing.T) {
+func TestPrepare_DuplicateCustomProxyNames(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{
 		testCustomProxy("dup", "socks5://1.2.3.4:1080", nil),
 		testCustomProxy("dup", "http://5.6.7.8:8080", nil),
 	}
-	assertFieldError(t, Validate(&cfg), "sources.custom_proxies[1].name")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "sources.custom_proxies[1].name")
 }
 
-func TestValidate_CustomProxySSWithRelayThrough(t *testing.T) {
+func TestPrepare_CustomProxySSWithRelayThrough(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("chain-ss", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388",
 		&RelayThrough{Type: "all", Strategy: "select"})
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("expected nil, got %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	relay := rt.SourceInput().CustomProxies[0].RelayThrough
+	if relay == nil {
+		t.Fatal("RelayThrough should not be nil")
+	}
+	if relay.Type != "all" {
+		t.Errorf("relay type = %q, want all", relay.Type)
+	}
+	if relay.Strategy != "select" {
+		t.Errorf("relay strategy = %q, want select", relay.Strategy)
+	}
+	if kind, ok := rt.StaticNamespace().Kind("chain-ss"); !ok || kind != staticKindChainGroup {
+		t.Errorf("StaticNamespace chain-ss = (%q, %v), want (%q, true)", kind, ok, staticKindChainGroup)
 	}
 }
 
-func TestValidate_RelayThroughMissingStrategy(t *testing.T) {
+func TestPrepare_RelayThroughMissingStrategy(t *testing.T) {
 	// T-CFG-004
 	cfg := validBase()
 	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
 		&RelayThrough{Type: "all"})
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "relay_through.strategy")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "relay_through.strategy")
 }
 
-func TestValidate_RelayThroughInvalidStrategy(t *testing.T) {
+func TestPrepare_RelayThroughInvalidStrategy(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
 		&RelayThrough{Type: "all", Strategy: "random"})
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "relay_through.strategy")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "relay_through.strategy")
 }
 
-func TestValidate_RelayThroughMissingType(t *testing.T) {
+func TestPrepare_RelayThroughMissingType(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
 		&RelayThrough{Strategy: "select"})
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "relay_through.type")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "relay_through.type")
 }
 
-func TestValidate_RelayThroughInvalidType(t *testing.T) {
+func TestPrepare_RelayThroughInvalidType(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
 		&RelayThrough{Type: "invalid", Strategy: "select"})
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "relay_through.type")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "relay_through.type")
 }
 
-func TestValidate_RelayThroughGroupMissingName(t *testing.T) {
+func TestPrepare_RelayThroughGroupMissingName(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
 		&RelayThrough{Type: "group", Strategy: "select"})
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "relay_through.name")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "relay_through.name")
 }
 
-func TestValidate_RelayThroughSelectMissingMatch(t *testing.T) {
+func TestPrepare_RelayThroughSelectMissingMatch(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
 		&RelayThrough{Type: "select", Strategy: "select"})
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "relay_through.match")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "relay_through.match")
 }
 
-func TestValidate_RelayThroughSelectInvalidRegex(t *testing.T) {
+func TestPrepare_RelayThroughSelectInvalidRegex(t *testing.T) {
 	cfg := validBase()
 	cp := testCustomProxy("p1", "socks5://1.2.3.4:1080",
 		&RelayThrough{Type: "select", Strategy: "select", Match: "[invalid"})
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
-	assertFieldError(t, Validate(&cfg), "relay_through.match")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "relay_through.match")
 }
 
-func TestValidate_FiltersInvalidRegex(t *testing.T) {
+func TestPrepare_FiltersInvalidRegex(t *testing.T) {
 	cfg := validBase()
 	cfg.Filters.Exclude = "[broken"
-	assertFieldError(t, Validate(&cfg), "filters.exclude")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "filters.exclude")
 }
 
-func TestValidate_GroupMissingMatch(t *testing.T) {
+func TestPrepare_GroupMissingMatch(t *testing.T) {
 	cfg := validBase()
 	cfg.Groups = mustOrderedMap[Group](`HK: { match: "", strategy: select }`)
-	assertFieldError(t, Validate(&cfg), "groups.HK.match")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "groups.HK.match")
 }
 
-func TestValidate_GroupInvalidRegex(t *testing.T) {
+func TestPrepare_GroupInvalidRegex(t *testing.T) {
 	cfg := validBase()
 	cfg.Groups = mustOrderedMap[Group](`HK: { match: "[bad", strategy: select }`)
-	assertFieldError(t, Validate(&cfg), "groups.HK.match")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "groups.HK.match")
 }
 
-func TestValidate_GroupInvalidStrategy(t *testing.T) {
+func TestPrepare_GroupInvalidStrategy(t *testing.T) {
 	// T-CFG-005
 	cfg := validBase()
 	cfg.Groups = mustOrderedMap[Group](`HK: { match: "(HK)", strategy: random }`)
-	assertFieldError(t, Validate(&cfg), "groups.HK.strategy")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "groups.HK.strategy")
 }
 
-func TestValidate_GroupMissingStrategy(t *testing.T) {
+func TestPrepare_GroupMissingStrategy(t *testing.T) {
 	cfg := validBase()
 	cfg.Groups = mustOrderedMap[Group](`HK: { match: "(HK)" }`)
-	assertFieldError(t, Validate(&cfg), "groups.HK.strategy")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "groups.HK.strategy")
 }
 
-func TestValidate_MissingFallback(t *testing.T) {
+func TestPrepare_MissingFallback(t *testing.T) {
 	cfg := validBase()
 	cfg.Fallback = ""
-	assertFieldError(t, Validate(&cfg), "fallback")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "fallback")
 }
 
-func TestValidate_RulesetEmptyList(t *testing.T) {
+func TestPrepare_RulesetEmptyList(t *testing.T) {
 	cfg := validBase()
 	cfg.Rulesets = mustOrderedMap[[]string](`proxy: []`)
-	assertFieldError(t, Validate(&cfg), "rulesets.proxy")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "rulesets.proxy")
 }
 
-func TestValidate_RulesetEmptyURL(t *testing.T) {
+func TestPrepare_RulesetEmptyURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Rulesets = mustOrderedMap[[]string](`proxy: [""]`)
-	assertFieldError(t, Validate(&cfg), "rulesets.proxy[0]")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "rulesets.proxy[0]")
 }
 
-func TestValidate_RulesetInvalidURL(t *testing.T) {
+func TestPrepare_RulesetInvalidURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Rulesets = mustOrderedMap[[]string](`proxy: ["not-a-url"]`)
-	assertFieldError(t, Validate(&cfg), "rulesets.proxy[0]")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "rulesets.proxy[0]")
 }
 
-func TestValidate_BaseURLInvalidScheme(t *testing.T) {
+func TestPrepare_BaseURLInvalidScheme(t *testing.T) {
 	cfg := validBase()
 	cfg.BaseURL = "ftp://example.com"
-	assertFieldError(t, Validate(&cfg), "base_url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "base_url")
 }
 
-func TestValidate_BaseURLWithPath(t *testing.T) {
+func TestPrepare_BaseURLWithPath(t *testing.T) {
 	cfg := validBase()
 	cfg.BaseURL = "https://example.com/path"
-	assertFieldError(t, Validate(&cfg), "base_url")
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "base_url")
 }
 
-func TestValidate_BaseURLValid(t *testing.T) {
+func TestPrepare_BaseURLValid(t *testing.T) {
 	cfg := validBase()
 	cfg.BaseURL = "https://example.com"
-	if err := Validate(&cfg); err != nil {
+	rt, err := Prepare(&cfg)
+	if err != nil {
 		t.Fatalf("expected nil, got %v", err)
+	}
+	if rt.BaseURL() != "https://example.com" {
+		t.Errorf("BaseURL() = %q, want https://example.com", rt.BaseURL())
 	}
 }
 
-func TestValidate_MultipleErrors(t *testing.T) {
+func TestPrepare_MultipleErrors(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.Subscriptions = []Subscription{{URL: ""}}
 	cfg.Fallback = ""
 
-	err := Validate(&cfg)
+	_, err := Prepare(&cfg)
 	if err == nil {
 		t.Fatal("expected error")
 	}
 
-	// Should contain at least 2 errors
 	msg := err.Error()
 	if !strings.Contains(msg, "sources.subscriptions[0].url") {
 		t.Errorf("missing subscription error in: %s", msg)
@@ -376,10 +479,10 @@ func mustOrderedMap[V any](yamlStr string) OrderedMap[V] {
 	return m
 }
 
-func TestValidate_TemplateClashInvalidURL(t *testing.T) {
+func TestPrepare_TemplateClashInvalidURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Templates.Clash = "https://"
-	err := Validate(&cfg)
+	_, err := Prepare(&cfg)
 	if err == nil {
 		t.Fatal("expected error for invalid template URL")
 	}
@@ -388,26 +491,34 @@ func TestValidate_TemplateClashInvalidURL(t *testing.T) {
 	}
 }
 
-func TestValidate_TemplateClashValidURL(t *testing.T) {
+func TestPrepare_TemplateClashValidURL(t *testing.T) {
 	cfg := validBase()
 	cfg.Templates.Clash = "https://example.com/base.yaml"
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("valid template URL should pass: %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("valid template URL should pass: %v", err)
+	}
+	if rt.Templates().Clash != "https://example.com/base.yaml" {
+		t.Errorf("Templates().Clash = %q", rt.Templates().Clash)
 	}
 }
 
-func TestValidate_TemplateLocalPath(t *testing.T) {
+func TestPrepare_TemplateLocalPath(t *testing.T) {
 	cfg := validBase()
 	cfg.Templates.Surge = "./configs/base_surge.conf"
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("local template path should pass validation: %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("local template path should pass validation: %v", err)
+	}
+	if rt.Templates().Surge != "./configs/base_surge.conf" {
+		t.Errorf("Templates().Surge = %q", rt.Templates().Surge)
 	}
 }
 
-func TestValidate_RoutingAutoAndAllMutuallyExclusive(t *testing.T) {
+func TestPrepare_RoutingAutoAndAllMutuallyExclusive(t *testing.T) {
 	cfg := validBase()
 	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@all", "@auto"]`)
-	err := Validate(&cfg)
+	_, err := Prepare(&cfg)
 	if err == nil {
 		t.Fatal("expected error for @all + @auto in same entry")
 	}
@@ -416,18 +527,31 @@ func TestValidate_RoutingAutoAndAllMutuallyExclusive(t *testing.T) {
 	}
 }
 
-func TestValidate_RoutingAutoAloneIsValid(t *testing.T) {
+func TestPrepare_RoutingAutoAloneIsValid(t *testing.T) {
 	cfg := validBase()
 	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@auto"]`)
-	if err := Validate(&cfg); err != nil {
-		t.Errorf("@auto alone should be valid: %v", err)
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("@auto alone should be valid: %v", err)
+	}
+	routing, _, _, _ := rt.RouteInput()
+	expanded := routing[0].ExpandedMembers
+	hasAutoExpanded := false
+	for _, m := range expanded {
+		if m.Origin == RouteMemberOriginAutoExpanded {
+			hasAutoExpanded = true
+			break
+		}
+	}
+	if !hasAutoExpanded {
+		t.Error("@auto should produce AutoExpanded members in ExpandedMembers")
 	}
 }
 
-func TestValidate_RoutingAutoRepeatedRejected(t *testing.T) {
+func TestPrepare_RoutingAutoRepeatedRejected(t *testing.T) {
 	cfg := validBase()
 	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@auto", "@auto"]`)
-	err := Validate(&cfg)
+	_, err := Prepare(&cfg)
 	if err == nil {
 		t.Fatal("expected error for repeated @auto in same entry")
 	}

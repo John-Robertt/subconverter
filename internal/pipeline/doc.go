@@ -1,20 +1,18 @@
-// Package pipeline orchestrates the conversion stages:
+// Package pipeline orchestrates the format-agnostic build stages:
 // Source -> Filter -> Group -> Route -> ValidateGraph.
 //
-// Implemented (M2):
-//   - SS URI parsing (ParseSSURI)
-//   - Source stage: subscription fetching, dedup, custom proxy conversion (Source)
-//   - Filter stage: exclude regex filtering (Filter)
+// Stages:
+//   - Source: subscription/Snell/VLESS fetching, SS/Snell/VLESS URI parsing,
+//     cross-source dedup, custom proxy conversion
+//   - Filter: exclude regex filtering on fetched nodes
+//   - Group: region groups, chained nodes/groups, @all computation
+//   - Route: service groups, rulesets, rules, fallback
+//   - ValidateGraph: graph-level reference and namespace validation
+//   - Build: full pipeline orchestration (entry point)
 //
-// Implemented (M3):
-//   - Group stage: region groups, chained nodes/groups, @all computation (Group)
-//   - Route stage: service groups, rulesets, rules, fallback (Route)
-//
-// Implemented (M4):
-//   - Graph-level reference validation (ValidateGraph)
-//
-// Implemented (M5):
-//   - Full build orchestration (Build)
+// Utilities:
+//   - URI helpers: host:port splitting, base64 decoding
+//   - Proxy validation: invariant checks on generated proxies
 //
 // Design reference: docs/design/pipeline.md
 package pipeline

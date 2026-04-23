@@ -113,6 +113,10 @@ func (e *BuildError) Unwrap() error {
 }
 
 // RenderError indicates a failure during output generation.
+// It is used by both the render package (serialization errors) and the target
+// package (format-specific projection errors such as fallback-empty after
+// cascade filtering). The shared error type ensures consistent HTTP 500
+// mapping regardless of which stage detects the format-level failure.
 type RenderError struct {
 	Code    Code
 	Format  string // "clash" or "surge"
