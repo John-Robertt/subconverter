@@ -107,14 +107,21 @@ func TestRenderErrorUnwrap(t *testing.T) {
 	}
 }
 
-func TestRenderErrorWithSurgeFallbackEmpty(t *testing.T) {
-	e := &RenderError{Code: CodeRenderSurgeFallbackEmpty, Format: "surge", Message: `fallback 服务组 "FINAL" 在 Surge 输出中成员为空`}
-	want := `render error [surge]: fallback 服务组 "FINAL" 在 Surge 输出中成员为空`
+func TestTargetErrorWithSurgeFallbackEmpty(t *testing.T) {
+	e := &TargetError{Code: CodeTargetSurgeFallbackEmpty, Format: "surge", Message: `fallback 服务组 "FINAL" 在 Surge 输出中成员为空`}
+	want := `target error [surge]: fallback 服务组 "FINAL" 在 Surge 输出中成员为空`
 	if got := e.Error(); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
-	if e.Code != CodeRenderSurgeFallbackEmpty {
-		t.Errorf("code = %q, want %q", e.Code, CodeRenderSurgeFallbackEmpty)
+	if e.Code != CodeTargetSurgeFallbackEmpty {
+		t.Errorf("code = %q, want %q", e.Code, CodeTargetSurgeFallbackEmpty)
+	}
+}
+
+func TestTargetErrorUnwrap(t *testing.T) {
+	e := &TargetError{Code: CodeTargetClashProjectionInvalid, Format: "clash", Message: "投影失败", Cause: io.EOF}
+	if !errors.Is(e, io.EOF) {
+		t.Error("TargetError should unwrap to its Cause")
 	}
 }
 
@@ -136,6 +143,13 @@ func TestRenderErrorNilCause(t *testing.T) {
 	e := &RenderError{Code: CodeRenderTemplateInvalid, Format: "clash", Message: "底版模板格式无效"}
 	if e.Unwrap() != nil {
 		t.Error("RenderError with nil Cause should unwrap to nil")
+	}
+}
+
+func TestTargetErrorNilCause(t *testing.T) {
+	e := &TargetError{Code: CodeTargetClashFallbackEmpty, Format: "clash", Message: "fallback 清空"}
+	if e.Unwrap() != nil {
+		t.Error("TargetError with nil Cause should unwrap to nil")
 	}
 }
 

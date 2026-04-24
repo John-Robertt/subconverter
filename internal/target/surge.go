@@ -12,8 +12,8 @@ func ForSurge(p *model.Pipeline) (*model.Pipeline, error) {
 		formatName:        "surge",
 		formatDisplayName: "Surge",
 		rootLabel:         "vless",
-		emptyCode:         errtype.CodeRenderSurgeFallbackEmpty,
-		internalCode:      errtype.CodeRenderSurgeProjectionInvalid,
+		emptyCode:         errtype.CodeTargetSurgeFallbackEmpty,
+		internalCode:      errtype.CodeTargetSurgeProjectionInvalid,
 		emptyReasonClause: "被 vless 过滤级联清空",
 	})
 }

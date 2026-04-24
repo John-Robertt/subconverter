@@ -204,18 +204,18 @@ func TestForClash_FallbackCleared(t *testing.T) {
 
 	_, err := ForClash(p)
 	if err == nil {
-		t.Fatal("expected RenderError when fallback group is cleared")
+		t.Fatal("expected TargetError when fallback group is cleared")
 	}
-	var re *errtype.RenderError
-	if !errors.As(err, &re) {
-		t.Fatalf("err type = %T, want *errtype.RenderError", err)
+	var te *errtype.TargetError
+	if !errors.As(err, &te) {
+		t.Fatalf("err type = %T, want *errtype.TargetError", err)
 	}
-	if re.Code != errtype.CodeRenderClashFallbackEmpty {
-		t.Fatalf("Code = %q, want %q", re.Code, errtype.CodeRenderClashFallbackEmpty)
+	if te.Code != errtype.CodeTargetClashFallbackEmpty {
+		t.Fatalf("Code = %q, want %q", te.Code, errtype.CodeTargetClashFallbackEmpty)
 	}
 	for _, keyword := range []string{"SVC_FINAL", "GRP_SG", "HK-Snell(snell)"} {
-		if !strings.Contains(re.Error(), keyword) {
-			t.Fatalf("error message missing %q: %s", keyword, re.Error())
+		if !strings.Contains(te.Error(), keyword) {
+			t.Fatalf("error message missing %q: %s", keyword, te.Error())
 		}
 	}
 }
@@ -237,17 +237,17 @@ func TestForClash_FallbackPathLabelsChainedProxy(t *testing.T) {
 
 	_, err := ForClash(p)
 	if err == nil {
-		t.Fatal("expected RenderError when fallback group is cleared")
+		t.Fatal("expected TargetError when fallback group is cleared")
 	}
-	var re *errtype.RenderError
-	if !errors.As(err, &re) {
-		t.Fatalf("err type = %T, want *errtype.RenderError", err)
+	var te *errtype.TargetError
+	if !errors.As(err, &te) {
+		t.Fatalf("err type = %T, want *errtype.TargetError", err)
 	}
-	if !strings.Contains(re.Error(), "HK-Snell→MY-PROXY(chained)") {
-		t.Fatalf("cascade path should label chained proxy explicitly: %s", re.Error())
+	if !strings.Contains(te.Error(), "HK-Snell→MY-PROXY(chained)") {
+		t.Fatalf("cascade path should label chained proxy explicitly: %s", te.Error())
 	}
-	if !strings.Contains(re.Error(), "HK-Snell(snell)") {
-		t.Fatalf("cascade path should include upstream snell root: %s", re.Error())
+	if !strings.Contains(te.Error(), "HK-Snell(snell)") {
+		t.Fatalf("cascade path should include upstream snell root: %s", te.Error())
 	}
 }
 
@@ -269,10 +269,51 @@ func TestForClash_SharedSubgraphDoesNotReportCycle(t *testing.T) {
 
 	_, err := ForClash(p)
 	if err == nil {
-		t.Fatal("expected RenderError when fallback group is cleared")
+		t.Fatal("expected TargetError when fallback group is cleared")
 	}
 	if strings.Contains(err.Error(), "(cycle)") {
 		t.Fatalf("shared drop subgraph should not be labeled as cycle: %s", err.Error())
+	}
+}
+
+// 当父服务组在 RouteGroups slice 中声明得比子服务组更早（非拓扑序）时，
+// 单次遍历会漏掉父组——必须通过不动点循环在第 2 轮捕获 "SVC_PARENT 成员仅剩 SVC_CHILD，
+// 而 SVC_CHILD 刚被清空"。若未来有人把 buildGroupCascade 的 for 循环改成单 pass
+// （误以为 "一次遍历所有组足够"），此测试会立即失败。
+func TestForClash_CascadeHandlesNonTopologicalDeclaration(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
+		},
+		NodeGroups: []model.ProxyGroup{
+			{Name: "GRP_SNELL", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-Snell"}},
+		},
+		// 故意把 SVC_PARENT 放在 SVC_CHILD 之前声明。
+		RouteGroups: []model.ProxyGroup{
+			{Name: "SVC_PARENT", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"SVC_CHILD"}},
+			{Name: "SVC_CHILD", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_SNELL"}},
+		},
+		Fallback:   "SVC_PARENT",
+		AllProxies: []string{"HK-Snell"},
+	}
+
+	_, err := ForClash(p)
+	if err == nil {
+		t.Fatal("expected TargetError when fallback cascade clears parent")
+	}
+	var te *errtype.TargetError
+	if !errors.As(err, &te) {
+		t.Fatalf("err type = %T, want *errtype.TargetError", err)
+	}
+	if te.Code != errtype.CodeTargetClashFallbackEmpty {
+		t.Fatalf("Code = %q, want %q", te.Code, errtype.CodeTargetClashFallbackEmpty)
+	}
+	// 清空路径应贯穿 SVC_PARENT ← SVC_CHILD ← GRP_SNELL ← HK-Snell(snell)，
+	// 证明 2 轮不动点遍历已将父组一并清空。
+	for _, keyword := range []string{"SVC_PARENT", "SVC_CHILD", "GRP_SNELL", "HK-Snell(snell)"} {
+		if !strings.Contains(te.Error(), keyword) {
+			t.Fatalf("error message missing %q: %s", keyword, te.Error())
+		}
 	}
 }
 
@@ -426,19 +467,19 @@ func TestForSurge_FallbackCleared(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected Surge fallback-empty error")
 	}
-	var re *errtype.RenderError
-	if !errors.As(err, &re) {
-		t.Fatalf("err type = %T, want *RenderError", err)
+	var te *errtype.TargetError
+	if !errors.As(err, &te) {
+		t.Fatalf("err type = %T, want *TargetError", err)
 	}
-	if re.Code != errtype.CodeRenderSurgeFallbackEmpty {
-		t.Fatalf("Code = %q, want %q", re.Code, errtype.CodeRenderSurgeFallbackEmpty)
+	if te.Code != errtype.CodeTargetSurgeFallbackEmpty {
+		t.Fatalf("Code = %q, want %q", te.Code, errtype.CodeTargetSurgeFallbackEmpty)
 	}
-	if re.Format != "surge" {
-		t.Fatalf("Format = %q, want surge", re.Format)
+	if te.Format != "surge" {
+		t.Fatalf("Format = %q, want surge", te.Format)
 	}
 	for _, want := range []string{"SVC_FINAL", "GRP_HK", "HK-VL(vless)", "被 vless 过滤级联清空"} {
-		if !strings.Contains(re.Message, want) {
-			t.Fatalf("message missing %q, got: %s", want, re.Message)
+		if !strings.Contains(te.Message, want) {
+			t.Fatalf("message missing %q, got: %s", want, te.Message)
 		}
 	}
 }
@@ -501,25 +542,25 @@ func TestInternalFilterError_UsesDedicatedProjectionCode(t *testing.T) {
 	}{
 		{
 			name: "clash",
-			opts: cascadeOptions{formatName: "clash", internalCode: errtype.CodeRenderClashProjectionInvalid},
-			want: errtype.CodeRenderClashProjectionInvalid,
+			opts: cascadeOptions{formatName: "clash", internalCode: errtype.CodeTargetClashProjectionInvalid},
+			want: errtype.CodeTargetClashProjectionInvalid,
 		},
 		{
 			name: "surge",
-			opts: cascadeOptions{formatName: "surge", internalCode: errtype.CodeRenderSurgeProjectionInvalid},
-			want: errtype.CodeRenderSurgeProjectionInvalid,
+			opts: cascadeOptions{formatName: "surge", internalCode: errtype.CodeTargetSurgeProjectionInvalid},
+			want: errtype.CodeTargetSurgeProjectionInvalid,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := internalFilterError(tc.opts, "boom")
-			var re *errtype.RenderError
-			if !errors.As(err, &re) {
-				t.Fatalf("err type = %T, want *errtype.RenderError", err)
+			var te *errtype.TargetError
+			if !errors.As(err, &te) {
+				t.Fatalf("err type = %T, want *errtype.TargetError", err)
 			}
-			if re.Code != tc.want {
-				t.Fatalf("Code = %q, want %q", re.Code, tc.want)
+			if te.Code != tc.want {
+				t.Fatalf("Code = %q, want %q", te.Code, tc.want)
 			}
 		})
 	}

@@ -8,7 +8,7 @@
 
 ## 静态校验（Prepare 阶段）
 
-静态校验在 `config.Prepare()` 中完成，发生在配置加载后、请求期管道执行前。Prepare 同时执行正则编译、URL 解析和 `@auto` 展开，产出不可变的 `RuntimeConfig`。
+静态校验在 `config.Prepare()` 中完成，发生在配置加载后、请求期管道执行前。Prepare 同时执行正则编译、URL 解析和 `@auto` 展开，产出启动期准备好的 `RuntimeConfig`；请求期阶段按只读契约消费它，并派生新的动态结果。
 
 检查范围：
 
@@ -105,6 +105,7 @@
 - 远程拉取错误（`FetchError`）
 - 本地资源读取错误（`ResourceError`）
 - 构建错误（`BuildError`）
+- 目标投影错误（`TargetError`）
 - 渲染错误（`RenderError`）
 
 补充说明：
@@ -118,7 +119,7 @@ HTTP 层映射：
 - `400`：请求参数错误、静态配置错误、图级语义错误、可归因于用户配置的构建错误
 - `401`：服务端启用访问 token 时，请求缺少 token 或 token 不匹配
 - `502`：远程资源拉取失败，或远程订阅内容不可用（如 0 个有效节点）
-- `500`：本地资源读取失败、渲染错误或未分类内部错误
+- `500`：本地资源读取失败、目标投影错误、渲染错误或未分类内部错误
 
 目标：
 
@@ -142,4 +143,4 @@ HTTP 层映射：
 - `Target` 承接 format-specific 过滤与校验
 - `Render` 只负责文本序列化
 
-当前错误类型仍沿用 `RenderError` 以保持外部 HTTP 错误语义稳定；其中 fallback 被清空仍使用 `CodeRenderClashFallbackEmpty` / `CodeRenderSurgeFallbackEmpty`，而 Target 阶段的内部不变量异常使用独立 projection 错误码，避免与用户配置触发的 fallback 清空混淆。
+当前 Target 阶段统一使用 `TargetError`，以保持阶段语义清晰；其中 fallback 被清空使用 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty`，内部不变量异常使用独立 projection 错误码。HTTP 层仍将 `TargetError` 映射为 500，保持外部错误码语义稳定。

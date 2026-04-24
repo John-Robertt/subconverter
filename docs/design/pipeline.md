@@ -65,7 +65,7 @@ Build(Source -> Filter -> Group -> Route -> ValidateGraph)
 
 输出：
 
-- 不可变的 `RuntimeConfig`（含编译后的正则、解析后的自定义代理、展开后的路由成员、静态命名空间）
+- 启动期准备好的 `RuntimeConfig`（含编译后的正则、解析后的自定义代理、展开后的路由成员、静态命名空间）；请求期按只读契约消费，不强制 accessor 深拷贝
 
 ---
 

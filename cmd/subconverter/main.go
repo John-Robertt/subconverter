@@ -37,6 +37,9 @@ const (
 	listenEnvVar      = "SUBCONVERTER_LISTEN"
 	//nolint:gosec // This is an environment variable name, not an embedded credential.
 	accessTokenEnvVar = "SUBCONVERTER_TOKEN"
+
+	serverReadHeaderTimeout = 10 * time.Second
+	serverIdleTimeout       = 120 * time.Second
 )
 
 func main() {
@@ -85,11 +88,7 @@ func main() {
 	// Start HTTP server.
 	generator := generate.New(runtimeCfg, cachedFetcher, generate.Options{AccessToken: resolvedAccessToken})
 	srv := server.New(generator, server.Options{AccessToken: resolvedAccessToken})
-	httpServer := &http.Server{
-		Addr:              listenAddr,
-		Handler:           srv.Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	httpServer := newHTTPServer(listenAddr, srv.Handler())
 
 	// Graceful shutdown on SIGINT / SIGTERM.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -126,6 +125,18 @@ func resolveAccessToken(flagValue string) string {
 		return flagValue
 	}
 	return os.Getenv(accessTokenEnvVar)
+}
+
+// 仅设 ReadHeaderTimeout + IdleTimeout：前者防 slowloris，后者回收闲置 keepalive。
+// 不设 WriteTimeout / ReadTimeout：/generate 响应时长受上游顺序拉取 + 渲染影响，
+// 硬上限会误杀合法慢请求；GET 端点无请求 body，ReadTimeout 对抗面也为空。
+func newHTTPServer(listen string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              listen,
+		Handler:           handler,
+		ReadHeaderTimeout: serverReadHeaderTimeout,
+		IdleTimeout:       serverIdleTimeout,
+	}
 }
 
 func runHealthcheck(listen string) int {

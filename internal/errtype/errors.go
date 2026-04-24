@@ -33,15 +33,16 @@ const (
 	CodeBuildVLessSourceLineInvalid Code = "build_vless_source_line_invalid"
 	CodeBuildValidationFailed       Code = "build_validation_failed"
 
-	CodeRenderTemplateParseFailed    Code = "render_template_parse_failed"
-	CodeRenderTemplateInvalid        Code = "render_template_invalid"
-	CodeRenderYAMLEncodeFailed       Code = "render_yaml_encode_failed"
-	CodeRenderYAMLFinalizeFailed     Code = "render_yaml_finalize_failed"
-	CodeRenderSurgeProxyInvalid      Code = "render_surge_proxy_invalid"
-	CodeRenderClashFallbackEmpty     Code = "render_clash_fallback_empty"
-	CodeRenderSurgeFallbackEmpty     Code = "render_surge_fallback_empty"
-	CodeRenderClashProjectionInvalid Code = "render_clash_projection_invalid"
-	CodeRenderSurgeProjectionInvalid Code = "render_surge_projection_invalid"
+	CodeRenderTemplateParseFailed Code = "render_template_parse_failed"
+	CodeRenderTemplateInvalid     Code = "render_template_invalid"
+	CodeRenderYAMLEncodeFailed    Code = "render_yaml_encode_failed"
+	CodeRenderYAMLFinalizeFailed  Code = "render_yaml_finalize_failed"
+	CodeRenderSurgeProxyInvalid   Code = "render_surge_proxy_invalid"
+
+	CodeTargetClashFallbackEmpty     Code = "target_clash_fallback_empty"
+	CodeTargetSurgeFallbackEmpty     Code = "target_surge_fallback_empty"
+	CodeTargetClashProjectionInvalid Code = "target_clash_projection_invalid"
+	CodeTargetSurgeProjectionInvalid Code = "target_surge_projection_invalid"
 )
 
 // ConfigError indicates invalid configuration: bad YAML syntax,
@@ -112,11 +113,25 @@ func (e *BuildError) Unwrap() error {
 	return e.Cause
 }
 
-// RenderError indicates a failure during output generation.
-// It is used by both the render package (serialization errors) and the target
-// package (format-specific projection errors such as fallback-empty after
-// cascade filtering). The shared error type ensures consistent HTTP 500
-// mapping regardless of which stage detects the format-level failure.
+// TargetError indicates a failure during target-format projection, before
+// rendering starts.
+type TargetError struct {
+	Code    Code
+	Format  string // "clash" or "surge"
+	Message string
+	Cause   error
+}
+
+func (e *TargetError) Error() string {
+	return fmt.Sprintf("target error [%s]: %s", e.Format, e.Message)
+}
+
+func (e *TargetError) Unwrap() error {
+	return e.Cause
+}
+
+// RenderError indicates a failure during output serialization or template
+// merging after target projection has already succeeded.
 type RenderError struct {
 	Code    Code
 	Format  string // "clash" or "surge"

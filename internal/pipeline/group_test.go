@@ -250,6 +250,90 @@ func TestGroup_ChainedTypeSelect(t *testing.T) {
 	}
 }
 
+// relay_through type=select 的 regex 若匹配不到任何上游，Group 阶段不报错，
+// 但必须留下一个成员为空的链式组——随后由 ValidateGraph 以 "节点组 … 没有成员"
+// 兜住。此测试钉住两点：
+//  1. Group 阶段对 no-match 保持宽松（不会静默丢弃链式组模板）——防止未来改
+//     buildChainedNodesAndGroups 为 "upstreams 为空就不建组" 导致 ValidateGraph
+//     失去兜底目标
+//  2. 链式组名以模板名命名，供 ValidateGraph 的错误消息定位用户配置位置
+func TestGroup_ChainedTypeSelectNoMatchingUpstreams(t *testing.T) {
+	proxies := []model.Proxy{
+		makeSubProxy("HK-01"),
+		makeSubProxy("SG-01"),
+	}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			CustomProxies: []config.CustomProxy{
+				customProxy("UNREACHED-CHAIN", "http://10.0.0.1:8080", &config.RelayThrough{
+					Type:     "select",
+					Match:    "^NONE-",
+					Strategy: "select",
+				}),
+			},
+		},
+	}
+
+	result, err := groupFromConfig(cfg, proxies)
+	if err != nil {
+		t.Fatalf("Group stage should tolerate no-match, got error: %v", err)
+	}
+
+	if len(result.NodeGroups) != 1 {
+		t.Fatalf("got %d node groups, want 1 (empty chain group)", len(result.NodeGroups))
+	}
+	chainGroup := result.NodeGroups[0]
+	if chainGroup.Name != "UNREACHED-CHAIN" {
+		t.Errorf("chain group Name = %q, want %q", chainGroup.Name, "UNREACHED-CHAIN")
+	}
+	if len(chainGroup.Members) != 0 {
+		t.Fatalf("chain group Members = %v, want empty", chainGroup.Members)
+	}
+
+	// 把这个空链式组喂给 ValidateGraph，确认下游兜底链路依然生效——
+	// 若未来有人在 ValidateGraph 里漏掉空节点组检查，此分支会失败。
+	gr := &GroupResult{
+		Proxies:    result.Proxies,
+		NodeGroups: result.NodeGroups,
+		AllProxies: result.AllProxies,
+	}
+	rr := &RouteResult{
+		RouteGroups: []model.ProxyGroup{
+			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"UNREACHED-CHAIN", "DIRECT"}},
+		},
+		PreparedRouteGroups: []config.PreparedRouteGroup{
+			{
+				Name: "Final",
+				DeclaredMembers: []config.PreparedRouteMember{
+					{Raw: "UNREACHED-CHAIN", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+				ExpandedMembers: []config.PreparedRouteMember{
+					{Raw: "UNREACHED-CHAIN", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+			},
+		},
+		ResolvedRouteGroups: []ResolvedRouteGroup{
+			{
+				Name: "Final",
+				Members: []config.PreparedRouteMember{
+					{Raw: "UNREACHED-CHAIN", Origin: config.RouteMemberOriginLiteral},
+					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				},
+			},
+		},
+		Fallback: "Final",
+	}
+
+	if _, err := ValidateGraph(gr, rr); err == nil {
+		t.Fatal("ValidateGraph should reject empty chain group")
+	} else if !strings.Contains(err.Error(), "UNREACHED-CHAIN") || !strings.Contains(err.Error(), "没有成员") {
+		t.Errorf("ValidateGraph error should mention empty chain group by name, got: %v", err)
+	}
+}
+
 func TestGroup_ProxyInvariantValidation(t *testing.T) {
 	result, err := Group(&SourceResult{
 		Proxies: []model.Proxy{

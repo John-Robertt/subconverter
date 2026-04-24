@@ -11,6 +11,8 @@
 本计划是 `docs/architecture.md`、`docs/design/*` 和测试策略之间的执行连接层。
 
 > **偏差说明**（2026-04-19）：本文件是各里程碑的历史实施记录。后续重构（两阶段配置：`config.Prepare()` → `RuntimeConfig`）改变了部分实现细节，差异标注为 `[⚠ 偏差]`。当前代码行为以 `docs/design/*.md` 为准。
+>
+> **历史记录说明**（2026-04-24）：本文件中的“已知限制”按里程碑时间记录，**不等同于当前技术债**——随后的修复会就地以 `[⚠ 偏差]` 标注，请以代码当前行为为准，不要把"已知限制"视为待办债务。
 
 ---
 
@@ -118,13 +120,13 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 增加 `configs/base_config.yaml`
 - 约定 `testdata` 和示例输入目录
 - 约定基本命令：格式化、测试、运行（Makefile）
-- 明确错误分类：配置错误、拉取错误、构建错误、渲染错误
+- 明确错误分类：配置错误、拉取错误、构建错误、渲染错误 [⚠ 偏差：当前新增 `TargetError` 表达目标格式投影错误，并继续由 HTTP 层映射为 500]
 
 ### 产物
 
 - 最小 Go 工程骨架（`.gitignore`、`go.mod`、`Makefile`）
 - 空包结构（`config`、`model`、`fetch`、`pipeline`、`render`、`server`）
-- `internal/errtype`：五类错误类型（`ConfigError`、`FetchError`、`ResourceError`、`BuildError`、`RenderError`）及对应单元测试
+- `internal/errtype`：五类错误类型（`ConfigError`、`FetchError`、`ResourceError`、`BuildError`、`RenderError`）及对应单元测试 [⚠ 偏差：当前为六类，新增 `TargetError`]
 - 示例配置草稿（`configs/base_config.yaml`）
 - 测试数据（`testdata/subscriptions/sample.txt`：base64 编码的 SS URI 样本）
 - 入口占位（`cmd/subconverter/main.go`）
@@ -137,7 +139,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 实施记录
 
-新增 `internal/errtype` 包作为对 `project-structure.md` 的补充。理由：五类错误横跨所有业务包，放在任何业务包中会造成循环依赖。`errtype` 与 `model` 一样是零依赖叶子包。
+新增 `internal/errtype` 包作为对 `project-structure.md` 的补充。理由：五类错误横跨所有业务包，放在任何业务包中会造成循环依赖。`errtype` 与 `model` 一样是零依赖叶子包。[⚠ 偏差：当前为六类错误，新增 `TargetError`]
 
 ### 对应需求
 
@@ -165,7 +167,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 - 实现配置结构定义（`Config`、`Sources`、`CustomProxy`、`RelayThrough`、`Group`、`Filters`）
 - 实现 `OrderedMap[V any]` 泛型保序映射
 - 实现 YAML 加载器（`Load`）
-- 实现静态配置校验（`Validate`，12 项校验规则，收集全部错误后一次返回）[⚠ 偏差：当前已重构为 `config.Prepare()`，在校验基础上增加正则编译、URL 解析、`@auto` 展开、命名冲突检测和路由环路检测，产出不可变 `RuntimeConfig`。`Validate` 保留为兼容包装器（已标 Deprecated）]
+- 实现静态配置校验（`Validate`，12 项校验规则，收集全部错误后一次返回）[⚠ 偏差：当前已重构为 `config.Prepare()`，在校验基础上增加正则编译、URL 解析、`@auto` 展开、命名冲突检测和路由环路检测，产出启动期准备好的 `RuntimeConfig`；请求期按只读契约消费。`Validate` 保留为兼容包装器（已标 Deprecated）]
 - 实现统一中间表示模型（`Proxy`、`ProxyGroup`、`Ruleset`、`Rule`、`Pipeline`）
 - 新增 `base_url` 顶层字段（用于 Surge Managed Profile）
 - 让示例配置可成功加载并通过校验
@@ -667,7 +669,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 | 管道编排位置 | `generate.Service` 承接请求期编排，`pipeline.Build` 承接格式无关构建 | project-structure.md 将 HTTP 用例与格式无关管道分层，避免 server/pipeline 职责漂移 |
 | Server 依赖注入 | main.go 创建 Config + CachedFetcher，注入 Server | 保持 server 可测试，不依赖 flag 解析 |
 | 模板加载位置 | `generate.Service` 中（Target 之后、Render 之前） | 模板与 managed URL 都属于请求期格式特定编排，不应留在 server 或 pipeline |
-| 错误呈现 | `presentError`：`flattenErrors` 展平 `errors.Join` 链 → `collect*Errors` 按类型收集 → `format*Error` 格式化中文消息 → `joinMessages` 聚合多错误（ConfigError/BuildError→400, FetchError→502, ResourceError/RenderError→500） | 错误码（`errtype.Code`）机器可读，消息中文面向终端用户；未分类错误返回 `"内部错误"`，已分类错误尽量保留可排障信息 |
+| 错误呈现 | `presentError`：Config/Fetch/Resource/Build 走 `flattenErrors + collect*Errors` 聚合路径（Config/Build→400, Fetch→502, Resource→500），Target/Render 单发不聚合走 `errors.As` 直出（均 500）；`format*Error` 格式化中文消息，`joinMessages` 只用于可聚合类的多错误拼接 | 错误码（`errtype.Code`）机器可读，消息中文面向终端用户；未分类错误返回 `"内部错误"`，已分类错误尽量保留可排障信息 |
 | E2E 测试方式 | httptest.Server + fake fetcher，black-box 包 | 只测公共 API，与内部实现解耦 |
 | 优雅关闭 | `signal.NotifyContext` + `httpServer.Shutdown` + 10s 超时 | 标准模式，防止慢请求阻塞关闭 |
 | 路由注册 | Go 1.22+ method pattern `"GET /generate"` | 避免 handler 内手动检查 HTTP 方法 |
@@ -696,7 +698,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 已知限制
 
-- HTTP 服务未设 `ReadTimeout` / `WriteTimeout`（单用户场景无 slowloris 风险）
+- HTTP 服务未设 `ReadTimeout` / `WriteTimeout`（单用户场景无 slowloris 风险）[⚠ 偏差：当前已补齐 `ReadHeaderTimeout` / `ReadTimeout` / `WriteTimeout` / `IdleTimeout`]
 - 不支持运行时配置热重载（修改配置后需重启服务）
 - 错误响应统一由 server 层格式化为中文纯文本；未知内部错误不向客户端暴露细节
 - 目标格式扩展仍需在 `generate.Service` 中新增一个分支与对应 target/render 组合

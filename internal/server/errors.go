@@ -52,6 +52,11 @@ func presentError(err error) (statusCode int, message string) {
 		return http.StatusBadRequest, joinMessages(buildErrs, formatBuildError)
 	}
 
+	var targetErr *errtype.TargetError
+	if errors.As(err, &targetErr) {
+		return http.StatusInternalServerError, formatTargetError(targetErr)
+	}
+
 	var renderErr *errtype.RenderError
 	if errors.As(err, &renderErr) {
 		return http.StatusInternalServerError, formatRenderError(renderErr)
@@ -163,6 +168,13 @@ func formatBuildError(err *errtype.BuildError) string {
 		return "构建错误 [" + err.Phase + "]：" + err.Message
 	}
 	return "构建错误：" + err.Message
+}
+
+func formatTargetError(err *errtype.TargetError) string {
+	if err.Format != "" {
+		return "目标投影错误 [" + err.Format + "]：" + err.Message
+	}
+	return "目标投影错误：" + err.Message
 }
 
 func formatRenderError(err *errtype.RenderError) string {

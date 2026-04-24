@@ -29,115 +29,172 @@ type cascadeOptions struct {
 	emptyReasonClause string
 }
 
+// proxyCascade / groupCascade 都通过指针传递。它们内部的 map 会被 helper 原地增长，
+// 指针签名显式传达"调用方看得到 mutation"的语义，避免按值传递时对 map header 共享的误读。
+type proxyCascade struct {
+	dropped map[string]struct{}
+	reasons map[string]proxyDropReason
+}
+
+type groupCascade struct {
+	nodeGroups  []model.ProxyGroup
+	routeGroups []model.ProxyGroup
+	dropped     map[string]struct{}
+	reasons     map[string][]string
+}
+
 func filterByDroppedTypes(p *model.Pipeline, droppedTypes []string, opts cascadeOptions) (*model.Pipeline, error) {
+	proxyDrops, err := buildProxyCascade(p.Proxies, droppedTypes, opts)
+	if err != nil {
+		return nil, err
+	}
+	if len(proxyDrops.dropped) == 0 {
+		return p, nil
+	}
+
+	groupDrops, err := buildGroupCascade(p.NodeGroups, p.RouteGroups, proxyDrops.dropped, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, fallbackDropped := groupDrops.dropped[p.Fallback]; fallbackDropped {
+		return nil, fallbackEmptyError(p.Fallback, groupDrops.reasons, proxyDrops.reasons, opts)
+	}
+
+	return projectPipeline(p, proxyDrops, groupDrops), nil
+}
+
+func buildProxyCascade(proxies []model.Proxy, droppedTypes []string, opts cascadeOptions) (*proxyCascade, error) {
+	result := &proxyCascade{
+		dropped: rootDroppedProxies(proxies, droppedTypes),
+		reasons: make(map[string]proxyDropReason),
+	}
+	for name := range result.dropped {
+		result.reasons[name] = proxyDropReason{Kind: proxyDropReasonProtoRoot}
+	}
+
+	if err := cascadeDroppedDialers(proxies, result, opts); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func rootDroppedProxies(proxies []model.Proxy, droppedTypes []string) map[string]struct{} {
 	typeSet := make(map[string]struct{}, len(droppedTypes))
 	for _, t := range droppedTypes {
 		typeSet[t] = struct{}{}
 	}
 
 	dropped := make(map[string]struct{})
-	proxyReasons := make(map[string]proxyDropReason)
-	for _, px := range p.Proxies {
+	for _, px := range proxies {
 		if _, hit := typeSet[px.Type]; hit {
 			dropped[px.Name] = struct{}{}
-			proxyReasons[px.Name] = proxyDropReason{Kind: proxyDropReasonProtoRoot}
 		}
 	}
+	return dropped
+}
 
-	maxChainIter := len(p.Proxies) + 1
+func cascadeDroppedDialers(proxies []model.Proxy, drops *proxyCascade, opts cascadeOptions) error {
+	maxChainIter := len(proxies) + 1
 	for i := 0; ; i++ {
 		if i >= maxChainIter {
-			return nil, internalFilterError(opts, "链式剔除未收敛（超过 %d 轮），疑似循环 dialer 引用", maxChainIter)
+			return internalFilterError(opts, "链式剔除未收敛（超过 %d 轮），疑似循环 dialer 引用", maxChainIter)
 		}
-		grew := false
-		for _, px := range p.Proxies {
-			if px.Dialer == "" {
-				continue
-			}
-			if _, isDropped := dropped[px.Name]; isDropped {
-				continue
-			}
-			if _, upstreamDropped := dropped[px.Dialer]; upstreamDropped {
-				dropped[px.Name] = struct{}{}
-				proxyReasons[px.Name] = proxyDropReason{
-					Kind:   proxyDropReasonDialerCascade,
-					Parent: px.Dialer,
-				}
-				grew = true
-			}
-		}
-		if !grew {
-			break
+		if !dropDialerDependents(proxies, drops) {
+			return nil
 		}
 	}
+}
 
-	if len(dropped) == 0 {
-		return p, nil
+func dropDialerDependents(proxies []model.Proxy, drops *proxyCascade) bool {
+	grew := false
+	for _, px := range proxies {
+		if px.Dialer == "" {
+			continue
+		}
+		if _, isDropped := drops.dropped[px.Name]; isDropped {
+			continue
+		}
+		if _, upstreamDropped := drops.dropped[px.Dialer]; upstreamDropped {
+			drops.dropped[px.Name] = struct{}{}
+			drops.reasons[px.Name] = proxyDropReason{
+				Kind:   proxyDropReasonDialerCascade,
+				Parent: px.Dialer,
+			}
+			grew = true
+		}
+	}
+	return grew
+}
+
+func buildGroupCascade(nodeGroups, routeGroups []model.ProxyGroup, droppedProxies map[string]struct{}, opts cascadeOptions) (*groupCascade, error) {
+	result := &groupCascade{
+		nodeGroups:  append([]model.ProxyGroup(nil), nodeGroups...),
+		routeGroups: append([]model.ProxyGroup(nil), routeGroups...),
+		dropped:     make(map[string]struct{}),
+		reasons:     make(map[string][]string),
 	}
 
-	droppedGroups := make(map[string]struct{})
-	groupReasons := make(map[string][]string)
-	filteredNodeGroups := make([]model.ProxyGroup, len(p.NodeGroups))
-	copy(filteredNodeGroups, p.NodeGroups)
-	filteredRouteGroups := make([]model.ProxyGroup, len(p.RouteGroups))
-	copy(filteredRouteGroups, p.RouteGroups)
-
-	maxGroupIter := len(filteredNodeGroups) + len(filteredRouteGroups) + 1
+	maxGroupIter := len(result.nodeGroups) + len(result.routeGroups) + 1
 	for i := 0; ; i++ {
 		if i >= maxGroupIter {
 			return nil, internalFilterError(opts, "组级联剔除未收敛（超过 %d 轮），疑似相互引用", maxGroupIter)
 		}
-		grew := false
-		for i, g := range filteredNodeGroups {
-			if _, alreadyDropped := droppedGroups[g.Name]; alreadyDropped {
-				continue
-			}
-			prevMembers := filteredNodeGroups[i].Members
-			pruned := pruneMembers(prevMembers, dropped, droppedGroups)
-			filteredNodeGroups[i].Members = pruned
-			if len(pruned) == 0 {
-				droppedGroups[g.Name] = struct{}{}
-				groupReasons[g.Name] = append([]string(nil), prevMembers...)
-				grew = true
-			}
-		}
-		for i, g := range filteredRouteGroups {
-			if _, alreadyDropped := droppedGroups[g.Name]; alreadyDropped {
-				continue
-			}
-			prevMembers := filteredRouteGroups[i].Members
-			pruned := pruneMembers(prevMembers, dropped, droppedGroups)
-			filteredRouteGroups[i].Members = pruned
-			if len(pruned) == 0 {
-				droppedGroups[g.Name] = struct{}{}
-				groupReasons[g.Name] = append([]string(nil), prevMembers...)
-				grew = true
-			}
-		}
-		if !grew {
-			break
+		if !dropEmptyGroups(result.nodeGroups, result.routeGroups, droppedProxies, result.dropped, result.reasons) {
+			return result, nil
 		}
 	}
+}
 
-	if _, fallbackDropped := droppedGroups[p.Fallback]; fallbackDropped {
-		path := buildDropPath(p.Fallback, groupReasons, proxyReasons, opts.rootLabel, make(map[string]bool))
-		return nil, &errtype.RenderError{
-			Code:    opts.emptyCode,
-			Format:  opts.formatName,
-			Message: fmt.Sprintf("fallback 服务组 %q 在 %s 输出中成员为空（%s）。清空路径：%s", p.Fallback, opts.formatDisplayName, opts.emptyReasonClause, path),
+func dropEmptyGroups(nodeGroups, routeGroups []model.ProxyGroup, droppedProxies, droppedGroups map[string]struct{}, groupReasons map[string][]string) bool {
+	grew := pruneGroupSlice(nodeGroups, droppedProxies, droppedGroups, groupReasons)
+	if pruneGroupSlice(routeGroups, droppedProxies, droppedGroups, groupReasons) {
+		grew = true
+	}
+	return grew
+}
+
+// 原地修改 groups[i].Members。调用方必须先拷贝 slice——
+// buildGroupCascade 在入口处对 nodeGroups / routeGroups 各自做了 append-copy，
+// 所以外部 *model.Pipeline 的 ProxyGroup.Members 不会被触及。
+func pruneGroupSlice(groups []model.ProxyGroup, droppedProxies, droppedGroups map[string]struct{}, groupReasons map[string][]string) bool {
+	grew := false
+	for i, g := range groups {
+		if _, alreadyDropped := droppedGroups[g.Name]; alreadyDropped {
+			continue
+		}
+		prevMembers := groups[i].Members
+		pruned := pruneMembers(prevMembers, droppedProxies, droppedGroups)
+		groups[i].Members = pruned
+		if len(pruned) == 0 {
+			droppedGroups[g.Name] = struct{}{}
+			groupReasons[g.Name] = append([]string(nil), prevMembers...)
+			grew = true
 		}
 	}
+	return grew
+}
 
-	nodeGroupsOut := make([]model.ProxyGroup, 0, len(filteredNodeGroups))
-	for _, g := range filteredNodeGroups {
-		if _, drop := droppedGroups[g.Name]; drop {
+func fallbackEmptyError(fallback string, groupReasons map[string][]string, proxyReasons map[string]proxyDropReason, opts cascadeOptions) error {
+	path := buildDropPath(fallback, groupReasons, proxyReasons, opts.rootLabel, make(map[string]bool))
+	return &errtype.TargetError{
+		Code:    opts.emptyCode,
+		Format:  opts.formatName,
+		Message: fmt.Sprintf("fallback 服务组 %q 在 %s 输出中成员为空（%s）。清空路径：%s", fallback, opts.formatDisplayName, opts.emptyReasonClause, path),
+	}
+}
+
+func projectPipeline(p *model.Pipeline, proxyDrops *proxyCascade, groupDrops *groupCascade) *model.Pipeline {
+	nodeGroupsOut := make([]model.ProxyGroup, 0, len(groupDrops.nodeGroups))
+	for _, g := range groupDrops.nodeGroups {
+		if _, drop := groupDrops.dropped[g.Name]; drop {
 			continue
 		}
 		nodeGroupsOut = append(nodeGroupsOut, g)
 	}
-	routeGroupsOut := make([]model.ProxyGroup, 0, len(filteredRouteGroups))
-	for _, g := range filteredRouteGroups {
-		if _, drop := droppedGroups[g.Name]; drop {
+	routeGroupsOut := make([]model.ProxyGroup, 0, len(groupDrops.routeGroups))
+	for _, g := range groupDrops.routeGroups {
+		if _, drop := groupDrops.dropped[g.Name]; drop {
 			continue
 		}
 		routeGroupsOut = append(routeGroupsOut, g)
@@ -145,7 +202,7 @@ func filterByDroppedTypes(p *model.Pipeline, droppedTypes []string, opts cascade
 
 	rulesetsOut := make([]model.Ruleset, 0, len(p.Rulesets))
 	for _, rs := range p.Rulesets {
-		if _, drop := droppedGroups[rs.Policy]; drop {
+		if _, drop := groupDrops.dropped[rs.Policy]; drop {
 			continue
 		}
 		rulesetsOut = append(rulesetsOut, rs)
@@ -153,7 +210,7 @@ func filterByDroppedTypes(p *model.Pipeline, droppedTypes []string, opts cascade
 
 	rulesOut := make([]model.Rule, 0, len(p.Rules))
 	for _, r := range p.Rules {
-		if _, drop := droppedGroups[r.Policy]; drop {
+		if _, drop := groupDrops.dropped[r.Policy]; drop {
 			continue
 		}
 		rulesOut = append(rulesOut, r)
@@ -161,7 +218,7 @@ func filterByDroppedTypes(p *model.Pipeline, droppedTypes []string, opts cascade
 
 	proxiesOut := make([]model.Proxy, 0, len(p.Proxies))
 	for _, px := range p.Proxies {
-		if _, drop := dropped[px.Name]; drop {
+		if _, drop := proxyDrops.dropped[px.Name]; drop {
 			continue
 		}
 		proxiesOut = append(proxiesOut, px)
@@ -169,7 +226,7 @@ func filterByDroppedTypes(p *model.Pipeline, droppedTypes []string, opts cascade
 
 	allOut := make([]string, 0, len(p.AllProxies))
 	for _, name := range p.AllProxies {
-		if _, drop := dropped[name]; drop {
+		if _, drop := proxyDrops.dropped[name]; drop {
 			continue
 		}
 		allOut = append(allOut, name)
@@ -183,7 +240,7 @@ func filterByDroppedTypes(p *model.Pipeline, droppedTypes []string, opts cascade
 		Rules:       rulesOut,
 		Fallback:    p.Fallback,
 		AllProxies:  allOut,
-	}, nil
+	}
 }
 
 func pruneMembers(members []string, droppedProxies, droppedGroups map[string]struct{}) []string {
@@ -239,7 +296,7 @@ func buildDropPath(name string, groupReasons map[string][]string, proxyReasons m
 }
 
 func internalFilterError(opts cascadeOptions, format string, args ...any) error {
-	return &errtype.RenderError{
+	return &errtype.TargetError{
 		Code:    opts.internalCode,
 		Format:  opts.formatName,
 		Message: "内部不变量异常：" + fmt.Sprintf(format, args...),

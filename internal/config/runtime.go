@@ -7,10 +7,9 @@ import (
 	"github.com/John-Robertt/subconverter/internal/proxyparse"
 )
 
-// RuntimeConfig is the startup-prepared, request-time immutable configuration.
-// Callers must treat all returned values as read-only. Compiled *regexp.Regexp
-// fields are inherently goroutine-safe; slice and map fields rely on the
-// convention that pipeline stages never mutate their inputs.
+// RuntimeConfig is the startup-prepared configuration consumed by request-time
+// pipeline stages. It is treated as read-only after Prepare; request-time code
+// should derive new dynamic results instead of mutating prepared inputs.
 type RuntimeConfig struct {
 	sources         PreparedSources
 	filters         PreparedFilters
@@ -104,15 +103,6 @@ type StaticNamespace struct {
 	labels map[string]string
 }
 
-// StaticNamespaceFromLabels builds a StaticNamespace from name→kind labels.
-func StaticNamespaceFromLabels(labels map[string]string) StaticNamespace {
-	cloned := make(map[string]string, len(labels))
-	for name, kind := range labels {
-		cloned[name] = kind
-	}
-	return StaticNamespace{labels: cloned}
-}
-
 // Kind returns the static object kind registered for name.
 func (ns StaticNamespace) Kind(name string) (string, bool) {
 	if ns.labels == nil {
@@ -122,7 +112,7 @@ func (ns StaticNamespace) Kind(name string) (string, bool) {
 	return kind, ok
 }
 
-// SourceInput returns the Source-stage inputs. Callers must not mutate.
+// SourceInput returns the Source-stage inputs.
 func (rt *RuntimeConfig) SourceInput() PreparedSources {
 	if rt == nil {
 		return PreparedSources{}
@@ -130,7 +120,7 @@ func (rt *RuntimeConfig) SourceInput() PreparedSources {
 	return rt.sources
 }
 
-// FilterInput returns the Filter-stage inputs. Callers must not mutate.
+// FilterInput returns the Filter-stage inputs.
 func (rt *RuntimeConfig) FilterInput() PreparedFilters {
 	if rt == nil {
 		return PreparedFilters{}
@@ -138,7 +128,7 @@ func (rt *RuntimeConfig) FilterInput() PreparedFilters {
 	return rt.filters
 }
 
-// GroupInput returns the Group-stage inputs. Callers must not mutate.
+// GroupInput returns the Group-stage inputs.
 func (rt *RuntimeConfig) GroupInput() []PreparedGroup {
 	if rt == nil {
 		return nil
@@ -146,7 +136,7 @@ func (rt *RuntimeConfig) GroupInput() []PreparedGroup {
 	return rt.groups
 }
 
-// RouteInput returns the Route-stage inputs. Callers must not mutate.
+// RouteInput returns the Route-stage inputs.
 func (rt *RuntimeConfig) RouteInput() ([]PreparedRouteGroup, []PreparedRuleset, []PreparedRule, string) {
 	if rt == nil {
 		return nil, nil, nil, ""
@@ -154,7 +144,7 @@ func (rt *RuntimeConfig) RouteInput() ([]PreparedRouteGroup, []PreparedRuleset, 
 	return rt.routing, rt.rulesets, rt.rules, rt.fallback
 }
 
-// StaticNamespace returns the startup-known static namespace. Callers must not mutate.
+// StaticNamespace returns the startup-known static namespace.
 func (rt *RuntimeConfig) StaticNamespace() StaticNamespace {
 	if rt == nil {
 		return StaticNamespace{}

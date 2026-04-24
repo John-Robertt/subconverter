@@ -41,13 +41,13 @@ subconverter/
 - 配置结构（含 `Templates` 底版模板声明）
 - YAML 加载（支持本地路径和远程 URL）
 - 保序映射
-- 静态校验与启动期预计算（`Prepare` 产出不可变 `RuntimeConfig`，含编译后正则、解析后自定义代理、展开后路由成员、静态命名空间）
+- 静态校验与启动期预计算（`Prepare` 产出启动期准备好的 `RuntimeConfig`，含编译后正则、解析后自定义代理、展开后路由成员、静态命名空间；请求期按只读契约消费）
 - 原始配置层（`Config`）不持有运行期派生的代理字段；预计算层（`RuntimeConfig`）存储启动期产物
 
 `internal/errtype`
 
-- 五类错误定义（ConfigError、FetchError、ResourceError、BuildError、RenderError）
-- 横跨所有业务包的共享错误类型；`BuildError` / `RenderError` 等可通过 `Cause` 保留内层根因链
+- 六类错误定义（ConfigError、FetchError、ResourceError、BuildError、TargetError、RenderError）
+- 横跨所有业务包的共享错误类型；`BuildError` / `TargetError` / `RenderError` 等可通过 `Cause` 保留内层根因链
 
 `internal/model`
 

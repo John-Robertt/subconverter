@@ -12,8 +12,8 @@ func ForClash(p *model.Pipeline) (*model.Pipeline, error) {
 		formatName:        "clash",
 		formatDisplayName: "Clash",
 		rootLabel:         "snell",
-		emptyCode:         errtype.CodeRenderClashFallbackEmpty,
-		internalCode:      errtype.CodeRenderClashProjectionInvalid,
+		emptyCode:         errtype.CodeTargetClashFallbackEmpty,
+		internalCode:      errtype.CodeTargetClashProjectionInvalid,
 		emptyReasonClause: "被 snell 过滤级联清空",
 	})
 }

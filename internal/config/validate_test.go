@@ -380,6 +380,13 @@ func TestPrepare_MissingFallback(t *testing.T) {
 	assertFieldError(t, err, "fallback")
 }
 
+func TestPrepare_EmptyRoutingEntryRejected(t *testing.T) {
+	cfg := validBase()
+	cfg.Routing = mustOrderedMap[[]string](`proxy: []`)
+	_, err := Prepare(&cfg)
+	assertFieldError(t, err, "routing.proxy")
+}
+
 func TestPrepare_RulesetEmptyList(t *testing.T) {
 	cfg := validBase()
 	cfg.Rulesets = mustOrderedMap[[]string](`proxy: []`)

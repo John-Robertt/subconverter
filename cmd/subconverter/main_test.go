@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+	"time"
+)
 
 func TestResolveListenAddress(t *testing.T) {
 	t.Run("uses default when flag and env are empty", func(t *testing.T) {
@@ -52,6 +56,28 @@ func TestResolveAccessToken(t *testing.T) {
 			t.Fatalf("resolveAccessToken() = %q, want %q", got, "flag-token")
 		}
 	})
+}
+
+// 断言威胁模型而非常量值：ReadHeaderTimeout 防 slowloris、IdleTimeout 回收 keepalive；
+// WriteTimeout / ReadTimeout 显式保持 0，防止被无意加回后误杀合法慢生成请求。
+func TestNewHTTPServerTimeouts(t *testing.T) {
+	srv := newHTTPServer(":9090", http.NewServeMux())
+
+	if srv.Addr != ":9090" {
+		t.Fatalf("Addr = %q, want :9090", srv.Addr)
+	}
+	if srv.ReadHeaderTimeout <= 0 || srv.ReadHeaderTimeout > 30*time.Second {
+		t.Fatalf("ReadHeaderTimeout = %v, want positive and within slowloris bound (<=30s)", srv.ReadHeaderTimeout)
+	}
+	if srv.IdleTimeout < srv.ReadHeaderTimeout {
+		t.Fatalf("IdleTimeout = %v should be >= ReadHeaderTimeout = %v", srv.IdleTimeout, srv.ReadHeaderTimeout)
+	}
+	if srv.WriteTimeout != 0 {
+		t.Fatalf("WriteTimeout = %v, want 0 (generate responses are legitimately slow)", srv.WriteTimeout)
+	}
+	if srv.ReadTimeout != 0 {
+		t.Fatalf("ReadTimeout = %v, want 0 (GET endpoint has no request body)", srv.ReadTimeout)
+	}
 }
 
 func TestHealthcheckURL(t *testing.T) {

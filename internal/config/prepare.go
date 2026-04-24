@@ -20,16 +20,58 @@ type staticDecl struct {
 	kind string
 }
 
-// Prepare validates the raw YAML config and produces the immutable runtime
+// customProxyResult 是 prepareCustomProxies 的跨阶段产物：
+// 后续 prepareRouting 需要区分链式组名与独立自定义代理名。
+type customProxyResult struct {
+	chainGroupNames       []string
+	standaloneCustomNames map[string]struct{}
+}
+
+// routingScope 是 prepareRouting 的跨阶段产物：
+// 后续 prepareRulesets / prepareRules / prepareFallback 需要它做策略名存在性校验。
+type routingScope struct {
+	routeNameSet map[string]bool
+}
+
+// Prepare validates the raw YAML config and produces the startup-prepared
 // configuration consumed by the request-time pipeline.
+//
+// Stage ordering is enforced by function signatures: each stage that depends
+// on a prior stage's output takes that output as an explicit parameter.
+// Swapping stages in the main body causes a compile error rather than a
+// silent nil-map read.
 func Prepare(cfg *Config) (*RuntimeConfig, error) {
-	var c collector
 	if cfg == nil {
+		var c collector
 		c.add("", "配置不能为空")
 		return nil, c.result()
 	}
 
-	rt := &RuntimeConfig{
+	var c collector
+	rt := newEmptyRuntimeConfig(cfg)
+	registry := newRegistry()
+
+	prepareSourceURLs(&c, cfg)
+	prepareFilters(&c, rt, cfg)
+	groupNames := prepareGroups(&c, rt, registry, cfg)
+	cp := prepareCustomProxies(&c, rt, registry, cfg)
+	scope := prepareRouting(&c, rt, registry, cfg, groupNames, cp)
+	prepareRulesets(&c, rt, cfg, scope)
+	prepareRules(&c, rt, cfg, scope)
+	prepareFallback(&c, cfg, scope)
+	prepareBaseURL(&c, cfg)
+	prepareTemplates(&c, cfg)
+
+	if err := c.result(); err != nil {
+		return nil, err
+	}
+
+	rt.staticNamespace = newStaticNamespace(registry)
+	return rt, nil
+}
+
+func newEmptyRuntimeConfig(cfg *Config) *RuntimeConfig {
+	return &RuntimeConfig{
 		sources: PreparedSources{
 			Subscriptions: append([]Subscription(nil), cfg.Sources.Subscriptions...),
 			Snell:         append([]SnellSource(nil), cfg.Sources.Snell...),
@@ -40,8 +82,16 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 		baseURL:   cfg.BaseURL,
 		templates: cfg.Templates,
 	}
+}
 
-	// sources.subscriptions
+func newRegistry() map[string]staticDecl {
+	return map[string]staticDecl{
+		"DIRECT": {kind: staticKindReserved},
+		"REJECT": {kind: staticKindReserved},
+	}
+}
+
+func prepareSourceURLs(c *collector, cfg *Config) {
 	for i, sub := range cfg.Sources.Subscriptions {
 		field := fmt.Sprintf("sources.subscriptions[%d].url", i)
 		if sub.URL == "" {
@@ -51,7 +101,6 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 		c.validateHTTPURL(field, sub.URL)
 	}
 
-	// sources.snell
 	for i, s := range cfg.Sources.Snell {
 		field := fmt.Sprintf("sources.snell[%d].url", i)
 		if s.URL == "" {
@@ -61,7 +110,6 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 		c.validateHTTPURL(field, s.URL)
 	}
 
-	// sources.vless
 	for i, s := range cfg.Sources.VLess {
 		field := fmt.Sprintf("sources.vless[%d].url", i)
 		if s.URL == "" {
@@ -70,30 +118,28 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 		}
 		c.validateHTTPURL(field, s.URL)
 	}
+}
 
-	// filters
-	if cfg.Filters.Exclude != "" {
-		re, err := regexp.Compile(cfg.Filters.Exclude)
-		if err != nil {
-			c.add("filters.exclude", fmt.Sprintf("正则表达式无效：%v", err))
-		} else {
-			rt.filters = PreparedFilters{
-				RawExclude:     cfg.Filters.Exclude,
-				ExcludePattern: re,
-			}
-		}
+func prepareFilters(c *collector, rt *RuntimeConfig, cfg *Config) {
+	if cfg.Filters.Exclude == "" {
+		return
 	}
+	re, err := regexp.Compile(cfg.Filters.Exclude)
+	if err != nil {
+		c.add("filters.exclude", fmt.Sprintf("正则表达式无效：%v", err))
+		return
+	}
+	rt.filters = PreparedFilters{
+		RawExclude:     cfg.Filters.Exclude,
+		ExcludePattern: re,
+	}
+}
 
-	registry := map[string]staticDecl{
-		"DIRECT": {kind: staticKindReserved},
-		"REJECT": {kind: staticKindReserved},
-	}
+func prepareGroups(c *collector, rt *RuntimeConfig, registry map[string]staticDecl, cfg *Config) []string {
 	groupNames := make([]string, 0, cfg.Groups.Len())
-
-	// groups
 	for name, g := range cfg.Groups.Entries() {
 		field := fmt.Sprintf("groups.%s", name)
-		registerStaticName(&c, registry, field, name, staticKindNodeGroup)
+		registerStaticName(c, registry, field, name, staticKindNodeGroup)
 		groupNames = append(groupNames, name)
 
 		prepared := PreparedGroup{Name: name, Strategy: g.Strategy, RawMatch: g.Match}
@@ -114,12 +160,16 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 		}
 		rt.groups = append(rt.groups, prepared)
 	}
+	return groupNames
+}
 
-	chainGroupNames := make([]string, 0, len(cfg.Sources.CustomProxies))
-	standaloneCustomNames := make(map[string]struct{})
+func prepareCustomProxies(c *collector, rt *RuntimeConfig, registry map[string]staticDecl, cfg *Config) customProxyResult {
+	result := customProxyResult{
+		chainGroupNames:       make([]string, 0, len(cfg.Sources.CustomProxies)),
+		standaloneCustomNames: make(map[string]struct{}),
+	}
 	seenCustomNames := make(map[string]bool)
 
-	// sources.custom_proxies
 	for i, cp := range cfg.Sources.CustomProxies {
 		prefix := fmt.Sprintf("sources.custom_proxies[%d]", i)
 
@@ -132,11 +182,11 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 			kind := staticKindCustom
 			if cp.RelayThrough != nil {
 				kind = staticKindChainGroup
-				chainGroupNames = append(chainGroupNames, cp.Name)
+				result.chainGroupNames = append(result.chainGroupNames, cp.Name)
 			} else {
-				standaloneCustomNames[cp.Name] = struct{}{}
+				result.standaloneCustomNames[cp.Name] = struct{}{}
 			}
-			registerStaticName(&c, registry, prefix+".name", cp.Name, kind)
+			registerStaticName(c, registry, prefix+".name", cp.Name, kind)
 		}
 
 		prepared := PreparedCustomProxy{Name: cp.Name}
@@ -160,18 +210,18 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 		}
 
 		if cp.RelayThrough != nil {
-			prepared.RelayThrough = prepareRelayThrough(&c, cp.RelayThrough, prefix+".relay_through")
+			prepared.RelayThrough = prepareRelayThrough(c, cp.RelayThrough, prefix+".relay_through")
 		}
 		rt.sources.CustomProxies = append(rt.sources.CustomProxies, prepared)
 	}
+	return result
+}
 
+func prepareRouting(c *collector, rt *RuntimeConfig, registry map[string]staticDecl, cfg *Config, groupNames []string, cp customProxyResult) routingScope {
 	routeGroupNames := make([]string, 0, cfg.Routing.Len())
-	rawRouting := make([]PreparedRouteGroup, 0, cfg.Routing.Len())
-
-	// routing keys
 	for name := range cfg.Routing.Entries() {
 		field := fmt.Sprintf("routing.%s", name)
-		registerStaticName(&c, registry, field, name, staticKindRouteGroup)
+		registerStaticName(c, registry, field, name, staticKindRouteGroup)
 		routeGroupNames = append(routeGroupNames, name)
 	}
 
@@ -179,17 +229,21 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 	for _, name := range routeGroupNames {
 		routeNameSet[name] = true
 	}
-	nodeGroupNames := make([]string, 0, len(groupNames)+len(chainGroupNames))
+	nodeGroupNames := make([]string, 0, len(groupNames)+len(cp.chainGroupNames))
 	nodeGroupNames = append(nodeGroupNames, groupNames...)
-	nodeGroupNames = append(nodeGroupNames, chainGroupNames...)
+	nodeGroupNames = append(nodeGroupNames, cp.chainGroupNames...)
 	nodeGroupNameSet := make(map[string]bool, len(nodeGroupNames))
 	for _, name := range nodeGroupNames {
 		nodeGroupNameSet[name] = true
 	}
 
-	// routing members
+	rawRouting := make([]PreparedRouteGroup, 0, cfg.Routing.Len())
 	for name, members := range cfg.Routing.Entries() {
 		field := fmt.Sprintf("routing.%s", name)
+		if len(members) == 0 {
+			c.add(field, "至少需要一个成员")
+			continue
+		}
 		hasAll, autoCount := false, 0
 		declaredMembers := make([]PreparedRouteMember, 0, len(members))
 		for _, member := range members {
@@ -203,7 +257,7 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 			if member == "@all" || member == "@auto" || IsReservedPolicyName(member) || nodeGroupNameSet[member] || routeNameSet[member] {
 				continue
 			}
-			if _, ok := standaloneCustomNames[member]; ok {
+			if _, ok := cp.standaloneCustomNames[member]; ok {
 				c.add(field, fmt.Sprintf("成员 %q 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto", member))
 				continue
 			}
@@ -233,7 +287,10 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 		c.add("routing", cycle)
 	}
 
-	// rulesets
+	return routingScope{routeNameSet: routeNameSet}
+}
+
+func prepareRulesets(c *collector, rt *RuntimeConfig, cfg *Config, scope routingScope) {
 	for policy, urls := range cfg.Rulesets.Entries() {
 		field := fmt.Sprintf("rulesets.%s", policy)
 		if len(urls) == 0 {
@@ -247,7 +304,7 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 			}
 			c.validateHTTPURL(urlField, rawURL)
 		}
-		if !routeNameSet[policy] {
+		if !scope.routeNameSet[policy] {
 			c.add(field, fmt.Sprintf("策略 %q 未在 routing 中定义", policy))
 		}
 		rt.rulesets = append(rt.rulesets, PreparedRuleset{
@@ -255,8 +312,9 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 			URLs:   append([]string(nil), urls...),
 		})
 	}
+}
 
-	// rules
+func prepareRules(c *collector, rt *RuntimeConfig, cfg *Config, scope routingScope) {
 	for i, raw := range cfg.Rules {
 		field := fmt.Sprintf("rules[%d]", i)
 		idx := strings.LastIndex(raw, ",")
@@ -265,38 +323,34 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 			continue
 		}
 		policy := raw[idx+1:]
-		if !routeNameSet[policy] && !IsReservedPolicyName(policy) {
+		if !scope.routeNameSet[policy] && !IsReservedPolicyName(policy) {
 			c.add(field, fmt.Sprintf("规则策略 %q 未在 routing 中定义", policy))
 		}
 		rt.rules = append(rt.rules, PreparedRule{Raw: raw, Policy: policy})
 	}
+}
 
-	// fallback
+func prepareFallback(c *collector, cfg *Config, scope routingScope) {
 	if cfg.Fallback == "" {
 		c.add("fallback", "必填")
-	} else if !routeNameSet[cfg.Fallback] {
+	} else if !scope.routeNameSet[cfg.Fallback] {
 		c.add("fallback", fmt.Sprintf("%q 未在 routing 中定义", cfg.Fallback))
 	}
+}
 
-	// base_url
+func prepareBaseURL(c *collector, cfg *Config) {
 	if cfg.BaseURL != "" {
 		c.validateBaseURL("base_url", cfg.BaseURL)
 	}
+}
 
-	// templates
+func prepareTemplates(c *collector, cfg *Config) {
 	if cfg.Templates.Clash != "" {
 		c.validateTemplatePath("templates.clash", cfg.Templates.Clash)
 	}
 	if cfg.Templates.Surge != "" {
 		c.validateTemplatePath("templates.surge", cfg.Templates.Surge)
 	}
-
-	if err := c.result(); err != nil {
-		return nil, err
-	}
-
-	rt.staticNamespace = newStaticNamespace(registry)
-	return rt, nil
 }
 
 func prepareRelayThrough(c *collector, rt *RelayThrough, prefix string) *PreparedRelayThrough {

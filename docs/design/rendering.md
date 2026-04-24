@@ -136,7 +136,7 @@ Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。`Ta
 2. 剔除链式节点中 `Dialer` 属于已剔除集合的节点（失效上游）；诊断路径中这类叶子会标记为 `<name>(chained) ← [<upstream>]`
 3. 对每个节点组 / 服务组，剔除 Members 中属于已剔除集合的名字；若 Members 清空则该组自身被剔除。迭代到不动点
 4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
-5. 若 `fallback` 所指服务组在级联中被清空，返回 `RenderError`（`CodeRenderClashFallbackEmpty`），错误消息附带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY(chained) ← [HK-Snell(snell)]]]`），便于定位根因
+5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetClashFallbackEmpty`），错误消息附带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY(chained) ← [HK-Snell(snell)]]]`），便于定位根因
 
 清空路径使用显式原因图：
 
@@ -190,7 +190,7 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 2. 剔除链式节点中 `Dialer` 属于已剔除集合的节点
 3. 对每个节点组 / 服务组，剔除 Members 中属于已剔除集合的名字；若 Members 清空则该组自身被剔除。迭代到不动点
 4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
-5. 若 `fallback` 所指服务组在级联中被清空，返回 `RenderError`（`CodeRenderSurgeFallbackEmpty`），错误消息附带清空路径（VLESS 根节点标记为 `NAME(vless)`，链式节点标记为 `NAME(chained) ← [<upstream>]`）
+5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetSurgeFallbackEmpty`），错误消息附带清空路径（VLESS 根节点标记为 `NAME(vless)`，链式节点标记为 `NAME(chained) ← [<upstream>]`）
 
 算法由共享 cascade 引擎 `filterByDroppedTypes` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Render 阶段只消费已投影后的 Pipeline。
 
