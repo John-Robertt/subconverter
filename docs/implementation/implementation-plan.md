@@ -698,7 +698,7 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 ### 已知限制
 
-- HTTP 服务未设 `ReadTimeout` / `WriteTimeout`（单用户场景无 slowloris 风险）[⚠ 偏差：当前已补齐 `ReadHeaderTimeout` / `ReadTimeout` / `WriteTimeout` / `IdleTimeout`]
+- HTTP 服务未设 `ReadTimeout` / `WriteTimeout`（单用户场景无 slowloris 风险）[⚠ 偏差：当前已补齐 `ReadHeaderTimeout` / `IdleTimeout`；`ReadTimeout` / `WriteTimeout` 仍按慢生成请求模型保持 0]
 - 不支持运行时配置热重载（修改配置后需重启服务）
 - 错误响应统一由 server 层格式化为中文纯文本；未知内部错误不向客户端暴露细节
 - 目标格式扩展仍需在 `generate.Service` 中新增一个分支与对应 target/render 组合
