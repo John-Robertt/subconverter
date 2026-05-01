@@ -8,10 +8,11 @@
 
 ## 发布产物
 
-项目维护两类发布产物：
+项目维护三类发布产物：
 
 - GitHub Release 二进制压缩包
-- GHCR Docker 镜像
+- GHCR 后端 Docker 镜像（`api` 服务）
+- Web Docker 镜像（`web` 服务，可发布到 GHCR 或在部署环境本地构建）
 
 二进制平台矩阵：
 
@@ -39,7 +40,8 @@ Docker 镜像平台矩阵：
 
 - 运行 lint（golangci-lint）、格式检查（gofmt）、测试（go test）和 vet（go vet）
 - 用 GoReleaser 发布二进制和 `checksums.txt` 到 GitHub Release
-- 构建并推送 GHCR 多架构镜像
+- 构建并推送 GHCR 多架构后端镜像
+- v2.0 起构建 Web 镜像，用于 Docker Compose 生产部署
 
 ---
 
@@ -66,12 +68,13 @@ templates:
 
 ---
 
-## GHCR 镜像
+## GHCR 后端镜像
 
 镜像地址：
 
 ```text
-ghcr.io/john-robertt/subconverter
+ghcr.io/john-robertt/subconverter      # api 服务
+ghcr.io/john-robertt/subconverter-web  # web 服务
 ```
 
 发布 tag：
@@ -95,7 +98,7 @@ ghcr.io/john-robertt/subconverter
 
 镜像同时内置 `SUBCONVERTER_LISTEN=:8080`，因此默认仍监听 `:8080`。
 
-如需为 `/generate` 启用访问控制，可额外设置 `SUBCONVERTER_TOKEN`，客户端随后请求配置文件时需在 URL 上附带 `token` 查询参数。
+如需为 `/generate` 和 `/api/*` 启用访问控制，可额外设置 `SUBCONVERTER_TOKEN`。客户端下载配置文件时仍需在 URL 上附带 `token` 查询参数；Web 后台访问 Admin API 时使用 `Authorization: Bearer ...` header，不把 token 放入 `/api/*` query。
 
 因此如果配置文件继续使用：
 
@@ -111,7 +114,7 @@ templates:
 
 ## 手动部署
 
-### Docker 部署
+### Docker 部署（只读配置）
 
 ```bash
 docker run -d \
@@ -121,7 +124,86 @@ docker run -d \
   ghcr.io/john-robertt/subconverter:latest
 ```
 
+这种模式适合 GitOps 或外部系统管理配置文件的部署方式。由于配置以 `:ro` 挂载，Web 后台会以只读模式运行，`PUT /api/config` 返回 `409`，配置保存按钮应禁用。
+
+### Docker 部署（Web 后台可编辑配置）
+
+如需通过 Web 后台保存配置，推荐挂载整个配置目录，并确保容器内运行用户对该目录有写权限：
+
+```bash
+mkdir -p ./config
+cp config.yaml ./config/config.yaml
+
+docker run -d \
+  --name subconverter \
+  -p 8080:8080 \
+  -v $(pwd)/config:/config \
+  -e SUBCONVERTER_TOKEN=your-token \
+  ghcr.io/john-robertt/subconverter:latest
+```
+
+挂载目录而不是单个文件，可以让服务使用“写临时文件 + rename 覆盖”的方式原子写回 YAML，避免保存中断时留下半文件。
+
 如果需要额外挂载自定义模板，可以在配置文件中改成绝对路径，并将模板文件挂载进容器。
+
+### Docker Compose 部署（Web 后台只读配置）
+
+v2.0 的生产 Web 后台推荐使用 `api + web` 双服务部署。浏览器只访问 `web` 服务端口；`web` 容器用 nginx 托管 SPA，并同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api:8080`。
+
+```yaml
+services:
+  api:
+    image: ghcr.io/john-robertt/subconverter:latest
+    environment:
+      SUBCONVERTER_LISTEN: :8080
+      SUBCONVERTER_TOKEN: your-token
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+    expose:
+      - "8080"
+
+  web:
+    image: ghcr.io/john-robertt/subconverter-web:latest
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+```
+
+这种模式适合 GitOps 或外部系统管理配置文件的部署方式。`api` 服务会把配置源标记为不可写，Web 后台应禁用保存入口，`PUT /api/config` 返回 `409`。
+
+### Docker Compose 部署（Web 后台可编辑配置）
+
+如需通过 Web 后台保存配置，挂载整个配置目录：
+
+```yaml
+services:
+  api:
+    image: ghcr.io/john-robertt/subconverter:latest
+    environment:
+      SUBCONVERTER_LISTEN: :8080
+      SUBCONVERTER_TOKEN: your-token
+    volumes:
+      - ./config:/config
+    expose:
+      - "8080"
+
+  web:
+    image: ghcr.io/john-robertt/subconverter-web:latest
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+```
+
+`SUBCONVERTER_TOKEN` 只配置在 `api` 服务上。Web 页面访问 `/api/*` 时使用 `Authorization: Bearer ...` header；复制 Clash / Surge 订阅链接时，前端再按需把 token 放入 `/generate?token=...` query。
+
+若需要在本地源码基础上构建 Web 镜像，可将 `web.image` 替换为：
+
+```yaml
+build:
+  context: ./web
+```
 
 ### 健康检查
 
@@ -160,7 +242,7 @@ healthcheck:
 
 若不显式传入 `-listen`，进程会按 `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址。
 
-若不显式传入 `-access-token`，进程会按 `SUBCONVERTER_TOKEN` > 空值解析访问 token；空值表示 `/generate` 不启用鉴权。
+若不显式传入 `-access-token`，进程会按 `SUBCONVERTER_TOKEN` > 空值解析访问 token；空值表示 `/generate` 和 `/api/*` 不启用鉴权。
 
 建议生产环境使用：
 
@@ -199,7 +281,7 @@ git push origin v0.1.0
 3. 等待 GitHub Actions 完成：
 
 - GitHub Release 二进制上传完成
-- GHCR 镜像推送完成
+- GHCR 后端镜像与 Web 镜像推送完成
 
 4. 在目标环境手动拉取并部署对应版本
 
@@ -210,6 +292,46 @@ git push origin v0.1.0
 Release workflow 会为镜像写入 OCI 元数据：
 
 - `org.opencontainers.image.source=https://github.com/John-Robertt/subconverter`
-- `org.opencontainers.image.description=Single-user HTTP service that converts SS subscriptions into Clash Meta and Surge configs.`
+- 后端镜像：`org.opencontainers.image.description=Single-user HTTP service that converts SS subscriptions into Clash Meta and Surge configs.`
+- Web 镜像：`org.opencontainers.image.description=Web admin UI for subconverter.`
 
 对多架构镜像，workflow 还会把描述写入 manifest index annotation，确保 GHCR 包页面可以显示描述信息。
+
+---
+
+## 前端镜像（v2.0）
+
+v2.0 新增 Web 管理后台（React SPA），前端源码位于 `web/` 目录。
+
+### 构建流程
+
+```bash
+docker build -t subconverter-web ./web
+```
+
+`web/Dockerfile` 使用 Node 阶段构建前端产物，再用 nginx 托管 `dist/`。nginx 配置位于 `web/nginx.conf`，负责：
+
+- `/`：静态资源与 SPA fallback
+- `/api/*`：反向代理到 `api:8080`
+- `/generate`：反向代理到 `api:8080`
+- `/healthz`：反向代理到 `api:8080`
+
+### Release 流程变更
+
+Release workflow 需要分别发布后端镜像与 Web 镜像：
+
+1. `go build` / 后端 Docker build（`Dockerfile`）
+2. Web Docker build（`web/Dockerfile`）
+
+生产部署通过 Docker Compose 把两个镜像组合起来。后端二进制和后端镜像不包含 Web 静态资源。
+
+---
+
+## 开发模式（v2.0）
+
+前后端分离开发：
+
+- **前端**：`cd web && npm run dev`（启动 Vite dev server，默认 `localhost:5173`）
+- **后端**：`go run ./cmd/subconverter -config ...`
+
+推荐在 Vite 配置中把 `/api/*`、`/generate`、`/healthz` 代理到 Go 后端。若不使用 Vite proxy，可由 Go 开启 CORS middleware 允许前端 dev server 跨域请求；生产 Compose 部署不需要 CORS。

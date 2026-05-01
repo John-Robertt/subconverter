@@ -1,0 +1,167 @@
+// Shared mock data for all three direction explorations.
+// Realistic-ish node group names + emoji; URLs are placeholders.
+
+const SOURCES = {
+  ss: [
+    { id: 's1', url: 'https://sub.example.com/api/v1/sub?token=••••a83f' },
+    { id: 's2', url: 'https://provider-b.net/link/abc123def456' },
+    { id: 's3', url: 'https://nodes.example.org/sub/user_42/clash' },
+  ],
+  snell: [
+    { id: 'sn1', url: 'https://snell-pool.example.com/list.txt' },
+  ],
+  vless: [
+    { id: 'v1', url: 'https://reality.example.io/sub/vless-pool' },
+    { id: 'v2', url: 'https://xray.example.net/v/personal' },
+  ],
+  custom: [
+    { id: 'c1', name: 'Home Relay', url: 'ss://chacha20-ietf-poly1305:<pwd>@home.example.com:8388', relay: { type: 'group', strategy: 'select', name: '🇺🇸 US 节点' } },
+    { id: 'c2', name: 'Office SOCKS', url: 'socks5://user:<pwd>@10.0.1.5:1080', relay: null },
+  ],
+};
+
+const NODES = [
+  { name: '🇭🇰 香港 IEPL 01', type: 'ss', server: 'hk01.example.com', port: 443, kind: 'sub', source: 's1' },
+  { name: '🇭🇰 香港 IEPL 02', type: 'ss', server: 'hk02.example.com', port: 443, kind: 'sub', source: 's1' },
+  { name: '🇭🇰 香港 BGP 03', type: 'ss', server: 'hk03.example.com', port: 8443, kind: 'sub', source: 's1' },
+  { name: '🇯🇵 大阪 BGP 01', type: 'ss', server: 'jp01.example.com', port: 443, kind: 'sub', source: 's1' },
+  { name: '🇯🇵 东京 IEPL 02', type: 'ss', server: 'jp02.example.com', port: 443, kind: 'sub', source: 's1' },
+  { name: '🇯🇵 东京 BGP 03', type: 'ss', server: 'jp03.example.com', port: 8443, kind: 'sub', source: 's2' },
+  { name: '🇸🇬 新加坡 01', type: 'ss', server: 'sg01.example.com', port: 443, kind: 'sub', source: 's2' },
+  { name: '🇸🇬 新加坡 02', type: 'ss', server: 'sg02.example.com', port: 443, kind: 'sub', source: 's2' },
+  { name: '🇺🇸 洛杉矶 IEPL 01', type: 'ss', server: 'la01.example.com', port: 443, kind: 'sub', source: 's3' },
+  { name: '🇺🇸 洛杉矶 BGP 02', type: 'ss', server: 'la02.example.com', port: 443, kind: 'sub', source: 's3' },
+  { name: '🇺🇸 圣何塞 03', type: 'ss', server: 'sj03.example.com', port: 8443, kind: 'sub', source: 's3' },
+  { name: '🇹🇼 台北 中转 01', type: 'ss', server: 'tw01.example.com', port: 443, kind: 'sub', source: 's3' },
+  { name: '🏳️ 测试 · 流量信息', type: 'ss', server: 'info.example.com', port: 80, kind: 'sub', source: 's1' },
+  { name: '🏳️ 剩余流量：238.6 GB', type: 'ss', server: 'info.example.com', port: 80, kind: 'sub', source: 's1' },
+  // Snell — Surge only
+  { name: '🇭🇰 Snell HK Premium', type: 'snell', server: 'hk-snell.example.com', port: 6160, kind: 'snell', source: 'sn1' },
+  { name: '🇸🇬 Snell SG Premium', type: 'snell', server: 'sg-snell.example.com', port: 6160, kind: 'snell', source: 'sn1' },
+  // VLESS — Clash only
+  { name: '🇩🇪 法兰克福 Reality', type: 'vless', server: 'fra.example.io', port: 443, kind: 'vless', source: 'v1' },
+  { name: '🇬🇧 伦敦 Reality', type: 'vless', server: 'lon.example.io', port: 443, kind: 'vless', source: 'v1' },
+  { name: '🇺🇸 纽约 Xray', type: 'vless', server: 'nyc.example.net', port: 443, kind: 'vless', source: 'v2' },
+  // Custom
+  { name: 'Home Relay', type: 'ss', server: 'home.example.com', port: 8388, kind: 'custom', source: 'c1' },
+  { name: 'Office SOCKS', type: 'socks5', server: '10.0.1.5', port: 1080, kind: 'custom', source: 'c2' },
+];
+
+const FILTERS = {
+  exclude: '剩余|流量|官网|Expire|套餐到期',
+};
+
+const GROUPS = [
+  { id: 'g1', name: '🇭🇰 香港', regex: '香港|HK|🇭🇰', strategy: 'url-test' },
+  { id: 'g2', name: '🇯🇵 日本', regex: '日本|东京|大阪|JP|🇯🇵', strategy: 'url-test' },
+  { id: 'g3', name: '🇸🇬 新加坡', regex: '新加坡|SG|🇸🇬', strategy: 'select' },
+  { id: 'g4', name: '🇺🇸 美国', regex: '美国|US|洛杉矶|圣何塞|🇺🇸', strategy: 'url-test' },
+  { id: 'g5', name: '🇹🇼 台湾', regex: '台湾|台北|TW|🇹🇼', strategy: 'select' },
+  { id: 'g6', name: '🇪🇺 欧洲', regex: '德国|英国|法兰克福|伦敦|🇩🇪|🇬🇧', strategy: 'url-test' },
+];
+
+const ROUTING = [
+  { id: 'r1', name: '🌐 全球代理', members: ['@auto', '@all', 'g1', 'g2', 'g3', 'g4'] },
+  { id: 'r2', name: '🍎 苹果服务', members: ['DIRECT', 'g3', 'g4'] },
+  { id: 'r3', name: '📺 流媒体', members: ['g1', 'g2', 'g6', 'g4'] },
+  { id: 'r4', name: '🤖 AI 服务', members: ['g4', 'g6', 'r1'] },
+  { id: 'r5', name: '🛑 广告拦截', members: ['REJECT', 'DIRECT'] },
+];
+
+const RULESETS = {
+  r1: ['https://ruleset.example.com/proxy.list', 'https://ruleset.example.com/gfw.list'],
+  r2: ['https://ruleset.example.com/apple.list', 'https://ruleset.example.com/icloud.list'],
+  r3: ['https://ruleset.example.com/streaming.list', 'https://ruleset.example.com/youtube.list'],
+  r4: ['https://ruleset.example.com/openai.list', 'https://ruleset.example.com/anthropic.list'],
+  r5: ['https://ruleset.example.com/reject.list'],
+};
+
+// Helper: which nodes match a regex group?
+function nodesForGroup(regex) {
+  let re;
+  try { re = new RegExp(regex); } catch (e) { return []; }
+  return NODES.filter(n =>
+    !new RegExp(FILTERS.exclude).test(n.name) && re.test(n.name)
+  );
+}
+
+// Sample generated config snippets (truncated, realistic-shape)
+const CLASH_PREVIEW = `# Generated by subconverter · 2026-04-30 14:22:03
+mixed-port: 7890
+allow-lan: true
+mode: rule
+log-level: info
+
+proxies:
+  - name: "🇭🇰 香港 IEPL 01"
+    type: ss
+    server: hk01.example.com
+    port: 443
+    cipher: chacha20-ietf-poly1305
+    password: "••••••••"
+  - name: "🇯🇵 大阪 BGP 01"
+    type: ss
+    server: jp01.example.com
+    port: 443
+  - name: "🇩🇪 法兰克福 Reality"
+    type: vless
+    server: fra.example.io
+    port: 443
+    network: tcp
+    tls: true
+    reality-opts:
+      public-key: "••••••••"
+
+proxy-groups:
+  - name: "🌐 全球代理"
+    type: select
+    proxies: ["♻️ 自动选择", "🇭🇰 香港", "🇯🇵 日本", "🇸🇬 新加坡", "🇺🇸 美国"]
+  - name: "♻️ 自动选择"
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    proxies: ["🇭🇰 香港 IEPL 01", "🇭🇰 香港 IEPL 02", "🇯🇵 大阪 BGP 01"]
+  - name: "🇭🇰 香港"
+    type: url-test
+    proxies: ["🇭🇰 香港 IEPL 01", "🇭🇰 香港 IEPL 02", "🇭🇰 香港 BGP 03"]
+
+rules:
+  - RULE-SET,apple,🍎 苹果服务
+  - RULE-SET,streaming,📺 流媒体
+  - RULE-SET,openai,🤖 AI 服务
+  - RULE-SET,reject,🛑 广告拦截
+  - RULE-SET,proxy,🌐 全球代理
+  - GEOIP,CN,DIRECT
+  - MATCH,🌐 全球代理`;
+
+const SURGE_PREVIEW = `# Generated by subconverter · 2026-04-30 14:22:03
+[General]
+loglevel = notify
+dns-server = 119.29.29.29, 223.5.5.5
+skip-proxy = 127.0.0.1, 192.168.0.0/16, localhost, *.local
+ipv6 = false
+
+[Proxy]
+🇭🇰 香港 IEPL 01 = ss, hk01.example.com, 443, encrypt-method=chacha20-ietf-poly1305, password=••••••••
+🇯🇵 大阪 BGP 01 = ss, jp01.example.com, 443
+🇭🇰 Snell HK Premium = snell, hk-snell.example.com, 6160, psk=••••••••, version=4
+
+[Proxy Group]
+🌐 全球代理 = select, ♻️ 自动选择, 🇭🇰 香港, 🇯🇵 日本, 🇸🇬 新加坡, 🇺🇸 美国
+♻️ 自动选择 = url-test, 🇭🇰 香港 IEPL 01, 🇭🇰 香港 IEPL 02, 🇯🇵 大阪 BGP 01, url=http://www.gstatic.com/generate_204
+🇭🇰 香港 = url-test, 🇭🇰 香港 IEPL 01, 🇭🇰 香港 IEPL 02, 🇭🇰 香港 BGP 03
+🍎 苹果服务 = select, DIRECT, 🇸🇬 新加坡, 🇺🇸 美国
+
+[Rule]
+RULE-SET,https://ruleset.example.com/apple.list,🍎 苹果服务
+RULE-SET,https://ruleset.example.com/streaming.list,📺 流媒体
+RULE-SET,https://ruleset.example.com/openai.list,🤖 AI 服务
+RULE-SET,https://ruleset.example.com/reject.list,🛑 广告拦截
+RULE-SET,https://ruleset.example.com/proxy.list,🌐 全球代理
+GEOIP,CN,DIRECT
+FINAL,🌐 全球代理`;
+
+Object.assign(window, {
+  SOURCES, NODES, FILTERS, GROUPS, ROUTING, RULESETS,
+  CLASH_PREVIEW, SURGE_PREVIEW, nodesForGroup,
+});

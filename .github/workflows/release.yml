@@ -42,6 +42,9 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
+      - name: Build web image
+        run: docker build -f web/Dockerfile web
+
   binaries:
     runs-on: ubuntu-latest
     needs: test
@@ -92,8 +95,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
+      - name: Extract backend Docker metadata
+        id: api_meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
@@ -112,17 +115,44 @@ jobs:
         id: build_date
         run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push Docker image
+      - name: Build and push backend Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
+          tags: ${{ steps.api_meta.outputs.tags }}
+          labels: ${{ steps.api_meta.outputs.labels }}
+          annotations: ${{ steps.api_meta.outputs.annotations }}
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
             DATE=${{ steps.build_date.outputs.value }}
+
+      - name: Extract web Docker metadata
+        id: web_meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}-web
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+          labels: |
+            org.opencontainers.image.title=subconverter-web
+            org.opencontainers.image.description=Web admin UI for subconverter.
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+
+      - name: Build and push web Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.web_meta.outputs.tags }}
+          labels: ${{ steps.web_meta.outputs.labels }}
+          annotations: ${{ steps.web_meta.outputs.annotations }}

@@ -1,18 +1,12 @@
-# 完整开发计划
+# v2.0 开发计划
+
+> v1.0 开发计划（M0-M5）已归档至 `docs/v1.0/implementation/implementation-plan.md`。
 
 ## 目标
 
-本文件定义系统从空仓库到可用版本的渐进式开发计划。计划需满足三个要求：
-
-- 可渐进：每一阶段结束后，系统都有明确可工作的边界
-- 可验收：每一阶段都有可执行的验收项和通过标准
-- 可回溯：需求、设计、里程碑、测试和产出之间可建立稳定追踪关系
+在 v1.0 已完成的核心管道基础上，扩展 Web 管理后台和配置热重载能力。v1.0 提供了从 YAML 配置到 Clash Meta / Surge 输出的完整管道（Source → Filter → Group → Route → ValidateGraph → Target → Render）；v2.0 在此之上增加配置 CRUD API、运行时热重载、管道中间阶段预览、以及通过 Docker Compose 分离部署的 React SPA 管理界面——使用户能通过浏览器完成配置编辑、预览和生成操作，无需手动修改 YAML 文件。
 
 本计划是 `docs/architecture.md`、`docs/design/*` 和测试策略之间的执行连接层。
-
-> **偏差说明**（2026-04-19）：本文件是各里程碑的历史实施记录。后续重构（两阶段配置：`config.Prepare()` → `RuntimeConfig`）改变了部分实现细节，差异标注为 `[⚠ 偏差]`。当前代码行为以 `docs/design/*.md` 为准。
->
-> **历史记录说明**（2026-04-24）：本文件中的“已知限制”按里程碑时间记录，**不等同于当前技术债**——随后的修复会就地以 `[⚠ 偏差]` 标注，请以代码当前行为为准，不要把"已知限制"视为待办债务。
 
 ---
 
@@ -20,9 +14,9 @@
 
 ### 渐进式原则
 
-- 先稳定配置和数据结构，再扩展行为逻辑
-- 先拿到原始节点，再构建分组和路由
-- 先完成可渲染的中间表示，再接入 HTTP 服务
+- 先稳定 API 层（读写、校验、热重载），再构建依赖 API 的前端
+- 先完成后端并发安全改造，再暴露会触发写操作的接口
+- 先建立 Web 镜像与 Compose 生产部署基础设施，再进入前端页面开发
 - 每个阶段只解决一类主要问题，避免跨阶段耦合
 
 ### 可验收原则
@@ -41,7 +35,7 @@
 
 ## 编号体系
 
-### 需求编号
+### v1.0 需求基线（已完成）
 
 | 编号 | 需求 |
 |------|------|
@@ -59,654 +53,376 @@
 | `REQ-12` | 配置、引用和循环依赖等错误可校验和报告 |
 | `REQ-13` | `@auto` 自动补充 routing 成员（节点组+包含 `@all` 的服务组+DIRECT） |
 
+### v2.0 需求
+
+| 编号 | 需求 |
+|------|------|
+| `REQ-14` | 配置读取 API（`GET /api/config`，返回 Config JSON + `config_revision`） |
+| `REQ-15` | 配置写入 API（`PUT /api/config`，本地可写配置源下基于 `config_revision` 条件写回） |
+| `REQ-16` | 静态配置校验 API（`POST /api/config/validate`，结构化错误/警告/提示，含定位信息） |
+| `REQ-17` | 运行时热重载（`POST /api/reload`，RWMutex 保护 RuntimeConfig） |
+| `REQ-18` | 节点预览 API（`GET/POST /api/preview/nodes`，运行时与草稿双模式） |
+| `REQ-19` | 分组预览 API（`GET/POST /api/preview/groups`，含服务组与宏展开结果） |
+| `REQ-20` | 生成预览 API（`GET/POST /api/generate/preview`，返回文本不下载） |
+| `REQ-21` | 系统状态 API（`GET /api/status`，含配置源能力与运行时状态） |
+| `REQ-22` | Web 静态资源容器化发布（nginx 托管 SPA + 同源反向代理） |
+| `REQ-23` | Docker Compose 生产部署（`web` + `api` 双服务） |
+| `REQ-24` | Web 管理后台 -- 配置编辑（A1-A8 页面） |
+| `REQ-25` | Web 管理后台 -- 运行时预览（B1-B3 页面） |
+| `REQ-26` | Web 管理后台 -- 系统状态（C 页面） |
+
 ### 里程碑编号
 
-- `M0`：工程基线
-- `M1`：配置与模型
-- `M2`：Source 与 Filter
-- `M3`：Group 与 Route
-- `M4`：校验与渲染
-- `M5`：HTTP 服务与端到端验收
+- `M6`：Admin API 基线
+- `M7`：预览与状态 API
+- `M8`：Web 镜像与 Compose 集成
+- `M9`：前端工程与核心页面
+- `M10`：前端完善与端到端验收
 
-### 测试编号建议
+### 测试编号扩展
 
-- `T-CFG-*`：配置与保序
-- `T-SRC-*`：订阅拉取与 SS 解析
-- `T-FLT-*`：过滤
-- `T-GRP-*`：分组与链式展开
-- `T-RTE-*`：服务组与路由
-- `T-VAL-*`：图级校验
-- `T-RND-*`：渲染
-- `T-E2E-*`：端到端测试
+v1.0 测试编号（`T-CFG-*`、`T-SRC-*`、`T-FLT-*`、`T-GRP-*`、`T-RTE-*`、`T-VAL-*`、`T-RND-*`、`T-E2E-*`）继续保留。v2.0 新增以下编号域：
+
+- `T-ADM-*`：Admin API 测试（配置 CRUD、鉴权）
+- `T-RLD-*`：热重载测试（并发安全、失败回滚）
+- `T-PRV-*`：预览 API 测试（部分管道执行、状态查询）
+- `T-SPA-*`：Web 容器与反向代理测试（静态资源、fallback、Compose 代理）
+- `T-WEB-*`：前端组件/集成测试（页面渲染、交互流程）
 
 ---
 
 ## 里程碑总览
 
-| 里程碑 | 主题 | 完成状态 |
-|------|------|------|
-| `M0` | 工程基线 | ✅ 已完成 |
-| `M1` | 配置与模型 | ✅ 已完成 |
-| `M2` | Source 与 Filter | ✅ 已完成 |
-| `M3` | Group 与 Route | ✅ 已完成 |
-| `M4` | 校验与渲染 | ✅ 已完成 |
-| `M5` | HTTP 与 E2E | ✅ 已完成 |
+| 里程碑 | 主题 | 依赖 | 预估复杂度 |
+|--------|------|------|-----------|
+| `M6` | Admin API 基线 | v1.0 完成 | 中 |
+| `M7` | 预览与状态 API | M6 | 中 |
+| `M8` | Web 镜像与 Compose 集成 | M6 | 中 |
+| `M9` | 前端工程与核心页面 | M7, M8 | 高 |
+| `M10` | 前端完善与端到端验收 | M9 | 高 |
 
 执行顺序：
 
 ```text
-M0 -> M1 -> M2 -> M3 -> M4 -> M5
+M6 -> M7 (顺序)
+M6 -> M8 (与 M7 并行)
+M7 + M8 -> M9 -> M10
 ```
 
 关键依赖：
 
-- `M1` 未稳定前，不展开 `M2` 之后的实现
-- `M2` 提供稳定原始节点输入，供 `M3` 使用
-- `M3` 提供稳定中间表示，供 `M4` 渲染
-- `M4` 完成后再接入 `M5`，避免 HTTP 层过早绑定未稳定逻辑
+- `M6` 建立配置读写和热重载能力，是所有后续 API 和前端的基础
+- `M7` 和 `M8` 互不依赖，可并行推进；`M7` 提供预览数据，`M8` 提供前端托管基础设施
+- `M9` 同时依赖 `M7`（预览 API）和 `M8`（Web 容器托管基础设施），需两者均完成后启动
+- `M10` 是 `M9` 的功能延续和验收收口
 
 ---
 
-## M0: 工程基线 ✅
+## M6: Admin API 基线
 
 ### 目标
 
-建立后续开发可承载的最小工程骨架，避免后续阶段在目录、依赖和测试结构上反复返工。
+建立配置管理的 API 基础设施，包括配置读写、校验和热重载。这是 v2.0 的地基——所有后续 API 和前端功能都依赖配置可读、可写、可校验、可热重载的能力。
 
 ### 工作项
 
-- 初始化 `go.mod`（模块路径 `github.com/John-Robertt/subconverter`，Go 1.24）
-- 建立推荐目录结构
-- 增加 `configs/base_config.yaml`
-- 约定 `testdata` 和示例输入目录
-- 约定基本命令：格式化、测试、运行（Makefile）
-- 明确错误分类：配置错误、拉取错误、构建错误、渲染错误 [⚠ 偏差：当前新增 `TargetError` 表达目标格式投影错误，并继续由 HTTP 层映射为 500]
+- 新建 `internal/app` 包承接 v2.0 应用服务逻辑；新建 `internal/admin` 包承接 `/api/*` handler 逻辑
+- 新增配置源能力模型：本地文件为 writable，HTTP(S) URL 为 read-only
+- 实现 `GET /api/config`（读取配置源中的 YAML，计算 `config_revision=sha256:<hex>`，转换为 JSON 格式返回；保序字段使用 `OrderedMap` 的 JSON 表示）
+- 实现 `PUT /api/config`（仅本地可写配置源支持；接收 `{config_revision, config}`，写入前重读当前文件并校验 revision；冲突返回 `409 config_revision_conflict`；校验通过后临时文件 + rename 原子写回 YAML）
+- 实现 `POST /api/config/validate`（仅执行 JSON 反序列化 + `Prepare` 静态校验，不写回、不拉取远程源；返回 errors / warnings / infos 三级结构化结果）
+- 实现 `POST /api/reload`（触发热重载：强制刷新主配置源 → re-`Prepare` → WLock swap `*RuntimeConfig` pointer + runtime revision）
+- 在 `app.Service` 中管理并发安全配置访问（`sync.RWMutex`：读路径只在锁内复制 `*RuntimeConfig` 快照，`/api/reload` 写路径 WLock 替换指针）
+- 将 `generate.Service` 改为无状态设计：移除 `cfg *config.RuntimeConfig` 字段，`Generate` 方法改为接收 `*config.RuntimeConfig` 参数；`app.Service` 在每次 `/generate` 和 `GET /api/generate/preview` 请求时取快照后传入（迁移方案 A）
+- 在 `internal/server` 层注册 `/api/*` 路由
+- 将现有 token 鉴权扩展到 `/api/*` 路由；`/api/*` 使用 `Authorization: Bearer ...`，`/generate` 保留 query token 兼容订阅链接
 
 ### 产物
 
-- 最小 Go 工程骨架（`.gitignore`、`go.mod`、`Makefile`）
-- 空包结构（`config`、`model`、`fetch`、`pipeline`、`render`、`server`）
-- `internal/errtype`：五类错误类型（`ConfigError`、`FetchError`、`ResourceError`、`BuildError`、`RenderError`）及对应单元测试 [⚠ 偏差：当前为六类，新增 `TargetError`]
-- 示例配置草稿（`configs/base_config.yaml`）
-- 测试数据（`testdata/subscriptions/sample.txt`：base64 编码的 SS URI 样本）
-- 入口占位（`cmd/subconverter/main.go`）
+- `internal/app/`：
+  - `service.go`：配置快照、条件写回、热重载、状态与预览的应用服务入口
+  - `config_revision.go`：`sha256:<hex>` 计算与 revision 比对
+  - `config_source.go`：配置源能力判断（local writable / remote read-only）与 reload 强制刷新策略
+- `internal/admin/`：
+  - `config_handler.go`：配置读取和写入 handler（JSON ←→ YAML 转换，`OrderedMap` 保序序列化）
+  - `validate_handler.go`：静态校验 handler（复用 `config.Prepare` 校验逻辑，包装为结构化 JSON 响应）
+  - `reload_handler.go`：热重载 handler（加载 → 准备 → 锁交换 → 响应）
+- `internal/generate/`：
+  - 移除 `Service.cfg` 字段，`Generate` 改为接收 `*config.RuntimeConfig` 参数（无状态化迁移）
+- `internal/server/`：
+  - 路由注册扩展：`/api/config`、`/api/config/validate`、`/api/reload`
+- 测试：`T-ADM-001` ~ `T-ADM-010`
 
 ### 验收项
 
-- ✅ `go test ./...` 可执行（errtype 单元测试通过）
-- ✅ 目录结构符合 `project-structure.md`（补充 `internal/errtype`）
-- ✅ 示例配置覆盖核心路径：订阅、地区组、链式组、routing、rulesets、fallback
-
-### 实施记录
-
-新增 `internal/errtype` 包作为对 `project-structure.md` 的补充。理由：五类错误横跨所有业务包，放在任何业务包中会造成循环依赖。`errtype` 与 `model` 一样是零依赖叶子包。[⚠ 偏差：当前为六类错误，新增 `TargetError`]
-
-### 对应需求
-
-- `REQ-01`
-
-### 回溯点
-
-- 里程碑记录：`M0-baseline`
-- 问题边界：若后续出现包循环或目录失衡，回到本阶段修正
-
-### 风险
-
-- 包边界定义不清会导致后续依赖反转
-
----
-
-## M1: 配置与模型 ✅
-
-### 目标
-
-把用户 YAML 稳定转换为系统内部可操作的配置对象和统一中间表示。
-
-### 工作项
-
-- 实现配置结构定义（`Config`、`Sources`、`CustomProxy`、`RelayThrough`、`Group`、`Filters`）
-- 实现 `OrderedMap[V any]` 泛型保序映射
-- 实现 YAML 加载器（`Load`）
-- 实现静态配置校验（`Validate`，12 项校验规则，收集全部错误后一次返回）[⚠ 偏差：当前已重构为 `config.Prepare()`，在校验基础上增加正则编译、URL 解析、`@auto` 展开、命名冲突检测和路由环路检测，产出启动期准备好的 `RuntimeConfig`；请求期按只读契约消费。`Validate` 保留为兼容包装器（已标 Deprecated）]
-- 实现统一中间表示模型（`Proxy`、`ProxyGroup`、`Ruleset`、`Rule`、`Pipeline`）
-- 新增 `base_url` 顶层字段（用于 Surge Managed Profile）
-- 让示例配置可成功加载并通过校验
-
-### 产物
-
-- `internal/config`：
-  - `orderedmap.go`：自实现的泛型保序映射（~80 行），基于 yaml.v3 `MappingNode.Content` 遍历保序，支持 `Keys()`（防御性拷贝）、`Get()`、`Entries()`（Go 1.23+ `iter.Seq2`）
-  - `config.go`：顶层 `Config` 及所有子结构体定义
-  - `loader.go`：YAML 文件加载器，错误包装为 `*errtype.ConfigError`
-  - `validate.go`：静态校验器，使用 `errors.Join` 收集多个 `*errtype.ConfigError`
-- `internal/model`：
-  - `model.go`：格式无关的中间表示类型，枚举使用 typed string constants
-- 外部依赖：仅新增 `gopkg.in/yaml.v3`
-- 测试数据：`testdata/config/minimal_valid.yaml`、`testdata/config/malformed.yaml`
-
-### 验收项
-
-- ✅ `groups`、`routing`、`rulesets` 顺序保持不变（T-CFG-001/002/003）
-- ✅ `relay_through.strategy` 必填（T-CFG-004）
-- ✅ 所有节点组策略都显式声明（T-CFG-005）
-- ✅ 非法正则、缺失字段、非法枚举值、非法 URL 可返回错误
-- ✅ 示例配置能加载为内存对象并通过校验
-- ✅ `go test ./...` 全部通过
-
-### 对应测试
-
-- `T-CFG-001`：`groups` 保序解析 → `TestIntegration_GroupsOrder`
-- `T-CFG-002`：`routing` 保序解析 → `TestIntegration_RoutingOrder`
-- `T-CFG-003`：`rulesets` 保序解析 → `TestIntegration_RulesetsOrder`
-- `T-CFG-004`：`relay_through.strategy` 缺失时报错 → `TestValidate_RelayThroughMissingStrategy`
-- `T-CFG-005`：节点组 `strategy` 非法时报错 → `TestValidate_GroupInvalidStrategy`
-
-### 实施记录
-
-关键设计决策：
-
-| 决策 | 结论 | 原因 |
-|------|------|------|
-| OrderedMap | 自实现泛型 `OrderedMap[V any]`，不用第三方库 | 需求极简（保序遍历+查找），~80 行代码，遵循依赖克制原则 |
-| 保序机制 | 利用 yaml.v3 `MappingNode.Content` 的有序切片 | 标准库能力，无需额外工具 |
-| 校验策略 | 收集全部错误后 `errors.Join` 一次返回 | 用户一次看到所有问题，避免逐个修复 |
-| Model 枚举 | typed string constants（非 iota） | 可调试、可序列化、日志友好 |
-| config 与 model | 两个包完全独立，无 import 关系 | config 是用户配置层，model 是系统语义层，转换在 M2-M3 |
-| `base_url` | 顶层可选字段，用于 Surge `#!MANAGED-CONFIG` 头 | Surge 客户端需要自引用 URL 才能自动更新配置 |
+- `GET /api/config` 返回与配置源中已保存 YAML 等价的 JSON，并包含 `config_revision`
+- `PUT /api/config` → `GET /api/config` round-trip 幂等（JSON → YAML → JSON 内容一致），成功后返回新的 `config_revision`
+- `PUT /api/config` 缺少 revision 返回 400；revision 与当前文件不一致返回 `409 config_revision_conflict` 且不写入
+- HTTP(S) 配置源下 `PUT /api/config` 返回 409，且不尝试写回远端
+- `PUT` 非法配置返回 400 + 结构化错误（含 `code`、`display_path`、`locator.json_pointer`）
+- `POST /api/config/validate` 返回 `{ errors: [], warnings: [], infos: [] }` 结构
+- `POST /api/config/validate` 不拉取订阅、不执行 Source / Group / Target / Render；生成可用性由预览和生成预览接口覆盖
+- `POST /api/reload` 成功路径：新 `RuntimeConfig` 生效，后续 `/generate` 使用新配置；远程主配置 URL 在 TTL 未过期时仍能读到最新内容
+- `POST /api/reload` 失败路径：旧 `RuntimeConfig` 不变，返回错误详情
+- 慢速 `/generate` 或 `/api/preview/*` 请求不会因持有配置读锁而阻塞 `/api/reload` 获取写锁
+- 保序字段（`groups` / `routing` / `rulesets`）JSON round-trip 顺序不变
+- 未携带有效 Authorization header 的 `/api/*` 请求返回 401；`/generate?token=...` 保持兼容
+- `go test ./...` 全部通过
 
 ### 对应需求
 
-- `REQ-01`
-- `REQ-05`
-- `REQ-06`
-- `REQ-07`
-- `REQ-12`
-
-### 回溯点
-
-- 里程碑记录：`M1-config-model`
-- 回溯边界：后续若出现顺序错误或字段校验错误，先回查本阶段
-
-### 退出条件
-
-- ✅ 顶层配置结构已冻结：`sources`、`filters`、`groups`、`routing`、`rulesets`、`rules`、`fallback`、`base_url`
+- `REQ-14`、`REQ-15`、`REQ-16`、`REQ-17`
 
 ### 已知限制
 
-- 静态校验不做跨段引用检查（如 fallback 是否引用 routing 中的 key），留给 M4 图级校验 [⚠ 偏差：当前 `Prepare` 已包含跨段引用检查——routing 成员合法性、ruleset/rule 策略存在性、fallback 存在性均在启动期校验，ValidateGraph 不再重复]
-- 正则只编译不存储，M2/M3 pipeline 阶段按需重新编译 [⚠ 偏差：当前 `Prepare` 编译正则并存入 `RuntimeConfig`（如 `PreparedGroup.Match`、`PreparedFilters.ExcludePattern`），请求期直接使用已编译正则]
-- `base_url` 在 M1 做静态格式校验，M5 server 层只负责将其拼接为外部 managed URL
-
----
-
-## M2: Source 与 Filter ✅
-
-### 目标
-
-建立稳定的原始节点输入能力，确保系统能正确获取并清洗订阅、Snell 与 VLESS 原始节点。
-
-### 工作项
-
-- 实现订阅抓取器
-- 实现 TTL 缓存
-- 实现 SS URI 解析器
-- 实现 Snell Surge 行解析器
-- 实现 VLESS URI 解析器
-- 实现多订阅顺序拉取（顺序保证去重后缀确定性）
-- 实现 Snell 来源逐行扫描、整源报错与定位信息包装
-- 实现 VLESS 来源逐行扫描、整源报错与定位信息包装
-- 将自定义代理转换为原始节点
-- 实现过滤逻辑
-
-### 产物
-
-- `internal/fetch`：
-  - `fetch.go`：`Fetcher` 接口（单方法，便于测试注入）、`HTTPFetcher` 实现、`SanitizeURL`（URL 脱敏）
-  - `cache.go`：`CachedFetcher`（TTL 缓存装饰器，实现 `Fetcher` 接口，可注入时钟）
-- `internal/pipeline`：
-  - `ssuri.go`：SIP002 风格 SS URI 解析器，支持 base64/base64url 与 plain userinfo，并保留 plugin 结构
-  - `snell_line.go`：Surge 风格 Snell 单行解析器，支持注释/空行跳过与严格错误
-  - `vlessuri.go`：VLESS URI 解析器，按 Mihomo 兼容语义归一化 transport 并透传 encryption
-  - `source.go`：Source 阶段编排——订阅拉取/解码 + Snell/VLESS 来源逐行扫描→跨来源去重→自定义代理转换→名称冲突检查
-  - `filter.go`：Filter 阶段——`exclude` 正则作用于拉取类节点（`KindSubscription` + `KindSnell` + `KindVLess`）
-- `testdata/subscriptions/sample_sub2.txt`：第二份订阅 fixture（含重名 HK-01，用于去重测试）
-- 外部依赖：无新增
-
-### 验收项
-
-注：以下为 M2 当时的阶段验收记录；当前实现已在此基础上继续扩展 SS URI / plugin 支持能力。
-
-- ✅ 支持合法 SS URI 解析（padded/unpadded base64、URL 编码中文 fragment、password 含冒号）
-- ✅ 当前实现进一步支持 SIP002 风格 plain userinfo、query 参数与通用 plugin 解析
-- ✅ 非法 SS URI 可识别并返回 `*errtype.BuildError{Phase: "source"}`（含端口范围 1-65535 校验）
-- ✅ 支持合法 Snell Surge 行解析（含空白变体、ShadowTLS、未知键保留）
-- ✅ 支持合法 VLESS URI 解析（含 transport fallback、encryption 透传、transport-specific query 分发）
-- ✅ Snell 来源按原始文本逐行扫描；单行失败整源报错，消息携带脱敏 URL 与 1-based 物理行号，内层解析错误保留在 `BuildError.Cause`
-- ✅ VLESS 来源按原始文本逐行扫描；单行失败整源报错，消息携带脱敏 URL 与 1-based 物理行号，内层解析错误保留在 `BuildError.Cause`
-- ✅ 多订阅结果可合并，跨订阅重名自动追加 ②③ 后缀，且二轮去重解决生成名与原始名碰撞
-- ✅ `exclude` 影响全部拉取类节点（订阅 + Snell + VLESS）
-- ✅ 自定义代理不受过滤影响（即使名称匹配 exclude 正则）
-- ✅ 缓存命中与失效行为符合预期（可注入时钟验证）
-- ✅ 自定义代理与拉取类节点（订阅 / Snell / VLESS）重名时返回错误，并指明冲突源 kind
-- ✅ 混合有效/无效 URI 时跳过无效行，保留有效节点
-- ✅ 空订阅（0 个有效节点）返回错误
-- ✅ 空 Snell 来源（0 个有效节点）返回错误
-- ✅ 空 VLESS 来源（0 个有效节点）返回错误
-- ✅ `go test ./...` 全部通过
-
-### 对应测试
-
-- `T-SRC-001`：合法 SS URI 解析 → `TestParseSSURI_Valid`（当前已覆盖 plain userinfo、query、plugin 与转义场景）
-- `T-SRC-002`：非法 SS URI 报错 → `TestParseSSURI_Invalid`（当前已覆盖 query 编码与 plugin 转义错误）
-- `T-SNELL-001`：合法 Snell Surge 行解析 → `TestParseSnellSurgeLine_Valid`
-- `T-SNELL-002`：Snell 注释/空行跳过 → `TestParseSnellSurgeLine_Skip`
-- `T-SNELL-003`：非法 Snell 行报错 → `TestParseSnellSurgeLine_Invalid`
-- `T-SNELL-004`：Snell 重复键 last-wins → `TestParseSnellSurgeLine_DuplicateKey`
-- `T-SRC-003`：多订阅合并 → `TestSource_MultiSubscriptionMerge`
-- `T-SRC-SNELL-001`：Snell 来源转换 → `TestSource_SnellSource`
-- `T-SRC-SNELL-003`：Snell 单行失败路径 → `TestSource_SnellSource_MalformedLineFailsFast`
-- `T-SRC-SNELL-004`：空 Snell 来源 → `TestSource_SnellSource_EmptyReported`
-- `T-SRC-VLESS-001`：VLESS URI 解析 → `TestParseVLessURI_Valid`
-- `T-SRC-VLESS-002`：VLESS transport fallback / encryption 透传 → `TestParseVLessURI_NetworkNormalization`
-- `T-SRC-VLESS-SRC-001`：VLESS 来源转换 → `TestSource_VLessSourceBasic`
-- `T-SRC-VLESS-SRC-002`：VLESS 来源 transport fallback / encryption 透传 → `TestSource_VLessUnknownTypeFallsBackAndEncryptionPassesThrough`
-- `T-FLT-001`：`exclude` 过滤订阅节点 → `TestFilter_ExcludeSubscriptionNodes`
-- `T-FLT-SNELL`：`exclude` 过滤 Snell 节点 → `TestFilter_SnellNodesFiltered`
-- `T-FLT-VLESS`：`exclude` 过滤 VLESS 节点 → `TestFilter_VLessNodesFiltered`
-- `T-FLT-002`：自定义代理不参与过滤 → `TestFilter_CustomProxiesNotFiltered`
-- `T-SRC-004`：缓存 TTL 命中与失效 → `TestCachedFetcher_TTLHitAndMiss`
-- `T-SRC-005`：去重后缀碰撞解决 → `TestSource_DedupSuffixCollision`
-
-### 实施记录
-
-关键设计决策：
-
-| 决策 | 结论 | 原因 |
-|------|------|------|
-| Fetcher 抽象 | 单方法接口 `Fetcher`，pipeline 依赖接口 | 测试可注入 fake，不依赖网络 |
-| 缓存模式 | `CachedFetcher` 装饰器，实现同一 `Fetcher` 接口 | 透明包装，可注入时钟测试 TTL |
-| 拉取策略 | 顺序拉取，非并发 | 单用户通常 1-3 订阅，顺序保证去重后缀确定性；接口已为并发预留 |
-| 去重命名 | 两轮去重：第一轮追加 ②③...⑩/(N) 后缀，第二轮解决生成名与原始名碰撞 | 保证节点名全局唯一，覆盖极端场景 |
-| base64 解码 | 四种 base64 编码依次尝试（Std/Raw/URL/RawURL） | 兼容不同订阅商格式 |
-| 解析容错 | 逐行解析，跳过无效 URI；整个订阅 0 有效节点报错 | 平衡容错与错误发现 |
-| URL 脱敏 | `SanitizeURL` 剥离 query 和 fragment | 防止泄露用户 token |
-| 缓存隔离 | 存储和返回都做防御性拷贝 | 防止调用方修改污染缓存数据 |
-
-### 对应需求
-
-- `REQ-02`
-- `REQ-03`
-- `REQ-12`
-
-### 回溯点
-
-- 里程碑记录：`M2-source-filter`
-- 固定测试订阅响应作为回归输入
-
-### 退出条件
-
-- ✅ `Source` 输出稳定的 `[]model.Proxy`，可供 M3 Group 阶段消费
-- ✅ `Filter` 输出过滤后的节点集合，自定义代理不受影响
-
-### 已知限制
-
-- 不支持并发拉取订阅（接口设计已预留，可后续添加 `errgroup` 并发而无破坏性变更）
-- 不处理 `RelayThrough`（留给 M3 Group 阶段）
-- 订阅体中非 SS URI 格式的行直接跳过，不记录警告日志（可在 M5 接入日志后补充）
+- YAML 写回可能丢失用户注释（`gopkg.in/yaml.v3` 的 `Marshal` 不保留原始注释节点；若需保留注释，需改用 `yaml.Node` 级别的 patch-merge 策略，但复杂度显著上升）
+- 热重载成功前已经取得配置快照的请求会继续使用旧配置完成；当前不提供严格线性一致性保证
+- `OrderedMap` 的 JSON 序列化需要自定义 `MarshalJSON` / `UnmarshalJSON`（标准 `encoding/json` 不保证 map 顺序）
+- 条件写回只保护本地文件配置源；HTTP(S) 配置源仍为只读
 
 ### 风险
 
-- 订阅返回格式存在兼容性差异（已通过 SIP002 解析、userinfo 多形态兼容与 plugin 解析缓解）
-- 订阅/VLESS/Snell 来源都可能包含空行、无效行或异常内容（已通过逐行解析与严格/宽松分层处理）
+- `OrderedMap` 的 JSON 序列化/反序列化需自定义逻辑——若实现不一致会破坏保序不变量。应在 M6 初期用独立单测验证 round-trip
+- YAML 写回格式与原始文件可能有差异（缩进、引号风格、注释丢失），需评估用户感知影响
+- `config.Prepare` 的校验与 `validate` API 的结构化错误之间的映射需统一设计——现有 `errors.Join` + `ConfigError` 模式需包装为含 `code`、`display_path` 和 `locator` 的 JSON 友好结构
+- `admin` 若直接依赖 `pipeline` / `model` 会破坏 HTTP 薄层边界；需用依赖检查或包导入测试锁定边界
 
 ---
 
-## M3: Group 与 Route ✅
+## M7: 预览与状态 API
 
 ### 目标
 
-把节点集合稳定转换成节点组、服务组和路由绑定，形成系统业务语义层。
+暴露管道中间阶段的数据，支持前端运行时预览。预览 API 让用户在不实际生成配置文件的情况下查看节点列表、分组结果和生成输出，降低配置调试的试错成本。
 
 ### 工作项
 
-- 根据 `groups` 生成地区节点组
-- 根据 `relay_through` 生成链式节点
-- 自动生成链式组
-- 计算 `@all`
-- 构建服务组（含 `@auto` 展开）
-- 装配 `rulesets`、`rules` 和 `fallback`
+- 实现 `GET /api/preview/nodes`（基于当前 `RuntimeConfig` 执行 Source + Filter 阶段，返回节点列表 JSON，含 Kind / Type / 来源标记 / filtered 标记）
+- 实现 `POST /api/preview/nodes`（接收 `{config}` 草稿，Prepare 后执行 Source + Filter，不写文件、不替换 RuntimeConfig）
+- 实现 `GET /api/preview/groups`（基于当前 `RuntimeConfig` 执行到 Route 阶段，返回节点组、链式组、服务组、`@all` / `@auto` 展开结果）
+- 实现 `POST /api/preview/groups`（接收 `{config}` 草稿，Prepare 后执行到 Route 阶段）
+- 实现 `GET/POST /api/generate/preview?format=clash|surge`（复用生成逻辑，返回生成文本但不触发下载——无 `Content-Disposition` header；POST 使用草稿配置；用于验证草稿在目标格式下的生成可用性）
+- 实现 `GET /api/status`（进程信息、版本号、配置源位置与可写性、配置加载状态、dirty 状态、上次热重载时间和结果）
+- 在 `app` / `pipeline` 之间新增部分执行入口（`SourceAndFilter`、`SourceFilterGroupRoute`），复用现有阶段函数但在指定阶段截断返回
 
 ### 产物
 
-- `internal/pipeline/`:
-  - `group.go`：Group 阶段编排——地区组正则匹配→链式节点/组生成→@all 计算
-  - `route.go`：Route 阶段编排——@auto 展开→服务组构建→@all 展开→规则集映射→内联规则解析→fallback 记录
-- 外部依赖：无新增
+- `internal/admin/`：
+  - `preview_handler.go`：节点预览和分组预览 handler
+  - `generate_preview_handler.go`：生成预览 handler
+  - `status_handler.go`：系统状态 handler
+- `internal/app/`：
+  - `preview.go`：运行时与草稿预览编排
+  - `status.go`：系统状态查询
+- `internal/pipeline/`：
+  - `FilterResult{Included, Excluded}` 与必要的部分执行入口函数（基于现有 `Build` 的阶段拆分，不改变现有 `Build` 对外行为）
+- `internal/generate/`：
+  - 继续提供生成能力；状态查询由 `app.Service` 承接
+- 测试：`T-PRV-001` ~ `T-PRV-006`
 
 ### 验收项
 
-- ✅ 地区组能按正则匹配节点（全部拉取类节点参与匹配：订阅 + Snell + VLESS）
-- ✅ 链式展开支持 `group`、`select`、`all` 三种模式
-- ✅ 链式组策略来自 `relay_through.strategy`
-- ✅ 链式组出现在节点组层（`Scope: ScopeNode`）
-- ✅ 链式组命名 = `custom_proxy.name` 原样值，无系统注入前缀（详见 config-schema.md；2026-04-17 从原 `🔗 <custom_proxy.name>` 改为直接使用 name）
-- ✅ 链式节点属性（Type/Server/Port/Params/Dialer）正确传递
-- ✅ Snell 节点可作为 `relay_through` 的有效上游
-- ✅ VLESS 节点可作为 `relay_through` 的有效上游
-- ✅ `@all` 不包含链式节点
-- ✅ `@all` 包含全部原始节点（订阅 + Snell + VLESS + 不带 `relay_through` 的自定义）
-- ✅ 服务组能引用节点组、服务组、`DIRECT`、`REJECT`
-- ✅ `@all` 在服务组 Members 中正确展开
-- ✅ ruleset 与 fallback 能绑定到目标服务组
-- ✅ 内联规则 Policy 从最后逗号后提取
-- ✅ `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT（声明序）
-- ✅ `@auto` 自动去重，组不包含自身
-- ✅ `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
-- ✅ 同一 entry 中重复 `@auto` 会被静态校验拒绝
-- ✅ `@auto` 与 `@all` 在同一 entry 中互斥（静态校验拦截）
-- ✅ 不含 `@auto` 的 entry 行为不变（向后兼容）
-- ✅ `Route(cfg, nil)` 按空 `GroupResult` 处理，不发生 panic
-- ✅ `go test ./...` 全部通过
-
-### 对应测试
-
-- `T-GRP-001`：地区组正则匹配 → `TestGroup_RegionGroupMatching`
-- `T-GRP-002`：`relay_through=group` 生成链式组 → `TestGroup_ChainedTypeGroup`
-- `T-GRP-003`：`relay_through=select` 生成链式组 → `TestGroup_ChainedTypeSelect`
-- `T-GRP-004`：`relay_through=all` 生成链式组 → `TestGroup_ChainedTypeAll`
-- `T-GRP-005`：`@all` 排除链式节点 → `TestGroup_AllProxiesExcludesChained`
-- `T-GRP-006`：`type=group` 引用不存在 → `TestGroup_ChainedGroupRefNotFound`
-- `T-GRP-007`：无 relay_through → `TestGroup_NoChaining`
-- `T-GRP-008`：多个链式组 → `TestGroup_MultipleChainedGroups`
-- `T-GRP-009`：链式节点属性 → `TestGroup_ChainedNodeProperties`
-- `T-GRP-010`：合并顺序 → `TestGroup_ProxiesMergeOrder`
-- `T-GRP-SNELL-001`：Snell 参与地区组匹配 → `TestGroup_SnellParticipatesInRegionMatch`
-- `T-GRP-VLESS-001`：VLESS 参与地区组匹配 → `TestGroup_VLessParticipatesInRegionMatch`
-- `T-GRP-VLESS-002`：VLESS 可作为链式上游 → `TestGroup_VLessEligibleAsChainUpstream`
-- `T-RTE-001`：服务组声明序 → `TestRoute_ServiceGroups`
-- `T-RTE-002`：`@all` 展开 → `TestRoute_AllExpansion`
-- `T-RTE-003`：ruleset 映射 → `TestRoute_Rulesets`
-- `T-RTE-004`：Rules 解析 → `TestRoute_RulesParsing`
-- `T-RTE-005`：Rule 无逗号 → `TestRoute_RuleNoComma`
-- `T-RTE-006`：Fallback 传递 → `TestRoute_Fallback`
-- `T-RTE-007`：空 routing → `TestRoute_EmptyRouting`
-- `T-RTE-008`：@all 空列表 → `TestRoute_AllExpansionEmpty`
-- `T-RTE-009`：@auto 基本展开 → `TestRoute_AutoFillBasic`
-- `T-RTE-010`：@auto 首选+补充 → `TestRoute_AutoFillWithPreferred`
-- `T-RTE-011`：@auto 排除自身 → `TestRoute_AutoFillExcludesSelf`
-- `T-RTE-012`：@auto 含链式组 → `TestRoute_AutoFillIncludesChainedGroups`
-- `T-RTE-013`：@auto 含包含 `@all` 的服务组 → `TestRoute_AutoFillIncludesAllRouteGroups`
-- `T-RTE-014`：@auto 展开顺序 → `TestRoute_AutoFillOrder`
-- `T-RTE-015`：无@auto 向后兼容 → `TestRoute_NoAutoFill`
-- `T-CFG-006`：同一 entry 中重复 @auto 报错 → `TestValidate_RoutingAutoRepeatedRejected`
-- `T-RTE-016`：`Route(cfg, nil)` 不 panic → `TestRoute_NilGroupResult`
-- `T-RTE-017`：手动 REJECT 位置保持不变 → `TestRoute_AutoFillPreservesManualRejectPlacement`
-
-### 实施记录
-
-关键设计决策：
-
-| 决策 | 结论 | 原因 |
-|------|------|------|
-| 链式组命名 | `custom_proxy.name` 原样值（无系统前缀） | 命名决定权交还用户；2026-04-17 从旧决策"系统自动前缀 `🔗 `"改为当前方案，同时带 `relay_through` 的 cp 不再生成 KindCustom 代理，避免名称与链式组在共享命名空间冲突 |
-| 链式节点命名 | `{upstream}→{custom}`（含 `→` 字符） | 天然与普通节点名不冲突 |
-| 地区组匹配范围 | 全部拉取类节点（KindSubscription + KindSnell + KindVLess） | 自定义代理由用户显式管理，拉取类节点共享地区语义 |
-| Params 隔离 | 每个链式节点独立 `make(map[string]string)` | 防止共享篡改 |
-| 空组处理 | Group/Route 阶段不报错 | 留给 M4 ValidateGraph |
-| @all 计算时机 | 在链式节点生成前，从原始 proxies 收集 | 天然排除链式节点 |
-| 链式上游池 | 仅拉取类节点（KindSubscription + KindSnell + KindVLess） | 自定义代理不能再作为上游，避免链式派生继续扩散 |
-| 服务组策略 | 固定 `"select"` | 设计约定 |
-| Rule Policy 提取 | `strings.LastIndex(raw, ",")` | 透传方案，只提取 Policy 用于引用校验 |
-| 结果类型 | GroupResult / RouteResult 独立结构体 | 便于测试和后续 Pipeline 组装 |
-| @auto 展开位置 | Route 阶段（`expandAutoFill`），在 `@all` 展开之前 | Route 阶段有 GroupResult（节点组列表），是唯一正确的展开点 | [⚠ 偏差：当前 `@auto` 在启动期 `Prepare` 中展开（`expandPreparedAutoFill`），存入 `PreparedRouteGroup.ExpandedMembers`；Route 阶段仅展开 `@all`] |
-| @auto 补充池顺序 | 节点组（声明序）→ 包含 `@all` 的服务组（声明序）→ DIRECT | `REJECT` 需由用户显式决定是否加入 |
-| REJECT 处理 | 不参与 @auto 自动补充，位置由用户显式控制 | 避免把拒绝策略隐式塞进所有服务组 |
-| @auto 次数限制 | 同一 entry 最多一次，由 config.Validate 拦截 | 多次出现没有额外语义，只会增加歧义 | [⚠ 偏差：当前由 `config.Prepare` 拦截] |
-| @auto 与 @all 互斥 | 同一 entry 静态校验拦截 | 两者语义不同（组级 vs 节点级），混用无合理场景 |
-| Route 签名 | `Route(cfg, gr *GroupResult)` | @auto 展开需要 NodeGroups，直接传入 GroupResult | [⚠ 偏差：当前签名为 `Route(routing []PreparedRouteGroup, rulesets []PreparedRuleset, rules []PreparedRule, fallback string, gr *GroupResult)`，接收预计算的 Prepared 类型而非 raw Config] |
-| Route nil 保护 | `gr == nil` 时按空 `GroupResult` 处理 | 兼容旧调用方式，避免迁移遗漏导致 panic |
+- `/api/preview/nodes` 返回全部源的节点列表，每个节点含 `name`、`type`、`kind`、`server`、`port`、`filtered` 等基础字段；生成管道只消费 `FilterResult.Included`
+- `/api/preview/groups` 返回节点组、链式组、服务组和宏展开结果，顺序与 Group / Route 阶段输出一致
+- `POST /api/preview/*` 使用草稿配置，GET 预览仍使用旧 `RuntimeConfig`
+- `/api/generate/preview?format=clash` 返回与 `/generate?format=clash` 相同内容和 `Content-Type`，但无 `Content-Disposition`；POST 草稿预览不影响运行时
+- `POST /api/generate/preview` 能发现静态校验无法覆盖的 Source / Group / Target / Render 问题，例如远程源为空、过滤后空组、fallback 级联清空或模板渲染错误
+- `/api/status` 返回版本号、配置源位置、配置源可写性、上次加载时间、dirty 状态、上次重载结果、当前配置 revision 与运行时 revision
+- 预览 API 使用当前 `RuntimeConfig` 快照（RLock 复制指针后立即释放），不影响并发安全
+- `go test ./...` 全部通过
 
 ### 对应需求
 
-- `REQ-04`
-- `REQ-05`
-- `REQ-06`
-- `REQ-07`
-- `REQ-08`
-- `REQ-09`
-- `REQ-13`
-
-### 回溯点
-
-- 里程碑记录：`M3-group-route`
-- 固定一组中间表示样本，作为回归基线
-
-### 退出条件
-
-- ✅ `Group` 输出稳定的 `GroupResult`（全部节点 + 节点组 + @all），可供 M4 校验
-- ✅ `Route` 输出稳定的 `RouteResult`（服务组 + 规则集 + 规则 + fallback），可供 M4 校验
+- `REQ-18`、`REQ-19`、`REQ-20`、`REQ-21`
 
 ### 已知限制
 
-- 不做大部分图级校验（空组、循环引用、routing/ruleset/fallback 引用不存在等留给 M4）；仅 `relay_through.type=group` 的局部引用在 M3 fail-fast [⚠ 偏差：routing/ruleset/fallback 引用校验已上移到 `Prepare`，ValidateGraph 仅保留动态图校验]
-- 不组装最终 `model.Pipeline`（留给 M4/M5 orchestrator）
-- 正则编译为防御性检查（静态校验已拦截）[⚠ 偏差：当前 `Prepare` 编译正则并存入 `RuntimeConfig`，Group 阶段使用 `PreparedGroup.Match`]
+- `preview/nodes` 需要实际拉取订阅，响应时间受上游网络影响（通过现有 `CachedFetcher` 的 TTL 缓存缓解）
+- 部分管道执行入口（`SourceAndFilter`、`SourceFilterGroupRoute`）需在不破坏现有阶段封装的前提下截断——实现方式为组合调用现有阶段函数，不引入新的阶段间耦合
+- `/api/generate/preview` 与 `/generate` 共享相同的生成逻辑和潜在错误路径
 
 ### 风险
 
-- 链式展开边界和组引用边界最容易出错（已通过 10 个 Group 测试覆盖）
-- 节点名与组名冲突时需要明确错误策略；由 ValidateGraph 的 `buildNamespaceIndex` 统一报告（2026-04-17 去掉 `🔗 ` 自动前缀后，带 `relay_through` 的 cp 不再生成 KindCustom 代理，避免 cp.Name 与链式组名在共享命名空间碰撞）
+- 部分执行入口可能暴露阶段间的中间状态结构体（`GroupResult` 等）——JSON 序列化需选择性暴露字段，避免内部实现细节泄漏到 API 契约
+- 预览 API 的错误响应格式需与 M6 的结构化错误保持一致
 
 ---
 
-## M4: 校验与渲染 ✅
+## M8: Web 镜像与 Compose 集成
 
 ### 目标
 
-把中间表示转换为目标客户端配置文本，并在渲染前完成图级语义校验。
+让生产部署通过 Docker Compose 启动 `api` 与 `web` 两个服务：`api` 运行 Go 后端，`web` 使用 nginx 托管 React SPA 静态资源，并同源反向代理 `/api/*`、`/generate`、`/healthz` 到后端。M8 建立前端工程、Web 镜像和生产入口，使 M9/M10 的前端开发可以独立迭代。
 
 ### 工作项
 
-- 实现图级校验
-- 实现 Clash Meta 渲染器
-- 实现 Surge 渲染器
-- 为两种输出建立 golden tests
-- 新增模板注入机制（底版配置 + 生成段合并）
-- 新增统一资源加载（本地路径 / HTTP URL）
-- Config 层新增 `templates` 字段，Loader 支持远程加载
+- 建立 `web/` 目录结构（React + Vite 脚手架，TypeScript 配置）
+- 新增 `web/Dockerfile`：Node 阶段构建 `web/dist/`，nginx 阶段托管静态资源
+- 新增 `web/nginx.conf`：`/` 静态资源 + SPA fallback；`/api/*`、`/generate`、`/healthz` 反向代理到 `api:8080`
+- 新增生产 Docker Compose 示例：`api` 使用后端镜像，`web` 构建前端镜像并作为浏览器唯一入口
+- 更新 CI workflow 增加 Web 镜像构建校验（`docker build -f web/Dockerfile web`）
+- 编写最小 SPA 占位页面（确认 nginx 托管和 fallback 可工作）
 
 ### 产物
 
-- `internal/pipeline/validate.go`：ValidateGraph 实现（8 项校验规则，DFS 循环检测，collector 模式收集全部错误）[⚠ 偏差：当前为 6 项校验——原 checks 7-9（ruleset/rule 策略存在性、fallback 存在性）已上移到 `Prepare`；DFS 环路检测委托给 `config.DetectRouteCycle`]
-- `internal/render/clash.go`：Clash Meta 渲染器（yaml.Node API，模板合并，provider 名称提取/去重）
-- `internal/render/surge.go`：Surge 渲染器（bytes.Buffer，INI section 切分/替换合并）
-- `internal/fetch/resource.go`：`LoadResource` 统一加载函数（按 URL 前缀分发 local/remote）
-- `internal/config/config.go`：新增 `Templates` 结构体
-- `internal/config/loader.go`：`Load` 签名扩展为 `(ctx, location, fetcher)`
-- 测试数据：`testdata/render/clash_golden.yaml`、`testdata/render/surge_golden.conf`
-- 外部依赖：无新增
+- `web/`：
+  - `package.json`、`tsconfig.json`、`vite.config.ts`：React + Vite + TypeScript 工程脚手架
+  - `src/main.tsx`、`src/App.tsx`：最小占位页面
+  - `index.html`：SPA 入口
+- `web/Dockerfile`：前端构建 + nginx 静态发布镜像
+- `web/nginx.conf`：SPA fallback 与后端反向代理配置
+- `docs/deployment.md`：生产 `docker-compose.yml` 示例（只读配置与可写配置两种模式）
+- `.github/workflows/`：CI 增加 Web 镜像构建校验
+- 测试：`T-SPA-001` ~ `T-SPA-004`
 
 ### 验收项
 
-- ✅ 引用不存在时报错（T-VAL-001）
-- ✅ 服务组循环引用时报错（T-VAL-002）
-- ✅ 空链式组时报错（T-VAL-003）
-- ✅ `routing` 显式引用原始代理名时报错（T-VAL-004）
-- ✅ 代理名/组名共享命名空间冲突时报错（T-VAL-005）
-- ✅ Clash Meta 输出包含正确节点、组、规则和 rule-providers（T-RND-001）
-- ✅ Surge 输出包含正确节点、组、规则和 FINAL（T-RND-002）
-- ✅ 链式节点映射到正确字段：`dialer-proxy` / `underlying-proxy`（T-RND-003）
-- ✅ 规则顺序正确：rulesets → inline rules → fallback（T-RND-004）
-- ✅ Clash / Surge 的 `url-test` 默认参数一致（含 `tolerance=100`）
-- ✅ Clash 可渲染 VLESS 节点（含 encryption 透传与 transport fallback）
-- ✅ Surge 会级联过滤 VLESS 节点及其后续空组/空规则
-- ✅ 模板合并保留底版通用设置
-- ✅ `go test ./...` 全部通过
-
-### 对应测试
-
-- `T-VAL-001`：服务组引用不存在时报错 → `TestValidateGraph_RouteGroupMemberNotFound`
-- `T-VAL-002`：服务组循环引用时报错 → `TestValidateGraph_CircularReference`
-- `T-VAL-002b`：自引用时报错 → `TestValidateGraph_SelfReference`
-- `T-VAL-003`：链式组展开为空时报错 → `TestValidateGraph_EmptyChainedGroup`
-- `T-VAL-004`：`routing` 显式引用原始代理名时报错 → `TestValidateGraph_RouteGroupExplicitProxyMemberRejected`
-- `T-VAL-005`：代理名/组名共享命名空间冲突时报错 → `TestValidateGraph_ProxyAndNodeGroupNameCollision`
-- `T-RND-001`：Clash Meta 输出快照 → `TestClash_GoldenNoTemplate`
-- `T-RND-002`：Surge 输出快照 → `TestSurge_GoldenNoTemplate`
-- `T-RND-003`：链式节点渲染字段正确 → `TestClash_ChainedProxyHasDialerProxy` / `TestSurge_ChainedProxyHasUnderlyingProxy`
-- `T-RND-004`：ruleset 顺序与 fallback 位置正确 → `TestClash_RuleOrder` / `TestSurge_RuleOrder`
-- `T-RND-005`：Clash `url-test` 补齐 `tolerance` → `TestClash_URLTestHasTolerance`
-- `T-RND-VLESS-001`：Clash VLESS 渲染 → `TestClash_VlessTCPReality` 等
-- `T-RND-VLESS-002`：Surge VLESS 级联过滤 → `TestSurge_Filter_DropsVLessProxiesAndEmptyGroups` 等
-
-### 实施记录
-
-关键设计决策：
-
-| 决策 | 结论 | 原因 |
-|------|------|------|
-| 通用设置来源 | 用户提供底版模板文件（`templates.clash` / `templates.surge`） | 通用设置因用户环境而异，不可硬编码 |
-| 模板路径 | 支持本地文件路径或 HTTP(S) URL | 统一 `LoadResource` 按前缀分发 |
-| 模板缓存 | 走 CachedFetcher，与订阅共享 TTL | 避免每次请求重复拉取 |
-| Clash 输出方式 | yaml.v3 Node API | 精确控制字段顺序和转义；支持底版注释保留 |
-| Surge 输出方式 | bytes.Buffer + section 切分替换 | INI 风格纯文本 |
-| 无底版时行为 | 仅输出生成段 | 降低使用门槛 |
-| rule-provider behavior | `classical` + `format: text` | 兼容文本 ruleset 并保持跨客户端一致语义 |
-| url-test 默认参数 | url=gstatic, interval=300, tolerance=100 | 业界标准 |
-| routing 校验粒度 | 校验原始 `routing` 声明，不接受显式代理名 | 保持”服务组选出口、节点组选节点”的分层，避免 `@all` 展开结果掩盖非法配置 | [⚠ 偏差：当前 ValidateGraph 区分成员溯源（`RouteMemberOrigin`：Literal/AutoExpanded/AllExpanded），`allowsProxyReference` 允许 `@all`/`@auto` 展开后的代理名] |
-| 图校验命名空间 | 代理名、节点组名、服务组名统一登记校验 | 避免重名导致引用歧义或重复渲染 | [⚠ 偏差：当前静态命名空间冲突检测（DIRECT/REJECT + 节点组 + 服务组 + 自定义代理 + 链式组）已上移到 `Prepare` 的 `StaticNamespace`；ValidateGraph 保留运行期动态冲突检测] |
-| Config.Load 签名 | `(ctx, location, fetcher)` | 支持远程加载，nil fetcher 限定仅本地 |
-| 错误收集 | graphCollector + errors.Join | 与 M1 config.Validate 一致 | [⚠ 偏差：M1 现为 `config.Prepare`] |
+- Compose 启动后，浏览器访问 `web` 服务端口可打开 SPA
+- SPA 路由刷新不 404（`/any/path` 在无匹配静态文件时由 nginx fallback 到 `index.html`）
+- `/api/status` 经 `web` 容器反向代理到 `api` 成功
+- `/generate?format=clash` 与 `/generate?format=surge` 经 `web` 容器反向代理到 `api` 成功
+- `/healthz` 经 `web` 容器反向代理到 `api` 成功
+- 生产路径不依赖 CORS；浏览器看到的 Web 页面与 API 为同源
+- Web 镜像构建通过
+- `go test ./...` 全部通过
 
 ### 对应需求
 
-- `REQ-09`
-- `REQ-10`
-- `REQ-12`
-
-### 回溯点
-
-- 里程碑记录：`M4-validate-render`
-- 固定 golden files：Clash 和 Surge 各一套
-
-### 退出条件
-
-- ✅ ValidateGraph 输出稳定的 `*model.Pipeline`，可供渲染器消费
-- ✅ Clash / Surge 渲染器输出通过 golden 比对
-- ✅ 模板合并逻辑正确保留底版设置
+- `REQ-22`、`REQ-23`
 
 ### 已知限制
 
-- 不校验远程规则集 URL 的可达性或内容格式
-- Clash rule-provider 固定为 `behavior: classical` + `format: text`，不支持 `domain`、`ipcidr` 或 YAML `payload` ruleset
-- Surge 模板合并基于 `[Section]` header 文本匹配，不支持嵌套 section
+- 前端代码更新后需要重新构建 `web` 镜像或重新发布静态资源
+- nginx fallback 只处理 Web 前端路由；`/api/*`、`/generate`、`/healthz` 必须优先反代到后端
+- 开发模式的 Vite dev server 可单独配置 proxy；生产 Compose 路径不依赖 CORS
 
 ### 风险
 
-- 同一语义在两个客户端格式中的映射不完全对称（Snell 为 Surge-only，VLESS 为 Clash-only；已通过 golden tests 与专项渲染测试固化预期）
+- nginx 代理路径若配置错误，会导致 API 请求被 SPA fallback 吞掉；需用集成测试锁定 `/api/status`、`/generate` 和 `/healthz`
+- Web 镜像构建会引入 Node/npm 依赖下载时间；CI 可通过 Docker build cache 或 npm cache 缓解
 
 ---
 
-## M5: HTTP 服务与端到端验收 ✅
+## M9: 前端工程与核心页面
 
 ### 目标
 
-接入 HTTP 层，形成用户可直接调用的服务版本。
+实现前端核心功能页面，覆盖最常用的配置编辑和运行时预览。M9 完成后用户可通过浏览器完成日常配置修改和节点预览操作。
 
 ### 工作项
 
-- 实现 `GET /generate?format=clash|surge[&token=...][&filename=...]`
-- 实现 `GET /healthz`
-- 接入启动参数
-- 串联配置加载、管道和渲染器
-- 实现端到端测试
-- 完成错误码映射
+- 前端项目工程化（TypeScript 严格模式、React Query 数据层、React Router 路由、Zustand 或 Context 状态管理）
+- API 客户端层（封装 `/api/*` 调用，统一错误处理）
+- 布局与导航（侧边栏 + 主内容区 + 顶栏状态指示器）
+- A1 订阅来源页面（四类来源卡片：subscription / snell / vless / custom_proxy；含 `relay_through` 子表单，URL 输入脱敏显示）
+- A2 过滤器页面（`exclude` 正则编辑 + 草稿匹配预览——调用 `POST /api/preview/nodes` 显示当前草稿会过滤哪些节点）
+- A3 节点分组页面（分组卡片 + 拖拽排序 + 正则匹配预览——调用 `POST /api/preview/groups` 显示草稿分组结果）
+- A4 路由策略页面（服务组列表 + 拖拽排序 + 成员选择器，支持 `@auto` / `@all` 特殊成员）
+- B1 节点预览页面（调用 `/api/preview/nodes`，表格展示全部节点，支持按 Kind / Type / 名称筛选）
+- C 系统状态页面（调用 `/api/status`，展示版本、配置源位置与可写性、上次加载时间、重载状态）
+- 保存/静态校验/热重载工作流集成（编辑 → 静态校验 → 保存 → 重载，每步反馈明确）
+- 主题系统（浅色/深色，跟随系统偏好 + 手动切换）
 
 ### 产物
 
-- `internal/pipeline/`:
-  - `execute.go`：`Execute(ctx, cfg, fetcher)` 管道顶层编排，串联 Source→Filter→Group→Route→ValidateGraph [⚠ 偏差：当前生产入口为 `Build(ctx, cfg *RuntimeConfig, fetcher)`，接收预计算的 `RuntimeConfig`。`Execute` 保留为测试辅助函数，内部调用 `config.Prepare` 后委托 `Build`]
-- `internal/server/`:
-  - `server.go`：`Server` 结构体、`New` 构造函数、`Handler()` 路由注册
-  - `handler.go`：`handleGenerate`（管道→模板→渲染→响应）、`handleHealthz`
-  - `errors.go`：`presentError` 错误类型→HTTP 状态码映射 + 中文消息格式化
-- `cmd/subconverter/main.go`：flag 解析、依赖创建、服务启动、优雅关闭
-- 外部依赖：无新增
+- `web/src/`：
+  - `api/`：API 客户端封装
+  - `components/`：通用组件（拖拽排序、正则输入、卡片、表格等）
+  - `pages/`：A1-A4、B1、C 页面组件
+  - `layouts/`：布局组件
+  - `hooks/`：自定义 hooks（useConfig、usePreview、useReload 等）
+  - `theme/`：主题配置
+- 测试：`T-WEB-001` ~ `T-WEB-010`（组件渲染测试 + API 集成测试）
 
 ### 验收项
 
-- ✅ `format=clash` 返回 YAML（T-E2E-001）
-- ✅ `format=surge` 返回 conf（T-E2E-002）
-- ✅ 非法 `format` 返回 `400`（T-E2E-003）
-- ✅ 服务端启用 token 时，缺少或错误 token 返回 `401`
-- ✅ 默认文件名为 `clash.yaml` / `surge.conf`，并允许通过安全 ASCII `filename` 覆盖
-- ✅ 订阅拉取失败返回 `502`（T-E2E-004）
-- ✅ 配置语义/图校验错误返回 `400`（T-E2E-005）
-- ✅ `healthz` 返回 `200`（T-E2E-006）
-- ✅ 示例配置可完成端到端生成
-- ✅ `go test ./...` 全部通过
-
-### 对应测试
-
-- `T-E2E-001`：HTTP 生成 Clash 成功 → `TestE2E_GenerateClash`
-- `T-E2E-002`：HTTP 生成 Surge 成功 → `TestE2E_GenerateSurge`
-- `T-E2E-003`：非法 `format` 返回 `400` → `TestE2E_InvalidFormat`
-- `T-E2E-003a`：非法 `filename` 返回 `400` → `TestE2E_InvalidFilename`
-- `T-E2E-003b`：服务端 token 校验失败返回 `401` → `TestE2E_TokenRequired`
-- `T-E2E-004`：订阅拉取失败返回 `502` → `TestE2E_FetchFailure`
-- `T-E2E-005`：图校验失败返回 `400` → `TestE2E_BuildError`
-- `T-E2E-006`：`/healthz` 返回 `200` → `TestE2E_Healthz`
-- `T-EXE-001`：Execute happy path → `TestExecute_HappyPath`
-- `T-EXE-002`：Execute fetch error → `TestExecute_FetchError`
-- `T-EXE-003`：Execute filter excludes → `TestExecute_FilterExcludes`
-
-### 实施记录
-
-关键设计决策：
-
-| 决策 | 结论 | 原因 |
-|------|------|------|
-| 管道编排位置 | `generate.Service` 承接请求期编排，`pipeline.Build` 承接格式无关构建 | project-structure.md 将 HTTP 用例与格式无关管道分层，避免 server/pipeline 职责漂移 |
-| Server 依赖注入 | main.go 创建 Config + CachedFetcher，注入 Server | 保持 server 可测试，不依赖 flag 解析 |
-| 模板加载位置 | `generate.Service` 中（Target 之后、Render 之前） | 模板与 managed URL 都属于请求期格式特定编排，不应留在 server 或 pipeline |
-| 错误呈现 | `presentError`：Config/Fetch/Resource/Build 走 `flattenErrors + collect*Errors` 聚合路径（Config/Build→400, Fetch→502, Resource→500），Target/Render 单发不聚合走 `errors.As` 直出（均 500）；`format*Error` 格式化中文消息，`joinMessages` 只用于可聚合类的多错误拼接 | 错误码（`errtype.Code`）机器可读，消息中文面向终端用户；未分类错误返回 `"内部错误"`，已分类错误尽量保留可排障信息 |
-| E2E 测试方式 | httptest.Server + fake fetcher，black-box 包 | 只测公共 API，与内部实现解耦 |
-| 优雅关闭 | `signal.NotifyContext` + `httpServer.Shutdown` + 10s 超时 | 标准模式，防止慢请求阻塞关闭 |
-| 路由注册 | Go 1.22+ method pattern `"GET /generate"` | 避免 handler 内手动检查 HTTP 方法 |
-| 服务端日志 | 错误路径 `log.Printf` | 单用户服务，错误可能未被客户端消费 |
-| 访问 token 位置 | 运行时 flag/env，不进 YAML | 访问控制属于部署语义，避免把敏感信息混入用户配置 |
-| 默认文件名 | Clash=`clash.yaml`，Surge=`surge.conf` | 保证浏览器下载与 Surge 托管 URL 都有稳定文件名 |
+- 配置编辑 → 保存 → 热重载 → 再读取 round-trip 正确（前端发起完整流程，数据一致）
+- 拖拽排序后保存，`groups` / `routing` 顺序不变（保序不变量在前端操作后仍成立）
+- 过滤器正则预览与实际过滤结果一致（前端预览结果 = 后端 `preview/nodes` 结果）
+- 节点预览显示正确的来源分类（Kind）和协议标注（Type）
+- 浅色/深色主题切换正常，跟随系统偏好
+- 静态校验失败时通过 `locator.json_pointer` 定位到具体字段
+- 所有 API 调用错误在 UI 上有明确反馈（非静默失败）
+- API 请求使用 Authorization header；复制订阅链接前确认是否把 token 写入 query
+- `go test ./...` 全部通过
+- 前端测试通过（`npm test`）
 
 ### 对应需求
 
-- `REQ-01`
-- `REQ-10`
-- `REQ-11`
-- `REQ-12`
-
-### 回溯点
-
-- 里程碑记录：`M5-http-e2e`
-- 发布候选版本：`rc1`
-
-### 退出条件
-
-- ✅ `Build` 输出稳定的格式无关 `*model.Pipeline`，可供目标格式投影层消费
-- ✅ HTTP 层仅做请求校验 + 错误映射，不承担业务转换逻辑
-- ✅ 12 个 E2E 测试 + 3 个 Execute 单测全部通过
-- ✅ `make build` 和 `make run` 可用
+- `REQ-24`（A1-A4）、`REQ-25`（B1）、`REQ-26`
 
 ### 已知限制
 
-- HTTP 服务未设 `ReadTimeout` / `WriteTimeout`（单用户场景无 slowloris 风险）[⚠ 偏差：当前已补齐 `ReadHeaderTimeout` / `IdleTimeout`；`ReadTimeout` / `WriteTimeout` 仍按慢生成请求模型保持 0]
-- 不支持运行时配置热重载（修改配置后需重启服务）
-- 错误响应统一由 server 层格式化为中文纯文本；未知内部错误不向客户端暴露细节
-- 目标格式扩展仍需在 `generate.Service` 中新增一个分支与对应 target/render 组合
+- 拖拽排序依赖前端 `OrderedMap` 表示的 JSON 数组结构——前后端需约定一致的保序 JSON 格式（如 `[{ key: "...", value: {...} }, ...]`）
+- 草稿预览需调用后端 API，网络延迟会影响"实时"体验（可通过 debounce + 骨架屏缓解）
+- `relay_through` 子表单的 `type=group` 需引用已定义的节点组名——前端需从当前编辑中的配置读取组名列表
 
 ### 风险
 
-- 错误映射与用户预期不一致（已通过 E2E 测试覆盖主要路径）
-- HTTP 层吸收过多业务逻辑，破坏模块边界（已通过依赖注入和 `generate.Service` 收口）
+- 保序 JSON 格式的前后端约定是 M9 最大的接口风险——若 M6 的 `OrderedMap` JSON 格式设计不当，M9 的拖拽排序会遇到序列化问题。应在 M6 完成时即固化 JSON 格式契约
+- 前端状态管理复杂度：配置编辑涉及多个嵌套结构（sources、groups、routing、rulesets），需设计合理的状态分片避免全量刷新
+
+---
+
+## M10: 前端完善与端到端验收
+
+### 目标
+
+补齐剩余页面，完成全流程端到端验证。M10 完成后 v2.0 所有功能就绪。
+
+### 工作项
+
+- A5 规则集页面（rulesets 列表编辑，支持 URL 和 Policy 绑定）
+- A6 内联规则页面（rules 列表编辑，支持自由文本 + Policy 选择器）
+- A7 其他配置页面（`fallback`、`base_url`、`templates` 字段编辑）
+- A8 静态配置校验页面（Drawer 展示校验结果——errors / warnings / infos 分级显示，错误项通过 `locator.json_pointer` 跳转到对应页面的对应字段）
+- B2 分组预览页面（调用 `GET /api/preview/groups`，树形展示节点组 / 链式组 / 服务组 → 成员映射关系）
+- B3 生成下载页面（调用 `GET/POST /api/generate/preview`，预览生成文本 + 下载按钮 + 复制订阅链接，链接含 token 和 filename 参数）
+- 端到端测试覆盖全流程（空配置 → 逐步编辑 → 保存 → 重载 → 预览 → 生成 → 下载 → 验证内容）
+
+### 产物
+
+- `web/src/pages/`：A5-A8、B2-B3 页面组件
+- `web/src/components/`：校验结果 Drawer、代码预览器、链接生成器等
+- 测试：`T-WEB-011` ~ `T-WEB-020` + `T-E2E-010` ~ `T-E2E-015`
+
+### 验收项
+
+- 全部 13 个页面（A1-A8 + B1-B3 + C + 校验 Drawer）可用
+- 静态配置校验错误可点击跳转到对应页面的对应字段，前端不得解析 `display_path`
+- 生成预览与实际 `/generate` 下载内容一致
+- 订阅链接复制功能正确（显式确认后包含 token 和 filename 参数，格式为 `{base_url}/generate?format=...&token=...&filename=...`）
+- 端到端：空配置 → 编辑全部字段 → 保存 → 重载 → 生成 → 下载 → 验证内容（两种格式均覆盖）
+- 错误路径：静态校验失败 → 不可保存 → 修复后可保存；生成预览失败 → UI 显示生成期错误并保留草稿；重载失败 → UI 显示错误 → 旧配置不变
+- `go test ./...` 全部通过
+- 前端测试通过（`npm test`）
+- 端到端测试通过
+
+### 对应需求
+
+- `REQ-24`（A5-A8）、`REQ-25`（B2-B3）
+
+### 已知限制
+
+- 校验跳转依赖错误响应中的 `locator.json_pointer` 与前端路由的映射关系；`display_path` 仅用于展示，不能作为程序定位依据
+- B3 复制订阅链接功能依赖 `base_url` 配置——未配置 `base_url` 时应提示用户先配置
+
+### 风险
+
+- 端到端测试的环境搭建复杂度（需同时运行后端 + 前端 + fake 订阅源）——可复用 v1.0 的 `httptest.Server` + fake fetcher 模式
+- 全部 13 个页面的交互一致性维护成本（需建立 UI 组件库避免各页面重复实现相似交互）
+
+---
+
+## 验收矩阵
+
+| 里程碑 | 验收方式 | 核心证据 |
+|--------|---------|---------|
+| `M6` | API 测试 | Config CRUD round-trip 幂等、reload 并发安全、校验结构化输出、保序 JSON round-trip |
+| `M7` | API 测试 | Preview 数据与管道阶段输出一致、status 信息完整 |
+| `M8` | 集成测试 | Web 镜像可构建、SPA 可访问、fallback 正确、反向代理路径可用 |
+| `M9` | 功能测试 | 核心页面可交互、保存-重载-读取一致、拖拽保序、主题切换 |
+| `M10` | 端到端测试 | 全流程完成、全部页面可用、校验跳转正确、生成预览一致 |
 
 ---
 
@@ -716,56 +432,10 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 - `go test ./...` 通过
 - 本阶段新增能力有对应测试
-- 示例配置覆盖新增路径
 - 文档同步更新到对应设计或实施文档
 - 至少覆盖一个错误路径
 - 不引入与当前里程碑无关的功能扩展
-
----
-
-## 验收矩阵
-
-| 里程碑 | 验收方式 | 核心证据 |
-|------|------|------|
-| `M0` | 结构验收 | 目录、模块、基础命令 |
-| `M1` | 配置验收 | 配置加载测试、保序测试、校验测试 |
-| `M2` | 输入验收 | 订阅 fixture、SS 解析测试、过滤测试 |
-| `M3` | 组装验收 | 节点组/服务组样本、`@all` 测试、链式展开测试 |
-| `M4` | 输出验收 | Clash/Surge golden tests、图校验测试 |
-| `M5` | 端到端验收 | HTTP 集成测试、示例配置生成结果 |
-
----
-
-## 回溯机制
-
-### 设计回溯
-
-每个里程碑提交时应记录：
-
-- 实现了哪些 `REQ-*`
-- 依赖了哪些设计文档
-- 新增了哪些测试项
-- 当前已知限制是什么
-
-### 结果回溯
-
-每个里程碑都应固化以下证据：
-
-- 示例输入
-- 中间表示样本或 golden 输出
-- 测试结果
-- 已知错误案例
-
-### 问题定位顺序
-
-出现问题时，按以下层级回溯：
-
-1. 配置解析层
-2. 原始节点获取层
-3. 分组与路由层
-4. 图级校验层
-5. 渲染层
-6. HTTP 包装层
+- 前端相关里程碑（M8-M10）额外要求 `npm test` 通过
 
 ---
 
@@ -773,21 +443,23 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5
 
 正式编码前应优先验证这些高风险问题：
 
-- SS 链接样本是否存在不兼容格式
-- `relay_through.select` / `all` 已确认作用于全部拉取类节点（订阅 + Snell + VLESS）
-- 节点名和组名冲突时的错误策略
-- Clash Meta 与 Surge 的链式字段映射是否稳定
-- ruleset 在两种客户端中的引用是否需要额外命名规范
+- **OrderedMap JSON 序列化的保序方案**需在 M6 初期验证——自定义 `MarshalJSON` / `UnmarshalJSON` 的 round-trip 幂等性直接影响所有后续 API 和前端的保序假设
+- **YAML 写回的注释丢失问题**需评估用户影响——若用户在 YAML 中维护了大量注释，API 写回导致注释丢失会造成负面体验。备选方案：仅在首次 API 写入时提示用户
+- **配置快照锁边界**需在 M6 用并发测试验证——慢速订阅拉取、模板加载和渲染不得持有 `RuntimeConfig` 读锁；写锁只保护指针替换
+- **配置 revision 条件写回**需在 M6 初期验证——缺 revision、过期 revision、外部文件改写都必须拒绝覆盖
+- **远程主配置强制刷新**需在 M6 覆盖——reload 不能命中未过期的远程配置缓存
+- **Web 镜像构建链路**需在 M8 验证——Node 构建阶段、nginx 静态发布阶段和 Compose 反代路径都必须可重复构建
+- **preview API 的订阅拉取延迟**需验证 TTL 缓存效果——首次调用会触发实际网络请求，响应时间可能超过用户预期
 
 ---
 
 ## 最终交付定义
 
-项目达到可交付状态至少满足：
+v2.0 达到可交付状态至少满足：
 
-- 能读取单一 YAML 配置文件
-- 能拉取订阅并生成原始节点
-- 能生成地区组、链式组和服务组
-- 能输出 Clash Meta 与 Surge 配置
-- 能通过 `/generate` 提供结果
-- 能通过测试证明顺序、链式组、`@all`、fallback 和双格式输出语义一致
+- v1.0 全部功能继续正常工作（`/generate`、`/healthz`、管道不变量）
+- 能通过 `/api/config` 读写配置，JSON round-trip 保序幂等，并用 `config_revision` 防止静默覆盖
+- 能通过 `/api/reload` 热重载配置，失败时旧配置不变
+- 能通过 `GET /api/preview/*` 查看当前运行时数据，通过 `POST /api/preview/*` 查看草稿数据
+- 能通过 Docker Compose 中的 `web` SPA 在浏览器中完成配置编辑、预览和生成
+- 能通过测试证明并发安全、保序不变量和全流程端到端正确性

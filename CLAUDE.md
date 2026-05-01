@@ -12,17 +12,19 @@
 
 ## 项目速读
 
-**定位**：Go 单二进制 HTTP 服务。读取一份 YAML 配置 → 拉取订阅 → 生成 Clash Meta / Surge 配置文件。
+**定位**：Go 单二进制 HTTP 服务。读取一份 YAML 配置 → 拉取订阅 → 生成 Clash Meta / Surge 配置文件。v2.0 新增 Web 管理后台（React SPA via `go:embed`）、配置热重载和 Admin API。
 
 **管道阶段**：
 
 ```
-启动期:
+启动期 / 热重载期:
 LoadConfig
   -> Prepare (produces RuntimeConfig)
+     ↑ POST /api/reload 可重新触发
 
 请求期:
-Build(Source -> Filter -> Group -> Route -> ValidateGraph)
+RLock(RuntimeConfig)
+  -> Build(Source -> Filter -> Group -> Route -> ValidateGraph)
   -> Target
   -> Render
 ```
@@ -30,15 +32,16 @@ Build(Source -> Filter -> Group -> Route -> ValidateGraph)
 **包边界**（依赖单向）：
 
 ```
-cmd/subconverter → internal/{config,fetch,generate,server}
-internal/server → internal/{generate,errtype}
+cmd/subconverter → internal/{config,fetch,generate,admin,server}
+internal/server → internal/{generate,admin,errtype}
+internal/admin → internal/{config,generate,pipeline,model,errtype}
 internal/generate → internal/{config,fetch,model,pipeline,target,render}
 internal/pipeline → internal/{config,fetch,model,errtype,proxyparse,ssparse}
 internal/render → internal/{model,errtype}
 internal/target → internal/{model,errtype}
 ```
 
-`model` 和 `errtype` 不依赖其他业务包。`render` 不反向依赖 `config`。
+`model` 和 `errtype` 不依赖其他业务包。`render` 不反向依赖 `config`。`admin` 通过 `generate.Service` 间接访问 `RuntimeConfig`（RWMutex 保护）。
 
 **核心术语**（下游章节会反复使用）：
 
@@ -202,6 +205,11 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - `docs/design/pipeline.md` — 各阶段输入输出与不变量
 - `docs/design/rendering.md` — Clash Meta / Surge 渲染映射
 - `docs/design/validation.md` — 配置与图校验规则
+- `docs/design/web-ui.md` — Web 管理后台设计
+- `docs/design/api.md` — HTTP API 设计（含 Admin API）
+- `docs/design/caching.md` — 订阅拉取与缓存策略
+- `docs/implementation/implementation-plan.md` — v2.0 开发计划
+- `docs/implementation/project-structure.md` — 代码目录与包边界
 - `docs/implementation/testing-strategy.md` — 测试编号与覆盖策略
 - `~/.claude/CLAUDE.md` — 用户全局规则（协作哲学、沟通、自检）
 
@@ -240,6 +248,20 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - **影响**：build 阶段"合法"的配置在 render 阶段失败；调试需读级联链（"FINAL 为空 ← SVC_X 为空 ← GRP_SG 被过滤 ← 仅含 Snell 节点"）
 - **与局限 1 的关系**：同属"ValidateGraph 不感知格式"的具体表现。缓解方案共享：per-format validation hook
 - **新增格式专属协议时**：复用 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes` 过滤策略；同步补跨格式过滤测试（至少覆盖"该协议节点在另一格式下被过滤后 fallback / 规则的级联效应"）
+
+### 4. 热重载期间写锁阻塞
+
+> **触及时行动**：若 `Prepare` 耗时过长导致读请求可感知延迟 → 考虑 copy-on-write 或双缓冲方案。
+
+- **现象**：`WLock` 期间所有 `/generate` 和 `/api/preview/*` 请求被阻塞
+- **缓解**：`Prepare` 是纯 CPU 计算（正则编译、URL 解析），通常毫秒级完成；`LoadConfig` 在 `WLock` 之前完成，写锁仅保护指针替换
+
+### 5. YAML 写回丢失注释与格式
+
+> **触及时行动**：若用户反馈注释丢失影响过大 → 评估 `yaml.Node` 级 patch-merge 方案（见 `docs/architecture.md` 局限 #5）。
+
+- **现象**：`PUT /api/config` 通过 `yaml.Marshal` 写回，不保留原始注释和格式风格
+- **缓解**：首次写回时自动备份为 `config.yaml.bak`
 
 ---
 

@@ -206,16 +206,3 @@
 
 - 在格式无关的语义层表达系统行为
 - 作为管道阶段之间的唯一共享边界
-
----
-
-## 前端状态模型（v2.0）
-
-Web 管理后台不维护独立的领域模型：
-
-- 前端直接消费 `GET /api/config` 返回的 JSON（与 `Config` 结构体对应）
-- `GET /api/config` 返回 `{config_revision, config}`；前端编辑 `config`，保存时携带原 `config_revision` 做条件写回
-- 前端直接消费 `/api/preview/*` 返回的 JSON（与 `Proxy` / `ProxyGroup` 结构体子集对应）
-- 前端不接触 `Pipeline`、`RuntimeConfig` 等内部中间表示
-- 前端编辑操作 = 修改 Config JSON → POST 草稿预览 / 校验 → `PUT /api/config`（仅本地可写配置源可用；远程配置源为只读）
-- 保序字段在前端以数组形式操作，拖拽排序直接改变数组索引

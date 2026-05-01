@@ -16,8 +16,6 @@ subconverter/
 │   ├── config/
 │   ├── errtype/
 │   ├── fetch/
-│   ├── app/
-│   ├── admin/
 │   ├── generate/
 │   ├── model/
 │   ├── pipeline/
@@ -88,17 +86,9 @@ subconverter/
 
 `internal/generate`
 
-- 单一”生成配置”服务
+- 单一“生成配置”应用服务
 - 统一承接 `Build -> Target -> Render`
 - 装配模板加载与 Surge managed URL
-- v2.0 起改为无状态设计：`Generate` 方法接收 `*config.RuntimeConfig` 参数，不通过结构体字段持有配置指针；`app.Service` 在每次请求时取快照后传入
-
-`internal/app`
-
-- v2.0 应用服务层
-- 持有并发安全的 `RuntimeConfig` 快照与配置 revision 状态
-- 承接配置读取、条件写回、热重载、运行时预览、草稿预览和状态查询
-- 可以编排 `config` / `pipeline` / `generate`，但不处理 HTTP 请求细节
 
 `internal/server`
 
@@ -119,25 +109,11 @@ subconverter/
 cmd/subconverter
   -> config
   -> fetch
-  -> app
   -> generate
   -> server
 
 server
-  -> app
-  -> admin
-  -> errtype
-
-admin
-  -> app
-  -> errtype
-
-app
-  -> config
-  -> fetch
   -> generate
-  -> pipeline
-  -> model
   -> errtype
 
 generate
@@ -185,69 +161,5 @@ ssparse
 - `errtype` 不依赖其他业务包
 - `render` 不直接读取 YAML 配置
 - `server` 不承担业务转换逻辑
-- `admin` 不直接依赖 `pipeline` / `model`，只调用 `app.Service`
 - `config` 不直接依赖 `model`
 - `generate` 直接依赖 `model`（用于在 `pipeline.Build` 与 `target.ForXxx` 之间传递 `Pipeline`）
-
----
-
-## v2.0 新增目录与包
-
-### 新增目录
-
-```text
-subconverter/
-├── web/                          # 前端 SPA 源码
-│   ├── src/                      # React 组件与页面
-│   ├── dist/                     # 构建产物（由 web 镜像中的 nginx 托管）
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── Dockerfile                # 前端构建 + nginx 静态发布镜像
-│   └── nginx.conf                # SPA fallback + API 反向代理
-└── internal/
-    ├── app/                      # v2.0 应用服务层
-    └── admin/                    # Admin API 处理器
-```
-
-### `internal/app` 包职责
-
-- `ConfigSnapshot`：读取配置源，返回 `{config_revision, config}`
-- `SaveConfig`：基于 `config_revision` 做条件写回，revision 冲突返回 `409`
-- `ValidateDraft`：校验草稿配置，返回结构化诊断
-- `Reload`：强制刷新主配置源、Prepare 后原子替换 `RuntimeConfig`
-- `PreviewNodes` / `PreviewGroups`：支持运行时 GET 预览与草稿 POST 预览；返回 `app` 包内定义的 DTO（如 `NodePreview` / `GroupPreview`），由 `app.Service` 负责从 `model.Proxy` / `model.ProxyGroup` 转换，使 `admin` 层无需导入 `model`
-- `GeneratePreview` / `Generate`：取得当前 `RuntimeConfig` 快照，传入无状态的 `generate.Generate` 输出文本
-- `Status`：返回配置源能力、当前 revision、运行时 revision、dirty 与最近 reload 信息
-
-### `internal/admin` 包职责
-
-- 配置 CRUD handler（`GET /api/config`、`PUT /api/config`）
-- 配置校验 handler（`POST /api/config/validate`）
-- 热重载 handler（`POST /api/reload`）
-- 运行时和草稿预览 handler（`GET/POST /api/preview/nodes`、`GET/POST /api/preview/groups`）
-- 生成预览 handler（`GET/POST /api/generate/preview`）
-- 系统状态 handler（`GET /api/status`）
-- 不承担管道或渲染逻辑；不直接依赖 `internal/pipeline` 或 `internal/model`
-
-### 依赖方向（新增）
-
-```text
-internal/admin
-  ├─► internal/app
-  └─► internal/errtype
-
-internal/app
-  ├─► internal/config
-  ├─► internal/fetch
-  ├─► internal/generate
-  ├─► internal/pipeline
-  ├─► internal/model
-  └─► internal/errtype
-
-internal/server
-  ├─► internal/app
-  ├─► internal/admin        (新增)
-  └─► internal/errtype
-```
-
-`admin` 通过 `app.Service` 间接访问 `RuntimeConfig`（RWMutex 保护），不直接持有配置引用，也不直接编排管道阶段。

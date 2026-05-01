@@ -1,22 +1,33 @@
 # 管道设计
 
+> v1.0 管道文档已归档至 docs/v1.0/design/pipeline.md
+
 ## 目标
 
-本文件定义系统从配置输入到配置输出的阶段划分、输入输出和阶段职责。它聚焦数据流和边界，不展开代码实现细节。
+本文件定义系统从配置输入到配置输出的阶段划分、输入输出和阶段职责。v2.0 在 v1.0 的 9 阶段管道基础上，新增热重载生命周期和预览管道。
 
 ---
 
 ## 总体流程
 
 ```text
-启动期:
+启动期 / 热重载期:
 LoadConfig
   -> Prepare (produces RuntimeConfig)
+     ↑ POST /api/reload 可重新触发
 
-请求期:
-Build(Source -> Filter -> Group -> Route -> ValidateGraph)
+请求期（/generate, /api/preview/*）:
+RLock()
+  -> snapshot *RuntimeConfig
+RUnlock()
+  -> Build(Source -> Filter -> Group -> Route -> ValidateGraph)
   -> Target
   -> Render
+
+草稿预览期（POST /api/preview/*, POST /api/generate/preview）:
+Draft Config
+  -> Prepare (temporary RuntimeConfig)
+  -> requested preview stages
 ```
 
 设计原则：
@@ -27,11 +38,57 @@ Build(Source -> Filter -> Group -> Route -> ValidateGraph)
 
 ---
 
+## 热重载生命周期
+
+`POST /api/reload` 触发完整的 LoadConfig + Prepare 流程：
+
+```text
+POST /api/reload
+  │
+  ├─ LoadConfig(path)       读取最新 YAML（远程主配置 bypass / invalidate 缓存）
+  ├─ Prepare(config)        校验 + 编译正则 + 展开 @auto + 检测环路
+  │
+  ├─ 失败？ ──► 返回错误，RuntimeConfig 不变
+  │
+  └─ 成功：
+       WLock()
+       swap RuntimeConfig pointer + runtime config revision
+       WUnlock()
+```
+
+关键保证：
+
+- 热重载校验失败时，旧 `RuntimeConfig` 保持不变，所有请求继续使用旧配置
+- `WLock` 仅保护指针替换，不包含 I/O 或计算
+- 读请求只在读取 `*RuntimeConfig` 指针快照时短暂持有 `RLock`，随后释放锁再执行 Source / Filter / Group / Render 等可能耗时阶段
+- 已经取得快照的请求会继续使用旧配置完成；热重载成功后，新请求会读取新配置快照
+
+---
+
+## 预览管道
+
+预览请求执行管道的部分阶段，返回中间数据而非最终配置文本：
+
+| 端点 | 执行阶段 | 输出 |
+|------|---------|------|
+| `GET /api/preview/nodes` | Source + Filter | 节点列表（含来源标记和过滤状态） |
+| `POST /api/preview/nodes` | Prepare + Source + Filter | 草稿配置的节点列表 |
+| `GET /api/preview/groups` | Source + Filter + Group + Route | 节点组列表 + 链式组列表 + 服务组列表 + @all / @auto 展开成员 |
+| `POST /api/preview/groups` | Prepare + Source + Filter + Group + Route | 草稿配置的分组与服务组结果 |
+| `GET /api/generate/preview` | 完整管道（Build + Target + Render） | 配置文本（不触发下载） |
+| `POST /api/generate/preview` | Prepare + 完整管道（Build + Target + Render） | 草稿配置文本（不触发下载） |
+
+预览管道复用与生成管道相同的阶段实现，不存在独立的过滤或分组语义；差异只在于预览 API 会暴露阶段诊断数据。
+
+GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求体中的草稿配置，不写文件、不替换运行时配置。
+
+---
+
 ## Stage 1: LoadConfig
 
 职责：
 
-- 读取 YAML 文件
+- 读取 YAML 文件（支持本地路径或 HTTP URL）
 - 反序列化为用户配置对象
 - 保留 `groups`、`routing`、`rulesets` 的书写顺序
 
@@ -53,19 +110,14 @@ Build(Source -> Filter -> Group -> Route -> ValidateGraph)
 - 检测路由环路
 - 校验 ruleset/rule 策略引用合法性、fallback 存在性
 
-典型检查：
-
-- `relay_through.type=group` 时必须有 `name`
-- `relay_through.type=select` 时必须有 `match`
-- `relay_through.strategy` 必填
-- 每个地区节点组都必须声明 `strategy`
-- `routing` 成员必须引用节点组、服务组、DIRECT、REJECT、`@all` 或 `@auto`
-- `rulesets` 的 key 必须存在于 `routing`
-- `fallback` 必须引用已定义服务组
-
 输出：
 
-- 启动期准备好的 `RuntimeConfig`（含编译后的正则、解析后的自定义代理、展开后的路由成员、静态命名空间）；请求期按只读契约消费，不强制 accessor 深拷贝
+- `RuntimeConfig`（含编译后的正则、解析后的自定义代理、展开后的路由成员、静态命名空间）
+
+并发语义：
+
+- 启动时执行一次，热重载时重新执行
+- 产出的 `RuntimeConfig` 在请求期按只读契约消费
 
 ---
 
@@ -83,47 +135,20 @@ Build(Source -> Filter -> Group -> Route -> ValidateGraph)
 
 输出：
 
-- `SourceResult`
-- 其中包含原始节点集合与供 Group 阶段消费的链式模板
+- `SourceResult`（原始节点集合 + 链式模板）
 
 说明：
 
 - 本阶段不生成链式节点
-- 规则集 URL 不在本阶段拉取
-- 拉取失败时的错误信息不得包含完整来源 URL（URL 中可能含有用户 token），应对 query 参数做脱敏处理
-- 跨订阅重名通过两轮去重处理：第一轮追加递增后缀（②③...），第二轮检测并解决生成的后缀名与原始节点名的碰撞
-- SS URI 按 SIP002 解析：支持 `ss://userinfo@host:port[/][?query][#tag]`
-- `userinfo` 支持 base64/base64url 形式，也支持明文 `method:password`（必要时带 percent-encoding）
-- 未识别的 query 参数直接忽略；`plugin` query 会保留到中间表示，交由渲染阶段按目标格式解释
-- SS URI 端口值必须在 1-65535 范围内，超出范围视为无效 URI
-
-Snell 来源解析：
-
-- URL 返回纯文本（非 base64），按行解析为 Surge 风格的 Snell 节点声明
-- 格式：`NAME = snell, SERVER, PORT, KEY=VALUE[, KEY=VALUE ...]`；KEY 两侧允许 `\s*=\s*` 空白
-- 节点 `Type="snell"`、`Kind=KindSnell`；所有 KEY=VALUE 保存至 `Params`
-- 空行与 `#` / `//` 注释行跳过；**单行解析失败整源报错**（与 SS 订阅的静默跳过不同——Snell 来源规模小，严格报错更利于发现拼写问题）
-- 报错消息包含脱敏后的来源 URL 与 1-based 物理行号；外层 `BuildError` 负责提供来源上下文，内层解析错误通过 `Cause` 保留根因链
-- Snell 节点与订阅节点共享同一跨源去重池（同名节点按出现顺序追加 ②③... 后缀）
-- 与订阅一起在 Filter 阶段参与 `filters.exclude` 过滤，在 Group 阶段参与区域组 regex 匹配，可作为 `relay_through` 的链式上游
-
-VLESS 来源解析：
-
-- URL 返回纯文本（非 base64），每行一条标准 VLESS URI：`vless://UUID@SERVER:PORT[?query][#NAME]`
-- 节点 `Type="vless"`、`Kind=KindVLess`；URI query 按 Clash 目标命名写入 `Params`（如 `sni→servername`、`fp→client-fingerprint`、`pbk→reality-public-key`），渲染器无需命名映射
-- `type`（传输层）按 Mihomo 兼容语义归一化：已知值 `tcp`/`ws`/`http`/`h2`/`grpc`/`xhttp` 原样保留，缺失或未知值回落到 `tcp`
-- `security` 只接受 `none`/`tls`/`reality`；`encryption` 非空时透传并保留到 `Params`
-- 空行与 `#` / `//` 注释行跳过；单行解析失败整源报错（策略与 Snell 对齐）
-- 报错消息与 Snell 等价：脱敏后的来源 URL + 1-based 物理行号，外层 `BuildError` 通过 `Cause` 保留内层根因
-- VLESS 节点与订阅节点、Snell 节点共享同一跨源去重池
-- 在 Filter / Group / ValidateGraph 中的行为与订阅节点一致；可作为 `relay_through` 链式上游
-- 当前 URI 契约不扩展到 `packet-encoding`、`support-x25519mlkem768` 等未显式定义 query 映射的 Mihomo 字段
+- 跨订阅重名通过两轮去重处理
+- SS URI 按 SIP002 解析
+- Snell 来源单行解析失败整源报错
+- VLESS 来源单行解析失败整源报错
+- 拉取失败时错误信息对 URL 做脱敏处理
 
 来源遍历顺序：
 
 - `sources` 下的 `subscriptions` / `snell` / `vless` 三类 key 按 YAML 书写顺序记录到 `Sources.FetchOrder`，Source 阶段按此顺序调度拉取
-- 例如 YAML 中声明顺序为 `snell → vless → subscriptions`，则最终 proxy slice 的相对顺序也是 snell 节点 → vless 节点 → 订阅节点
-- 未在 YAML 中声明的 key 不进入 FetchOrder；当 FetchOrder 为空（in-memory 构造的测试 Config）时回退到默认顺序 `subscriptions → snell → vless`
 
 ---
 
@@ -140,12 +165,16 @@ VLESS 来源解析：
 
 输出：
 
-- 过滤后的节点集合
+- `FilterResult`
+  - `Included`：未被过滤的节点集合，供后续 Group / Route / Render 使用
+  - `Excluded`：被 `filters.exclude` 命中的拉取类节点，仅供预览和诊断使用
 
 说明：
 
 - 过滤对象是拉取类节点（`KindSubscription` + `KindSnell` + `KindVLess`）
 - 自定义代理和链式节点不参与过滤
+- 生成管道只消费 `FilterResult.Included`
+- `/api/preview/nodes` 同时返回 `Included` 与 `Excluded` 的合并视图，并用 `filtered` 字段标记节点是否被排除
 
 ---
 
@@ -164,25 +193,19 @@ VLESS 来源解析：
 
 输出：
 
-- 全部节点
-- 节点组集合
-- `@all` 展开列表
+- 全部节点、节点组集合、`@all` 展开列表
 
 子步骤执行顺序：
 
-1. **构建地区节点组**：根据 `groups` 定义，用正则匹配过滤后的拉取类节点（订阅 + Snell + VLESS），生成地区节点组
-2. **构建链式节点和链式组**：根据 `relay_through` 定义，利用已构建的地区组（`type=group` 时）或正则匹配（`type=select` 时）确定上游节点，展开链式节点并生成链式组
-3. **计算 `@all`**：收集全部原始节点（订阅节点 + Snell 节点 + VLESS 节点 + **不带 `relay_through` 的自定义节点**），不把链式节点写入结果
-
-顺序理由：步骤 2 依赖步骤 1 的产出（`relay_through.type=group` 需要引用已构建的地区组）。步骤 3 只要来源限定为原始节点，就可以天然排除链式节点；实现上可在链式生成前后计算，但结果语义必须一致。
+1. **构建地区节点组**：正则匹配过滤后的拉取类节点
+2. **构建链式节点和链式组**：利用已构建的地区组或正则匹配确定上游节点
+3. **计算 `@all`**：收集全部原始节点（不含链式节点）
 
 关键规则：
 
-- 链式组属于节点组
-- 链式组策略取自 `relay_through.strategy`
-- `@all` 只包含原始节点，不包含链式节点
-- 原始节点包括订阅节点、Snell 节点、VLESS 节点和**不带 `relay_through`** 的自定义节点；带 `relay_through` 的自定义代理仅作链式模板（不产生 `KindCustom`），因而也不进入 `@all`
-- 链式展开的上游只来自拉取类节点（订阅 + Snell + VLESS）
+- `@all` 只包含原始节点
+- 原始节点 = 订阅节点 + Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
+- 链式展开的上游只来自拉取类节点
 
 ---
 
@@ -198,24 +221,17 @@ VLESS 来源解析：
 
 输入：
 
-- `routing`
-- `rulesets`
-- `rules`
-- `fallback`
-- `GroupResult`（含 `@all` 展开列表和节点组列表）
+- `routing`、`rulesets`、`rules`、`fallback`
+- `GroupResult`
 
 输出：
 
-- 服务组集合
-- 规则集集合
-- 内联规则集合
-- fallback
+- 服务组集合、规则集集合、内联规则集合、fallback
 
 说明：
 
 - 服务组统一为 `select`
-- `@auto` 在启动期 Prepare 阶段已展开（存入 `PreparedRouteGroup.ExpandedMembers`）；Route 阶段仅展开 `@all` 为具体原始节点名
-- 两种 token 互斥，不可在同一 entry 中同时使用
+- `@auto` 在启动期 Prepare 阶段已展开；Route 阶段仅展开 `@all`
 
 ---
 
@@ -225,17 +241,13 @@ VLESS 来源解析：
 
 - 检查共享命名空间冲突和重复声明
 - 检查 `@all` 展开排除链式节点
-- 检查空节点组（地区组和链式组）
-- 检查路由成员引用合法性（区分原始声明 vs 展开后的成员溯源）
+- 检查空节点组
+- 检查路由成员引用合法性
 - 检查服务组之间是否存在循环引用
-
-说明：ruleset/rule 策略存在性和 fallback 存在性由启动期 Prepare 保证，ValidateGraph 不再重复检查。
 
 输入：
 
-- 全部节点
-- 节点组
-- 服务组
+- 全部节点、节点组、服务组
 
 输出：
 
@@ -251,20 +263,11 @@ VLESS 来源解析：
 - 做目标格式协议能力过滤
 - 做目标格式特有的级联校验
 
-输入：
-
-- `Pipeline`
-- 目标格式（Clash / Surge）
-
-输出：
-
-- 已投影的目标格式视图
-
 说明：
 
 - Clash 视图会剔除 Snell 节点及其级联影响
 - Surge 视图会剔除 VLESS 节点及其级联影响
-- 若 `fallback` 在目标格式视图中被清空，应在本阶段返回错误，而不是等到 Render
+- 若 `fallback` 在目标格式视图中被清空，本阶段返回错误
 
 ---
 
@@ -283,8 +286,29 @@ VLESS 来源解析：
 
 - 两种输出的面板结构和路由语义保持一致
 - 差异仅体现在目标语法
-- Clash Meta 对 SS plugin 采用通用透传：输出 `plugin` 与 `plugin-opts`
-- Surge 仅支持可映射的 SS obfs 类 plugin；不支持的 plugin 或 option 在本阶段返回渲染错误，而不是静默降级
+
+---
+
+## 并发模型
+
+```text
+	                    RuntimeConfig
+	                         │
+	            ┌────────────┼────────────┐
+	            │            │            │
+	      /generate    /api/preview   /api/reload
+	     snapshot     snapshot       WLock()
+          │            │              │
+        Build        Source         swap ptr + revision
+        Target       Filter
+        Render       [Group/Route]
+```
+
+- `app.Service` 内部持有 `sync.RWMutex` 保护 `*RuntimeConfig` 指针
+- 读请求（`/generate`、`/api/preview/*`）只在复制配置指针时短暂使用 `RLock`
+- 写请求（`/api/reload`）使用 `WLock`，互斥
+- `WLock` 仅保护指针替换，不包含 LoadConfig 或 Prepare 计算
+- 慢速订阅拉取、模板加载或渲染不持有配置锁，因此不会阻塞热重载获取写锁
 
 ---
 
@@ -292,6 +316,8 @@ VLESS 来源解析：
 
 这样拆分的原因：
 
-- 便于把“获取数据”“重塑结构”“检查引用”“输出文本”四类问题隔离
+- 便于把"获取数据""重塑结构""检查引用""输出文本"四类问题隔离
 - 便于单测直接覆盖单个阶段
-- 便于后续扩展新的输出格式，而不需要回改前面阶段的核心逻辑
+- 便于后续扩展新的输出格式
+- 便于预览请求复用部分阶段
+- 热重载只需重新执行启动期阶段（LoadConfig + Prepare），请求期阶段不受影响

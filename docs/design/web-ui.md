@@ -1,0 +1,165 @@
+# Web 管理后台设计
+
+## 目标
+
+本文件定义 Web 管理后台的前端架构、页面结构和后端集成方式。subconverter v2.0 在 v1.0 纯 API 基础上新增 Web 管理后台，让用户可通过浏览器可视化编辑配置、预览运行时数据、生成并下载目标格式配置。
+
+---
+
+## 设计原则
+
+- YAML 是真相源：UI 是 YAML 配置的可视化外壳，不存在"前端独有"状态
+- 任何 UI 元素都能映射回 YAML 某个 key
+- 草稿与运行时分离：编辑页基于前端草稿调用 POST 预览；运行时预览页基于当前生效配置调用 GET 预览
+- 本地可写配置源：保存操作 = JSON → YAML 写回文件 + 可选热重载
+- 远程 HTTP(S) 配置源：后台以只读模式运行，可查看、校验、预览和热重载，但不提供保存写回
+
+---
+
+## 信息架构
+
+三个功能区：
+
+### A 区：配置编辑
+
+对应 YAML 配置的各顶层段，拆分为独立页面：
+
+| 页面 | 对应 YAML 段 | 核心功能 |
+|------|-------------|---------|
+| A1 订阅来源 | `sources` | 四类来源（subscriptions / snell / vless / custom_proxies）的卡片式管理，每类来源独立区块；自定义代理含 `relay_through` 子表单 |
+| A2 过滤器 | `filters` | exclude 正则编辑 + 草稿匹配预览（调用 `POST /api/preview/nodes` 展示当前草稿会匹配/排除的节点）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
+| A3 节点分组 | `groups` | 分组卡片列表（拖拽排序，保序）；每组：名称 + match 正则 + strategy 选择器 + 草稿匹配预览（调用 `POST /api/preview/groups`）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
+| A4 路由策略 | `routing` | 服务组列表（拖拽排序，保序）；每组：名称 + 成员选择器（可引用节点组、服务组、DIRECT、REJECT、`@all`、`@auto`）；约束提示 |
+| A5 规则集 | `rulesets` | 按服务组分组展示 URL 列表；增删改 URL |
+| A6 内联规则 | `rules` | 规则表格（拖拽排序）+ 语法提示 |
+| A7 其他配置 | `fallback` / `base_url` / `templates` | fallback 下拉（已定义服务组）；base_url 输入；templates 路径输入 |
+| A8 静态配置校验 | （全配置） | 调用 `POST /api/config/validate`；展示 errors / warnings / infos 三级；通过 `locator.json_pointer` 跳转到对应 A1–A7 页面的具体字段 |
+
+### B 区：运行时预览
+
+展示实际拉取和处理后的运行时数据：
+
+| 页面 | 数据来源 | 核心功能 |
+|------|---------|---------|
+| B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅 / Snell / VLESS / 自定义）；显示名称、类型、服务器、端口、Kind；标注格式限定（Snell = 仅 Surge / VLESS = 仅 Clash） |
+| B2 分组预览 | `GET /api/preview/groups` | 当前运行时节点组、链式组和服务组结果；展示 `@all` / `@auto` 展开后的成员 |
+| B3 生成下载 | `GET/POST /api/generate/preview` + `/generate` | 格式选择（Clash Meta / Surge）；预览当前运行时或草稿生成内容（语法高亮）；下载按钮；复制订阅链接（含 token） |
+
+### C 区：系统状态
+
+| 内容 | 数据来源 | 说明 |
+|------|---------|------|
+| 服务健康 | `GET /healthz` | 健康/异常指示 |
+| 版本信息 | `GET /api/status` | 版本号、commit、构建时间 |
+| 配置信息 | `GET /api/status` | 配置源位置、可写性、上次加载时间 |
+| 热重载历史 | `GET /api/status` | 上次热重载时间、成功/失败状态 |
+
+---
+
+## 交互模式
+
+| 场景 | 模式 | 说明 |
+|------|------|------|
+| 添加/编辑条目 | 居中 Modal | 表单编辑，确认后保存 |
+| 操作成功反馈 | 右下绿色 Toast | 4s 自动消失 |
+| 操作失败反馈 | 右下红色 Toast | 不自动消失，含错误详情，可点击跳转 |
+| 进行中状态 | 顶栏按钮 Spinner + 禁用 | 防止重复提交 |
+| 不可撤销操作 | 居中红色确认弹窗 | 删除、重置等需二次确认 |
+| 校验修复 | 右侧 Drawer | 展示静态诊断列表，点击后通过 `locator.json_pointer` 跳转到对应页面/字段 |
+
+---
+
+## 前端技术栈
+
+- 框架：React SPA（TypeScript）
+- 构建：Vite
+- 状态管理：React Query（服务端状态）+ React 本地状态
+- 产物发布：构建输出到 `web/dist/`，由 `web` Docker 镜像中的 nginx 托管
+
+---
+
+## 前端-后端集成模型
+
+### 生产模式
+
+- Docker Compose 启动 `api` 与 `web` 两个服务
+- `api` 服务运行 Go 后端，只暴露内部 `:8080`
+- `web` 服务使用 nginx 托管 SPA 静态资源，并对 `/api/*`、`/generate`、`/healthz` 反向代理到 `api:8080`
+- SPA fallback 由 nginx 负责：静态文件未命中时返回 `index.html`
+- 浏览器只访问 `web` 服务端口，Web 页面与 API 保持同源，生产环境不需要 CORS
+
+### 开发模式
+
+- 前端：Vite dev server（默认 `localhost:5173`）
+- 后端：Go 服务（默认 `localhost:8080`）
+- 推荐 Vite 配置 proxy 将 `/api/*`、`/generate`、`/healthz` 代理到 Go 后端
+- 若不使用 Vite proxy，可由 Go 开启 CORS middleware 允许前端 dev server 跨域
+
+### API 调用约定
+
+- 所有管理 API 前缀 `/api/*`
+- 生成接口保持原有 `/generate` 路径
+- `/api/*` 请求只使用 `Authorization: Bearer ...` header 传递 token
+- `/generate` 订阅链接继续使用 query token 兼容客户端；复制链接前需让用户显式确认把当前 token 写入 URL
+- 请求/响应均为 JSON（除 `/generate` 和 `/api/generate/preview` 返回配置文本）
+- 前端通过 `GET /api/status` 读取 `capabilities.config_write`；当配置不可写时，编辑页进入只读查看模式，保存按钮禁用
+
+### Token 输入流程
+
+- 服务端启用 token 且 API 返回 `401` 时，SPA 展示 token 输入对话框
+- 用户输入的 token 默认保存在内存；用户选择"本次浏览器会话记住"时可写入 `sessionStorage`
+- API client 统一把 token 写入 `Authorization` header
+- 复制订阅链接时，前端从当前 token 组装 `/generate?format=...&token=...&filename=...`，并在确认框中提示 token 会进入 URL
+
+---
+
+## 草稿与运行时预览
+
+编辑页和运行时页使用不同 API，避免用户误把旧 RuntimeConfig 当作草稿结果：
+
+| 场景 | API | 配置来源 | 是否影响运行时 |
+|------|-----|----------|----------------|
+| A2/A3 编辑态预览 | `POST /api/preview/nodes`、`POST /api/preview/groups` | 前端草稿 `{ config }` | 否 |
+| A8 静态校验 | `POST /api/config/validate` | 前端草稿 Config JSON | 否 |
+| B1/B2 运行时预览 | `GET /api/preview/nodes`、`GET /api/preview/groups` | 当前 `RuntimeConfig` | 否 |
+| B3 草稿生成预览 | `POST /api/generate/preview` | 前端草稿 `{ config }` | 否 |
+| B3 当前生成预览 | `GET /api/generate/preview` | 当前 `RuntimeConfig` | 否 |
+
+保存工作流仍为：编辑草稿 → 校验 → `PUT /api/config` 条件写回 → `POST /api/reload` 生效。
+
+其中 A8 只覆盖 `Prepare` 阶段的静态配置校验；生成可用性需要通过 B1/B2/B3 预览确认，尤其是远程源拉取、过滤后空组、目标格式级联过滤和渲染错误。
+
+### 编辑期 revision 监控
+
+用户长时间编辑配置期间，外部进程（GitOps、其他标签页、手动编辑）可能已修改配置文件。若直到保存时才发现 revision 冲突，已编辑内容需要手动合并，体验差。
+
+缓解策略（纯前端行为，无需后端改动）：
+
+- 前端在编辑页面活跃期间，定期（建议 30s）poll `GET /api/status` 的 `config_revision`
+- 当 revision 与编辑起始时的 revision 不一致时，顶栏显示 warning："配置文件已被外部修改，保存前请对比最新版本"
+- 不自动覆盖用户正在编辑的草稿，仅提示用户自行决定是否重新加载
+
+## 保序字段的 JSON 表示
+
+YAML 配置中 `groups` / `routing` / `rulesets` 使用 OrderedMap 保序。JSON 序列化规范（含完整示例和 round-trip 不变量）定义在 `config-schema.md` §JSON API 表示。以下为前端消费示例：
+
+```json
+{
+  "groups": [
+    { "key": "🇭🇰 Hong Kong", "value": { "match": "(港|HK)", "strategy": "select" } },
+    { "key": "🇸🇬 Singapore", "value": { "match": "(新加坡|SG)", "strategy": "select" } }
+  ]
+}
+```
+
+前端编辑保序字段时，拖拽排序直接操作数组索引，保证写回后顺序不变。
+
+---
+
+## 非功能需求
+
+- 最低支持分辨率：1280x800
+- 支持浅色/深色主题
+- 静态校验不依赖外部网络（前端格式级校验 + 后端 Prepare 校验）；运行时预览和生成预览可能访问远程订阅与模板
+- 页面加载后可离线操作配置编辑（保存/预览需网络）
+- 当后端 API 不可用时（网络错误或 `api` 容器宕机），SPA 应显示明确的连接错误提示，而非空白页面或静默失败
