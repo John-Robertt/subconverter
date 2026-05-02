@@ -16,6 +16,7 @@ const maxFilenameLength = 255
 
 // handleGenerate executes the pipeline and renders output in the requested format.
 func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	query := r.URL.Query()
 	format := query.Get("format")
 	if format != "clash" && format != "surge" {
@@ -23,7 +24,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.isAuthorized(query.Get("token")) {
+	if !s.isAuthorized(r, query.Get("token")) {
 		writeError(w, http.StatusUnauthorized, "访问令牌缺失或无效")
 		return
 	}
@@ -57,7 +58,10 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-func (s *Server) isAuthorized(providedToken string) bool {
+func (s *Server) isAuthorized(r *http.Request, providedToken string) bool {
+	if s.opts.AdminSessionValidator != nil && s.opts.AdminSessionValidator(r) {
+		return true
+	}
 	if s.opts.AccessToken == "" {
 		return true
 	}

@@ -58,6 +58,14 @@ func (c *CachedFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error
 	return cloneBytes(stored), nil
 }
 
+// Invalidate removes one cached URL. The next Fetch for rawURL will delegate
+// to the inner fetcher even if the previous entry was still within TTL.
+func (c *CachedFetcher) Invalidate(rawURL string) {
+	c.mu.Lock()
+	delete(c.cache, rawURL)
+	c.mu.Unlock()
+}
+
 func cloneBytes(src []byte) []byte {
 	if src == nil {
 		return nil

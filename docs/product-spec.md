@@ -401,7 +401,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 路由自动补充       | `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT | 消除 routing 冗余，链式组自动可用 |
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
-| Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG` 并继承请求中的 `token` / `filename` | 用户显式控制，无需依赖反向代理头 |
+| Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG`，使用服务端订阅访问 token（若启用）和最终 `filename` | 用户显式控制，无需依赖反向代理头；token 来源不依赖当前请求鉴权方式，见 `T-PRV-014` |
 | 访问控制边界       | `/api/*` 使用管理员登录态和 `session_id` Cookie；`/generate` 保留 query token 兼容订阅链接；订阅 token 不进入 YAML，也不作为后台登录凭据 | 将公网后台权限与客户端订阅更新密钥解耦 |
 | 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf` | 客户端订阅与浏览器下载都需要稳定文件名 |
 | Web 管理后台       | React SPA 通过 Docker Compose 中的 `web` 静态容器托管，并同源反代到 `api` | 避免 Go 嵌入目录边界，生产部署路径清晰 |

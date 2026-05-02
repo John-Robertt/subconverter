@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/proxyparse"
 )
 
@@ -43,7 +44,7 @@ type routingScope struct {
 func Prepare(cfg *Config) (*RuntimeConfig, error) {
 	if cfg == nil {
 		var c collector
-		c.add("", "配置不能为空")
+		c.add(sectionPath(""), "配置不能为空")
 		return nil, c.result()
 	}
 
@@ -93,30 +94,30 @@ func newRegistry() map[string]staticDecl {
 
 func prepareSourceURLs(c *collector, cfg *Config) {
 	for i, sub := range cfg.Sources.Subscriptions {
-		field := fmt.Sprintf("sources.subscriptions[%d].url", i)
+		loc := valuePath("sources", fmt.Sprintf("subscriptions[%d].url", i))
 		if sub.URL == "" {
-			c.add(field, "必填")
+			c.addCode(loc, errtype.CodeConfigRequired, "必填")
 			continue
 		}
-		c.validateHTTPURL(field, sub.URL)
+		c.validateHTTPURL(loc, sub.URL)
 	}
 
 	for i, s := range cfg.Sources.Snell {
-		field := fmt.Sprintf("sources.snell[%d].url", i)
+		loc := valuePath("sources", fmt.Sprintf("snell[%d].url", i))
 		if s.URL == "" {
-			c.add(field, "必填")
+			c.addCode(loc, errtype.CodeConfigRequired, "必填")
 			continue
 		}
-		c.validateHTTPURL(field, s.URL)
+		c.validateHTTPURL(loc, s.URL)
 	}
 
 	for i, s := range cfg.Sources.VLess {
-		field := fmt.Sprintf("sources.vless[%d].url", i)
+		loc := valuePath("sources", fmt.Sprintf("vless[%d].url", i))
 		if s.URL == "" {
-			c.add(field, "必填")
+			c.addCode(loc, errtype.CodeConfigRequired, "必填")
 			continue
 		}
-		c.validateHTTPURL(field, s.URL)
+		c.validateHTTPURL(loc, s.URL)
 	}
 }
 
@@ -126,7 +127,7 @@ func prepareFilters(c *collector, rt *RuntimeConfig, cfg *Config) {
 	}
 	re, err := regexp.Compile(cfg.Filters.Exclude)
 	if err != nil {
-		c.add("filters.exclude", fmt.Sprintf("正则表达式无效：%v", err))
+		c.addCode(valuePath("filters", "exclude"), errtype.CodeConfigInvalidRegex, fmt.Sprintf("正则表达式无效：%v", err))
 		return
 	}
 	rt.filters = PreparedFilters{
@@ -137,28 +138,29 @@ func prepareFilters(c *collector, rt *RuntimeConfig, cfg *Config) {
 
 func prepareGroups(c *collector, rt *RuntimeConfig, registry map[string]staticDecl, cfg *Config) []string {
 	groupNames := make([]string, 0, cfg.Groups.Len())
+	index := 0
 	for name, g := range cfg.Groups.Entries() {
-		field := fmt.Sprintf("groups.%s", name)
-		registerStaticName(c, registry, field, name, staticKindNodeGroup)
+		registerStaticName(c, registry, keyedIndexedPath("groups", index, name, "key"), name, staticKindNodeGroup)
 		groupNames = append(groupNames, name)
 
 		prepared := PreparedGroup{Name: name, Strategy: g.Strategy, RawMatch: g.Match}
 		if g.Match == "" {
-			c.add(field+".match", "必填")
+			c.addCode(keyedIndexedPath("groups", index, name, "match"), errtype.CodeConfigRequired, "必填")
 		} else {
 			re, err := regexp.Compile(g.Match)
 			if err != nil {
-				c.add(field+".match", fmt.Sprintf("正则表达式无效：%v", err))
+				c.addCode(keyedIndexedPath("groups", index, name, "match"), errtype.CodeConfigInvalidRegex, fmt.Sprintf("正则表达式无效：%v", err))
 			} else {
 				prepared.Match = re
 			}
 		}
 		if g.Strategy == "" {
-			c.add(field+".strategy", "必填")
+			c.addCode(keyedIndexedPath("groups", index, name, "strategy"), errtype.CodeConfigRequired, "必填")
 		} else if g.Strategy != "select" && g.Strategy != "url-test" {
-			c.add(field+".strategy", fmt.Sprintf("必须为 select 或 url-test，当前为 %q", g.Strategy))
+			c.addCode(keyedIndexedPath("groups", index, name, "strategy"), errtype.CodeConfigInvalidEnum, fmt.Sprintf("必须为 select 或 url-test，当前为 %q", g.Strategy))
 		}
 		rt.groups = append(rt.groups, prepared)
+		index++
 	}
 	return groupNames
 }
@@ -171,12 +173,12 @@ func prepareCustomProxies(c *collector, rt *RuntimeConfig, registry map[string]s
 	seenCustomNames := make(map[string]bool)
 
 	for i, cp := range cfg.Sources.CustomProxies {
-		prefix := fmt.Sprintf("sources.custom_proxies[%d]", i)
+		baseLoc := valuePath("sources", fmt.Sprintf("custom_proxies[%d]", i))
 
 		if cp.Name == "" {
-			c.add(prefix+".name", "必填")
+			c.addCode(valuePath("sources", fmt.Sprintf("custom_proxies[%d].name", i)), errtype.CodeConfigRequired, "必填")
 		} else if seenCustomNames[cp.Name] {
-			c.add(prefix+".name", fmt.Sprintf("自定义代理名 %q 重复", cp.Name))
+			c.addCode(valuePath("sources", fmt.Sprintf("custom_proxies[%d].name", i)), errtype.CodeConfigDuplicateName, fmt.Sprintf("自定义代理名 %q 重复", cp.Name))
 		} else {
 			seenCustomNames[cp.Name] = true
 			kind := staticKindCustom
@@ -186,23 +188,23 @@ func prepareCustomProxies(c *collector, rt *RuntimeConfig, registry map[string]s
 			} else {
 				result.standaloneCustomNames[cp.Name] = struct{}{}
 			}
-			registerStaticName(c, registry, prefix+".name", cp.Name, kind)
+			registerStaticName(c, registry, valuePath("sources", fmt.Sprintf("custom_proxies[%d].name", i)), cp.Name, kind)
 		}
 
 		prepared := PreparedCustomProxy{Name: cp.Name}
 		if cp.URL == "" {
-			c.add(prefix+".url", "必填")
+			c.addCode(valuePath("sources", fmt.Sprintf("custom_proxies[%d].url", i)), errtype.CodeConfigRequired, "必填")
 		} else {
 			parsed, err := proxyparse.ParseURL(cp.URL)
 			if err != nil {
-				c.add(prefix+".url", err.Error())
+				c.add(valuePath("sources", fmt.Sprintf("custom_proxies[%d].url", i)), err.Error())
 			} else {
 				if parsed.Type == "ss" {
 					if parsed.Params["cipher"] == "" {
-						c.add(prefix+".url", "SS URI 缺少加密方式（cipher）")
+						c.add(valuePath("sources", fmt.Sprintf("custom_proxies[%d].url", i)), "SS URI 缺少加密方式（cipher）")
 					}
 					if parsed.Params["password"] == "" {
-						c.add(prefix+".url", "SS URI 缺少密码")
+						c.add(valuePath("sources", fmt.Sprintf("custom_proxies[%d].url", i)), "SS URI 缺少密码")
 					}
 				}
 				prepared.Parsed = parsed
@@ -210,7 +212,7 @@ func prepareCustomProxies(c *collector, rt *RuntimeConfig, registry map[string]s
 		}
 
 		if cp.RelayThrough != nil {
-			prepared.RelayThrough = prepareRelayThrough(c, cp.RelayThrough, prefix+".relay_through")
+			prepared.RelayThrough = prepareRelayThrough(c, cp.RelayThrough, baseLoc, "relay_through")
 		}
 		rt.sources.CustomProxies = append(rt.sources.CustomProxies, prepared)
 	}
@@ -219,10 +221,11 @@ func prepareCustomProxies(c *collector, rt *RuntimeConfig, registry map[string]s
 
 func prepareRouting(c *collector, rt *RuntimeConfig, registry map[string]staticDecl, cfg *Config, groupNames []string, cp customProxyResult) routingScope {
 	routeGroupNames := make([]string, 0, cfg.Routing.Len())
+	routeIndex := 0
 	for name := range cfg.Routing.Entries() {
-		field := fmt.Sprintf("routing.%s", name)
-		registerStaticName(c, registry, field, name, staticKindRouteGroup)
+		registerStaticName(c, registry, keyedIndexedPath("routing", routeIndex, name, "key"), name, staticKindRouteGroup)
 		routeGroupNames = append(routeGroupNames, name)
+		routeIndex++
 	}
 
 	routeNameSet := make(map[string]bool, len(routeGroupNames))
@@ -238,10 +241,12 @@ func prepareRouting(c *collector, rt *RuntimeConfig, registry map[string]staticD
 	}
 
 	rawRouting := make([]PreparedRouteGroup, 0, cfg.Routing.Len())
+	routeIndex = 0
 	for name, members := range cfg.Routing.Entries() {
-		field := fmt.Sprintf("routing.%s", name)
+		loc := keyedIndexedPath("routing", routeIndex, name, "")
 		if len(members) == 0 {
-			c.add(field, "至少需要一个成员")
+			c.add(loc, "至少需要一个成员")
+			routeIndex++
 			continue
 		}
 		hasAll, autoCount := false, 0
@@ -258,22 +263,23 @@ func prepareRouting(c *collector, rt *RuntimeConfig, registry map[string]staticD
 				continue
 			}
 			if _, ok := cp.standaloneCustomNames[member]; ok {
-				c.add(field, fmt.Sprintf("成员 %q 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto", member))
+				c.addCode(loc, errtype.CodeConfigInvalidReference, fmt.Sprintf("成员 %q 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto", member))
 				continue
 			}
-			c.add(field, fmt.Sprintf("成员 %q 不存在", member))
+			c.addCode(loc, errtype.CodeConfigInvalidReference, fmt.Sprintf("成员 %q 不存在", member))
 		}
 		if hasAll && autoCount > 0 {
-			c.add(field, "@all 和 @auto 不能同时使用")
+			c.add(loc, "@all 和 @auto 不能同时使用")
 		}
 		if autoCount > 1 {
-			c.add(field, "@auto 不能重复使用")
+			c.add(loc, "@auto 不能重复使用")
 		}
 		rawRouting = append(rawRouting, PreparedRouteGroup{
 			Name:            name,
 			DeclaredMembers: declaredMembers,
 			ExpandedMembers: ClonePreparedRouteMembers(declaredMembers),
 		})
+		routeIndex++
 	}
 
 	for _, raw := range rawRouting {
@@ -284,47 +290,49 @@ func prepareRouting(c *collector, rt *RuntimeConfig, registry map[string]staticD
 		})
 	}
 	if cycle := detectPreparedRouteCycle(rt.routing); cycle != "" {
-		c.add("routing", cycle)
+		c.add(sectionPath("routing"), cycle)
 	}
 
 	return routingScope{routeNameSet: routeNameSet}
 }
 
 func prepareRulesets(c *collector, rt *RuntimeConfig, cfg *Config, scope routingScope) {
+	rulesetIndex := 0
 	for policy, urls := range cfg.Rulesets.Entries() {
-		field := fmt.Sprintf("rulesets.%s", policy)
+		loc := keyedIndexedPath("rulesets", rulesetIndex, policy, "")
 		if len(urls) == 0 {
-			c.add(field, "至少需要一个 URL")
+			c.add(loc, "至少需要一个 URL")
 		}
 		for i, rawURL := range urls {
-			urlField := fmt.Sprintf("%s[%d]", field, i)
+			urlLoc := keyedIndexedPath("rulesets", rulesetIndex, policy, fmt.Sprintf("[%d]", i))
 			if rawURL == "" {
-				c.add(urlField, "必填")
+				c.addCode(urlLoc, errtype.CodeConfigRequired, "必填")
 				continue
 			}
-			c.validateHTTPURL(urlField, rawURL)
+			c.validateHTTPURL(urlLoc, rawURL)
 		}
 		if !scope.routeNameSet[policy] {
-			c.add(field, fmt.Sprintf("策略 %q 未在 routing 中定义", policy))
+			c.addCode(loc, errtype.CodeConfigInvalidReference, fmt.Sprintf("策略 %q 未在 routing 中定义", policy))
 		}
 		rt.rulesets = append(rt.rulesets, PreparedRuleset{
 			Policy: policy,
 			URLs:   append([]string(nil), urls...),
 		})
+		rulesetIndex++
 	}
 }
 
 func prepareRules(c *collector, rt *RuntimeConfig, cfg *Config, scope routingScope) {
 	for i, raw := range cfg.Rules {
-		field := fmt.Sprintf("rules[%d]", i)
+		loc := indexedPath("rules", i, "")
 		idx := strings.LastIndex(raw, ",")
 		if idx < 0 {
-			c.add(field, fmt.Sprintf("缺少逗号分隔：%q", raw))
+			c.addCode(loc, errtype.CodeConfigInvalidRule, fmt.Sprintf("缺少逗号分隔：%q", raw))
 			continue
 		}
 		policy := raw[idx+1:]
 		if !scope.routeNameSet[policy] && !IsReservedPolicyName(policy) {
-			c.add(field, fmt.Sprintf("规则策略 %q 未在 routing 中定义", policy))
+			c.addCode(loc, errtype.CodeConfigInvalidReference, fmt.Sprintf("规则策略 %q 未在 routing 中定义", policy))
 		}
 		rt.rules = append(rt.rules, PreparedRule{Raw: raw, Policy: policy})
 	}
@@ -332,28 +340,28 @@ func prepareRules(c *collector, rt *RuntimeConfig, cfg *Config, scope routingSco
 
 func prepareFallback(c *collector, cfg *Config, scope routingScope) {
 	if cfg.Fallback == "" {
-		c.add("fallback", "必填")
+		c.addCode(sectionPath("fallback"), errtype.CodeConfigRequired, "必填")
 	} else if !scope.routeNameSet[cfg.Fallback] {
-		c.add("fallback", fmt.Sprintf("%q 未在 routing 中定义", cfg.Fallback))
+		c.addCode(sectionPath("fallback"), errtype.CodeConfigInvalidReference, fmt.Sprintf("%q 未在 routing 中定义", cfg.Fallback))
 	}
 }
 
 func prepareBaseURL(c *collector, cfg *Config) {
 	if cfg.BaseURL != "" {
-		c.validateBaseURL("base_url", cfg.BaseURL)
+		c.validateBaseURL(sectionPath("base_url"), cfg.BaseURL)
 	}
 }
 
 func prepareTemplates(c *collector, cfg *Config) {
 	if cfg.Templates.Clash != "" {
-		c.validateTemplatePath("templates.clash", cfg.Templates.Clash)
+		c.validateTemplatePath(valuePath("templates", "clash"), cfg.Templates.Clash)
 	}
 	if cfg.Templates.Surge != "" {
-		c.validateTemplatePath("templates.surge", cfg.Templates.Surge)
+		c.validateTemplatePath(valuePath("templates", "surge"), cfg.Templates.Surge)
 	}
 }
 
-func prepareRelayThrough(c *collector, rt *RelayThrough, prefix string) *PreparedRelayThrough {
+func prepareRelayThrough(c *collector, rt *RelayThrough, parent diagnosticPath, prefix string) *PreparedRelayThrough {
 	if rt == nil {
 		return nil
 	}
@@ -368,15 +376,15 @@ func prepareRelayThrough(c *collector, rt *RelayThrough, prefix string) *Prepare
 	switch rt.Type {
 	case "group":
 		if rt.Name == "" {
-			c.add(prefix+".name", "type=group 时必填")
+			c.addCode(childPath(parent, prefix+".name"), errtype.CodeConfigRequired, "type=group 时必填")
 		}
 	case "select":
 		if rt.Match == "" {
-			c.add(prefix+".match", "type=select 时必填")
+			c.addCode(childPath(parent, prefix+".match"), errtype.CodeConfigRequired, "type=select 时必填")
 		} else {
 			re, err := regexp.Compile(rt.Match)
 			if err != nil {
-				c.add(prefix+".match", fmt.Sprintf("正则表达式无效：%v", err))
+				c.addCode(childPath(parent, prefix+".match"), errtype.CodeConfigInvalidRegex, fmt.Sprintf("正则表达式无效：%v", err))
 			} else {
 				prepared.Match = re
 			}
@@ -384,26 +392,35 @@ func prepareRelayThrough(c *collector, rt *RelayThrough, prefix string) *Prepare
 	case "all":
 		// no-op
 	case "":
-		c.add(prefix+".type", "必填")
+		c.addCode(childPath(parent, prefix+".type"), errtype.CodeConfigRequired, "必填")
 	default:
-		c.add(prefix+".type", fmt.Sprintf("必须为 group、select 或 all，当前为 %q", rt.Type))
+		c.addCode(childPath(parent, prefix+".type"), errtype.CodeConfigInvalidEnum, fmt.Sprintf("必须为 group、select 或 all，当前为 %q", rt.Type))
 	}
 
 	if rt.Strategy == "" {
-		c.add(prefix+".strategy", "必填")
+		c.addCode(childPath(parent, prefix+".strategy"), errtype.CodeConfigRequired, "必填")
 	} else if rt.Strategy != "select" && rt.Strategy != "url-test" {
-		c.add(prefix+".strategy", fmt.Sprintf("必须为 select 或 url-test，当前为 %q", rt.Strategy))
+		c.addCode(childPath(parent, prefix+".strategy"), errtype.CodeConfigInvalidEnum, fmt.Sprintf("必须为 select 或 url-test，当前为 %q", rt.Strategy))
 	}
 
 	return prepared
 }
 
-func registerStaticName(c *collector, registry map[string]staticDecl, field, name, kind string) {
+func childPath(parent diagnosticPath, suffix string) diagnosticPath {
+	if parent.valuePath == "" {
+		parent.valuePath = suffix
+	} else {
+		parent.valuePath += "." + suffix
+	}
+	return parent
+}
+
+func registerStaticName(c *collector, registry map[string]staticDecl, loc diagnosticPath, name, kind string) {
 	if name == "" {
 		return
 	}
 	if other, ok := registry[name]; ok {
-		c.add(field, fmt.Sprintf("名称 %q 同时被 %s 和 %s 使用", name, other.kind, kind))
+		c.addCode(loc, errtype.CodeConfigDuplicateName, fmt.Sprintf("名称 %q 同时被 %s 和 %s 使用", name, other.kind, kind))
 		return
 	}
 	registry[name] = staticDecl{kind: kind}

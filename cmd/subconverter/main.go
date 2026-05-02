@@ -17,10 +17,14 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
-	"github.com/John-Robertt/subconverter/internal/config"
+	"github.com/John-Robertt/subconverter/internal/admin"
+	"github.com/John-Robertt/subconverter/internal/app"
+	"github.com/John-Robertt/subconverter/internal/auth"
 	"github.com/John-Robertt/subconverter/internal/fetch"
 	"github.com/John-Robertt/subconverter/internal/generate"
 	"github.com/John-Robertt/subconverter/internal/server"
@@ -37,6 +41,9 @@ const (
 	listenEnvVar      = "SUBCONVERTER_LISTEN"
 	//nolint:gosec // This is an environment variable name, not an embedded credential.
 	accessTokenEnvVar = "SUBCONVERTER_TOKEN"
+	authStateEnvVar   = "SUBCONVERTER_AUTH_STATE"
+	setupTokenEnvVar  = "SUBCONVERTER_SETUP_TOKEN"
+	corsEnvVar        = "SUBCONVERTER_CORS"
 
 	serverReadHeaderTimeout = 10 * time.Second
 	serverIdleTimeout       = 120 * time.Second
@@ -46,6 +53,9 @@ func main() {
 	configPath := flag.String("config", "", "path to YAML config file (required)")
 	listen := flag.String("listen", "", "listen address (overrides SUBCONVERTER_LISTEN)")
 	accessToken := flag.String("access-token", "", "access token for /generate (overrides SUBCONVERTER_TOKEN)")
+	authState := flag.String("auth-state", "", "path to admin auth state (overrides SUBCONVERTER_AUTH_STATE)")
+	setupToken := flag.String("setup-token", "", "bootstrap token for first admin setup (overrides SUBCONVERTER_SETUP_TOKEN)")
+	enableCORS := flag.Bool("cors", false, "enable localhost-only development CORS (overrides SUBCONVERTER_CORS)")
 	cacheTTL := flag.Duration("cache-ttl", 5*time.Minute, "subscription and template cache TTL")
 	timeout := flag.Duration("timeout", 30*time.Second, "HTTP fetch timeout for subscriptions")
 	showVersion := flag.Bool("version", false, "print version information and exit")
@@ -59,6 +69,8 @@ func main() {
 
 	listenAddr := resolveListenAddress(*listen)
 	resolvedAccessToken := resolveAccessToken(*accessToken)
+	resolvedSetupToken := resolveSetupToken(*setupToken)
+	resolvedCORS := resolveCORS(*enableCORS, flagWasSet("cors"))
 
 	if *healthcheck {
 		os.Exit(runHealthcheck(listenAddr))
@@ -75,19 +87,39 @@ func main() {
 	httpFetcher := &fetch.HTTPFetcher{Client: &http.Client{Timeout: *timeout}}
 	cachedFetcher := fetch.NewCachedFetcher(httpFetcher, *cacheTTL)
 
-	// Load and validate config at startup (fail-fast).
-	cfg, err := config.Load(context.Background(), *configPath, cachedFetcher)
+	resolvedAuthState, err := resolveAuthStatePath(*authState)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		log.Fatalf("failed to resolve auth state path: %v", err)
 	}
-	runtimeCfg, err := config.Prepare(cfg)
+
+	// Load and validate config at startup (fail-fast).
+	appSvc, err := app.New(context.Background(), app.Options{
+		ConfigLocation: *configPath,
+		Fetcher:        cachedFetcher,
+		Generate:       generate.Options{AccessToken: resolvedAccessToken},
+	})
 	if err != nil {
-		log.Fatalf("config validation failed:\n%v", err)
+		log.Fatalf("failed to initialize app service: %v", err)
+	}
+	authSvc, err := auth.New(auth.Options{
+		StatePath:  resolvedAuthState,
+		SetupToken: resolvedSetupToken,
+	})
+	if err != nil {
+		log.Fatalf("failed to initialize auth service: %v", err)
 	}
 
 	// Start HTTP server.
-	generator := generate.New(runtimeCfg, cachedFetcher, generate.Options{AccessToken: resolvedAccessToken})
-	srv := server.New(generator, server.Options{AccessToken: resolvedAccessToken})
+	adminHandler := admin.New(appSvc, authSvc)
+	srv := server.New(appSvc, server.Options{
+		AccessToken:  resolvedAccessToken,
+		AdminHandler: adminHandler,
+		AdminSessionValidator: func(r *http.Request) bool {
+			cookie, err := r.Cookie(auth.SessionCookieName)
+			return err == nil && authSvc.IsSessionValid(cookie.Value)
+		},
+		EnableCORS: resolvedCORS,
+	})
 	httpServer := newHTTPServer(listenAddr, srv.Handler())
 
 	// Graceful shutdown on SIGINT / SIGTERM.
@@ -125,6 +157,45 @@ func resolveAccessToken(flagValue string) string {
 		return flagValue
 	}
 	return os.Getenv(accessTokenEnvVar)
+}
+
+func resolveSetupToken(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return os.Getenv(setupTokenEnvVar)
+}
+
+func resolveCORS(flagValue bool, flagSet bool) bool {
+	if flagSet {
+		return flagValue
+	}
+	envValue := strings.ToLower(strings.TrimSpace(os.Getenv(corsEnvVar)))
+	return envValue == "1" || envValue == "true" || envValue == "yes"
+}
+
+func flagWasSet(name string) bool {
+	wasSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			wasSet = true
+		}
+	})
+	return wasSet
+}
+
+func resolveAuthStatePath(flagValue string) (string, error) {
+	if flagValue != "" {
+		return flagValue, nil
+	}
+	if envValue := os.Getenv(authStateEnvVar); envValue != "" {
+		return envValue, nil
+	}
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, "subconverter", "auth.json"), nil
 }
 
 // 仅设 ReadHeaderTimeout + IdleTimeout：前者防 slowloris，后者回收闲置 keepalive。

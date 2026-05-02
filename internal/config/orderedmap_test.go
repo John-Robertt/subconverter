@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -164,5 +165,40 @@ m: 13
 	}
 	if !slices.Equal(vals, []int{26, 1, 13}) {
 		t.Errorf("vals = %v", vals)
+	}
+}
+
+func TestOrderedMap_JSONRoundTripPreservesOrder(t *testing.T) {
+	input := []byte(`[
+		{"key":"HK","value":{"match":"(HK)","strategy":"select"}},
+		{"key":"SG","value":{"match":"(SG)","strategy":"url-test"}}
+	]`)
+	var m OrderedMap[Group]
+	if err := json.Unmarshal(input, &m); err != nil {
+		t.Fatalf("UnmarshalJSON: %v", err)
+	}
+	if !slices.Equal(m.Keys(), []string{"HK", "SG"}) {
+		t.Fatalf("Keys() = %v", m.Keys())
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	if string(out) != `[{"key":"HK","value":{"match":"(HK)","strategy":"select"}},{"key":"SG","value":{"match":"(SG)","strategy":"url-test"}}]` {
+		t.Fatalf("JSON = %s", out)
+	}
+}
+
+func TestOrderedMap_MarshalYAMLPreservesOrder(t *testing.T) {
+	var m OrderedMap[int]
+	if err := json.Unmarshal([]byte(`[{"key":"b","value":2},{"key":"a","value":1}]`), &m); err != nil {
+		t.Fatalf("UnmarshalJSON: %v", err)
+	}
+	out, err := yaml.Marshal(m)
+	if err != nil {
+		t.Fatalf("MarshalYAML: %v", err)
+	}
+	if string(out) != "b: 2\na: 1\n" {
+		t.Fatalf("YAML = %q", out)
 	}
 }

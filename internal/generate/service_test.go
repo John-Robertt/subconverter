@@ -83,9 +83,10 @@ func validFetcher() *fakeFetcher {
 }
 
 func TestServiceGenerateClash(t *testing.T) {
-	svc := New(mustRuntimeConfig(t, validConfig(t)), validFetcher(), Options{})
+	rt := mustRuntimeConfig(t, validConfig(t))
+	svc := New(validFetcher(), Options{})
 
-	result, err := svc.Generate(context.Background(), Request{
+	result, err := svc.Generate(context.Background(), rt, Request{
 		Format:   "clash",
 		Filename: "clash.yaml",
 	})
@@ -107,9 +108,10 @@ func TestServiceGenerateClash(t *testing.T) {
 }
 
 func TestServiceGenerateSurgeManagedURL(t *testing.T) {
-	svc := New(mustRuntimeConfig(t, validConfig(t)), validFetcher(), Options{AccessToken: "secret-token"})
+	rt := mustRuntimeConfig(t, validConfig(t))
+	svc := New(validFetcher(), Options{AccessToken: "secret-token"})
 
-	result, err := svc.Generate(context.Background(), Request{
+	result, err := svc.Generate(context.Background(), rt, Request{
 		Format:   "surge",
 		Filename: "my-profile.conf",
 	})
@@ -129,9 +131,10 @@ func TestServiceGenerateSurgeManagedURL(t *testing.T) {
 }
 
 func TestServiceGenerateUnsupportedFormat(t *testing.T) {
-	svc := New(mustRuntimeConfig(t, validConfig(t)), validFetcher(), Options{})
+	rt := mustRuntimeConfig(t, validConfig(t))
+	svc := New(validFetcher(), Options{})
 
-	_, err := svc.Generate(context.Background(), Request{
+	_, err := svc.Generate(context.Background(), rt, Request{
 		Format:   "quantumultx",
 		Filename: "qx.conf",
 	})

@@ -12,6 +12,7 @@
 - 所有页面具备 loading、empty、error、readonly 状态。
 - 长 URL、长正则、长节点名和 emoji key 显示稳定。
 - 浅色与深色主题均可用，1280x800 下都无文本重叠、按钮溢出或关键内容不可见。
+- Web 容器中 `index.html` 使用可重验证缓存策略，带 hash 的静态资源可长期缓存且不会影响新版本发布。
 
 ## API 行为验收
 
@@ -28,6 +29,7 @@
 - 429 reload in progress 展示退避重试或可重试提示。
 - 502 上游拉取失败按接口上下文展示。
 - API 不可用时显示连接错误，不出现空白页面。
+- `/api/config`、`/api/generate/preview` 和 `/generate` 等敏感响应返回 `Cache-Control: no-store`。
 
 ## 工作流验收
 
@@ -54,6 +56,7 @@
 - 登录成功后使用 HttpOnly `session_id` Cookie；前端不保存密码、session id 或订阅访问 token。
 - “记住我”只影响 session 有效期：未选最长 24 小时，选中最长 7 天。
 - `/api/*` 请求不把订阅访问 token 放入 query 或 Authorization header。
+- 所有非安全 `/api/*` 请求校验同源 `Origin` 或 `Referer`；`/api/auth/login`、`/api/auth/setup`、`/api/auth/logout` 即使未登录可访问，也不能绕过同源校验。
 - 复制含 token 的 `/generate` 链接前出现确认。
 - 订阅链接通过 `GET /api/generate/link` 由服务端生成，前端不自行拼接 `SUBCONVERTER_TOKEN`。
 - 错误展示不泄漏原始含 token URL。

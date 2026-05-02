@@ -18,6 +18,7 @@ subconverter/
 │   ├── fetch/
 │   ├── app/
 │   ├── admin/
+│   ├── auth/
 │   ├── generate/
 │   ├── model/
 │   ├── pipeline/
@@ -134,10 +135,15 @@ cmd/subconverter
 server
   -> app
   -> admin
+  -> auth
   -> errtype
 
 admin
   -> app
+  -> auth
+  -> errtype
+
+auth
   -> errtype
 
 app
@@ -194,6 +200,7 @@ ssparse
 - `render` 不直接读取 YAML 配置
 - `server` 不承担业务转换逻辑
 - `admin` 不直接依赖 `pipeline` / `model`，只调用 `app.Service`
+- `auth` 不依赖 `config` / `pipeline` / `model` / `generate`，避免权限逻辑与配置生成逻辑耦合
 - `config` 不直接依赖 `model`
 - `generate` 直接依赖 `model`（用于在 `pipeline.Build` 与 `target.ForXxx` 之间传递 `Pipeline`）
 
@@ -214,8 +221,11 @@ subconverter/
 │   └── nginx.conf                # SPA fallback + API 反向代理
 └── internal/
     ├── app/                      # v2.0 应用服务层
-    └── admin/                    # Admin API 处理器
+    ├── admin/                    # Admin API 处理器
+    └── auth/                     # 管理后台认证服务
 ```
+
+文档目标包名统一为 `internal/auth`。若当前实现仍存在旧命名认证包，包名归一属于实现阶段的独立迁移工作，不改变本文的目标边界。
 
 ### `internal/app` 包职责
 
@@ -224,7 +234,7 @@ subconverter/
 - `ValidateDraft`：校验草稿配置，返回结构化诊断
 - `Reload`：强制刷新主配置源、Prepare 后原子替换 `RuntimeConfig`
 - `PreviewNodes` / `PreviewGroups`：支持运行时 GET 预览与草稿 POST 预览；返回 `app` 包内定义的 DTO（如 `NodePreview` / `GroupPreview`），由 `app.Service` 负责从 `model.Proxy` / `model.ProxyGroup` 转换，使 `admin` 层无需导入 `model`
-- `GeneratePreview` / `Generate`：取得当前 `RuntimeConfig` 快照，传入无状态的 `generate.Generate` 输出文本
+- `Generate` / `GenerateFromDraft`：分别基于当前 `RuntimeConfig` 快照或草稿配置，传入无状态的生成逻辑输出文本；“preview”只属于 HTTP route / handler 命名，`app.Service` 不新增薄封装方法
 - `GenerateLink`：根据当前配置 `base_url`、格式、文件名和订阅访问 token 生成客户端订阅链接
 - `Status`：返回配置源能力、当前 revision、运行时 revision、dirty 与最近 reload 信息
 
@@ -240,30 +250,4 @@ subconverter/
 - 系统状态 handler（`GET /api/status`）
 - 不承担管道或渲染逻辑；不直接依赖 `internal/pipeline` 或 `internal/model`
 
-### 依赖方向（新增）
-
-```text
-internal/admin
-  ├─► internal/app
-  ├─► internal/auth
-  └─► internal/errtype
-
-internal/auth
-  └─► internal/errtype
-
-internal/app
-  ├─► internal/config
-  ├─► internal/fetch
-  ├─► internal/generate
-  ├─► internal/pipeline
-  ├─► internal/model
-  └─► internal/errtype
-
-internal/server
-  ├─► internal/app
-  ├─► internal/auth
-  ├─► internal/admin        (新增)
-  └─► internal/errtype
-```
-
-`admin` 通过 `app.Service` 间接访问 `RuntimeConfig`（RWMutex 保护），不直接持有配置引用，也不直接编排管道阶段。
+依赖方向以本文 §依赖方向 的单一图为准。`admin` 通过 `app.Service` 间接访问 `RuntimeConfig`（RWMutex 保护），不直接持有配置引用，也不直接编排管道阶段。

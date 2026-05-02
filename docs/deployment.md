@@ -329,6 +329,12 @@ docker build -t subconverter-web ./web
 - `/generate`：反向代理到 `api:8080`
 - `/healthz`：反向代理到 `api:8080`
 
+缓存头策略应与 API 契约保持一致：
+
+- `/api/*`、`/api/generate/preview` 和 `/generate` 属于敏感响应，必须设置 `Cache-Control: no-store`；可由后端统一设置，也可由 `web/nginx.conf` 在反向代理路径上补齐
+- SPA 入口 `index.html` 使用 `Cache-Control: no-cache` 或等价重验证策略，确保发布后能及时发现新构建
+- Vite 生成的带 hash 静态资源可使用长期缓存，例如 `Cache-Control: public, max-age=31536000, immutable`
+
 ### Release 流程变更
 
 Release workflow 需要分别发布后端镜像与 Web 镜像：

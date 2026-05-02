@@ -102,7 +102,7 @@
 - `T-ADM-019`：`POST /api/auth/login` 成功设置 HttpOnly `session_id` Cookie；未选择 remember 的 session 最长 24 小时，选择 remember 的 session 最长 7 天；auth state 只保存 session token 的 SHA-256 哈希；`POST /api/auth/logout` 清除 session
 - `T-ADM-020`：登录失败按 IP + 用户名计数；错误凭据返回 `401 invalid_credentials` 和剩余次数；第 5 次失败返回 `423 auth_locked` 和解锁时间
 - `T-ADM-021`：auth state 自动创建目录权限为 `0700`、文件权限为 `0600`；写入使用同目录临时文件、fsync、rename；auth state 不可写时 setup 返回 `409 auth_state_not_writable`
-- `T-ADM-022`：Cookie session 下非安全管理请求校验同源 `Origin` 或 `Referer`
+- `T-ADM-022`：Cookie session 下非安全 `/api/*` 请求校验同源 `Origin` 或 `Referer`；覆盖受保护管理接口，以及未登录可访问但会修改状态的 `/api/auth/login`、`/api/auth/setup`、`/api/auth/logout`，缺失或跨站来源均被拒绝
 
 ---
 
@@ -132,6 +132,15 @@
 
 ---
 
+## HTTP 响应缓存头测试（v2.0）
+
+建议覆盖：
+
+- `T-HDR-001`：`/api/config`、`/api/generate/preview` 和 `/generate` 返回 `Cache-Control: no-store`
+- `T-HDR-002`：Web 容器中 `index.html` 使用 `Cache-Control: no-cache` 或等价重验证策略；Vite hashed assets 使用长期缓存策略（如 `public, max-age=31536000, immutable`）
+
+---
+
 ## 预览与状态 API 测试（v2.0）
 
 建议覆盖：
@@ -149,7 +158,7 @@
 - `T-PRV-011`：`/generate` 与 `/api/generate/preview` 中，`CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` 经 HTTP 层返回 400，projection invariant 类 TargetError 仍返回 500
 - `T-PRV-012`：reload 期间预览请求不阻塞——慢速 `/api/preview/*` 请求不持有配置读锁，不阻塞 reload 获取写锁
 - `T-PRV-013`：`GET /api/generate/link` 要求管理员 session；`base_url` 缺失返回 `400 base_url_required`；服务端配置订阅 token 时可返回含 token 链接，未配置时返回 `token_included=false`；链接 token 来源必须是服务端订阅访问 token，而不是当前请求鉴权方式
-- `T-PRV-014`：后台 session 调用 `/generate?format=surge` 时，即使请求未带 query token，Surge `#!MANAGED-CONFIG` 仍包含服务端订阅访问 token（若启用）和最终 filename
+- `T-PRV-014`：后台 session 调用 `/generate?format=surge` 下载时，即使请求未带 query token，Surge `#!MANAGED-CONFIG` 仍包含服务端订阅访问 token（若启用）和最终 filename
 
 ---
 

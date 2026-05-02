@@ -58,6 +58,32 @@ func TestResolveAccessToken(t *testing.T) {
 	})
 }
 
+func TestResolveCORS(t *testing.T) {
+	t.Run("env enables when flag unset", func(t *testing.T) {
+		t.Setenv(corsEnvVar, "true")
+
+		if got := resolveCORS(false, false); !got {
+			t.Fatal("resolveCORS() = false, want true")
+		}
+	})
+
+	t.Run("explicit false flag overrides env", func(t *testing.T) {
+		t.Setenv(corsEnvVar, "true")
+
+		if got := resolveCORS(false, true); got {
+			t.Fatal("resolveCORS() = true, want false")
+		}
+	})
+
+	t.Run("explicit true flag enables", func(t *testing.T) {
+		t.Setenv(corsEnvVar, "")
+
+		if got := resolveCORS(true, true); !got {
+			t.Fatal("resolveCORS() = false, want true")
+		}
+	})
+}
+
 // 断言威胁模型而非常量值：ReadHeaderTimeout 防 slowloris、IdleTimeout 回收 keepalive；
 // WriteTimeout / ReadTimeout 显式保持 0，防止被无意加回后误杀合法慢生成请求。
 func TestNewHTTPServerTimeouts(t *testing.T) {

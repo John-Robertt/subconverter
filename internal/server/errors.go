@@ -143,8 +143,8 @@ func joinMessages[T any](items []T, format func(T) string) string {
 }
 
 func formatConfigError(err *errtype.ConfigError) string {
-	if err.Field != "" {
-		return "配置错误 [" + err.Field + "]：" + err.Message
+	if path := err.DisplayPath(); path != "" {
+		return "配置错误 [" + path + "]：" + err.Message
 	}
 	return "配置错误：" + err.Message
 }

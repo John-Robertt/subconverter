@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/John-Robertt/subconverter/internal/app"
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/generate"
@@ -102,8 +103,8 @@ func validFetcher() *fakeFetcher {
 // startTestServer creates and starts a test HTTP server.
 func startTestServer(t *testing.T, cfg *config.Config, f *fakeFetcher) *httptest.Server {
 	t.Helper()
-	gen := generate.New(mustRuntimeConfig(t, cfg), f, generate.Options{})
-	srv := server.New(gen, server.Options{})
+	appSvc := app.NewWithRuntime("", mustRuntimeConfig(t, cfg), f, generate.Options{})
+	srv := server.New(appSvc, server.Options{})
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts
@@ -111,8 +112,8 @@ func startTestServer(t *testing.T, cfg *config.Config, f *fakeFetcher) *httptest
 
 func startTestServerWithOptions(t *testing.T, cfg *config.Config, f *fakeFetcher, opts server.Options) *httptest.Server {
 	t.Helper()
-	gen := generate.New(mustRuntimeConfig(t, cfg), f, generate.Options{AccessToken: opts.AccessToken})
-	srv := server.New(gen, opts)
+	appSvc := app.NewWithRuntime("", mustRuntimeConfig(t, cfg), f, generate.Options{AccessToken: opts.AccessToken})
+	srv := server.New(appSvc, opts)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts

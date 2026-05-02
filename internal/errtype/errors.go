@@ -1,14 +1,26 @@
 package errtype
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
 // Code is a stable machine-readable identifier for an error condition.
 type Code string
 
 const (
-	CodeConfigLoadFailed       Code = "config_load_failed"
-	CodeConfigYAMLInvalid      Code = "config_yaml_invalid"
-	CodeConfigValidationFailed Code = "config_validation_failed"
+	CodeConfigLoadFailed        Code = "config_load_failed"
+	CodeConfigYAMLInvalid       Code = "config_yaml_invalid"
+	CodeConfigValidationFailed  Code = "config_validation_failed"
+	CodeConfigRequired          Code = "required"
+	CodeConfigInvalidURL        Code = "invalid_url"
+	CodeConfigInvalidRegex      Code = "invalid_regex"
+	CodeConfigInvalidEnum       Code = "invalid_enum"
+	CodeConfigInvalidReference  Code = "invalid_reference"
+	CodeConfigDuplicateName     Code = "duplicate_name"
+	CodeConfigInvalidRule       Code = "invalid_rule"
+	CodeConfigInvalidFetchOrder Code = "invalid_fetch_order"
 
 	CodeFetchRequestURLInvalid         Code = "fetch_request_url_invalid"
 	CodeFetchRequestFailed             Code = "fetch_request_failed"
@@ -45,19 +57,64 @@ const (
 	CodeTargetSurgeProjectionInvalid Code = "target_surge_projection_invalid"
 )
 
+var (
+	ErrConfigSourceReadonly  = errors.New("config source is read-only")
+	ErrConfigFileNotWritable = errors.New("config file is not writable")
+	ErrReloadInProgress      = errors.New("reload already in progress")
+)
+
 // ConfigError indicates invalid configuration: bad YAML syntax,
 // missing required fields, illegal enum values, or uncompilable regexes.
 type ConfigError struct {
-	Code    Code
-	Field   string // config path, e.g. "groups.🇭🇰 Hong Kong.strategy"
-	Message string
+	Code      Code
+	Section   string
+	Key       string
+	Index     *int
+	ValuePath string
+	Field     string // deprecated display path for v1 text errors.
+	Message   string
 }
 
 func (e *ConfigError) Error() string {
-	if e.Field != "" {
-		return fmt.Sprintf("config error [%s]: %s", e.Field, e.Message)
+	if path := e.DisplayPath(); path != "" {
+		return fmt.Sprintf("config error [%s]: %s", path, e.Message)
 	}
 	return fmt.Sprintf("config error: %s", e.Message)
+}
+
+func (e *ConfigError) DisplayPath() string {
+	if e.Field != "" {
+		return e.Field
+	}
+	if e.Section == "" {
+		return ""
+	}
+	path := e.Section
+	if e.Key != "" {
+		path += "." + e.Key
+	} else if e.Index != nil {
+		path += fmt.Sprintf("[%d]", *e.Index)
+	}
+	if e.ValuePath != "" {
+		if strings.HasPrefix(e.ValuePath, "[") {
+			path += e.ValuePath
+		} else if e.Key != "" || e.Index == nil {
+			path += "." + e.ValuePath
+		} else {
+			path += "." + e.ValuePath
+		}
+	}
+	return path
+}
+
+// RevisionConflictError indicates that a conditional config write used a stale
+// config_revision. CurrentConfigRevision is safe to return in API responses.
+type RevisionConflictError struct {
+	CurrentConfigRevision string
+}
+
+func (e *RevisionConflictError) Error() string {
+	return "config revision conflict"
 }
 
 // FetchError indicates a failure to retrieve a remote HTTP(S) resource.

@@ -662,6 +662,13 @@ revision 冲突响应示例：
 - `/generate`：`text/plain; charset=utf-8`，中文纯文本
 - `/api/*`：`application/json`，结构化 JSON（含 `error` / `errors` 字段）；单错误响应的 `error.code` 必须稳定可测试，供前端区分 409 等同状态码下的不同行为
 
+响应缓存头：
+
+- `/api/*` 管理响应默认设置 `Cache-Control: no-store`，包括认证状态、配置读取、校验、预览、订阅链接和系统状态接口
+- `/api/generate/preview` 返回完整配置文本，必须设置 `Cache-Control: no-store`
+- `/generate` 返回可下载配置文本，必须设置 `Cache-Control: no-store`
+- Web 静态资源由 nginx 分路径控制缓存：`index.html` 使用 `Cache-Control: no-cache` 或等价重验证策略；带 hash 的 Vite 静态资源可使用长期缓存（如 `public, max-age=31536000, immutable`）
+
 ---
 
 ## 鉴权
@@ -678,6 +685,7 @@ revision 冲突响应示例：
 - 前端 API client 使用同源 Cookie，不把订阅访问 token 放入 `/api/*` query 或 header
 - Session 失效后，所有受保护管理接口返回 `401 session_expired` 或 `401 auth_required`，前端全局拦截并跳转 `/login?next=<当前路径>`
 - 失败登录按 IP + 用户名联合计数；第 5 次失败后返回 `423 auth_locked`，默认锁定 15 分钟，具体截止时间由后端返回
+- 所有非安全 `/api/*` 请求必须先校验同源 `Origin` 或 `Referer`，包括未登录可访问的 `/api/auth/login`、`/api/auth/setup` 和 `/api/auth/logout`；这些认证入口不要求已有 session，但仍受同源校验约束
 
 `/generate` 规则：
 
@@ -754,7 +762,7 @@ Cookie session 下，所有会修改状态的管理请求必须校验同源 `Ori
 3. 校验并规范化 `filename`
 4. 通过 `app.Service` 获取当前 `RuntimeConfig` 快照（内部 `RLock` 复制指针后立即释放）
 5. 将快照传入 `generate.Generate(ctx, cfg, req)`（无状态调用）执行 `Build → Target → Render`
-6. 若 `format=surge` 且有 `base_url`，组装 managed URL
+6. 若 `format=surge` 且有 `base_url`，组装 managed URL；请求鉴权方式只决定是否允许下载，managed URL 中的 token 始终来自服务端订阅访问 token（若启用），不依赖当前请求是否携带 query token 或管理员 session；`filename` 使用本次请求规范化后的最终文件名
 7. 返回配置文本（带 `Content-Disposition`）
 
 ### `/api/auth/*` 流程
@@ -769,7 +777,7 @@ Cookie session 下，所有会修改状态的管理请求必须校验同源 `Ori
 - GET：读取配置源中的已保存 YAML → 解析为 JSON → 返回
 - PUT：确认配置源可写 → 接收 JSON → 反序列化 → Prepare 校验 → 原子写回 YAML
 
-所有受保护 `/api/*` 流程进入业务 handler 前，都先校验 `session_id` Cookie 和同源 `Origin` / `Referer`（安全方法可只校验 session）。
+所有非安全 `/api/*` 请求进入业务 handler 前，都先校验同源 `Origin` / `Referer`；受保护管理接口随后校验 `session_id` Cookie。安全方法只校验各自需要的 session 语义，例如受保护 `GET /api/config` 要求有效 session，而未登录可访问的 `GET /api/auth/status` 只读取当前 Cookie session 状态。
 
 ### `/api/reload` 流程
 

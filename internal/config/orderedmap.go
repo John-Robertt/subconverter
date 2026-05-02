@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"iter"
 	"slices"
@@ -14,6 +15,11 @@ import (
 type OrderedMap[V any] struct {
 	keys   []string
 	values map[string]V
+}
+
+type orderedMapEntry[V any] struct {
+	Key   string `json:"key"`
+	Value V      `json:"value"`
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
@@ -46,6 +52,56 @@ func (m *OrderedMap[V]) UnmarshalYAML(node *yaml.Node) error {
 		m.values[key] = val
 	}
 
+	return nil
+}
+
+// MarshalYAML implements yaml.Marshaler.
+// It emits a mapping node so YAML writeback keeps the stored key order.
+func (m OrderedMap[V]) MarshalYAML() (any, error) {
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	for _, key := range m.keys {
+		keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
+		var valueNode yaml.Node
+		if err := valueNode.Encode(m.values[key]); err != nil {
+			return nil, fmt.Errorf("orderedmap: encoding value for key %q: %w", key, err)
+		}
+		node.Content = append(node.Content, keyNode, &valueNode)
+	}
+	return node, nil
+}
+
+// MarshalJSON implements json.Marshaler.
+// JSON object key order is not stable, so ordered maps use [{key,value}].
+func (m OrderedMap[V]) MarshalJSON() ([]byte, error) {
+	entries := make([]orderedMapEntry[V], 0, len(m.keys))
+	for _, key := range m.keys {
+		entries = append(entries, orderedMapEntry[V]{
+			Key:   key,
+			Value: m.values[key],
+		})
+	}
+	return json.Marshal(entries)
+}
+
+// UnmarshalJSON implements json.Unmarshaler for the API [{key,value}] shape.
+func (m *OrderedMap[V]) UnmarshalJSON(data []byte) error {
+	var entries []orderedMapEntry[V]
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("orderedmap: expected array of {key,value}: %w", err)
+	}
+
+	m.keys = make([]string, 0, len(entries))
+	m.values = make(map[string]V, len(entries))
+	for i, entry := range entries {
+		if entry.Key == "" {
+			return fmt.Errorf("orderedmap: entry %d has empty key", i)
+		}
+		if _, exists := m.values[entry.Key]; exists {
+			return fmt.Errorf("orderedmap: duplicate key %q", entry.Key)
+		}
+		m.keys = append(m.keys, entry.Key)
+		m.values[entry.Key] = entry.Value
+	}
 	return nil
 }
 

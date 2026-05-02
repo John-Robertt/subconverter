@@ -20,7 +20,10 @@ type Server struct {
 
 // Options holds runtime-only server behavior toggles.
 type Options struct {
-	AccessToken string
+	AccessToken           string
+	AdminHandler          http.Handler
+	AdminSessionValidator func(*http.Request) bool
+	EnableCORS            bool
 }
 
 // New creates a Server with the given generator.
@@ -31,7 +34,14 @@ func New(generator Generator, opts Options) *Server {
 // Handler returns an http.Handler with all routes registered.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	if s.opts.AdminHandler != nil {
+		mux.Handle("/api/", s.opts.AdminHandler)
+	}
 	mux.HandleFunc("GET /generate", s.handleGenerate)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	return mux
+	var handler http.Handler = mux
+	if s.opts.EnableCORS {
+		handler = corsMiddleware(handler)
+	}
+	return handler
 }

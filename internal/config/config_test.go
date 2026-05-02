@@ -2,7 +2,9 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -255,6 +257,55 @@ vless:
 	err := yaml.Unmarshal([]byte(y), &s)
 	if err == nil {
 		t.Fatal("expected duplicate-key error, got nil")
+	}
+}
+
+func TestSources_JSONIncludesCompleteFetchOrder(t *testing.T) {
+	var s Sources
+	if err := yaml.Unmarshal([]byte(`
+subscriptions:
+  - url: https://example.com/sub
+`), &s); err != nil {
+		t.Fatalf("unmarshal yaml: %v", err)
+	}
+	out, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal json: %v", err)
+	}
+	var got struct {
+		FetchOrder []string `json:"fetch_order"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if !slices.Equal(got.FetchOrder, []string{"subscriptions", "snell", "vless"}) {
+		t.Fatalf("fetch_order = %v", got.FetchOrder)
+	}
+}
+
+func TestSources_MarshalYAMLUsesFetchOrderAndCustomLast(t *testing.T) {
+	s := Sources{
+		Subscriptions: []Subscription{{URL: "https://example.com/sub"}},
+		Snell:         []SnellSource{{URL: "https://example.com/snell"}},
+		VLess:         []VLessSource{{URL: "https://example.com/vless"}},
+		CustomProxies: []CustomProxy{{Name: "local", URL: "socks5://127.0.0.1:1080"}},
+		FetchOrder:    []string{"vless", "subscriptions", "snell"},
+	}
+	out, err := yaml.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal yaml: %v", err)
+	}
+	wantOrder := []string{"vless:", "subscriptions:", "snell:", "custom_proxies:"}
+	last := -1
+	for _, marker := range wantOrder {
+		idx := strings.Index(string(out), marker)
+		if idx < 0 {
+			t.Fatalf("YAML missing %q:\n%s", marker, out)
+		}
+		if idx <= last {
+			t.Fatalf("%q appeared out of order in:\n%s", marker, out)
+		}
+		last = idx
 	}
 }
 

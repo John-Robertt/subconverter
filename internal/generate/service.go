@@ -37,41 +37,40 @@ type Options struct {
 // Service executes the full generation use case from format-agnostic build to
 // target projection and final rendering.
 type Service struct {
-	cfg     *config.RuntimeConfig
 	fetcher fetch.Fetcher
 	opts    Options
 }
 
-// New creates a generation service for one loaded/validated config.
-func New(cfg *config.RuntimeConfig, fetcher fetch.Fetcher, opts Options) *Service {
-	return &Service{cfg: cfg, fetcher: fetcher, opts: opts}
+// New creates a stateless generation service.
+func New(fetcher fetch.Fetcher, opts Options) *Service {
+	return &Service{fetcher: fetcher, opts: opts}
 }
 
 // Generate builds the shared Pipeline, projects it to the requested target,
 // loads the optional base template, and renders the final output.
-func (s *Service) Generate(ctx context.Context, req Request) (*Result, error) {
-	p, err := pipeline.Build(ctx, s.cfg, s.fetcher)
+func (s *Service) Generate(ctx context.Context, cfg *config.RuntimeConfig, req Request) (*Result, error) {
+	p, err := pipeline.Build(ctx, cfg, s.fetcher)
 	if err != nil {
 		return nil, err
 	}
 
 	switch req.Format {
 	case "clash":
-		return s.generateClash(ctx, p, req)
+		return s.generateClash(ctx, cfg, p, req)
 	case "surge":
-		return s.generateSurge(ctx, p, req)
+		return s.generateSurge(ctx, cfg, p, req)
 	default:
 		return nil, fmt.Errorf("unsupported format %q", req.Format)
 	}
 }
 
-func (s *Service) generateClash(ctx context.Context, p *model.Pipeline, req Request) (*Result, error) {
+func (s *Service) generateClash(ctx context.Context, cfg *config.RuntimeConfig, p *model.Pipeline, req Request) (*Result, error) {
 	projected, err := target.ForClash(p)
 	if err != nil {
 		return nil, err
 	}
 
-	templates := s.cfg.Templates()
+	templates := cfg.Templates()
 	tmpl, err := s.loadTemplate(ctx, templates.Clash)
 	if err != nil {
 		return nil, err
@@ -88,18 +87,18 @@ func (s *Service) generateClash(ctx context.Context, p *model.Pipeline, req Requ
 	}, nil
 }
 
-func (s *Service) generateSurge(ctx context.Context, p *model.Pipeline, req Request) (*Result, error) {
+func (s *Service) generateSurge(ctx context.Context, cfg *config.RuntimeConfig, p *model.Pipeline, req Request) (*Result, error) {
 	projected, err := target.ForSurge(p)
 	if err != nil {
 		return nil, err
 	}
 
-	templates := s.cfg.Templates()
+	templates := cfg.Templates()
 	tmpl, err := s.loadTemplate(ctx, templates.Surge)
 	if err != nil {
 		return nil, err
 	}
-	body, err := render.Surge(projected, buildManagedURL(s.cfg.BaseURL(), req.Filename, s.opts.AccessToken), tmpl)
+	body, err := render.Surge(projected, buildManagedURL(cfg.BaseURL(), req.Filename, s.opts.AccessToken), tmpl)
 	if err != nil {
 		return nil, err
 	}
