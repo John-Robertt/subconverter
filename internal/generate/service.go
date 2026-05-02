@@ -3,8 +3,6 @@ package generate
 import (
 	"context"
 	"fmt"
-	"net/url"
-	"strings"
 
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/fetch"
@@ -121,19 +119,9 @@ func buildManagedURL(baseURL, filename, accessToken string) string {
 	if baseURL == "" {
 		return ""
 	}
-
-	base, err := url.Parse(baseURL)
+	managedURL, err := BuildGenerateURL(baseURL, "surge", filename, accessToken, accessToken != "")
 	if err != nil {
 		return ""
 	}
-	base.Path = "/generate"
-	base.RawPath = ""
-
-	params := []string{"format=surge"}
-	if accessToken != "" {
-		params = append(params, "token="+url.QueryEscape(accessToken))
-	}
-	params = append(params, "filename="+url.QueryEscape(filename))
-	base.RawQuery = strings.Join(params, "&")
-	return base.String()
+	return managedURL
 }

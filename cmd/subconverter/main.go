@@ -97,6 +97,9 @@ func main() {
 		ConfigLocation: *configPath,
 		Fetcher:        cachedFetcher,
 		Generate:       generate.Options{AccessToken: resolvedAccessToken},
+		Version:        version,
+		Commit:         commit,
+		BuildDate:      date,
 	})
 	if err != nil {
 		log.Fatalf("failed to initialize app service: %v", err)

@@ -10,9 +10,11 @@ import (
 
 // GroupResult holds the output of the Group stage (pipeline stage 5).
 type GroupResult struct {
-	Proxies    []model.Proxy      // all proxies: original + chained
-	NodeGroups []model.ProxyGroup // region groups + chain groups, declaration order
-	AllProxies []string           // @all expansion: original proxy names only
+	Proxies       []model.Proxy      // all proxies: original + chained
+	RegionGroups  []model.ProxyGroup // region groups, declaration order
+	ChainedGroups []model.ProxyGroup // chain groups, declaration order
+	NodeGroups    []model.ProxyGroup // region groups + chain groups, declaration order
+	AllProxies    []string           // @all expansion: original proxy names only
 }
 
 // Group executes pipeline stage 5: build region node groups, chained
@@ -53,9 +55,11 @@ func Group(source *SourceResult, groups []config.PreparedGroup) (*GroupResult, e
 	}
 
 	return &GroupResult{
-		Proxies:    combined,
-		NodeGroups: nodeGroups,
-		AllProxies: allProxies,
+		Proxies:       combined,
+		RegionGroups:  regionGroups,
+		ChainedGroups: chainGroups,
+		NodeGroups:    nodeGroups,
+		AllProxies:    allProxies,
 	}, nil
 }
 

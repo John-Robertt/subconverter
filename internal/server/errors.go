@@ -54,6 +54,9 @@ func presentError(err error) (statusCode int, message string) {
 
 	var targetErr *errtype.TargetError
 	if errors.As(err, &targetErr) {
+		if isUserFixableTargetError(targetErr) {
+			return http.StatusBadRequest, formatTargetError(targetErr)
+		}
 		return http.StatusInternalServerError, formatTargetError(targetErr)
 	}
 
@@ -63,6 +66,10 @@ func presentError(err error) (statusCode int, message string) {
 	}
 
 	return http.StatusInternalServerError, "内部错误"
+}
+
+func isUserFixableTargetError(err *errtype.TargetError) bool {
+	return err.Code == errtype.CodeTargetClashFallbackEmpty || err.Code == errtype.CodeTargetSurgeFallbackEmpty
 }
 
 func collectConfigErrors(err error) []*errtype.ConfigError {

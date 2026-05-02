@@ -251,6 +251,31 @@ func TestE2E_GenerateSurgeWithTokenAndCustomFilename(t *testing.T) {
 	}
 }
 
+func TestE2E_GenerateSurgeWithAdminSessionUsesServerTokenInManagedURL(t *testing.T) {
+	ts := startTestServerWithOptions(t, validConfig(t), validFetcher(), server.Options{
+		AccessToken: accessToken,
+		AdminSessionValidator: func(*http.Request) bool {
+			return true
+		},
+	})
+
+	resp, err := http.Get(ts.URL + "/generate?format=surge&filename=admin-profile")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, body)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+	if !strings.Contains(content, "https://my-server.com/generate?format=surge&token=secret-token&filename=admin-profile.conf") {
+		t.Errorf("admin-session managed config should use server token and filename: %s", content)
+	}
+}
+
 // T-E2E-003: Invalid format returns 400
 func TestE2E_InvalidFormat(t *testing.T) {
 	ts := startTestServer(t, validConfig(t), validFetcher())

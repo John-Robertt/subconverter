@@ -49,6 +49,33 @@ func ValidateResultFromError(err error) (*ValidateResult, bool) {
 	return result, true
 }
 
+func GraphValidateResultFromError(err error) (*ValidateResult, bool) {
+	buildErrs := collectGraphBuildErrors(err)
+	if len(buildErrs) == 0 {
+		return nil, false
+	}
+
+	result := &ValidateResult{
+		Valid:    false,
+		Errors:   make([]DiagnosticItem, 0, len(buildErrs)),
+		Warnings: []DiagnosticItem{},
+		Infos:    []DiagnosticItem{},
+	}
+	for _, buildErr := range buildErrs {
+		result.Errors = append(result.Errors, DiagnosticItem{
+			Severity:    "error",
+			Code:        string(buildErr.Code),
+			Message:     buildErr.Message,
+			DisplayPath: "运行时图",
+			Locator: DiagnosticLocator{
+				Section:     "",
+				JSONPointer: "/config",
+			},
+		})
+	}
+	return result, true
+}
+
 func diagnosticFromConfigError(err *errtype.ConfigError) DiagnosticItem {
 	section := err.Section
 	locator := DiagnosticLocator{
@@ -77,6 +104,18 @@ func collectConfigErrors(err error) []*errtype.ConfigError {
 		var cfgErr *errtype.ConfigError
 		if errors.As(leaf, &cfgErr) {
 			result = append(result, cfgErr)
+		}
+	}
+	return result
+}
+
+func collectGraphBuildErrors(err error) []*errtype.BuildError {
+	leaves := flattenErrors(err)
+	result := make([]*errtype.BuildError, 0, len(leaves))
+	for _, leaf := range leaves {
+		var buildErr *errtype.BuildError
+		if errors.As(leaf, &buildErr) && buildErr.Code == errtype.CodeBuildValidationFailed {
+			result = append(result, buildErr)
 		}
 	}
 	return result

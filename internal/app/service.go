@@ -39,11 +39,20 @@ type ReloadResult struct {
 	DurationMs int64 `json:"duration_ms"`
 }
 
+type lastReloadState struct {
+	Time       time.Time
+	Success    bool
+	DurationMs int64
+}
+
 type Options struct {
 	ConfigLocation string
 	Fetcher        fetch.Fetcher
 	Generate       generate.Options
 	Now            func() time.Time
+	Version        string
+	Commit         string
+	BuildDate      string
 }
 
 type Service struct {
@@ -51,11 +60,17 @@ type Service struct {
 	fetcher        fetch.Fetcher
 	generator      *generate.Service
 	now            func() time.Time
+	version        string
+	commit         string
+	buildDate      string
+	accessToken    string
 
-	mu                    sync.RWMutex
-	runtimeCfg            *config.RuntimeConfig
-	runtimeConfigRevision string
-	configLoadedAt        time.Time
+	mu                     sync.RWMutex
+	runtimeCfg             *config.RuntimeConfig
+	runtimeConfigRevision  string
+	observedConfigRevision string
+	configLoadedAt         time.Time
+	lastReload             lastReloadState
 
 	reloadMu sync.Mutex
 }
@@ -70,6 +85,10 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 		fetcher:        opts.Fetcher,
 		generator:      generate.New(opts.Fetcher, opts.Generate),
 		now:            now,
+		version:        opts.Version,
+		commit:         opts.Commit,
+		buildDate:      opts.BuildDate,
+		accessToken:    opts.Generate.AccessToken,
 	}
 
 	raw, err := s.readConfigBytes(ctx, false)
@@ -86,19 +105,22 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 	}
 	s.runtimeCfg = runtimeCfg
 	s.runtimeConfigRevision = configRevision(raw)
+	s.observedConfigRevision = s.runtimeConfigRevision
 	s.configLoadedAt = now()
 	return s, nil
 }
 
 func NewWithRuntime(location string, runtimeCfg *config.RuntimeConfig, fetcher fetch.Fetcher, genOpts generate.Options) *Service {
 	return &Service{
-		configLocation:        location,
-		fetcher:               fetcher,
-		generator:             generate.New(fetcher, genOpts),
-		now:                   time.Now,
-		runtimeCfg:            runtimeCfg,
-		runtimeConfigRevision: "",
-		configLoadedAt:        time.Now(),
+		configLocation:         location,
+		fetcher:                fetcher,
+		generator:              generate.New(fetcher, genOpts),
+		now:                    time.Now,
+		accessToken:            genOpts.AccessToken,
+		runtimeCfg:             runtimeCfg,
+		runtimeConfigRevision:  "",
+		observedConfigRevision: "",
+		configLoadedAt:         time.Now(),
 	}
 }
 
@@ -115,8 +137,10 @@ func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, er
 	if err != nil {
 		return nil, err
 	}
+	revision := configRevision(raw)
+	s.setObservedConfigRevision(revision)
 	return &ConfigSnapshotResult{
-		ConfigRevision: configRevision(raw),
+		ConfigRevision: revision,
 		Config:         configJSON,
 	}, nil
 }
@@ -187,22 +211,32 @@ func (s *Service) Reload(ctx context.Context) (*ReloadResult, error) {
 	start := s.now()
 	raw, err := s.readConfigBytes(ctx, true)
 	if err != nil {
+		s.recordReload(start, false)
 		return nil, err
 	}
+	revision := configRevision(raw)
+	s.setObservedConfigRevision(revision)
 	cfg, err := parseConfigYAML(raw)
 	if err != nil {
+		s.recordReload(start, false)
 		return nil, err
 	}
 	runtimeCfg, err := prepareAdminConfig(cfg, false)
 	if err != nil {
+		s.recordReload(start, false)
 		return nil, err
 	}
 
-	revision := configRevision(raw)
 	s.mu.Lock()
 	s.runtimeCfg = runtimeCfg
 	s.runtimeConfigRevision = revision
+	s.observedConfigRevision = revision
 	s.configLoadedAt = s.now()
+	s.lastReload = lastReloadState{
+		Time:       s.now(),
+		Success:    true,
+		DurationMs: s.now().Sub(start).Milliseconds(),
+	}
 	s.mu.Unlock()
 
 	return &ReloadResult{
@@ -221,6 +255,22 @@ func (s *Service) runtimeSnapshot() *config.RuntimeConfig {
 	cfg := s.runtimeCfg
 	s.mu.RUnlock()
 	return cfg
+}
+
+func (s *Service) setObservedConfigRevision(revision string) {
+	s.mu.Lock()
+	s.observedConfigRevision = revision
+	s.mu.Unlock()
+}
+
+func (s *Service) recordReload(start time.Time, success bool) {
+	s.mu.Lock()
+	s.lastReload = lastReloadState{
+		Time:       s.now(),
+		Success:    success,
+		DurationMs: s.now().Sub(start).Milliseconds(),
+	}
+	s.mu.Unlock()
 }
 
 func (s *Service) readConfigBytes(ctx context.Context, invalidate bool) ([]byte, error) {

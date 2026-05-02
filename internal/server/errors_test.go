@@ -75,8 +75,8 @@ func TestPresentError_TargetError(t *testing.T) {
 
 	code, msg := presentError(err)
 
-	if code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", code, http.StatusInternalServerError)
+	if code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", code, http.StatusBadRequest)
 	}
 	if !strings.Contains(msg, "目标投影错误 [clash]") {
 		t.Fatalf("message should contain target projection prefix, got %q", msg)
@@ -88,8 +88,8 @@ func TestPresentError_TargetError(t *testing.T) {
 
 // TargetError 可能被 generate.Service 包进 errors.Join 与其他非 errtype 错误一起返回。
 // 锁定：flattenErrors 会拆分 Join，collect* 对非 errtype 叶子不匹配，最终 errors.As 能找到
-// TargetError，映射为 500。这条测试防止未来移动 targetErr 分支到 collect* 之前时
-// 误让 errors.Join 场景退化到 "内部错误"。
+// TargetError，并按错误码映射为用户可修复的 400。这条测试防止未来移动 targetErr
+// 分支到 collect* 之前时误让 errors.Join 场景退化到 "内部错误"。
 func TestPresentError_TargetErrorWrappedInErrorsJoin(t *testing.T) {
 	targetErr := &errtype.TargetError{
 		Code:    errtype.CodeTargetSurgeFallbackEmpty,
@@ -100,8 +100,8 @@ func TestPresentError_TargetErrorWrappedInErrorsJoin(t *testing.T) {
 
 	code, msg := presentError(err)
 
-	if code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", code, http.StatusInternalServerError)
+	if code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", code, http.StatusBadRequest)
 	}
 	if !strings.Contains(msg, "目标投影错误 [surge]") {
 		t.Fatalf("message should contain target projection prefix, got %q", msg)

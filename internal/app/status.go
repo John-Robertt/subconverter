@@ -1,0 +1,100 @@
+package app
+
+import (
+	"context"
+	"time"
+)
+
+type StatusResult struct {
+	Version               string       `json:"version"`
+	Commit                string       `json:"commit"`
+	BuildDate             string       `json:"build_date"`
+	ConfigSource          ConfigSource `json:"config_source"`
+	ConfigRevision        string       `json:"config_revision"`
+	RuntimeConfigRevision string       `json:"runtime_config_revision"`
+	ConfigLoadedAt        string       `json:"config_loaded_at"`
+	ConfigDirty           bool         `json:"config_dirty"`
+	Capabilities          Capabilities `json:"capabilities"`
+	LastReload            LastReload   `json:"last_reload"`
+}
+
+type ConfigSource struct {
+	Location string `json:"location"`
+	Type     string `json:"type"`
+	Writable bool   `json:"writable"`
+}
+
+type Capabilities struct {
+	ConfigWrite bool `json:"config_write"`
+	Reload      bool `json:"reload"`
+}
+
+type LastReload struct {
+	Time       string `json:"time"`
+	Success    bool   `json:"success"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
+func (s *Service) Status(ctx context.Context) (*StatusResult, error) {
+	s.mu.RLock()
+	runtimeRevision := s.runtimeConfigRevision
+	observedRevision := s.observedConfigRevision
+	loadedAt := s.configLoadedAt
+	lastReload := s.lastReload
+	s.mu.RUnlock()
+
+	configRevision := observedRevision
+	if !isRemoteConfig(s.configLocation) {
+		raw, err := s.readConfigBytes(ctx, false)
+		if err != nil {
+			return nil, err
+		}
+		configRevision = configRevisionForStatus(raw)
+	}
+
+	source := s.configSource()
+	return &StatusResult{
+		Version:               s.version,
+		Commit:                s.commit,
+		BuildDate:             s.buildDate,
+		ConfigSource:          source,
+		ConfigRevision:        configRevision,
+		RuntimeConfigRevision: runtimeRevision,
+		ConfigLoadedAt:        formatStatusTime(loadedAt),
+		ConfigDirty:           configRevision != runtimeRevision,
+		Capabilities: Capabilities{
+			ConfigWrite: source.Writable,
+			Reload:      true,
+		},
+		LastReload: LastReload{
+			Time:       formatStatusTime(lastReload.Time),
+			Success:    lastReload.Success,
+			DurationMs: lastReload.DurationMs,
+		},
+	}, nil
+}
+
+func (s *Service) configSource() ConfigSource {
+	sourceType := "local"
+	writable := s.configLocation != ""
+	if isRemoteConfig(s.configLocation) {
+		sourceType = "remote"
+		writable = false
+	}
+	return ConfigSource{
+		Location: s.configLocation,
+		Type:     sourceType,
+		Writable: writable,
+	}
+}
+
+func configRevisionForStatus(raw []byte) string {
+	return configRevision(raw)
+}
+
+func formatStatusTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}

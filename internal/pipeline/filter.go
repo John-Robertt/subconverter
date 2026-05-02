@@ -7,6 +7,20 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
+// FilteredProxy is a proxy plus its preview-only filtering status.
+type FilteredProxy struct {
+	Proxy    model.Proxy
+	Filtered bool
+}
+
+// FilterResult keeps both sides of the filter decision. Generation consumes
+// Included; preview APIs also expose Excluded and All.
+type FilterResult struct {
+	Included []model.Proxy
+	Excluded []model.Proxy
+	All      []FilteredProxy
+}
+
 // Filter executes pipeline stage 4: apply exclude regex to fetched nodes.
 //
 // Filtering covers all nodes sourced via remote fetch (KindSubscription /
@@ -15,12 +29,10 @@ import (
 //
 // If excludePattern is empty, all proxies pass through unchanged.
 func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error) {
-	if excludePattern == "" {
-		return proxies, nil
-	}
-
 	re, err := regexp.Compile(excludePattern)
-	if err != nil {
+	if excludePattern == "" {
+		re = nil
+	} else if err != nil {
 		return nil, &errtype.BuildError{
 			Code:    errtype.CodeBuildFilterRegexInvalid,
 			Phase:   "filter",
@@ -28,20 +40,35 @@ func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error)
 		}
 	}
 
-	return filterCompiled(proxies, re)
+	result, err := filterCompiledDetailed(proxies, re)
+	if err != nil {
+		return nil, err
+	}
+	return result.Included, nil
 }
 
 func filterCompiled(proxies []model.Proxy, excludePattern *regexp.Regexp) ([]model.Proxy, error) {
-	if excludePattern == nil {
-		return proxies, nil
+	result, err := filterCompiledDetailed(proxies, excludePattern)
+	if err != nil {
+		return nil, err
 	}
+	return result.Included, nil
+}
 
-	result := make([]model.Proxy, 0, len(proxies))
+func filterCompiledDetailed(proxies []model.Proxy, excludePattern *regexp.Regexp) (*FilterResult, error) {
+	result := &FilterResult{
+		Included: make([]model.Proxy, 0, len(proxies)),
+		Excluded: []model.Proxy{},
+		All:      make([]FilteredProxy, 0, len(proxies)),
+	}
 	for _, p := range proxies {
-		if isFetchedKind(p.Kind) && excludePattern.MatchString(p.Name) {
+		if excludePattern != nil && isFetchedKind(p.Kind) && excludePattern.MatchString(p.Name) {
+			result.Excluded = append(result.Excluded, p)
+			result.All = append(result.All, FilteredProxy{Proxy: p, Filtered: true})
 			continue
 		}
-		result = append(result, p)
+		result.Included = append(result.Included, p)
+		result.All = append(result.All, FilteredProxy{Proxy: p})
 	}
 	return result, nil
 }

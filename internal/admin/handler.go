@@ -11,6 +11,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/app"
 	"github.com/John-Robertt/subconverter/internal/auth"
 	"github.com/John-Robertt/subconverter/internal/errtype"
+	"github.com/John-Robertt/subconverter/internal/generate"
 )
 
 type Handler struct {
@@ -59,6 +60,41 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleReload(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/preview/nodes":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handlePreviewNodesGet(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/preview/nodes":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handlePreviewNodesPost(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/preview/groups":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handlePreviewGroupsGet(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/preview/groups":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handlePreviewGroupsPost(w, r)
+	case (r.Method == http.MethodGet || r.Method == http.MethodPost) && r.URL.Path == "/api/generate/preview":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleGeneratePreview(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/generate/link":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleGenerateLink(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/status":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleStatus(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "接口不存在")
 	}
@@ -179,6 +215,117 @@ func (h *Handler) handleReload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (h *Handler) handlePreviewNodesGet(w http.ResponseWriter, r *http.Request) {
+	result, err := h.app.PreviewNodes(r.Context())
+	if err != nil {
+		writeServiceError(w, err, false)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handlePreviewNodesPost(w http.ResponseWriter, r *http.Request) {
+	configJSON, ok := decodeConfigBody(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.app.PreviewNodesFromDraft(r.Context(), configJSON)
+	if err != nil {
+		writeServiceError(w, err, true)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handlePreviewGroupsGet(w http.ResponseWriter, r *http.Request) {
+	result, err := h.app.PreviewGroups(r.Context())
+	if err != nil {
+		writeServiceError(w, err, true)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handlePreviewGroupsPost(w http.ResponseWriter, r *http.Request) {
+	configJSON, ok := decodeConfigBody(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.app.PreviewGroupsFromDraft(r.Context(), configJSON)
+	if err != nil {
+		writeServiceError(w, err, true)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleGeneratePreview(w http.ResponseWriter, r *http.Request) {
+	req, ok := parseGenerateRequest(w, r)
+	if !ok {
+		return
+	}
+
+	var (
+		result *generate.Result
+		err    error
+	)
+	if r.Method == http.MethodPost {
+		configJSON, bodyOK := decodeConfigBody(w, r)
+		if !bodyOK {
+			return
+		}
+		result, err = h.app.GenerateFromDraft(r.Context(), req, configJSON)
+	} else {
+		result, err = h.app.Generate(r.Context(), req)
+	}
+	if err != nil {
+		writeServiceError(w, err, true)
+		return
+	}
+
+	w.Header().Set("Content-Type", result.ContentType)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result.Body)
+}
+
+func (h *Handler) handleGenerateLink(w http.ResponseWriter, r *http.Request) {
+	req, ok := parseGenerateRequest(w, r)
+	if !ok {
+		return
+	}
+	includeToken := true
+	if raw := r.URL.Query().Get("include_token"); raw != "" {
+		switch raw {
+		case "true":
+			includeToken = true
+		case "false":
+			includeToken = false
+		default:
+			writeError(w, http.StatusBadRequest, "invalid_request", "include_token 参数无效")
+			return
+		}
+	}
+	result, err := h.app.GenerateLink(r.Context(), &app.GenerateLinkInput{
+		Format:       req.Format,
+		Filename:     req.Filename,
+		IncludeToken: includeToken,
+	})
+	if err != nil {
+		writeServiceError(w, err, false)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
+	result, err := h.app.Status(r.Context())
+	if err != nil {
+		writeServiceError(w, err, false)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (h *Handler) requireSession(w http.ResponseWriter, r *http.Request) bool {
 	id := sessionID(r)
 	if id == "" {
@@ -223,6 +370,10 @@ func writeServiceError(w http.ResponseWriter, err error, validationBody bool) {
 			writeJSON(w, http.StatusBadRequest, result)
 			return
 		}
+		if result, ok := app.GraphValidateResultFromError(err); ok {
+			writeJSON(w, http.StatusBadRequest, result)
+			return
+		}
 	}
 
 	var badReq *app.BadRequestError
@@ -261,7 +412,65 @@ func writeServiceError(w http.ResponseWriter, err error, validationBody bool) {
 		writeError(w, http.StatusBadRequest, string(cfgErr.Code), cfgErr.Message)
 		return
 	}
+	var buildErr *errtype.BuildError
+	if errors.As(err, &buildErr) {
+		writeError(w, http.StatusBadRequest, string(buildErr.Code), buildErr.Message)
+		return
+	}
+	var targetErr *errtype.TargetError
+	if errors.As(err, &targetErr) {
+		status := http.StatusInternalServerError
+		if isUserFixableTargetError(targetErr) {
+			status = http.StatusBadRequest
+		}
+		writeError(w, status, string(targetErr.Code), targetErr.Message)
+		return
+	}
+	var resourceErr *errtype.ResourceError
+	if errors.As(err, &resourceErr) {
+		writeError(w, http.StatusInternalServerError, string(resourceErr.Code), resourceErr.Message)
+		return
+	}
+	var renderErr *errtype.RenderError
+	if errors.As(err, &renderErr) {
+		writeError(w, http.StatusInternalServerError, string(renderErr.Code), renderErr.Message)
+		return
+	}
 	writeError(w, http.StatusInternalServerError, "internal_error", "内部错误")
+}
+
+func isUserFixableTargetError(err *errtype.TargetError) bool {
+	return err.Code == errtype.CodeTargetClashFallbackEmpty || err.Code == errtype.CodeTargetSurgeFallbackEmpty
+}
+
+func decodeConfigBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, bool) {
+	var input struct {
+		Config json.RawMessage `json:"config"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return nil, false
+	}
+	if len(input.Config) == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "缺少 config")
+		return nil, false
+	}
+	return input.Config, true
+}
+
+func parseGenerateRequest(w http.ResponseWriter, r *http.Request) (generate.Request, bool) {
+	query := r.URL.Query()
+	format := query.Get("format")
+	if !generate.ValidFormat(format) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "format 参数无效：必须为 clash 或 surge")
+		return generate.Request{}, false
+	}
+	_, filenamePresent := query["filename"]
+	filename, err := generate.ResolveFilename(query.Get("filename"), filenamePresent, format)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return generate.Request{}, false
+	}
+	return generate.Request{Format: format, Filename: filename}, true
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
