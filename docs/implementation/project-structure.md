@@ -100,11 +100,19 @@ subconverter/
 - 承接配置读取、条件写回、热重载、运行时预览、草稿预览和状态查询
 - 可以编排 `config` / `pipeline` / `generate`，但不处理 HTTP 请求细节
 
+`internal/auth`
+
+- v2.0 管理后台认证服务
+- bootstrap setup token、管理员 PBKDF2 密码哈希、auth state 文件读写、session 创建 / 校验 / 注销
+- 登录失败计数与临时锁定
+- 不依赖 `config` / `pipeline` / `model`，避免权限逻辑与配置生成逻辑耦合
+
 `internal/server`
 
 - HTTP handler
 - 参数校验
 - 错误映射
+- 路由级 session middleware 与同源 `Origin` / `Referer` 校验
 
 `internal/ssparse`
 
@@ -217,15 +225,18 @@ subconverter/
 - `Reload`：强制刷新主配置源、Prepare 后原子替换 `RuntimeConfig`
 - `PreviewNodes` / `PreviewGroups`：支持运行时 GET 预览与草稿 POST 预览；返回 `app` 包内定义的 DTO（如 `NodePreview` / `GroupPreview`），由 `app.Service` 负责从 `model.Proxy` / `model.ProxyGroup` 转换，使 `admin` 层无需导入 `model`
 - `GeneratePreview` / `Generate`：取得当前 `RuntimeConfig` 快照，传入无状态的 `generate.Generate` 输出文本
+- `GenerateLink`：根据当前配置 `base_url`、格式、文件名和订阅访问 token 生成客户端订阅链接
 - `Status`：返回配置源能力、当前 revision、运行时 revision、dirty 与最近 reload 信息
 
 ### `internal/admin` 包职责
 
+- 认证 handler（`GET /api/auth/status`、`POST /api/auth/login`、`POST /api/auth/setup`、`POST /api/auth/logout`），调用 `internal/auth`
 - 配置 CRUD handler（`GET /api/config`、`PUT /api/config`）
 - 配置校验 handler（`POST /api/config/validate`）
 - 热重载 handler（`POST /api/reload`）
 - 运行时和草稿预览 handler（`GET/POST /api/preview/nodes`、`GET/POST /api/preview/groups`）
 - 生成预览 handler（`GET/POST /api/generate/preview`）
+- 订阅链接生成 handler（`GET /api/generate/link`）
 - 系统状态 handler（`GET /api/status`）
 - 不承担管道或渲染逻辑；不直接依赖 `internal/pipeline` 或 `internal/model`
 
@@ -234,6 +245,10 @@ subconverter/
 ```text
 internal/admin
   ├─► internal/app
+  ├─► internal/auth
+  └─► internal/errtype
+
+internal/auth
   └─► internal/errtype
 
 internal/app
@@ -246,6 +261,7 @@ internal/app
 
 internal/server
   ├─► internal/app
+  ├─► internal/auth
   ├─► internal/admin        (新增)
   └─► internal/errtype
 ```

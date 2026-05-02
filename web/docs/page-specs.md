@@ -16,6 +16,22 @@
 
 诊断定位统一使用 `locator.json_pointer`。`display_path` 只用于展示，不作为程序定位依据。
 
+## 认证页
+
+### 登录 / 首次 setup
+
+| 项目 | 契约 |
+|------|------|
+| 路由 | `/login` |
+| 所属里程碑 | M9 |
+| 字段 | 用户名、密码、记住我；setup 模式额外包含 setup token、确认密码和密码强度提示 |
+| 主要动作 | 登录、首次创建管理员、显示/隐藏密码、退出后重新登录 |
+| 调用 API | `GET /api/auth/status`、`POST /api/auth/login`、`POST /api/auth/setup` |
+| 跳转行为 | 未登录访问受保护页面跳转 `/login?next=<原路径>`；登录成功后跳回 `next` 或 `/sources` |
+| loading / empty / error | 校验中禁用表单；`401 invalid_credentials` 展示剩余次数；`423 auth_locked` 展示解锁时间；网络错误提供重试 |
+| setup 行为 | `setup_required=true` 时渲染 setup 模式；提交前必须填写 bootstrap setup token；密码至少 12 位；auth state 不可写时展示部署配置错误 |
+| 对应测试 | `T-WEB-001`、`T-WEB-007`、`T-WEB-021` |
+
 ## A 区配置编辑页
 
 ### A1 订阅来源
@@ -178,7 +194,7 @@
 | 所属里程碑 | M10 |
 | 数据来源 | 当前运行时生成预览或前端草稿生成预览 |
 | 主要动作 | 选择 Clash/Surge；预览当前运行时；预览草稿；下载；复制订阅链接 |
-| 调用 API | `GET /api/generate/preview?format=...`、`POST /api/generate/preview?format=...`、`/generate?format=...` |
+| 调用 API | `GET /api/generate/preview?format=...`、`POST /api/generate/preview?format=...`、`/generate?format=...`、`GET /api/generate/link?format=...` |
 | 只读行为 | 允许预览、下载和复制链接；不提供保存入口 |
 | dirty 行为 | dirty 时明确区分“当前运行时预览”和“草稿预览” |
 | loading / empty / error | 生成中显示格式与来源；TargetError 400 和 RenderError/内部错误按 API client 归一化展示 |

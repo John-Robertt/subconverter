@@ -24,7 +24,7 @@
 | [`data-contract.md`](data-contract.md) | 前端消费的数据契约索引 |
 | [`workflows.md`](workflows.md) | 草稿、保存、reload、dirty、revision 工作流 |
 | [`frontend-architecture.md`](frontend-architecture.md) | 正式 SPA 技术栈和目录建议 |
-| [`auth-and-security.md`](auth-and-security.md) | token、鉴权和订阅链接安全 |
+| [`auth-and-security.md`](auth-and-security.md) | 后台登录、session、setup 和订阅链接安全 |
 | [`interaction.md`](interaction.md) | 交互模式与反馈规范 |
 | [`design-system.md`](design-system.md) | 视觉 token 和组件约束 |
 | [`acceptance.md`](acceptance.md) | 正式 SPA 验收与测试场景 |
@@ -34,4 +34,5 @@
 - `web/` 当前仍可静态托管高保真原型。
 - 正式 SPA 目标技术栈是 Vite + React + TypeScript + React Query。
 - 正式管理接口统一使用 `/api/*`；生成接口继续使用 `/generate`。
+- Web 管理后台使用管理员登录态和 `session_id` Cookie；`SUBCONVERTER_TOKEN` 只用于 `/generate` 订阅链接。
 - v2.0 当前不承诺内建配置版本恢复、多用户权限系统或服务端节点测速图表。

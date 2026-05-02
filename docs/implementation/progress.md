@@ -32,10 +32,10 @@
 
 | 里程碑 | 状态 | 对应需求 | 对应测试 | 当前结论 | 下一步 |
 |--------|------|----------|----------|----------|--------|
-| M6 Admin API 基线 | 未开始 | `REQ-14` - `REQ-17` | `T-ADM-*`, `T-RLD-*`, `T-CCH-*` | 设计契约已定义，代码仍未实现 `/api/*` | 从基础序列化与结构化诊断路径开始 |
+| M6 Admin API 基线 | 未开始 | `REQ-14` - `REQ-17`, `REQ-27` | `T-ADM-*`, `T-RLD-*`, `T-CCH-*` | 设计契约已定义，代码仍未实现 `/api/*` | 从基础序列化与结构化诊断路径开始 |
 | M7 预览与状态 API | 未开始 | `REQ-18` - `REQ-21` | `T-PRV-*` | 依赖 M6 的 `app.Service` 和运行时快照模型 | M6 验收后启动 |
 | M8 Web 镜像与 Compose 集成 | 未开始 | `REQ-22`, `REQ-23` | `T-SPA-*` | 当前 `web/` 是静态原型，不是正式 SPA 工程 | M6 路由和鉴权模型稳定后启动 |
-| M9 前端工程与核心页面 | 未开始 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26` | `T-WEB-001` - `T-WEB-010` | 依赖 M7 预览 API 与 M8 前端工程基础 | M7 + M8 验收后启动 |
+| M9 前端工程与核心页面 | 未开始 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | 依赖 M7 预览 API 与 M8 前端工程基础 | M7 + M8 验收后启动 |
 | M10 前端完善与端到端验收 | 未开始 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-020`, `T-E2E-*` | 端到端场景已在测试策略中定义 | M9 验收后启动 |
 
 ## M6 Admin API 基线
@@ -46,7 +46,7 @@
 |--------|------|------|----------|--------|----------|--------|
 | M6-WP1 基础序列化与诊断路径 | 未开始 | `OrderedMap` JSON/YAML round-trip、`Config` json tag、`Sources.fetch_order`、结构化 `ConfigError` | `design/config-schema.md`, `design/validation.md`, `design/app-service.md` | config 层序列化与诊断 DTO 基础 | `T-ADM-007`, `T-ADM-014`, `go test ./...` | 无 |
 | M6-WP2 错误类型、缓存失效与无状态生成 | 未开始 | errtype sentinel、`RevisionConflictError`、`CachedFetcher.Invalidate`、`generate.Service` 无状态化 | `design/caching.md`, `design/app-service.md`, `implementation/project-structure.md` | fetch / errtype / generate 基础能力 | `T-ADM-011`, `T-CCH-001` - `T-CCH-003`, `go test ./...` | 无 |
-| M6-WP3 app/admin 服务与路由鉴权 | 未开始 | `internal/app`、`internal/admin`、`/api/config`、`/api/config/validate`、`/api/reload`、Admin token 鉴权 | `design/api.md`, `design/app-service.md` | M6 API 端点可用 | `T-ADM-001` - `T-ADM-016`, `T-RLD-*`, `go test ./...` | 无 |
+| M6-WP3 app/admin 服务与路由鉴权 | 未开始 | `internal/app`、`internal/admin`、`/api/config`、`/api/config/validate`、`/api/reload`、`/api/auth/*`、Admin session 鉴权 | `design/api.md`, `design/app-service.md` | M6 API 端点可用 | `T-ADM-001` - `T-ADM-022`, `T-RLD-*`, `go test ./...` | 无 |
 | M6-WP4 M6 收口验收 | 未开始 | 文档同步、错误路径、进度证据、状态矩阵评估 | `implementation/implementation-plan.md`, `implementation/testing-strategy.md` | M6 验收记录 | 本文件更新，测试结果记录，已知限制记录 | 无 |
 
 测试命令结果：未执行，能力尚未实现。
@@ -60,7 +60,7 @@
 | 工作包 | 状态 | 范围 | 依赖文档 | 交付物 | 验收证据 | 阻塞项 |
 |--------|------|------|----------|--------|----------|--------|
 | M7-WP1 部分管道执行入口 | 未开始 | `SourceAndFilter`、`SourceFilterGroupRouteValidate`、`FilterResult` | `design/pipeline.md`, `design/app-service.md` | 可复用的预览阶段入口 | `T-PRV-001`, `T-PRV-002`, `T-PRV-009` | 依赖 M6 |
-| M7-WP2 预览与生成预览 API | 未开始 | nodes/groups/generate preview 的 GET/POST 双模式 | `design/api.md`, `design/web-ui.md` | `/api/preview/*` 与 `/api/generate/preview` | `T-PRV-003`, `T-PRV-005` - `T-PRV-008` | 依赖 M6 |
+| M7-WP2 预览与生成预览 API | 未开始 | nodes/groups/generate preview 的 GET/POST 双模式、服务端订阅链接生成 | `design/api.md`, `design/web-ui.md` | `/api/preview/*`、`/api/generate/preview`、`/api/generate/link` | `T-PRV-003`, `T-PRV-005` - `T-PRV-008`, `T-PRV-013`, `T-PRV-014` | 依赖 M6 |
 | M7-WP3 状态与错误映射 | 未开始 | `/api/status`、dirty、TargetError HTTP 分码、并发锁边界 | `design/api.md`, `design/validation.md`, `design/app-service.md` | status API 与错误语义 | `T-PRV-004`, `T-PRV-010` - `T-PRV-012` | 依赖 M6 |
 | M7-WP4 M7 收口验收 | 未开始 | 文档同步、M7 测试、进度证据 | `implementation/testing-strategy.md` | M7 验收记录 | 本文件更新，测试结果记录 | 依赖 M6 |
 
@@ -88,7 +88,7 @@
 
 | 工作包 | 状态 | 范围 | 依赖文档 | 交付物 | 验收证据 | 阻塞项 |
 |--------|------|------|----------|--------|----------|--------|
-| M9-WP1 Shell、API client 与草稿状态 | 未开始 | 布局、导航、token、React Query、草稿管理、错误归一化 | `web/docs/frontend-architecture.md`, `web/docs/auth-and-security.md`, `web/docs/workflows.md` | 前端应用基础 | `T-WEB-001` - `T-WEB-003`, `T-WEB-007`, `T-WEB-010` | 依赖 M7/M8 |
+| M9-WP1 Shell、API client 与草稿状态 | 未开始 | 布局、导航、登录态、React Query、草稿管理、错误归一化 | `web/docs/frontend-architecture.md`, `web/docs/auth-and-security.md`, `web/docs/workflows.md` | 前端应用基础 | `T-WEB-001` - `T-WEB-003`, `T-WEB-007`, `T-WEB-010`, `T-WEB-021` | 依赖 M7/M8 |
 | M9-WP2 A1-A4 核心编辑页 | 未开始 | 来源、过滤器、节点分组、路由策略、拖拽保序、草稿预览 | `web/docs/page-specs.md`, `web/docs/data-contract.md` | A1-A4 可用 | `T-WEB-004`, `T-WEB-006`, `T-WEB-008` | 依赖 M7/M8 |
 | M9-WP3 B1/C 与保存-reload 工作流 | 未开始 | 节点预览、系统状态、validate-save-reload、dirty 提示、主题 | `web/docs/workflows.md`, `web/docs/acceptance.md` | B1、C 与核心工作流 | `T-WEB-009`, `npm test` | 依赖 M7/M8 |
 | M9-WP4 M9 收口验收 | 未开始 | 核心页面验收、视觉状态、文档同步 | `web/docs/page-specs.md` | M9 验收记录 | 本文件更新，前端测试结果 | 依赖 M7/M8 |

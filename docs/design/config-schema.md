@@ -296,7 +296,7 @@ base_url: "https://my-server.com"
 
 - 声明服务的外部可访问地址
 - 用于 Surge 输出时生成 `#!MANAGED-CONFIG` 头，使 Surge 客户端能自动更新配置
-- 生成的 managed URL 会继承当前请求里的 `filename`，以及服务端启用时的访问 `token`
+- 生成的 managed URL 会继承当前请求里的 `filename`，以及服务端启用时的订阅访问 `token`
 
 约束：
 
@@ -306,7 +306,7 @@ base_url: "https://my-server.com"
 
 说明：
 
-- 访问 token 属于服务运行时参数，不属于 YAML 配置字段
+- 订阅访问 token 属于服务运行时参数，不属于 YAML 配置字段；它只保护 `/generate` 客户端订阅更新，不作为 Web 管理后台登录凭据
 
 ---
 

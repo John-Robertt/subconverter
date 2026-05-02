@@ -33,13 +33,16 @@ v2.0 在 v1.0 核心管道基础上新增：
 
 ## 安全与信任模型
 
-本系统按**单用户信任模型**设计：运行者 = 使用者，所有通过鉴权的 API 输入视为可信。
+本系统按**单用户信任模型**设计：运行者 = 使用者，所有通过管理员登录态进入的 Admin API 输入视为可信。单用户不等于公网后台无认证；v2.0 Web 管理后台必须使用独立的管理员账号与 Cookie session 保护。
 
+- 管理后台访问 `/login` 完成登录；未登录访问任意 SPA 页面或 `/api/*` 管理接口时返回登录要求或重定向到 `/login?next=<原路径>`
+- 后端首次启动且没有管理员凭据时进入 setup 流程；setup 必须提交 bootstrap setup token，创建单一管理员账号并写入独立 auth state 文件。若未显式配置 `SUBCONVERTER_SETUP_TOKEN`，服务启动时生成一次性 32-byte URL-safe token 并仅打印到日志。若 auth state 不可写，服务必须 fail closed，不允许自动放开管理接口
+- 管理后台登录成功后写入 `session_id` Cookie（HttpOnly、SameSite=Lax、HTTPS 下 Secure）；未选择“记住我”时最长 24 小时，选择后最长 7 天
+- auth state 只保存 PBKDF2 密码哈希和 session token 的 SHA-256 哈希，不保存明文密码或明文 session id；文件权限必须收紧到 `0600`
+- `SUBCONVERTER_TOKEN` / `-access-token` 只表示 `/generate` 订阅访问 token，用于 Clash / Surge 等客户端自动更新订阅；它不作为 `/api/*` 或后台页面的权限凭据
 - `POST /api/preview/*` 接受草稿配置中的任意订阅 URL 并实际拉取——这是设计意图（允许用户预览新增来源的效果），而非安全疏忽
 - `/generate?token=...` 的 token 会出现在 URL 中（nginx access log、浏览器历史记录等），使用者应知悉此泄漏路径；同理，若 `-config` 参数是含 token 的私有远程 URL（如 GitHub Raw `?token=...`），该 URL 同样可能出现在 nginx access log 或进程日志中
-- 建议生产部署始终通过 `-access-token` 开启鉴权；`/api/*` 默认要求配置 token，若未配置 token 且未显式开启 `-allow-unauthenticated-admin`，Admin API 返回 `401 admin_auth_required`
-- `-allow-unauthenticated-admin` / `SUBCONVERTER_ALLOW_UNAUTHENTICATED_ADMIN=true` 只适合本机或受信网络；该开关只影响 `/api/*`，`/generate` 继续保留未配置 token 时免鉴权的 v1.0 兼容语义
-- 本系统不提供 rate limiting、IP 白名单或 RBAC——若需要这些能力，由前置反向代理（nginx、Cloudflare Tunnel 等）承担
+- 本系统不提供多用户、RBAC、审计系统、IP 白名单或公网 WAF 能力——若需要这些能力，由前置反向代理（nginx、Cloudflare Tunnel 等）承担
 
 ---
 
@@ -159,16 +162,17 @@ RUnlock()
 - `target`：目标格式投影与格式相关级联校验
 - `render`：Clash Meta 与 Surge 渲染器，只做序列化
 - `generate`：单一"生成配置"服务，承接 `Build -> Target -> Render`。v2.0 起改为无状态设计：`Generate` 方法接收 `*RuntimeConfig` 参数，不再通过结构体字段持有配置指针；`app.Service` 在每次请求时取快照后传入
-- `app`：v2.0 应用服务层，统一承接配置快照、条件写回、热重载、运行时预览、草稿预览、状态查询；用 `RWMutex` 保护 `*RuntimeConfig` 指针快照与替换。包内按文件拆分职责（`service.go` / `config_revision.go` / `config_source.go` / `preview.go` / `status.go`），保持包级别统一入口而非引入不必要的子包抽象
-- `admin`：Admin API 处理器，只做 JSON 解析、调用 `app.Service`、错误映射；不直接编排管道或渲染逻辑
-- `server`：HTTP 接口、路由注册、参数校验和错误映射
+- `app`：v2.0 应用服务层，统一承接配置快照、条件写回、热重载、运行时预览、草稿预览、订阅链接生成、状态查询；用 `RWMutex` 保护 `*RuntimeConfig` 指针快照与替换。包内按文件拆分职责（`service.go` / `config_revision.go` / `config_source.go` / `preview.go` / `status.go`），保持包级别统一入口而非引入不必要的子包抽象
+- `auth`：v2.0 管理后台认证层，承接 bootstrap setup token、管理员 PBKDF2 密码哈希、auth state 文件、session 创建/校验/注销和登录失败锁定；不依赖配置生成管道
+- `admin`：Admin API 处理器，只做 JSON 解析、调用 `app.Service` 或 `auth`、错误映射；不直接编排管道或渲染逻辑
+- `server`：HTTP 接口、路由注册、session middleware、同源校验、参数校验和错误映射
 
 依赖原则：
 
 - 依赖方向单向
 - `model` 和 `errtype` 是叶子包，不依赖其他业务包
 - 渲染层不反向依赖配置层实现细节
-- HTTP 层不直接依赖管道与渲染细节：`/api/*` 通过 `admin` 调用 `app.Service`，`/generate` 也通过 `app.Service` 获取当前快照后再进入生成逻辑
+- HTTP 层不直接依赖管道与渲染细节：受保护 `/api/*` 先经 `auth` 校验 session，再通过 `admin` 调用 `app.Service`；`/generate` 也通过 `app.Service` 获取当前快照后再进入生成逻辑
 
 ---
 

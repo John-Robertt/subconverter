@@ -226,7 +226,7 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 参数说明：
 
-- URL：由 `base_url` + `/generate` 拼接，并继承当前请求的 `format=surge`、访问 `token`（若启用）和最终 `filename`；`filename` 已由 HTTP 层收紧为安全 ASCII 文件名
+- URL：由 `base_url` + `/generate` 拼接，并写入 `format=surge`、服务端配置的订阅访问 `token`（若启用）和最终 `filename`；不得依赖当前请求是否通过 query token 或后台 session 鉴权。`filename` 已由 HTTP 层收紧为安全 ASCII 文件名
 - `interval`：更新检查最小间隔，默认 86400 秒（24 小时）
 - `strict`：是否强制过期更新，默认 false
 

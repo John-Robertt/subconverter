@@ -6,6 +6,7 @@
 
 | 路由 | 页面 | 数据来源 |
 |------|------|----------|
+| `/login` | 登录 / 首次 setup | `GET /api/auth/status` + `POST /api/auth/login` / `POST /api/auth/setup` |
 | `/sources` | A1 订阅来源 | `GET /api/config` 的 `sources` |
 | `/filters` | A2 过滤器 | 草稿 config，预览用 `POST /api/preview/nodes` |
 | `/groups` | A3 节点分组 | 草稿 config，预览用 `POST /api/preview/groups` |
@@ -20,6 +21,8 @@
 | `/status` | C 系统状态 | `GET /api/status` + `GET /healthz` |
 
 `/generate` 只表示后端生成接口和订阅链接路径，不作为 SPA 页面路由。
+
+除 `/login` 外，所有 SPA 页面都要求有效管理员 session。未登录访问时跳转到 `/login?next=<原路径>`。
 
 ## 页面状态
 

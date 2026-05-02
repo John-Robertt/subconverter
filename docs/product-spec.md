@@ -220,13 +220,13 @@ HK-03 → HK-ISP
 请求参数语义：
 
 - `format=clash|surge`：必填，决定输出格式
-- `token=<access-token>`：当服务端启用了访问 token 时，`/generate` 可通过 query 参数携带；Admin API 使用 `Authorization: Bearer ...` header，且默认要求服务端配置 token；客户端订阅更新仍通过 query 参数携带
+- `token=<access-token>`：当服务端启用了订阅访问 token 时，`/generate` 可通过 query 参数携带；该 token 只用于 Clash / Surge 等客户端自动更新订阅，不作为 Web 管理后台登录凭据
 - `filename=<custom-name>`：可选，自定义下载文件名；未传时默认使用 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`
 
 补充约束：
 
-- 访问 token 属于服务运行时参数，不写入用户 YAML 配置
-- Surge 的 `#!MANAGED-CONFIG` 需要回写当前请求使用的 `token` 和最终 `filename`，保证客户端后续自动更新仍能访问同一 URL
+- 订阅访问 token 属于服务运行时参数，不写入用户 YAML 配置
+- Surge 的 `#!MANAGED-CONFIG` 需要回写服务端配置的订阅访问 token（若启用）和最终 `filename`；不得依赖当前请求是否通过 query token 或后台 session 鉴权，保证客户端后续自动更新仍能访问同一 URL
 
 ---
 
@@ -242,13 +242,15 @@ HK-03 → HK-ISP
 
 **目标用户**：自部署的单用户（与 v1.0 一致）。
 
+单用户不等于无后台认证。v2.0 Web 管理后台面向公网部署时，必须通过独立的管理员登录态保护：首次启动且无管理员凭据时进入 setup 流程，并通过 bootstrap setup token 防止公网抢先初始化；setup 创建单一管理员账号；后续访问后台页面和 `/api/*` 管理接口都依赖 `session_id` HttpOnly Cookie。订阅访问 token 继续只保护 `/generate` 自动更新链接，二者互不替代。
+
 **核心场景**：可视化配置编辑。对应 2.3 节操作频率表中"修改配置文件重新生成"一行——频率很低（加服务/换订阅时），但每次操作涉及多个配置段的协调修改，出错成本高。Web 后台将这类低频高风险操作从"手写 YAML + 人工校验"升级为"表单编辑 + 静态校验 + 预览确认 + 一键热重载"。
 
 **辅助场景**：运行时数据预览——查看当前节点列表、组匹配结果、生成的配置文件内容。这些信息在 v1.0 中只能通过请求 `/generate` 端点间接获得，后台提供更直观的查看方式。
 
 ### 4.2 信息架构
 
-后台划分为三个区域，共 12 个路由页面，另有一个校验 Drawer 组件用于诊断修复引导：
+后台包含一个登录入口 `/login`，以及登录后可访问的三个功能区，共 12 个受保护路由页面；另有一个校验 Drawer 组件用于诊断修复引导：
 
 | 区域 | 定位 | 页面数 | 典型页面 |
 | ---- | ---- | ------ | -------- |
@@ -400,7 +402,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
 | Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG` 并继承请求中的 `token` / `filename` | 用户显式控制，无需依赖反向代理头 |
-| HTTP 访问控制      | `token` 作为运行时参数，不进入 YAML 配置；`/api/*` 默认要求 token 并使用 Authorization header，只有显式开启无鉴权 Admin 时才允许空 token；`/generate` 保留 query token 兼容订阅链接 | 与配置生成语义解耦，降低敏感信息泄露风险 |
+| 访问控制边界       | `/api/*` 使用管理员登录态和 `session_id` Cookie；`/generate` 保留 query token 兼容订阅链接；订阅 token 不进入 YAML，也不作为后台登录凭据 | 将公网后台权限与客户端订阅更新密钥解耦 |
 | 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf` | 客户端订阅与浏览器下载都需要稳定文件名 |
 | Web 管理后台       | React SPA 通过 Docker Compose 中的 `web` 静态容器托管，并同源反代到 `api` | 避免 Go 嵌入目录边界，生产部署路径清晰 |
 | 配置热重载         | RWMutex 保护 RuntimeConfig，写回 YAML + re-Prepare | 编辑后无需重启服务               |

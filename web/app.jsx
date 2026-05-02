@@ -3,6 +3,7 @@
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
   "accent": "#6366f1",
+  "loginState": "idle",
   "demoState": "idle"
 }/*EDITMODE-END*/;
 
@@ -15,6 +16,16 @@ const ACCENT_PRESETS = [
   { value: '#a855f7', label: 'Purple' },
 ];
 
+const LOGIN_STATE_LABELS = {
+  'idle': 'idle · 默认',
+  'validating': 'validating · 验证中',
+  'wrong-pwd': 'wrong-pwd · 密码错误',
+  'locked': 'locked · 临时锁定',
+  'redirecting': 'redirecting · 跳转中',
+  'network-err': 'network-err · 后端不可达',
+  'setup': 'setup · 首次初始化',
+};
+
 // Locked patterns: 1b modal · 2a/2b toast · 3a button spinner · 4a center confirm · 5b A8 drawer
 
 function App() {
@@ -22,13 +33,29 @@ function App() {
   const dark = tweaks.theme === 'dark';
   const accent = tweaks.accent;
   const state = tweaks.demoState || 'idle';
+  const loginState = tweaks.loginState || 'idle';
   const p = { dark, accent, state };
+  const Login = window.LoginScreen;
+  const loginStateOptions = (window.LOGIN_STATES || []).map(value => ({
+    value,
+    label: LOGIN_STATE_LABELS[value] || value,
+  }));
 
   const W = 1280, H = 820;
 
   return (
     <>
       <DesignCanvas>
+        <DCSection
+          id="auth"
+          title="认证 · 登录页"
+          subtitle="右下 Tweaks → 登录页状态 切换 idle / validating / wrong-pwd / locked / redirecting / network-err / setup"
+        >
+          <DCArtboard id="login" label="登录 / 首次 setup" width={W} height={H}>
+            {Login ? <Login dark={dark} accent={accent} state={loginState} /> : null}
+          </DCArtboard>
+        </DCSection>
+
         <DCSection
           id="config"
           title="配置管理 · A 区"
@@ -129,6 +156,14 @@ function App() {
       </DesignCanvas>
 
       <TweaksPanel title="Tweaks">
+        <TweakSection title="登录页状态">
+          <TweakSelect
+            label="认证页"
+            value={loginState}
+            options={loginStateOptions}
+            onChange={v => setTweak('loginState', v)}
+          />
+        </TweakSection>
         <TweakSection title="演示状态">
           <TweakSelect
             label="A1 / 顶栏状态"

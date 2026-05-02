@@ -29,15 +29,18 @@
 ## 能力状态矩阵
 
 | 能力 | 状态 | 里程碑 | 当前发布可用 | 说明 |
+|------|------|--------|--------------|------|
 | `GET /generate` | 当前可用 | v1.0 | 是 | 生成 Clash Meta / Surge 配置。 |
 | `GET /healthz` | 当前可用 | v1.0 | 是 | 进程健康检查。 |
 | Snell / VLESS 来源、链式组、目标格式投影 | 当前可用 | v1.0 | 是 | 由当前 Go 后端实现并有测试覆盖。 |
+| `/api/auth/*` | 设计中 | M6/M9 | 否 | 管理后台登录、首次 setup、session 状态和注销。 |
 | `GET/PUT /api/config` | 设计中 | M6 | 否 | 配置 CRUD 与 JSON/YAML round-trip 契约。 |
 | `POST /api/config/validate` | 设计中 | M6 | 否 | 静态配置校验与结构化诊断。 |
 | `POST /api/reload` | 设计中 | M6 | 否 | 运行时热重载与 `RuntimeConfig` 快照替换。 |
 | `GET/POST /api/preview/nodes` | 设计中 | M7 | 否 | 节点预览 API。 |
 | `GET/POST /api/preview/groups` | 设计中 | M7 | 否 | 分组预览 API，目标契约为执行到 `ValidateGraph`。 |
 | `GET/POST /api/generate/preview` | 设计中 | M7 | 否 | 页面内生成预览，不触发下载。 |
+| `GET /api/generate/link` | 设计中 | M7/M10 | 否 | 已登录后台中由服务端生成客户端订阅链接。 |
 | `GET /api/status` | 设计中 | M7 | 否 | 系统状态、配置 revision、dirty 状态。 |
 | Web 管理后台正式 SPA | 设计中 | M9-M10 | 否 | 当前 `web/` 是可静态托管的设计原型，不是已接入后端的正式后台。 |
 | `api + web` Docker Compose 生产部署 | 设计中 | M8-M10 | 否 | 当前可作为部署设计示例参考，不代表 `/api/*` 已可用。 |

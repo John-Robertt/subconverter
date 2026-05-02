@@ -6,6 +6,10 @@
 
 正式管理接口统一使用 `/api/*`：
 
+- `GET /api/auth/status`
+- `POST /api/auth/login`
+- `POST /api/auth/setup`
+- `POST /api/auth/logout`
 - `GET /api/config`
 - `PUT /api/config`
 - `POST /api/config/validate`
@@ -13,10 +17,24 @@
 - `GET/POST /api/preview/nodes`
 - `GET/POST /api/preview/groups`
 - `GET/POST /api/generate/preview`
+- `GET /api/generate/link`
 - `GET /api/status`
 
 生成接口继续使用 `/generate`。
 健康检查继续使用 `GET /healthz`，成功时返回 `200 OK`，不返回 JSON。
+
+## 认证状态
+
+`GET /api/auth/status` 返回：
+
+- `authed`：当前 session 是否有效。
+- `setup_required`：是否需要首次创建管理员账号。
+- `setup_token_required`：首次 setup 是否要求输入 bootstrap setup token。
+- `locked_until`：登录锁定截止时间，未锁定时为空。
+
+登录成功由服务端设置 `session_id` Cookie。前端只读取状态结果，不读取 Cookie 内容。
+
+`POST /api/auth/setup` 请求体必须包含 `username`、`password`、`setup_token`。缺少 setup token 返回 `401 setup_token_required`；setup token 不匹配返回 `401 setup_token_invalid`；管理员凭据已存在返回 `409 setup_not_allowed`。
 
 ## 配置 revision
 
@@ -75,12 +93,21 @@
 - 分组预览需要展示节点组、链式组、服务组和展开成员。
 - `expanded_members` 需要区分用户显式声明、`@auto` 展开和 `@all` 展开。
 
+## 订阅链接结果
+
+`GET /api/generate/link` 返回：
+
+- `url`：可复制给 Clash Meta 或 Surge 客户端的完整订阅链接。
+- `token_included`：链接是否包含订阅访问 token。
+
+当前端复制 `token_included=true` 的链接时，必须先展示确认。
+
 ## HTTP 状态
 
 前端必须单独处理：
 
 - `400`：请求或配置语义错误。
-- `401`：需要 token、token 无效，或 Admin API 默认鉴权要求服务端先配置 token。
+- `401`：管理接口缺少、无效或已过期的 session；登录凭据错误；或 `/generate` 缺少 / 不匹配订阅访问 token。
 - `409`：按 `error.code` 分流处理。
 - `429`：reload 正在执行，前端短间隔退避重试。
 - `502`：远程主配置源或订阅等上游拉取失败，按接口上下文展示。
@@ -99,7 +126,10 @@ API client 归一化错误对象至少包含：
 - `config_file_not_writable`：展示文件权限或部署挂载问题，并保留草稿。
 - 未知 409 code：按未知保存失败处理，不覆盖草稿，展示可重试或查看详情入口。
 
-401 的前端行为：
+认证错误前端行为：
 
-- `token_required` / `token_invalid`：展示 token 输入并重试原请求。
-- `admin_auth_required`：展示部署配置错误，提示配置 `SUBCONVERTER_TOKEN` 或显式开启 `SUBCONVERTER_ALLOW_UNAUTHENTICATED_ADMIN=true`；不得循环弹 token 输入框。
+- `auth_required` / `session_expired`：跳转 `/login?next=<当前路径>`。
+- `invalid_credentials`：登录页展示用户名或密码错误，并显示剩余尝试次数。
+- `auth_locked`：登录页展示锁定截止时间并禁用提交。
+- `setup_token_required` / `setup_token_invalid`：setup 模式展示 bootstrap token 错误，不创建管理员凭据。
+- `/generate` 的 `token_required` / `token_invalid`：只表示客户端订阅访问 token 问题，不触发额外的后台凭据输入。

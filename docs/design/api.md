@@ -6,7 +6,7 @@
 
 ## 目标
 
-本文件定义系统对外暴露的全部 HTTP 接口。v2.0 在原有生成接口基础上，新增配置管理、热重载、运行时预览和系统状态接口，为 Web 管理后台提供数据支撑。
+本文件定义系统对外暴露的全部 HTTP 接口。v2.0 在原有生成接口基础上，新增后台认证、配置管理、热重载、运行时预览和系统状态接口，为 Web 管理后台提供数据支撑。
 
 ---
 
@@ -16,6 +16,10 @@
 |------|------|------|------|
 | GET | `/generate` | 生成并下载目标格式配置 | v1.0 |
 | GET | `/healthz` | 进程健康检查 | v1.0 |
+| GET | `/api/auth/status` | 查询登录态、setup 与锁定状态 | v2.0 |
+| POST | `/api/auth/login` | 管理员密码登录并创建 session | v2.0 |
+| POST | `/api/auth/setup` | 首次启动创建管理员账号并登录 | v2.0 |
+| POST | `/api/auth/logout` | 注销当前 session | v2.0 |
 | GET | `/api/config` | 读取当前配置与 revision | v2.0 |
 | PUT | `/api/config` | 条件保存配置（JSON → YAML 写回） | v2.0 |
 | POST | `/api/config/validate` | 静态校验配置（Prepare 阶段） | v2.0 |
@@ -26,6 +30,7 @@
 | POST | `/api/preview/groups` | 预览草稿配置的分组与服务组 | v2.0 |
 | GET | `/api/generate/preview` | 预览当前运行时生成结果（不下载） | v2.0 |
 | POST | `/api/generate/preview` | 预览草稿配置生成结果（不下载） | v2.0 |
+| GET | `/api/generate/link` | 由服务端生成客户端订阅链接 | v2.0 |
 | GET | `/api/status` | 系统状态信息 | v2.0 |
 
 ---
@@ -39,8 +44,13 @@
 查询参数：
 
 - `format=clash|surge`（必填）
-- `token=<access-token>`（仅当服务端配置了访问 token 时必填）
+- `token=<access-token>`（仅当服务端配置了订阅访问 token 且请求没有有效管理员 session 时必填）
 - `filename=<custom-name>`（可选；未传时默认 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`）
+
+说明：
+
+- Clash / Surge 等客户端自动更新订阅时通过 query token 访问 `/generate`
+- Web 管理后台内的下载按钮可通过同源 `session_id` Cookie 访问 `/generate`，不需要把订阅 token 暴露给前端代码
 
 成功响应：
 
@@ -53,6 +63,116 @@
 用途：进程健康检查。
 
 成功响应：`200 OK`
+
+---
+
+## 后台认证接口（v2.0）
+
+后台认证独立于 `/generate` 订阅访问 token。所有 `/api/*` 管理接口（除本节认证接口外）都要求有效 `session_id` Cookie。
+
+### `GET /api/auth/status`
+
+用途：查询当前浏览器是否已登录，以及后端是否需要首次 setup。
+
+成功响应：
+
+```json
+{
+  "authed": false,
+  "setup_required": true,
+  "setup_token_required": true,
+  "locked_until": ""
+}
+```
+
+字段说明：
+
+- `authed`：当前请求携带的 `session_id` 是否有效
+- `setup_required`：auth state 中尚无管理员凭据时为 `true`
+- `setup_token_required`：需要首次 setup 且必须提交 bootstrap setup token 时为 `true`
+- `locked_until`：登录失败锁定截止时间，未锁定时为空字符串；格式为 ISO 8601
+
+### `POST /api/auth/login`
+
+用途：管理员登录并创建 session。
+
+请求体：
+
+```json
+{
+  "username": "admin",
+  "password": "password",
+  "remember": false
+}
+```
+
+成功响应：
+
+```json
+{
+  "redirect": "/sources"
+}
+```
+
+错误响应：
+
+- `400`：请求体无法解析或字段缺失
+- `401 invalid_credentials`：用户名或密码错误；响应可携带 `remaining`
+- `423 auth_locked`：失败次数达到上限；响应携带 `until`
+
+登录成功后服务端设置 `session_id` Cookie：HttpOnly、SameSite=Lax、Path=/；HTTPS 下必须设置 Secure。未选择 `remember` 时 session 最长 24 小时，选择后最长 7 天。
+
+密码校验成功后，若 auth state 中的密码哈希参数低于当前推荐参数，服务端应在本次登录成功路径中重新计算并原子写回新哈希。
+
+### `POST /api/auth/setup`
+
+用途：首次启动且 auth state 中无管理员凭据时创建管理员并登录。setup 成功后不得再次调用。
+
+首次 setup 必须具备 bootstrap setup token 防抢占边界：
+
+- 若显式配置 `-setup-token` / `SUBCONVERTER_SETUP_TOKEN`，请求体中的 `setup_token` 必须与其匹配
+- 若未显式配置 setup token，服务启动且检测到无管理员凭据时必须生成一次性 32-byte URL-safe token，只打印到服务日志，不通过 HTTP 返回
+- setup token 只用于首次创建管理员；管理员凭据存在后，`POST /api/auth/setup` 无论 token 是否正确都返回 `409 setup_not_allowed`
+
+请求体：
+
+```json
+{
+  "username": "admin",
+  "password": "password",
+  "setup_token": "one-time-bootstrap-token"
+}
+```
+
+约束：
+
+- 密码至少 12 位
+- 服务端只保存密码哈希，不保存明文密码
+- 管理员密码使用 `PBKDF2-HMAC-SHA256`，当前参数为 `600000` iterations、32-byte random salt、32-byte derived key；存储格式为 `pbkdf2-sha256$600000$<base64url-salt>$<base64url-hash>`
+- 密码哈希比较必须使用 constant-time compare
+- session id 必须由 CSPRNG 生成；auth state 只保存 session token 的 SHA-256 哈希，不保存明文 session id
+- auth state 目录自动创建时权限为 `0700`，文件权限为 `0600`
+- auth state 写入使用同目录临时文件 → 写入 → fsync 文件 → rename → 尽力 fsync 目录；若不可写，返回部署配置错误并保持未初始化状态
+
+错误响应：
+
+- `400`：请求体无法解析、字段缺失或密码不满足策略
+- `401 setup_token_required`：需要 setup token 但请求未提供
+- `401 setup_token_invalid`：setup token 不匹配
+- `409 setup_not_allowed`：管理员凭据已存在
+- `409 auth_state_not_writable`：auth state 文件或目录不可写
+
+### `POST /api/auth/logout`
+
+用途：注销当前 session。无论当前 session 是否有效，服务端都应返回成功并清除浏览器 Cookie。
+
+成功响应：
+
+```json
+{
+  "success": true
+}
+```
 
 ---
 
@@ -447,6 +567,32 @@ revision 冲突响应示例：
 
 成功响应与 `GET /api/generate/preview` 相同。
 
+### `GET /api/generate/link`
+
+用途：在已登录后台中，由服务端根据 `base_url`、目标格式、文件名和服务端配置的订阅访问 token 生成客户端订阅链接。前端不得自行持有或拼接 `SUBCONVERTER_TOKEN`。
+
+查询参数：
+
+- `format=clash|surge`（必填）
+- `filename=<custom-name>`（可选；校验规则与 `/generate` 相同）
+- `include_token=true|false`（可选，默认 `true`；为 `false` 时返回不含 token 的链接）
+
+成功响应：
+
+```json
+{
+  "url": "https://example.com/generate?format=surge&token=xxx&filename=surge.conf",
+  "token_included": true
+}
+```
+
+说明：
+
+- 本接口要求有效管理员 session
+- 若配置未声明 `base_url`，返回 `400 base_url_required`
+- 当 `include_token=true` 但服务端未配置订阅访问 token 时，返回不含 token 的链接并设置 `token_included=false`
+- UI 在复制 `token_included=true` 的链接前仍必须展示确认，提示 token 会进入 URL、客户端配置和代理日志
+
 ---
 
 ## 系统状态接口（v2.0）
@@ -505,7 +651,7 @@ revision 冲突响应示例：
 | 状态码 | 场景 |
 |------|------|
 | `400` | 请求参数非法；配置语义 / 图校验失败；热重载校验失败；目标格式级联过滤导致 fallback 清空 |
-| `401` | 缺少 token、token 不匹配，或 Admin API 默认鉴权要求未配置 token |
+| `401` | `/generate` 缺少或不匹配订阅访问 token；管理接口缺少、无效或已过期的管理员 session；登录凭据错误 |
 | `409` | 当前配置源不支持该操作、本地配置文件不可写，或配置 revision 冲突 |
 | `429` | reload 操作正在执行中，拒绝并发 reload 请求 |
 | `502` | 远程资源拉取失败，或远程订阅内容不可用 |
@@ -520,30 +666,47 @@ revision 冲突响应示例：
 
 ## 鉴权
 
-- 所有 `/api/*` 和 `/generate` 共享同一 token 值
-- `/api/*` 仅通过 `Authorization: Bearer ...` header 传递 token；后台 SPA 不把 token 放入 API query
-- `/generate` 继续支持 `token=...` query 参数，用于 Clash / Surge 订阅链接兼容；也可接受 `Authorization: Bearer ...` header 供浏览器内下载调用
-- `/generate` 保持 v1.0 兼容：服务端未配置 token 时（`-access-token` 为空），`/generate` 不启用鉴权
-- `/api/*` 默认要求服务端配置 token；当 `-access-token` 为空且未显式允许无鉴权 Admin 时，返回 `401 admin_auth_required`
-- 若用户确认部署在本机或受信网络中，可通过 `-allow-unauthenticated-admin` 或 `SUBCONVERTER_ALLOW_UNAUTHENTICATED_ADMIN=true` 显式允许 `/api/*` 无鉴权访问；该开关只影响 `/api/*`，不改变 `/generate` 兼容语义
-- 前端复制订阅链接时，必须显式确认是否把当前 token 写入 query 参数
+鉴权分为两条互不替代的边界：
 
-`/api/*` 的 401 错误码：
+- 管理后台和 `/api/*`：使用管理员用户名密码登录，登录成功后依赖 `session_id` Cookie
+- `/generate` 客户端订阅更新：继续支持 `token=...` query 参数，兼容 Clash / Surge 等客户端
+
+管理接口规则：
+
+- `/api/auth/status`、`/api/auth/login`、`/api/auth/setup`、`/api/auth/logout` 是未登录可访问的认证入口；logout 无 session 时也返回成功并清 Cookie
+- 其他 `/api/*` 管理接口必须携带有效 `session_id` Cookie；不接受 `Authorization: Bearer <SUBCONVERTER_TOKEN>` 作为管理后台权限
+- 前端 API client 使用同源 Cookie，不把订阅访问 token 放入 `/api/*` query 或 header
+- Session 失效后，所有受保护管理接口返回 `401 session_expired` 或 `401 auth_required`，前端全局拦截并跳转 `/login?next=<当前路径>`
+- 失败登录按 IP + 用户名联合计数；第 5 次失败后返回 `423 auth_locked`，默认锁定 15 分钟，具体截止时间由后端返回
+
+`/generate` 规则：
+
+- `/generate` 保持 v1.0 兼容：服务端未配置订阅访问 token 时（`-access-token` 为空），外部客户端可无 token 访问
+- 服务端配置订阅访问 token 时，外部客户端必须通过 `token=...` query 访问
+- Web 管理后台内的下载按钮可以凭当前管理员 session 调用 `/generate`，无需向前端暴露订阅访问 token
+- 前端复制订阅链接时，必须通过 `GET /api/generate/link` 让服务端生成 URL，并在复制含 token 的链接前显式确认
+
+管理接口常见 401 / 423 错误码：
 
 | code | 场景 |
 |------|------|
-| `token_required` | 服务端已配置 token，但请求缺少 `Authorization: Bearer ...` |
-| `token_invalid` | 请求 token 与服务端 token 不匹配 |
-| `admin_auth_required` | 服务端未配置 token，且未显式开启无鉴权 Admin |
+| `auth_required` | 请求缺少管理员 session |
+| `session_expired` | session 不存在、已过期或已被注销 |
+| `invalid_credentials` | 登录用户名或密码错误 |
+| `auth_locked` | 登录失败次数达到上限，临时锁定 |
+| `setup_token_required` | 首次 setup 缺少 bootstrap setup token |
+| `setup_token_invalid` | 首次 setup 的 bootstrap setup token 不匹配 |
+
+Cookie session 下，所有会修改状态的管理请求必须校验同源 `Origin` 或 `Referer`；生产模式通过 nginx 同源反向代理，开发模式优先使用 Vite proxy。
 
 ---
 
 ## CORS
 
 - v2.0 正式生产 Docker Compose 模式不启用 CORS：浏览器访问 `web` 容器，nginx 同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api` 容器
-- 开发模式优先使用 Vite proxy；仅在不使用 proxy、需要浏览器跨域直连 Go 后端时，通过 `-cors` 标志或 `SUBCONVERTER_CORS=true` 启用
+- 开发模式优先使用 Vite proxy，以便 Cookie session 保持同源语义；仅在不使用 proxy、需要浏览器跨域直连 Go 后端调试非 Cookie 路径时，通过 `-cors` 标志或 `SUBCONVERTER_CORS=true` 启用
 - 启用后仅允许本机开发来源：`http://localhost:*`、`http://127.0.0.1:*`、`http://[::1]:*`
-- CORS middleware 必须处理 preflight：允许 `GET`、`POST`、`PUT`、`OPTIONS`；允许 `Authorization`、`Content-Type`
+- CORS middleware 必须处理 preflight：允许 `GET`、`POST`、`PUT`、`OPTIONS`；允许 `Content-Type`
 - 响应需设置 `Vary: Origin`，避免不同来源的缓存污染
 
 ---
@@ -556,13 +719,14 @@ revision 冲突响应示例：
 - `-listen`：HTTP 监听地址（默认 `:8080`）
 - `-cache-ttl`：订阅、模板和远程配置的缓存 TTL（默认 `5m`）
 - `-timeout`：拉取订阅的 HTTP 超时时间（默认 `30s`）
-- `-access-token`：访问 token。对 `/generate`，空值表示不鉴权；对 `/api/*`，空值默认返回 `401 admin_auth_required`，除非显式允许无鉴权 Admin
-- `-allow-unauthenticated-admin`：允许 `/api/*` 在未配置 token 时无鉴权访问（默认 `false`，仅适合本机或受信网络）
+- `-access-token`：订阅访问 token，只用于 `/generate` 客户端自动更新订阅；空值表示 `/generate` 外部客户端不启用 token 鉴权
+- `-auth-state`：管理员凭据与持久 session 状态文件路径。Docker Compose Web 后台部署应挂载到可写目录；若无凭据且 auth state 不可写，setup 不可完成，管理接口保持关闭
+- `-setup-token`：首次 setup bootstrap token；未配置且 auth state 无管理员凭据时，服务启动生成一次性 32-byte URL-safe token 并仅打印到日志
 - `-cors`：启用 CORS 中间件（默认 `false`，仅开发模式使用）
 - `-healthcheck`：健康检查模式
 - `-version`：打印版本信息
 
-环境变量：`SUBCONVERTER_LISTEN`、`SUBCONVERTER_TOKEN`、`SUBCONVERTER_ALLOW_UNAUTHENTICATED_ADMIN`、`SUBCONVERTER_CORS`
+环境变量：`SUBCONVERTER_LISTEN`、`SUBCONVERTER_TOKEN`、`SUBCONVERTER_AUTH_STATE`、`SUBCONVERTER_SETUP_TOKEN`、`SUBCONVERTER_CORS`
 
 ---
 
@@ -586,17 +750,26 @@ revision 冲突响应示例：
 ### `/generate` 流程
 
 1. 校验 `format`
-2. 若服务端配置了 token，校验 `token`
+2. 若请求携带有效管理员 session，允许后台下载；否则在服务端配置订阅访问 token 时校验 query `token`
 3. 校验并规范化 `filename`
 4. 通过 `app.Service` 获取当前 `RuntimeConfig` 快照（内部 `RLock` 复制指针后立即释放）
 5. 将快照传入 `generate.Generate(ctx, cfg, req)`（无状态调用）执行 `Build → Target → Render`
 6. 若 `format=surge` 且有 `base_url`，组装 managed URL
 7. 返回配置文本（带 `Content-Disposition`）
 
+### `/api/auth/*` 流程
+
+- status：读取 auth state 与当前 Cookie session，返回登录态、setup、setup token 要求和锁定状态
+- login：校验账号密码 → 成功后创建 session 并写入 Cookie → 失败时更新失败计数
+- setup：确认 auth state 尚无管理员凭据 → 校验 setup token → 校验密码策略 → 写入 PBKDF2 密码哈希 → 创建 session
+- logout：删除当前 session 并清除 Cookie
+
 ### `/api/config` 流程
 
 - GET：读取配置源中的已保存 YAML → 解析为 JSON → 返回
 - PUT：确认配置源可写 → 接收 JSON → 反序列化 → Prepare 校验 → 原子写回 YAML
+
+所有受保护 `/api/*` 流程进入业务 handler 前，都先校验 `session_id` Cookie 和同源 `Origin` / `Referer`（安全方法可只校验 session）。
 
 ### `/api/reload` 流程
 

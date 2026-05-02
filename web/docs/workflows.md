@@ -1,5 +1,13 @@
 # 工作流契约
 
+## 登录与启动
+
+1. 页面启动后先调用 `GET /api/auth/status`。
+2. `setup_required=true` 时进入 `/login` setup 模式，要求用户输入 bootstrap setup token，提交 `POST /api/auth/setup`。
+3. `authed=false` 时跳转 `/login?next=<原路径>`，提交 `POST /api/auth/login`。
+4. 登录成功后服务端写入 `session_id` Cookie，前端跳回 `next` 或 `/sources`。
+5. 受保护 API 返回 `401 auth_required` 或 `401 session_expired` 时，全局跳回登录页。
+
 ## 配置加载
 
 1. 页面启动后调用 `GET /api/status` 读取能力与状态。

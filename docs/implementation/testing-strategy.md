@@ -92,11 +92,17 @@
 - `T-ADM-009`：`GET /api/config` 返回 `config_revision=sha256:<hex>`
 - `T-ADM-010`：`PUT /api/config` 缺少 revision 返回 400，revision 冲突返回 `409 config_revision_conflict` 且不写入
 - `T-ADM-011`：远程主配置 URL 在 TTL 未过期时执行 reload 仍读取最新内容
-- `T-ADM-012`：`/api/*` 仅接受 `Authorization: Bearer ...`；未配置 token 且未开启 `allow-unauthenticated-admin` 时返回 `401 admin_auth_required`，开启后允许无鉴权 Admin；query token 仅对 `/generate` 兼容路径生效
+- `T-ADM-012`：受保护 `/api/*` 仅接受有效 `session_id` Cookie；缺少 session 返回 `401 auth_required`，过期 / 注销 session 返回 `401 session_expired`；`Authorization: Bearer <SUBCONVERTER_TOKEN>` 不授予后台权限；query token 仅对 `/generate` 兼容路径生效
 - `T-ADM-013`：`internal/admin` 不直接依赖 `internal/pipeline` 或 `internal/model`
 - `T-ADM-014`：诊断定位对含空格、点号或 emoji 的 `groups` / `routing` / `rulesets` key 仍稳定，前端可通过 `locator.index` / `locator.json_pointer` 定位
 - `T-ADM-015`：`groups` 为空时 `POST /api/config/validate` 返回 `200 valid=false` + 结构化配置诊断；`PUT /api/config` / `POST /api/reload` 返回 400，不允许保存或重载为有效配置
 - `T-ADM-016`：本地配置文件或目录不可写时 `PUT /api/config` 返回 `409 config_file_not_writable`，且不覆盖原配置
+- `T-ADM-017`：首次无管理员凭据时 `GET /api/auth/status` 返回 `setup_required=true` 与 `setup_token_required=true`；`POST /api/auth/setup` 缺少 setup token 返回 `401 setup_token_required`，错误 token 返回 `401 setup_token_invalid`，正确 token 才创建管理员并登录
+- `T-ADM-018`：管理员密码以 `PBKDF2-HMAC-SHA256`、`600000` iterations、32-byte salt、32-byte derived key 写入；auth state 不保存明文密码；密码比较使用 constant-time；参数落后时登录成功路径会重哈希
+- `T-ADM-019`：`POST /api/auth/login` 成功设置 HttpOnly `session_id` Cookie；未选择 remember 的 session 最长 24 小时，选择 remember 的 session 最长 7 天；auth state 只保存 session token 的 SHA-256 哈希；`POST /api/auth/logout` 清除 session
+- `T-ADM-020`：登录失败按 IP + 用户名计数；错误凭据返回 `401 invalid_credentials` 和剩余次数；第 5 次失败返回 `423 auth_locked` 和解锁时间
+- `T-ADM-021`：auth state 自动创建目录权限为 `0700`、文件权限为 `0600`；写入使用同目录临时文件、fsync、rename；auth state 不可写时 setup 返回 `409 auth_state_not_writable`
+- `T-ADM-022`：Cookie session 下非安全管理请求校验同源 `Origin` 或 `Referer`
 
 ---
 
@@ -142,6 +148,8 @@
 - `T-PRV-010`：本地配置源的 `GET /api/status` 释放运行时配置锁后每次重算 sha256，能发现同大小且 mtime 未变化的外部改写，且不阻塞 reload 指针替换
 - `T-PRV-011`：`/generate` 与 `/api/generate/preview` 中，`CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` 经 HTTP 层返回 400，projection invariant 类 TargetError 仍返回 500
 - `T-PRV-012`：reload 期间预览请求不阻塞——慢速 `/api/preview/*` 请求不持有配置读锁，不阻塞 reload 获取写锁
+- `T-PRV-013`：`GET /api/generate/link` 要求管理员 session；`base_url` 缺失返回 `400 base_url_required`；服务端配置订阅 token 时可返回含 token 链接，未配置时返回 `token_included=false`；链接 token 来源必须是服务端订阅访问 token，而不是当前请求鉴权方式
+- `T-PRV-014`：后台 session 调用 `/generate?format=surge` 时，即使请求未带 query token，Surge `#!MANAGED-CONFIG` 仍包含服务端订阅访问 token（若启用）和最终 filename
 
 ---
 
@@ -170,7 +178,7 @@
 - `T-WEB-004`：保序字段编辑后顺序不变，覆盖 `groups` / `routing` / `rulesets`、`sources.fetch_order` 和 `rules`
 - `T-WEB-005`：校验结果展示与跳转定位使用 `locator.json_pointer`，`display_path` 只作为用户可读文案
 - `T-WEB-006`：A2/A3 编辑态调用 POST 草稿预览，而 B1/B2 运行时页调用 GET 预览
-- `T-WEB-007`：token 输入后 API client 使用 Authorization header；`401 admin_auth_required` 展示部署配置错误；复制订阅链接时显式确认 query token
+- `T-WEB-007`：登录页覆盖 idle、validating、invalid credentials、locked、redirecting、network error 和 setup；未登录访问受保护路由跳转 `/login?next=...`，session 失效后提示并跳回登录页
 - `T-WEB-008`：本地可写配置首次保存前显示 YAML 注释、引号和格式风格可能丢失的确认；用户确认后才发起 `PUT /api/config`
 - `T-WEB-009`：reload 成功或 status poll 发现 `runtime_config_revision` 变化后，当前已实现的运行时预览页使用新 query key 重新加载；B2/B3 在 M10 复用同一规则
 - `T-WEB-010`：409 按 `error.code` 分流，分别覆盖 `config_revision_conflict`、`config_source_readonly`、`config_file_not_writable` 和未知 409 code
@@ -197,6 +205,10 @@
   - 预期结果：Clash 响应为 YAML 且不含 Snell；Surge 响应为 text/plain 且不含 VLESS；预览无 `Content-Disposition`，下载有附件响应；复制含 token 链接前出现确认
 - `T-WEB-020`：端到端测试：HTTP(S) 配置源只读模式（归属 M10）
   - 测试入口：正式前端 E2E runner；后端以 HTTP(S) 主配置源启动
-  - fixture：远程主配置 URL、fake 订阅源、有效 token
+  - fixture：远程主配置 URL、fake 订阅源、有效订阅访问 token、可写 auth state
   - 操作步骤：打开 SPA → 读取 status/config → 进入 A1-A8 → 尝试编辑保存 → 运行 validate、B 区预览、B3 生成预览、reload
   - 预期结果：`capabilities.config_write=false`；编辑页禁用保存、新增、删除和排序；`PUT /api/config` 路径不可被静默触发；validate、preview、generate preview 和 reload 仍可用；409 `config_source_readonly` 进入只读模式并保留草稿
+- `T-WEB-021`：端到端测试：登录、setup、logout 与订阅链接生成（归属 M9/M10）
+  - 测试入口：正式前端 E2E runner；后端使用临时 auth state 和 fake 订阅访问 token
+  - 操作步骤：首次打开 `/login` setup → 输入 setup token 并创建管理员 → 进入 `/sources` → logout → 登录 → 进入 B3 → 调用复制订阅链接
+  - 预期结果：缺少或错误 setup token 时无法创建管理员；setup 成功后写入 session Cookie；logout 后受保护页面跳回登录；复制链接经 `GET /api/generate/link` 返回 URL，含 token 时先确认

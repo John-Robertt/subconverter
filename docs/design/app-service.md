@@ -100,6 +100,11 @@ func (s *Service) Generate(ctx context.Context, format string, filename string) 
 // 不写文件、不替换 RuntimeConfig。
 // 用于 POST /api/generate/preview。
 func (s *Service) GenerateFromDraft(ctx context.Context, format string, configJSON json.RawMessage) (*GenerateResult, error)
+
+// GenerateLink 基于当前 RuntimeConfig 的 base_url、目标格式、filename 和服务端配置的订阅访问 token
+// 生成客户端订阅链接。用于 GET /api/generate/link。
+// includeToken=false 时不写入 token query。
+func (s *Service) GenerateLink(ctx context.Context, input *GenerateLinkInput) (*GenerateLinkResult, error)
 ```
 
 ### 系统状态
@@ -239,6 +244,21 @@ type GenerateResult struct {
 }
 ```
 
+### GenerateLinkInput / GenerateLinkResult
+
+```go
+type GenerateLinkInput struct {
+    Format       string
+    Filename     string
+    IncludeToken bool
+}
+
+type GenerateLinkResult struct {
+    URL           string `json:"url"`
+    TokenIncluded bool   `json:"token_included"`
+}
+```
+
 ### StatusResult
 
 ```go
@@ -284,6 +304,7 @@ type LastReload struct {
 | `PreviewNodes` | `model.Proxy` (FilterResult.Included + Excluded) | `NodePreviewResult` |
 | `PreviewGroups` | `model.Pipeline` (GroupResult + RouteResult) | `GroupPreviewResult` |
 | `Generate` | `model.Pipeline` (经 Target 投影) → render 输出 | `GenerateResult` |
+| `GenerateLink` | `*config.RuntimeConfig` 的 `base_url` + 服务端配置的订阅访问 token | `GenerateLinkResult` |
 | `Status` | `*config.RuntimeConfig` 元信息 | `StatusResult` |
 
 设计原则：
@@ -373,6 +394,7 @@ HTTP Request
   ├─► admin/reload_handler.go      无需 body，调用 app.Reload
   ├─► admin/preview_handler.go     解析 query/body，调用 app.PreviewNodes / app.PreviewGroups
   ├─► admin/generate_preview_handler.go  解析 query/body，调用 app.Generate / app.GenerateFromDraft
+  ├─► admin/generate_link_handler.go     解析 query，调用 app.GenerateLink
   └─► admin/status_handler.go      无需 body，调用 app.Status
 ```
 
