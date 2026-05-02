@@ -1,5 +1,7 @@
 # 渲染设计
 
+> 状态提示：§Snell 过滤、§VLESS 过滤、§预览模式 为 v1.0 已有 + v2.0 预览扩展。当前代码中 Snell/VLESS 渲染和级联过滤引擎已可用。
+
 ## 目标
 
 本文件定义统一中间表示如何映射到 Clash Meta 与 Surge。它关注语义对齐，不描述具体代码组织。
@@ -230,6 +232,8 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 未显式传入 `filename` 时，最终文件名默认使用 `surge.conf`；若请求带了自定义 `filename`，managed URL 中也使用该值。当 `base_url` 为空时不输出此行。Clash Meta 输出不受影响。
 
+**Docker Compose 部署的 `base_url`**：当使用 `web` + `api` Docker Compose 部署时，`base_url` 应填写 `web` 容器的外部可访问地址（如 `https://myserver.com`），其 nginx 会将 `/generate` 反向代理到 `api:8080`。若 `base_url` 误填 `api` 容器内部地址，Surge 客户端将无法完成对 managed URL 的更新请求。
+
 ---
 
 ## 一致性要求
@@ -293,6 +297,6 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 区别：
 
 - 响应不带 `Content-Disposition: attachment` header（浏览器不触发下载）
-- 前端用于在页面内展示预览内容（语法高亮）
+- 消费方可直接展示响应体文本（如语法高亮预览）
 
 渲染逻辑完全复用，无独立渲染路径。

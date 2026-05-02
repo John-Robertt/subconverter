@@ -279,3 +279,5 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - [ ] **测试跨边界导入** → 见 §测试：测试文件未导入同层或上层业务包（如 render 测试不导入 pipeline）
 - [ ] **删除代码后的清理** → 见 §CI 流水线检查：已确认无未使用的 test helper 函数、无多余 import、无尾部空行（`gofmt -l .` 通过）
 - [ ] **核心术语定义变更** → 见 §文档术语一致性：对变更术语全文搜索，确认所有出现处（含概要层文档）均已同步
+- [ ] **新增 API 端点或响应字段变更**：已同步 `api.md` 示例 JSON 和字段描述；若涉及 Go DTO，已同步 `design/app-service.md` 方法签名和 DTO 定义
+- [ ] **管道阶段输入输出变更**：已同步 `pipeline.md` 阶段职责表和 `domain-model.md` 实体属性；若涉及渲染层，已同步 `rendering.md` 映射表

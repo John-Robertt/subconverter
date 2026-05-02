@@ -1,5 +1,7 @@
 # 缓存设计
 
+> 状态提示：§热重载时的缓存行为为 v2.0 新增契约。
+
 ## 目标
 
 本文件定义远程资源拉取时的缓存范围和约束。
@@ -66,3 +68,23 @@ reload 不主动清除订阅和模板缓存：
 - 模板 URL 同理：reload 不主动刷新模板；模板在生成或预览渲染时按 TTL 读取
 
 预览请求（`/api/preview/nodes`、`/api/preview/groups`）与 `/generate` 共享同一 `CachedFetcher`，不引入独立的缓存实例。
+
+---
+
+## CachedFetcher API 扩展（v2.0 前置）
+
+当前 `CachedFetcher` 仅暴露 `Fetch(ctx, rawURL)` 方法。热重载要求 bypass/invalidate 特定 URL 的缓存，需在 M6 实现前新增以下能力：
+
+```go
+// Invalidate 移除指定 URL 的缓存项。
+// 下一次 Fetch 将重新拉取远程资源。
+func (c *CachedFetcher) Invalidate(rawURL string)
+```
+
+使用场景：`POST /api/reload` 在调用 `LoadConfig` 前，先 `Invalidate` 主配置 URL，确保 reload 读到远端最新内容。
+
+设计约束：
+
+- `Invalidate` 只移除单条缓存项，不清空全部缓存
+- 不新增 `BypassCache` / `ForceRefresh` 等复杂模式——invalidate-then-fetch 已满足 reload 需求，且语义更简单
+- 订阅和模板缓存不受 reload 影响（见上文"reload 不主动清除订阅和模板缓存"）

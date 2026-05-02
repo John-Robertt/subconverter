@@ -88,7 +88,7 @@
 - `T-ADM-005`：Reload 失败路径（旧 RuntimeConfig 不变）
 - `T-ADM-006`：慢速生成/预览请求不持有配置读锁，不阻塞 reload 指针替换
 - `T-ADM-007`：保序字段 JSON round-trip 顺序不变
-- `T-ADM-008`：HTTP(S) 配置源下 `PUT /api/config` 返回 409，状态接口标记 `config_write=false`
+- `T-ADM-008`：HTTP(S) 配置源下 `PUT /api/config` 返回 409，且不尝试写回远端
 - `T-ADM-009`：`GET /api/config` 返回 `config_revision=sha256:<hex>`
 - `T-ADM-010`：`PUT /api/config` 缺少 revision 返回 400，revision 冲突返回 `409 config_revision_conflict` 且不写入
 - `T-ADM-011`：远程主配置 URL 在 TTL 未过期时执行 reload 仍读取最新内容
@@ -98,18 +98,21 @@
 
 ---
 
-## 预览 API 测试（v2.0）
+## 预览与状态 API 测试（v2.0）
 
 建议覆盖：
 
 - `T-PRV-001`：Preview nodes 返回正确的节点列表（含 Kind 和 filtered 标记，并覆盖 Included / Excluded）
-- `T-PRV-002`：Preview groups 返回节点组、链式组、服务组和 `@all` / `@auto` 展开结果
+- `T-PRV-002`：Preview groups 成功时返回节点组、链式组、服务组和 `@all` / `@auto` 展开结果
 - `T-PRV-003`：Generate preview 与 generate 输出一致（仅 Content-Disposition 不同）
-- `T-PRV-004`：Status 返回进程信息（版本、配置源位置与可写性、热重载状态）
+- `T-PRV-004`：Status 返回进程信息（版本、配置源位置与可写性、热重载状态），HTTP(S) 配置源下标记 `capabilities.config_write=false`
 - `T-PRV-005`：POST 草稿 nodes 预览使用请求体配置，GET nodes 预览仍使用当前 RuntimeConfig
 - `T-PRV-006`：POST 草稿 groups 预览返回草稿服务组展开结果，不改变运行时状态
 - `T-PRV-007`：POST 草稿 generate preview 输出草稿配置结果，不改变 `config_dirty`、`last_reload` 或 RuntimeConfig
 - `T-PRV-008`：POST 草稿 generate preview 能发现 `config/validate` 不覆盖的生成期问题，例如远程源为空、过滤后组为空、fallback 级联清空或模板渲染错误
+- `T-PRV-009`：Preview groups 执行到 ValidateGraph；空节点组、空链式组、非法引用或循环引用返回 400 结构化诊断，不返回部分成功分组结果
+- `T-PRV-010`：本地配置源的 `GET /api/status` 每次重算 sha256，能发现同大小且 mtime 未变化的外部改写
+- `T-PRV-011`：`/generate` 与 `/api/generate/preview` 中，`CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` 经 HTTP 层返回 400，projection invariant 类 TargetError 仍返回 500
 
 ---
 
@@ -120,10 +123,10 @@
 - `T-SPA-001`：`web/Dockerfile` 可成功构建 nginx 静态发布镜像
 - `T-SPA-002`：访问 `/` 返回 SPA `index.html`
 - `T-SPA-003`：刷新任意前端路由时由 nginx fallback 到 `index.html`
-- `T-SPA-004`：`/api/status` 经 `web` 容器反向代理到 `api` 成功
-- `T-SPA-005`：`/generate?format=clash` 与 `/generate?format=surge` 经 `web` 容器反向代理到 `api` 成功
-- `T-SPA-006`：`/healthz` 经 `web` 容器反向代理到 `api` 成功
-- `T-SPA-007`：生产 Compose 路径不依赖 CORS；浏览器访问的 Web 页面与 API 为同源
+- `T-SPA-004`：`/generate?format=clash` 与 `/generate?format=surge` 经 `web` 容器反向代理到 `api` 成功
+- `T-SPA-005`：`/healthz` 经 `web` 容器反向代理到 `api` 成功
+- `T-SPA-006`：生产 Compose 路径不依赖 CORS；浏览器访问的 Web 页面与 API 为同源
+- `T-SPA-007`：M7 完成后补充验证 `/api/status` 经 `web` 容器反向代理到 `api` 成功
 
 ---
 
@@ -138,3 +141,27 @@
 - `T-WEB-005`：校验结果展示与跳转定位使用 `locator.json_pointer`，`display_path` 只作为用户可读文案
 - `T-WEB-006`：A2/A3 编辑态调用 POST 草稿预览，而 B1/B2 运行时页调用 GET 预览
 - `T-WEB-007`：token 输入后 API client 使用 Authorization header；复制订阅链接时显式确认 query token
+- `T-WEB-008`：本地可写配置首次保存前显示 YAML 注释、引号和格式风格可能丢失的确认；用户确认后才发起 `PUT /api/config`
+- `T-WEB-009`：B2 分组预览页面展示节点组/链式组/服务组树形结构，ValidateGraph 失败时显示诊断且不展示部分成功结果
+- `T-WEB-010`：B3 生成下载页面完成预览 → 下载 → 复制订阅链接全流程；未配置 `base_url` 时复制订阅链接功能给出提示
+- `T-WEB-011`：A5 规则集页面 URL/Policy 绑定编辑，多条 URL 顺序不变（归属 M10）
+- `T-WEB-012`：A6 内联规则页面自由文本 + Policy 选择器编辑（归属 M10）
+- `T-WEB-013`：A7 其他配置页面 fallback / base_url / templates 字段编辑（归属 M10）
+- `T-WEB-014`：A8 静态校验 Drawer 展示 errors/warnings/infos 三级，通过 `locator.json_pointer` 跳转到对应页面字段（归属 M10）
+- `T-WEB-015`：B2 分组预览页面树形展示，ValidateGraph 失败时显示诊断且不展示部分成功结果（归属 M10）
+- `T-WEB-016`：B3 生成下载页面预览 → 下载 → 复制订阅链接全流程，含草稿预览模式（归属 M10）
+- `T-WEB-017`：[占位] 端到端测试：空配置 → 逐步编辑 → 保存 → 重载 → 预览 → 生成 → 下载（归属 M10）
+- `T-WEB-018`：[占位] 端到端测试：错误路径覆盖（静态校验失败/分组预览图级错误/生成预览失败/重载失败）（归属 M10）
+- `T-WEB-019`：[占位] 端到端测试：两种输出格式的内容校验（归属 M10）
+- `T-WEB-020`：[占位] 端到端测试：HTTP(S) 配置源只读模式全流程（归属 M10）
+
+---
+
+## Admin API 补充测试（归属 M7）
+
+建议覆盖：
+
+- `T-ADM-011`：远程主配置 URL 在 TTL 未过期时执行 reload 仍 bypass 缓存，读取最新内容
+- `T-ADM-012`：`/api/*` 仅接受 `Authorization: Bearer ...` header，query token 仅对 `/generate` 兼容路径生效
+- `T-ADM-013`：`internal/admin` 包不直接依赖 `internal/pipeline` 或 `internal/model`
+- `T-ADM-014`：诊断定位对含空格、点号或 emoji 的 `groups` / `routing` / `rulesets` key 仍稳定，前端可通过 `locator.index` 和 `locator.json_pointer` 定位

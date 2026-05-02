@@ -1,6 +1,8 @@
 # HTTP API 设计
 
 > v1.0 API 文档已归档至 docs/v1.0/design/api.md
+>
+> 状态提示：本文描述 v2.0 Admin API 目标契约；除 `/generate` 与 `/healthz` 外，当前 `/api/*` 仍为规划能力，状态见 docs/README.md。
 
 ## 目标
 
@@ -116,7 +118,7 @@
 3. 请求中的 `config_revision` 与当前 revision 不一致 → 不写入，返回 `409 config_revision_conflict`
 4. JSON 反序列化为 `Config`
 5. 执行 `Prepare` 校验
-6. 校验通过 → 序列化为 YAML → 写入同目录临时文件 → 原子 rename 覆盖原配置文件 → 重新计算新的 `config_revision` → 同步更新 `app.Service` 内缓存的 `config_revision` 和 `(mtime, size)` 快照（避免自身写回被误判为外部修改） → 返回新的 `config_revision`
+6. 校验通过 → 序列化为 YAML → 写入同目录临时文件 → 原子 rename 覆盖原配置文件 → 重新计算新的 `config_revision` → 同步更新 `app.Service` 内缓存的 `config_revision` → 返回新的 `config_revision`
 7. 校验失败 → 不写入，返回 `400` + 结构化错误
 
 成功响应：
@@ -151,6 +153,7 @@ revision 冲突响应示例：
 - `PUT /api/config` 仅写回文件，不自动触发热重载
 - 前端需在保存后显式调用 `POST /api/reload` 使新配置生效
 - YAML 写回可能改变格式细节并丢失原始文件中的注释
+- 本地可写配置源首次保存前，Web UI 必须弹出确认，提示注释、引号和格式风格可能丢失；`PUT /api/config` 成功响应只返回新的 `config_revision`
 - 多标签页、外部编辑器或 GitOps 进程改写配置时，revision 校验会阻止后台静默覆盖外部修改
 
 ### `POST /api/config/validate`
@@ -168,7 +171,7 @@ revision 冲突响应示例：
 请求体：
 
 - `Content-Type: application/json`
-- Body：完整配置 JSON
+- Body：`{ "config": { ... } }`，与 `PUT /api/config` 的 `config` 字段结构一致；校验作用于 `config` 键下的完整配置 JSON
 
 成功响应：`200`，Body 为校验结果 JSON：
 
@@ -188,7 +191,6 @@ revision 冲突响应示例：
   "severity": "error",
   "code": "invalid_regex",
   "message": "正则表达式无效：...",
-  "page": "A3",
   "display_path": "groups.🇭🇰 Hong Kong.match",
   "locator": {
     "section": "groups",
@@ -202,7 +204,6 @@ revision 冲突响应示例：
 
 - `severity`：`error`（阻塞保存）、`warning`（建议修改）、`info`（提示）
 - `code`：稳定错误码，用于前端分类展示和测试断言
-- `page`：对应前端页面标识（A1-A8）；此为当前前端布局的辅助提示，非稳定 API 契约——前端定位必须以 `locator.json_pointer` 为准
 - `display_path`：面向用户展示的 YAML 风格路径，不作为程序定位依据
 - `locator`：面向前端定位的结构化字段
 - `locator.section`：顶层配置段，如 `sources` / `groups` / `routing` / `rulesets` / `rules` / `fallback` / `base_url` / `templates`
@@ -229,7 +230,7 @@ revision 冲突响应示例：
 
 1. 读取配置源（`LoadConfig`；本地文件或 HTTP(S) URL）
 2. 执行 `Prepare` 校验
-3. 校验通过 → `WLock` 替换 `RuntimeConfig` → 返回 `200`
+3. 校验通过 → `WLock` 替换 `RuntimeConfig` 指针，同时将重读主配置源得到的 `config_revision`（`sha256:<hex>`）写入 `runtime_config_revision`，此后 `GET /api/status` 的 `config_dirty` 变为 `false` → 返回 `200`
 4. 校验失败 → 不替换，返回 `400` + 与 `POST /api/config/validate` 相同结构的静态诊断
 
 成功响应：
@@ -241,7 +242,13 @@ revision 冲突响应示例：
 }
 ```
 
-错误响应：`400`，Body 为静态诊断或加载错误；远程配置拉取失败按 `502` 返回
+并发行为：同一时刻只允许一次 reload 操作。若 reload 正在执行时收到第二个 `POST /api/reload` 请求，立即返回 `429 Too Many Requests`，不排队等待。
+
+错误响应：
+
+- `400`：配置校验失败（静态诊断）
+- `429`：另一个 reload 正在执行中
+- `502`：远程配置拉取失败
 
 ---
 
@@ -297,7 +304,7 @@ revision 冲突响应示例：
 
 ### `GET /api/preview/groups`
 
-用途：基于当前运行时配置返回分组与服务组匹配结果（执行管道的 Source + Filter + Group + Route 阶段）。
+用途：基于当前运行时配置返回分组与服务组匹配结果（执行管道的 Source + Filter + Group + Route + ValidateGraph 阶段）。
 
 成功响应：`200`，Body 为分组结果 JSON：
 
@@ -336,12 +343,13 @@ revision 冲突响应示例：
 - `service_groups` 展示 Route 阶段产出的服务组结果
 - `expanded_members` 用于前端区分用户显式声明、`@auto` 展开和 `@all` 展开结果
 - `origin` 可选值：`literal`、`auto_expanded`、`all_expanded`
+- 若 ValidateGraph 发现空节点组、空链式组、非法成员引用或循环引用等图级错误，本接口返回 `400` + 结构化诊断，不返回部分成功的分组结果
 
 ### `POST /api/preview/groups`
 
 用途：基于草稿配置返回分组与服务组匹配结果，响应结构与 `GET /api/preview/groups` 相同。
 
-注意：此端点执行完整的 Source + Filter + Group + Route 阶段，包括实际拉取草稿配置中的全部订阅 URL。延迟与 `POST /api/preview/nodes` 相同，前端应提供明确的加载反馈。
+注意：此端点执行完整的 Source + Filter + Group + Route + ValidateGraph 阶段，包括实际拉取草稿配置中的全部订阅 URL。延迟与 `POST /api/preview/nodes` 相同，前端应提供明确的加载反馈。
 
 请求体：
 
@@ -426,20 +434,25 @@ revision 冲突响应示例：
 - `config_source.writable`：当前配置源是否支持 `PUT /api/config`
 - `config_revision`：配置源当前已保存内容的 revision
 - `runtime_config_revision`：当前 `RuntimeConfig` 对应的配置 revision
-- `config_dirty`：`config_revision != runtime_config_revision` 时为 `true`。检测策略：服务维护配置文件的 `(mtime, size)` 快照，`GET /api/status` 时先比对 mtime 和 size，仅在变化时才重读文件并重算 `config_revision`；未变化时直接使用缓存的 revision 比较。因此外部进程改写文件后，下一次 status 请求即可检测到变更
+- `config_dirty`：`config_revision != runtime_config_revision` 时为 `true`
+- 本地配置源检测策略：每次 `GET /api/status` 都重新读取配置文件并计算 `sha256:<hex>`，不以 `(mtime, size)` 作为跳过 hash 的强判断；因此同大小改写或保留 mtime 的外部修改也能被下一次 status 请求发现
+- HTTP(S) 配置源检测策略：status 不主动拉取远程配置；`config_revision` 与 dirty 状态基于最近一次 `GET /api/config` 或 `POST /api/reload` 观测到的内容
 - `capabilities.config_write`：前端是否应启用保存入口
 
 ---
 
 ## 错误语义
 
+本节描述 v2.0 目标错误语义。当前 v1.0 `/generate` 已可用，但仍将所有 `TargetError` 映射为 `500`；v2.0 实现 M7 时会把可归因于用户配置的 fallback 清空错误调整为 `400`，内部投影不变量错误继续保持 `500`。
+
 | 状态码 | 场景 |
 |------|------|
-| `400` | 请求参数非法；配置语义 / 图校验失败；热重载校验失败 |
+| `400` | 请求参数非法；配置语义 / 图校验失败；热重载校验失败；目标格式级联过滤导致 fallback 清空 |
 | `401` | 缺少 token，或 token 不匹配 |
 | `409` | 当前配置源不支持该操作；配置 revision 冲突 |
+| `429` | reload 操作正在执行中，拒绝并发 reload 请求 |
 | `502` | 远程资源拉取失败，或远程订阅内容不可用 |
-| `500` | 本地资源读取失败，或内部处理 / 渲染失败 |
+| `500` | 本地资源读取失败、内部投影不变量失败，或内部处理 / 渲染失败 |
 
 错误响应格式：
 
@@ -460,7 +473,7 @@ revision 冲突响应示例：
 
 ## CORS
 
-- 生产 Docker Compose 模式不启用 CORS：浏览器访问 `web` 容器，nginx 同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api` 容器
+- v2.0 正式生产 Docker Compose 模式不启用 CORS：浏览器访问 `web` 容器，nginx 同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api` 容器
 - 开发模式优先使用 Vite proxy；仅在不使用 proxy、需要浏览器跨域直连 Go 后端时，通过 `-cors` 标志或 `SUBCONVERTER_CORS=true` 启用
 - 启用后仅允许本机开发来源：`http://localhost:*`、`http://127.0.0.1:*`、`http://[::1]:*`
 - CORS middleware 必须处理 preflight：允许 `GET`、`POST`、`PUT`、`OPTIONS`；允许 `Authorization`、`Content-Type`
@@ -527,7 +540,7 @@ revision 冲突响应示例：
 ### `GET /api/preview/*` 流程
 
 1. `RLock` 读取当前 `RuntimeConfig` 指针快照并立即释放锁
-2. 使用快照执行管道部分阶段（nodes: Source+Filter；groups: Source+Filter+Group+Route）
+2. 使用快照执行管道部分阶段（nodes: Source+Filter；groups: Source+Filter+Group+Route+ValidateGraph）
 3. 返回 JSON
 
 ### `POST /api/preview/*` 流程

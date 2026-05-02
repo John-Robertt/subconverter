@@ -126,38 +126,99 @@ M7 + M8 -> M9 -> M10
 
 ### 工作项
 
+**基础设施前置（后续工作项的地基）**：
+
+- `OrderedMap` 完整序列化：在现有 `UnmarshalYAML` 基础上新增 `MarshalJSON`、`UnmarshalJSON`、`MarshalYAML` 三个方法。`MarshalJSON` 输出 `[{key,value}]` 数组；`UnmarshalJSON` 从该数组恢复；`MarshalYAML` 用于 `PUT /api/config` 写回 YAML 时保持键序。四个方法 round-trip 幂等性测试必须在此阶段完成
+- `Config` 及嵌套结构体全部添加 `json` tag（与 `yaml` tag 保持同名 lowercase），使 `encoding/json` 序列化的 key 名与 API 契约一致
+- `Sources` JSON 序列化：添加 `FetchOrder` 的 `json:"fetch_order"` tag（替代当前 `yaml:"-"`），新增 `Sources.MarshalYAML` 按 `FetchOrder` 排列子键顺序。详见 `config-schema.md` §sources 的 JSON 表示
+- `CachedFetcher` 新增 `Invalidate(rawURL string)` 方法，供 reload 在 `LoadConfig` 前失效远程主配置缓存。详见 `caching.md` §CachedFetcher API 扩展
+- `ConfigError` 结构化路径：将 collector 的 `add(field, message)` 改为 `add(section, key, index, valuePath, message)`，使 `ConfigError` 携带结构化路径字段（`Section`、`Key`、`Index`、`ValuePath`），替代当前的 dot-separated `Field` 字符串。app 层基于此计算 `json_pointer`，组装 `DiagnosticItem`。详见 `app-service.md` §ConfigError → DiagnosticItem 翻译
+- 在 `internal/errtype` 新增三个 sentinel error：`ErrNotWritable`、`ErrRevisionConflict`、`ErrReloadInProgress`。详见 `app-service.md` §错误处理
+
+**包与服务搭建**：
+
 - 新建 `internal/app` 包承接 v2.0 应用服务逻辑；新建 `internal/admin` 包承接 `/api/*` handler 逻辑
 - 新增配置源能力模型：本地文件为 writable，HTTP(S) URL 为 read-only
-- 实现 `GET /api/config`（读取配置源中的 YAML，计算 `config_revision=sha256:<hex>`，转换为 JSON 格式返回；保序字段使用 `OrderedMap` 的 JSON 表示）
-- 实现 `PUT /api/config`（仅本地可写配置源支持；接收 `{config_revision, config}`，写入前重读当前文件并校验 revision；冲突返回 `409 config_revision_conflict`；校验通过后临时文件 + rename 原子写回 YAML）
-- 实现 `POST /api/config/validate`（仅执行 JSON 反序列化 + `Prepare` 静态校验，不写回、不拉取远程源；返回 errors / warnings / infos 三级结构化结果）
-- 实现 `POST /api/reload`（触发热重载：强制刷新主配置源 → re-`Prepare` → WLock swap `*RuntimeConfig` pointer + runtime revision）
-- 在 `app.Service` 中管理并发安全配置访问（`sync.RWMutex`：读路径只在锁内复制 `*RuntimeConfig` 快照，`/api/reload` 写路径 WLock 替换指针）
 - 将 `generate.Service` 改为无状态设计：移除 `cfg *config.RuntimeConfig` 字段，`Generate` 方法改为接收 `*config.RuntimeConfig` 参数；`app.Service` 在每次 `/generate` 和 `GET /api/generate/preview` 请求时取快照后传入（迁移方案 A）
+- 在 `app.Service` 中管理并发安全配置访问（`sync.RWMutex`：读路径只在锁内复制 `*RuntimeConfig` 快照，`/api/reload` 写路径 WLock 替换指针；独立 `reloadMu sync.Mutex` 保护 reload 互斥，TryLock 失败返回 `ErrReloadInProgress`/429）
+
+**API 端点实现**：
+
+- 实现 `GET /api/config`（读取配置源中的 YAML，计算 `config_revision=sha256:<hex>`，转换为 JSON 格式返回；保序字段使用 `OrderedMap` 的 JSON 表示，`sources` 含 `fetch_order` 字段）
+- 实现 `PUT /api/config`（仅本地可写配置源支持；接收 `{config_revision, config}`，写入前重读当前文件并校验 revision；冲突返回 `409 config_revision_conflict`；校验通过后临时文件 + rename 原子写回 YAML）
+- 实现 `POST /api/config/validate`（仅执行 JSON 反序列化 + `Prepare` 静态校验，不写回、不拉取远程源；返回 errors / warnings / infos 三级结构化结果，每条含 `DiagnosticLocator` 含 `json_pointer`）
+- 实现 `POST /api/reload`（触发热重载：TryLock reloadMu → Invalidate 主配置缓存 → `LoadConfig` → re-`Prepare` → WLock swap `*RuntimeConfig` pointer + runtime revision）
+
+**路由与鉴权**：
+
 - 在 `internal/server` 层注册 `/api/*` 路由
 - 将现有 token 鉴权扩展到 `/api/*` 路由；`/api/*` 使用 `Authorization: Bearer ...`，`/generate` 保留 query token 兼容订阅链接
 
+### 工序依赖图
+
+M6 工作项之间存在严格的执行顺序约束。以下标注每个工作项的前置条件，用于编排开发顺序：
+
+```text
+基础设施前置（全部 API 的地基，必须最先完成）
+  │
+  ├─ OrderedMap MarshalJSON / UnmarshalJSON / MarshalYAML + round-trip 测试
+  ├─ Config 及嵌套结构体添加 json tag
+  ├─ Sources: FetchOrder json tag + MarshalYAML（按 fetch_order 排列子键）
+  ├─ CachedFetcher.Invalidate 方法
+  ├─ ConfigError 结构化路径（collector 改造）
+  └─ errtype sentinel errors（ErrNotWritable / ErrRevisionConflict / ErrReloadInProgress）
+       │
+       ├─► generate.Service 无状态化改造
+       │     └─► POST /api/reload（依赖无状态 Generate + CachedFetcher.Invalidate + reloadMu）
+       │
+       ├─► 配置源能力模型 ──► GET /api/config（依赖 OrderedMap JSON + Config json tag + Sources fetch_order）
+       │     │                └─► PUT /api/config（依赖 OrderedMap JSON + MarshalYAML + 原子写回）
+       │     │
+       │     └─► POST /api/config/validate（依赖 ConfigError 结构化路径 + DiagnosticItem 翻译）
+       │
+       └─► token 鉴权扩展（可与上述并行；不依赖 OrderedMap）
+              │
+              └─► server 路由注册（前置：所有 handler 均已实现）
+```
+
+关键约束：
+- **基础设施前置**：OrderedMap 四方法、Config json tag、Sources MarshalYAML、CachedFetcher.Invalidate、ConfigError 结构化路径、sentinel errors——这些是所有后续工作项的地基，必须在 M6 最初期完成并通过独立单测验证
+- **无状态化改造优先**：`generate.Service` 必须移除 `cfg` 字段后才能被 `app.Service.Reload` 正确调用
+- **Validate 依赖 ConfigError 结构化路径**：collector 改造后 `Prepare` 产出结构化 `ConfigError`，app 层翻译为 `DiagnosticItem`（含 `json_pointer`）
+- **Reload 依赖 CachedFetcher.Invalidate**：远程主配置 URL 必须先 invalidate 缓存再拉取
+- **路由注册收尾**：所有 handler 实现完成后再注册路由
+
 ### 产物
 
+- `internal/config/`：
+  - `orderedmap.go`：新增 `MarshalJSON`、`UnmarshalJSON`、`MarshalYAML` 三方法
+  - `config.go`：全部结构体添加 `json` tag；`Sources` 新增 `FetchOrder` json tag + `MarshalYAML`
+  - `prepare.go`：collector 改为结构化路径接口（`Section`/`Key`/`Index`/`ValuePath`）
+- `internal/errtype/`：
+  - `errors.go`：新增 `ErrNotWritable`、`ErrRevisionConflict`、`ErrReloadInProgress` sentinel errors
+- `internal/fetch/`：
+  - `cache.go`：新增 `CachedFetcher.Invalidate(rawURL string)` 方法
 - `internal/app/`：
-  - `service.go`：配置快照、条件写回、热重载、状态与预览的应用服务入口
+  - `service.go`：配置快照、条件写回、热重载、状态与预览的应用服务入口（含 `reloadMu` 互斥）
+  - `diagnostic.go`：ConfigError → DiagnosticItem 翻译逻辑（计算 `json_pointer`）
   - `config_revision.go`：`sha256:<hex>` 计算与 revision 比对
   - `config_source.go`：配置源能力判断（local writable / remote read-only）与 reload 强制刷新策略
 - `internal/admin/`：
   - `config_handler.go`：配置读取和写入 handler（JSON ←→ YAML 转换，`OrderedMap` 保序序列化）
-  - `validate_handler.go`：静态校验 handler（复用 `config.Prepare` 校验逻辑，包装为结构化 JSON 响应）
-  - `reload_handler.go`：热重载 handler（加载 → 准备 → 锁交换 → 响应）
+  - `validate_handler.go`：静态校验 handler（复用 `config.Prepare` 校验逻辑，经 app 层翻译为结构化 JSON 响应）
+  - `reload_handler.go`：热重载 handler（TryLock → invalidate → 加载 → 准备 → 锁交换 → 响应）
 - `internal/generate/`：
   - 移除 `Service.cfg` 字段，`Generate` 改为接收 `*config.RuntimeConfig` 参数（无状态化迁移）
 - `internal/server/`：
   - 路由注册扩展：`/api/config`、`/api/config/validate`、`/api/reload`
-- 测试：`T-ADM-001` ~ `T-ADM-010`
+- 测试：`T-ADM-001` ~ `T-ADM-014`（含 OrderedMap round-trip、CachedFetcher.Invalidate、ConfigError 结构化路径、sentinel error 判断）
 
 ### 验收项
 
 - `GET /api/config` 返回与配置源中已保存 YAML 等价的 JSON，并包含 `config_revision`
 - `PUT /api/config` → `GET /api/config` round-trip 幂等（JSON → YAML → JSON 内容一致），成功后返回新的 `config_revision`
 - `PUT /api/config` 缺少 revision 返回 400；revision 与当前文件不一致返回 `409 config_revision_conflict` 且不写入
+- `PUT /api/config` 成功响应仅返回 `{config_revision}`；YAML 注释/格式丢失提示由 Web UI 首次保存确认承担，后端不自动创建 `.bak` 文件，也不返回 warning 字段
 - HTTP(S) 配置源下 `PUT /api/config` 返回 409，且不尝试写回远端
 - `PUT` 非法配置返回 400 + 结构化错误（含 `code`、`display_path`、`locator.json_pointer`）
 - `POST /api/config/validate` 返回 `{ errors: [], warnings: [], infos: [] }` 结构
@@ -175,16 +236,17 @@ M7 + M8 -> M9 -> M10
 
 ### 已知限制
 
-- YAML 写回可能丢失用户注释（`gopkg.in/yaml.v3` 的 `Marshal` 不保留原始注释节点；若需保留注释，需改用 `yaml.Node` 级别的 patch-merge 策略，但复杂度显著上升）
+- YAML 写回可能丢失用户注释（`gopkg.in/yaml.v3` 的 `Marshal` 不保留原始注释节点；若需保留注释，需改用 `yaml.Node` 级别的 patch-merge 策略，但复杂度显著上升）；当前策略是 Web UI 首次保存前确认，不做后端自动备份
 - 热重载成功前已经取得配置快照的请求会继续使用旧配置完成；当前不提供严格线性一致性保证
-- `OrderedMap` 的 JSON 序列化需要自定义 `MarshalJSON` / `UnmarshalJSON`（标准 `encoding/json` 不保证 map 顺序）
 - 条件写回只保护本地文件配置源；HTTP(S) 配置源仍为只读
+- `SaveConfig` 的 revision 检查存在理论上的 TOCTOU 窗口（外部进程在 revision 比对和 rename 之间修改文件），单用户场景下可接受
 
 ### 风险
 
-- `OrderedMap` 的 JSON 序列化/反序列化需自定义逻辑——若实现不一致会破坏保序不变量。应在 M6 初期用独立单测验证 round-trip
-- YAML 写回格式与原始文件可能有差异（缩进、引号风格、注释丢失），需评估用户感知影响
-- `config.Prepare` 的校验与 `validate` API 的结构化错误之间的映射需统一设计——现有 `errors.Join` + `ConfigError` 模式需包装为含 `code`、`display_path` 和 `locator` 的 JSON 友好结构
+- `OrderedMap` 完整序列化（`MarshalJSON` / `UnmarshalJSON` / `MarshalYAML`）是 M6 全部 API 的地基——round-trip 不一致会破坏保序不变量。应在 M6 最初期用独立单测验证 YAML→JSON→YAML 和 JSON→YAML→JSON 两个方向的幂等性
+- `Sources.FetchOrder` 在 JSON round-trip 中必须保留——`PUT /api/config` 写回 YAML 时需按 `fetch_order` 排列 `sources` 子键，否则代理排列顺序会变化
+- `ConfigError` 结构化路径改造涉及全部 `Prepare` 校验代码的调用点——需确保改造后每条校验都携带完整路径信息，否则 `json_pointer` 会空缺
+- YAML 写回格式与原始文件可能有差异（缩进、引号风格、注释丢失），前端需在本地可写配置首次保存前提示并要求确认
 - `admin` 若直接依赖 `pipeline` / `model` 会破坏 HTTP 薄层边界；需用依赖检查或包导入测试锁定边界
 
 ---
@@ -199,11 +261,12 @@ M7 + M8 -> M9 -> M10
 
 - 实现 `GET /api/preview/nodes`（基于当前 `RuntimeConfig` 执行 Source + Filter 阶段，返回节点列表 JSON，含 Kind / Type / 来源标记 / filtered 标记）
 - 实现 `POST /api/preview/nodes`（接收 `{config}` 草稿，Prepare 后执行 Source + Filter，不写文件、不替换 RuntimeConfig）
-- 实现 `GET /api/preview/groups`（基于当前 `RuntimeConfig` 执行到 Route 阶段，返回节点组、链式组、服务组、`@all` / `@auto` 展开结果）
-- 实现 `POST /api/preview/groups`（接收 `{config}` 草稿，Prepare 后执行到 Route 阶段）
+- 实现 `GET /api/preview/groups`（基于当前 `RuntimeConfig` 执行到 ValidateGraph 阶段，返回节点组、链式组、服务组、`@all` / `@auto` 展开结果；图级错误返回 400 结构化诊断）
+- 实现 `POST /api/preview/groups`（接收 `{config}` 草稿，Prepare 后执行到 ValidateGraph 阶段；图级错误返回 400 结构化诊断）
 - 实现 `GET/POST /api/generate/preview?format=clash|surge`（复用生成逻辑，返回生成文本但不触发下载——无 `Content-Disposition` header；POST 使用草稿配置；用于验证草稿在目标格式下的生成可用性）
 - 实现 `GET /api/status`（进程信息、版本号、配置源位置与可写性、配置加载状态、dirty 状态、上次热重载时间和结果）
-- 在 `app` / `pipeline` 之间新增部分执行入口（`SourceAndFilter`、`SourceFilterGroupRoute`），复用现有阶段函数但在指定阶段截断返回
+- 调整 `/generate` 与 `/api/generate/preview` 的 TargetError HTTP 映射：fallback 清空返回 400，projection invariant 保持 500；这是 v2.0 对当前 v1.0 `/generate` 错误语义的显式行为变更
+- 在 `app` / `pipeline` 之间新增部分执行入口（`SourceAndFilter`、`SourceFilterGroupRouteValidate`），复用现有阶段函数但在指定阶段截断返回
 
 ### 产物
 
@@ -215,19 +278,21 @@ M7 + M8 -> M9 -> M10
   - `preview.go`：运行时与草稿预览编排
   - `status.go`：系统状态查询
 - `internal/pipeline/`：
-  - `FilterResult{Included, Excluded}` 与必要的部分执行入口函数（基于现有 `Build` 的阶段拆分，不改变现有 `Build` 对外行为）
+  - `FilterResult{Included, Excluded}` 与必要的部分执行入口函数（基于现有 `Build` 的阶段拆分，不改变现有 `Build` 对外行为）；groups 预览入口必须执行到 ValidateGraph
 - `internal/generate/`：
   - 继续提供生成能力；状态查询由 `app.Service` 承接
-- 测试：`T-PRV-001` ~ `T-PRV-006`
+- 测试：`T-PRV-001` ~ `T-PRV-011`
 
 ### 验收项
 
 - `/api/preview/nodes` 返回全部源的节点列表，每个节点含 `name`、`type`、`kind`、`server`、`port`、`filtered` 等基础字段；生成管道只消费 `FilterResult.Included`
-- `/api/preview/groups` 返回节点组、链式组、服务组和宏展开结果，顺序与 Group / Route 阶段输出一致
+- `/api/preview/groups` 成功时返回节点组、链式组、服务组和宏展开结果，顺序与 Group / Route 阶段输出一致；ValidateGraph 失败时返回 400 结构化诊断，不返回部分成功结果
 - `POST /api/preview/*` 使用草稿配置，GET 预览仍使用旧 `RuntimeConfig`
 - `/api/generate/preview?format=clash` 返回与 `/generate?format=clash` 相同内容和 `Content-Type`，但无 `Content-Disposition`；POST 草稿预览不影响运行时
 - `POST /api/generate/preview` 能发现静态校验无法覆盖的 Source / Group / Target / Render 问题，例如远程源为空、过滤后空组、fallback 级联清空或模板渲染错误
 - `/api/status` 返回版本号、配置源位置、配置源可写性、上次加载时间、dirty 状态、上次重载结果、当前配置 revision 与运行时 revision
+- 本地配置源 status 每次重算 sha256；HTTP(S) 配置源 status 不主动拉取远程配置，dirty 基于最近一次 config/reload 观测结果
+- `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` 映射为 400，projection invariant 仍映射为 500
 - 预览 API 使用当前 `RuntimeConfig` 快照（RLock 复制指针后立即释放），不影响并发安全
 - `go test ./...` 全部通过
 
@@ -238,7 +303,7 @@ M7 + M8 -> M9 -> M10
 ### 已知限制
 
 - `preview/nodes` 需要实际拉取订阅，响应时间受上游网络影响（通过现有 `CachedFetcher` 的 TTL 缓存缓解）
-- 部分管道执行入口（`SourceAndFilter`、`SourceFilterGroupRoute`）需在不破坏现有阶段封装的前提下截断——实现方式为组合调用现有阶段函数，不引入新的阶段间耦合
+- 部分管道执行入口（`SourceAndFilter`、`SourceFilterGroupRouteValidate`）需在不破坏现有阶段封装的前提下截断——实现方式为组合调用现有阶段函数，不引入新的阶段间耦合
 - `/api/generate/preview` 与 `/generate` 共享相同的生成逻辑和潜在错误路径
 
 ### 风险
@@ -273,13 +338,12 @@ M7 + M8 -> M9 -> M10
 - `web/nginx.conf`：SPA fallback 与后端反向代理配置
 - `docs/deployment.md`：生产 `docker-compose.yml` 示例（只读配置与可写配置两种模式）
 - `.github/workflows/`：CI 增加 Web 镜像构建校验
-- 测试：`T-SPA-001` ~ `T-SPA-004`
+- 测试：`T-SPA-001` ~ `T-SPA-006`；`T-SPA-007` 在 M7 完成后补充执行
 
 ### 验收项
 
 - Compose 启动后，浏览器访问 `web` 服务端口可打开 SPA
 - SPA 路由刷新不 404（`/any/path` 在无匹配静态文件时由 nginx fallback 到 `index.html`）
-- `/api/status` 经 `web` 容器反向代理到 `api` 成功
 - `/generate?format=clash` 与 `/generate?format=surge` 经 `web` 容器反向代理到 `api` 成功
 - `/healthz` 经 `web` 容器反向代理到 `api` 成功
 - 生产路径不依赖 CORS；浏览器看到的 Web 页面与 API 为同源
@@ -295,10 +359,11 @@ M7 + M8 -> M9 -> M10
 - 前端代码更新后需要重新构建 `web` 镜像或重新发布静态资源
 - nginx fallback 只处理 Web 前端路由；`/api/*`、`/generate`、`/healthz` 必须优先反代到后端
 - 开发模式的 Vite dev server 可单独配置 proxy；生产 Compose 路径不依赖 CORS
+- M8 的独立验收不依赖 M7 的 `/api/status`；M7 完成后再补充 `/api/status` 经 `web` 容器反向代理到 `api` 的集成验证
 
 ### 风险
 
-- nginx 代理路径若配置错误，会导致 API 请求被 SPA fallback 吞掉；需用集成测试锁定 `/api/status`、`/generate` 和 `/healthz`
+- nginx 代理路径若配置错误，会导致后端请求被 SPA fallback 吞掉；M8 先用 `/generate` 和 `/healthz` 锁定已存在路径，M7 完成后再补充 `/api/status`
 - Web 镜像构建会引入 Node/npm 依赖下载时间；CI 可通过 Docker build cache 或 npm cache 缓解
 
 ---
@@ -311,7 +376,7 @@ M7 + M8 -> M9 -> M10
 
 ### 工作项
 
-- 前端项目工程化（TypeScript 严格模式、React Query 数据层、React Router 路由、Zustand 或 Context 状态管理）
+- 前端项目工程化（TypeScript 严格模式、React Query 数据层、React Router 路由、React 本地状态 + `useReducer`/Context 管理配置草稿）
 - API 客户端层（封装 `/api/*` 调用，统一错误处理）
 - 布局与导航（侧边栏 + 主内容区 + 顶栏状态指示器）
 - A1 订阅来源页面（四类来源卡片：subscription / snell / vless / custom_proxy；含 `relay_through` 子表单，URL 输入脱敏显示）
@@ -320,7 +385,7 @@ M7 + M8 -> M9 -> M10
 - A4 路由策略页面（服务组列表 + 拖拽排序 + 成员选择器，支持 `@auto` / `@all` 特殊成员）
 - B1 节点预览页面（调用 `/api/preview/nodes`，表格展示全部节点，支持按 Kind / Type / 名称筛选）
 - C 系统状态页面（调用 `/api/status`，展示版本、配置源位置与可写性、上次加载时间、重载状态）
-- 保存/静态校验/热重载工作流集成（编辑 → 静态校验 → 保存 → 重载，每步反馈明确）
+- 保存/静态校验/热重载工作流集成（编辑 → 静态校验 → 本地可写配置首次保存确认 → 保存 → 重载，每步反馈明确）
 - 主题系统（浅色/深色，跟随系统偏好 + 手动切换）
 
 ### 产物
@@ -343,6 +408,7 @@ M7 + M8 -> M9 -> M10
 - 浅色/深色主题切换正常，跟随系统偏好
 - 静态校验失败时通过 `locator.json_pointer` 定位到具体字段
 - 所有 API 调用错误在 UI 上有明确反馈（非静默失败）
+- 本地可写配置首次保存前显示 YAML 注释、引号和格式风格可能丢失的确认；用户确认后才发起 `PUT /api/config`
 - API 请求使用 Authorization header；复制订阅链接前确认是否把 token 写入 query
 - `go test ./...` 全部通过
 - 前端测试通过（`npm test`）
@@ -356,11 +422,12 @@ M7 + M8 -> M9 -> M10
 - 拖拽排序依赖前端 `OrderedMap` 表示的 JSON 数组结构——前后端需约定一致的保序 JSON 格式（如 `[{ key: "...", value: {...} }, ...]`）
 - 草稿预览需调用后端 API，网络延迟会影响"实时"体验（可通过 debounce + 骨架屏缓解）
 - `relay_through` 子表单的 `type=group` 需引用已定义的节点组名——前端需从当前编辑中的配置读取组名列表
+- 默认不引入额外前端状态库；只有当 M9 实现中证明 Context/useReducer 导致明显性能或维护问题时，才评估 Zustand，并需先说明替代方案与新增依赖成本
 
 ### 风险
 
 - 保序 JSON 格式的前后端约定是 M9 最大的接口风险——若 M6 的 `OrderedMap` JSON 格式设计不当，M9 的拖拽排序会遇到序列化问题。应在 M6 完成时即固化 JSON 格式契约
-- 前端状态管理复杂度：配置编辑涉及多个嵌套结构（sources、groups、routing、rulesets），需设计合理的状态分片避免全量刷新
+- 前端状态管理复杂度：配置编辑涉及多个嵌套结构（sources、groups、routing、rulesets），需用 reducer action 按配置段拆分更新路径，避免每次局部编辑都触发全量重建
 
 ---
 
@@ -376,7 +443,7 @@ M7 + M8 -> M9 -> M10
 - A6 内联规则页面（rules 列表编辑，支持自由文本 + Policy 选择器）
 - A7 其他配置页面（`fallback`、`base_url`、`templates` 字段编辑）
 - A8 静态配置校验页面（Drawer 展示校验结果——errors / warnings / infos 分级显示，错误项通过 `locator.json_pointer` 跳转到对应页面的对应字段）
-- B2 分组预览页面（调用 `GET /api/preview/groups`，树形展示节点组 / 链式组 / 服务组 → 成员映射关系）
+- B2 分组预览页面（调用 `GET /api/preview/groups`，树形展示节点组 / 链式组 / 服务组 → 成员映射关系；图级错误时显示诊断，不展示部分成功结果）
 - B3 生成下载页面（调用 `GET/POST /api/generate/preview`，预览生成文本 + 下载按钮 + 复制订阅链接，链接含 token 和 filename 参数）
 - 端到端测试覆盖全流程（空配置 → 逐步编辑 → 保存 → 重载 → 预览 → 生成 → 下载 → 验证内容）
 
@@ -393,7 +460,7 @@ M7 + M8 -> M9 -> M10
 - 生成预览与实际 `/generate` 下载内容一致
 - 订阅链接复制功能正确（显式确认后包含 token 和 filename 参数，格式为 `{base_url}/generate?format=...&token=...&filename=...`）
 - 端到端：空配置 → 编辑全部字段 → 保存 → 重载 → 生成 → 下载 → 验证内容（两种格式均覆盖）
-- 错误路径：静态校验失败 → 不可保存 → 修复后可保存；生成预览失败 → UI 显示生成期错误并保留草稿；重载失败 → UI 显示错误 → 旧配置不变
+- 错误路径：静态校验失败 → 不可保存 → 修复后可保存；分组预览图级错误 → UI 显示诊断并保留草稿；生成预览失败 → UI 显示生成期错误并保留草稿；重载失败 → UI 显示错误 → 旧配置不变
 - `go test ./...` 全部通过
 - 前端测试通过（`npm test`）
 - 端到端测试通过
@@ -443,11 +510,15 @@ M7 + M8 -> M9 -> M10
 
 正式编码前应优先验证这些高风险问题：
 
-- **OrderedMap JSON 序列化的保序方案**需在 M6 初期验证——自定义 `MarshalJSON` / `UnmarshalJSON` 的 round-trip 幂等性直接影响所有后续 API 和前端的保序假设
+- **OrderedMap 完整序列化 round-trip**需在 M6 最初期验证——`MarshalJSON` / `UnmarshalJSON` / `MarshalYAML` 三方法的 YAML↔JSON 双向 round-trip 幂等性直接影响所有后续 API 和前端的保序假设
+- **Sources.FetchOrder JSON round-trip**需在 M6 初期验证——`fetch_order` 字段在 JSON→YAML 写回后必须保持 `sources` 子键顺序不变，否则代理排列顺序会变化
+- **ConfigError 结构化路径改造**需在 M6 初期验证——collector 改造后的结构化路径能否覆盖全部现有校验点，app 层能否正确计算 `json_pointer`
+- **CachedFetcher.Invalidate**需在 M6 覆盖——reload 的远程主配置必须 bypass 未过期缓存
 - **YAML 写回的注释丢失问题**需评估用户影响——若用户在 YAML 中维护了大量注释，API 写回导致注释丢失会造成负面体验。备选方案：仅在首次 API 写入时提示用户
 - **配置快照锁边界**需在 M6 用并发测试验证——慢速订阅拉取、模板加载和渲染不得持有 `RuntimeConfig` 读锁；写锁只保护指针替换
 - **配置 revision 条件写回**需在 M6 初期验证——缺 revision、过期 revision、外部文件改写都必须拒绝覆盖
-- **远程主配置强制刷新**需在 M6 覆盖——reload 不能命中未过期的远程配置缓存
+- **本地 status revision 重算**需在 M7 验证——`GET /api/status` 不能因同大小或保留 mtime 的外部改写漏报 dirty
+- **TargetError HTTP 分码**需在 M7 验证——fallback 清空返回 400，projection invariant 返回 500
 - **Web 镜像构建链路**需在 M8 验证——Node 构建阶段、nginx 静态发布阶段和 Compose 反代路径都必须可重复构建
 - **preview API 的订阅拉取延迟**需验证 TTL 缓存效果——首次调用会触发实际网络请求，响应时间可能超过用户预期
 

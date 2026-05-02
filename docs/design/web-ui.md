@@ -1,5 +1,7 @@
 # Web 管理后台设计
 
+> 状态提示：本文描述 v2.0 Web 管理后台目标契约；当前 `web/` 仍是设计原型，正式后台状态见 docs/README.md。
+
 ## 目标
 
 本文件定义 Web 管理后台的前端架构、页面结构和后端集成方式。subconverter v2.0 在 v1.0 纯 API 基础上新增 Web 管理后台，让用户可通过浏览器可视化编辑配置、预览运行时数据、生成并下载目标格式配置。
@@ -65,7 +67,31 @@
 | 操作失败反馈 | 右下红色 Toast | 不自动消失，含错误详情，可点击跳转 |
 | 进行中状态 | 顶栏按钮 Spinner + 禁用 | 防止重复提交 |
 | 不可撤销操作 | 居中红色确认弹窗 | 删除、重置等需二次确认 |
+| 首次保存本地 YAML | 居中确认弹窗 | 提示注释、引号和格式风格可能丢失，用户确认后才发起 `PUT /api/config` |
 | 校验修复 | 右侧 Drawer | 展示静态诊断列表，点击后通过 `locator.json_pointer` 跳转到对应页面/字段 |
+
+---
+
+## 前端路由
+
+SPA 使用以下路由结构（React Router），与 nginx SPA fallback 配合：
+
+| 路由 | 页面 | 区域 |
+|------|------|------|
+| `/sources` | A1 订阅来源 | A 配置编辑 |
+| `/filters` | A2 过滤器 | A 配置编辑 |
+| `/groups` | A3 节点分组 | A 配置编辑 |
+| `/routing` | A4 路由策略 | A 配置编辑 |
+| `/rulesets` | A5 规则集 | A 配置编辑 |
+| `/rules` | A6 内联规则 | A 配置编辑 |
+| `/settings` | A7 其他配置 | A 配置编辑 |
+| `/validate` | A8 静态配置校验 | A 配置编辑 |
+| `/nodes` | B1 节点预览 | B 运行时预览 |
+| `/preview/groups` | B2 分组预览 | B 运行时预览 |
+| `/generate` | B3 生成下载 | B 运行时预览 |
+| `/status` | C 系统状态 | C 系统状态 |
+
+所有路由在未匹配静态文件时由 nginx fallback 到 `index.html`，无需服务端渲染支持。
 
 ---
 
@@ -80,7 +106,7 @@
 
 ## 前端-后端集成模型
 
-### 生产模式
+### 生产模式（v2.0 目标）
 
 - Docker Compose 启动 `api` 与 `web` 两个服务
 - `api` 服务运行 Go 后端，只暴露内部 `:8080`
@@ -107,7 +133,7 @@
 ### Token 输入流程
 
 - 服务端启用 token 且 API 返回 `401` 时，SPA 展示 token 输入对话框
-- 用户输入的 token 默认保存在内存；用户选择"本次浏览器会话记住"时可写入 `sessionStorage`
+- 用户输入的 token 默认保存在内存；用户选择"本次浏览器会话记住"时可写入 `sessionStorage`（选用 `sessionStorage` 而非 `localStorage`：token 仅在标签页存活期内有效，标签页关闭即失效；避免跨标签页共享和 XSS 下的持久化泄露面）
 - API client 统一把 token 写入 `Authorization` header
 - 复制订阅链接时，前端从当前 token 组装 `/generate?format=...&token=...&filename=...`，并在确认框中提示 token 会进入 URL
 
@@ -125,9 +151,11 @@
 | B3 草稿生成预览 | `POST /api/generate/preview` | 前端草稿 `{ config }` | 否 |
 | B3 当前生成预览 | `GET /api/generate/preview` | 当前 `RuntimeConfig` | 否 |
 
-保存工作流仍为：编辑草稿 → 校验 → `PUT /api/config` 条件写回 → `POST /api/reload` 生效。
+保存工作流仍为：编辑草稿 → 校验 → 本地可写配置首次保存确认 → `PUT /api/config` 条件写回 → `POST /api/reload` 生效。
 
 其中 A8 只覆盖 `Prepare` 阶段的静态配置校验；生成可用性需要通过 B1/B2/B3 预览确认，尤其是远程源拉取、过滤后空组、目标格式级联过滤和渲染错误。
+
+B2 分组预览执行到 ValidateGraph：若后端返回图级错误，页面显示结构化诊断并保留草稿，不展示部分成功的分组结果。
 
 ### 编辑期 revision 监控
 

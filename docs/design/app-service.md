@@ -1,0 +1,368 @@
+# app.Service 接口契约
+
+> 状态提示：本文定义 v2.0 `internal/app` 包的接口契约。所属能力当前处于设计中（M6-M7）。
+
+## 目标
+
+本文件定义 `app.Service` 的外部可见方法签名、DTO 结构和依赖关系，使 `admin` 包实现者无需阅读 `app` 包源码即可理解契约。本文是 `api.md`（HTTP 契约）和 `project-structure.md`（包职责）之间的**接口契约桥接**——`api.md` 定义 HTTP 请求/响应格式，本文定义 Go 层 DTO 和方法签名。
+
+---
+
+## 依赖边界
+
+```text
+internal/admin ──► internal/app ──► internal/config
+                        │          ├─► internal/fetch
+                        │          ├─► internal/generate
+                        │          ├─► internal/pipeline
+                        │          ├─► internal/model
+                        │          └─► internal/errtype
+```
+
+约束：
+- `admin` 只调用 `app.Service` 的公开方法，不直接导入 `model`、`pipeline` 或 `generate`
+- `app.Service` 在方法内部完成 `model.Proxy` → `NodePreview` 等 DTO 转换
+- `admin` 只接收/返回 JSON 友好的 DTO 和标准错误
+
+---
+
+## 方法签名
+
+### 配置管理
+
+```go
+// ConfigSnapshot 读取配置源中的已保存配置，返回 Config JSON + revision。
+// 用于 GET /api/config。
+func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, error)
+
+// SaveConfig 基于 config_revision 做条件写回。
+// 仅本地可写配置源支持；HTTP(S) 配置源返回 ErrNotWritable(409)。
+// revision 冲突返回 ErrRevisionConflict(409)。
+// 写回成功后不自动 reload。
+// 用于 PUT /api/config。
+func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*SaveConfigResult, error)
+
+// ValidateDraft 对草稿配置执行 Prepare 阶段静态校验。
+// 不写文件、不替换 RuntimeConfig、不拉取远程源。
+// 用于 POST /api/config/validate。
+func (s *Service) ValidateDraft(ctx context.Context, configJSON json.RawMessage) (*ValidateResult, error)
+```
+
+### 热重载
+
+```go
+// Reload 触发完整热重载流程：
+// 1. 重新加载配置源（远程主配置 bypass 缓存）
+// 2. Prepare 校验
+// 3. 成功 → WLock 替换 RuntimeConfig 指针 + runtime_config_revision
+// 4. 失败 → 旧配置不变，返回错误
+// 用于 POST /api/reload。
+func (s *Service) Reload(ctx context.Context) (*ReloadResult, error)
+```
+
+### 运行时预览（GET）
+
+```go
+// PreviewNodes 基于当前 RuntimeConfig 快照执行 Source + Filter 阶段。
+// 只持有 RLock 复制指针快照后立即释放锁。
+// 用于 GET /api/preview/nodes。
+func (s *Service) PreviewNodes(ctx context.Context) (*NodePreviewResult, error)
+
+// PreviewGroups 基于当前 RuntimeConfig 快照执行 Source→Filter→Group→Route→ValidateGraph。
+// ValidateGraph 发现图级错误时返回结构化诊断，不返回部分成功的分组结果。
+// 用于 GET /api/preview/groups。
+func (s *Service) PreviewGroups(ctx context.Context) (*GroupPreviewResult, error)
+```
+
+### 草稿预览（POST）
+
+```go
+// PreviewNodesFromDraft 接收草稿 Config JSON，Prepare 后执行 Source + Filter。
+// 不写文件、不替换 RuntimeConfig、不改变 config_dirty。
+// 用于 POST /api/preview/nodes。
+func (s *Service) PreviewNodesFromDraft(ctx context.Context, configJSON json.RawMessage) (*NodePreviewResult, error)
+
+// PreviewGroupsFromDraft 接收草稿 Config JSON，Prepare 后执行到 ValidateGraph。
+// 不写文件、不替换 RuntimeConfig。
+// 用于 POST /api/preview/groups。
+func (s *Service) PreviewGroupsFromDraft(ctx context.Context, configJSON json.RawMessage) (*GroupPreviewResult, error)
+```
+
+### 生成与生成预览
+
+```go
+// Generate 基于当前 RuntimeConfig 快照执行 Build→Target→Render，返回完整配置文本。
+// 用于 /generate 和 GET /api/generate/preview。
+func (s *Service) Generate(ctx context.Context, format string, filename string) (*GenerateResult, error)
+
+// GenerateFromDraft 接收草稿 Config JSON，Prepare 后执行 Build→Target→Render。
+// 不写文件、不替换 RuntimeConfig。
+// 用于 POST /api/generate/preview。
+func (s *Service) GenerateFromDraft(ctx context.Context, format string, configJSON json.RawMessage) (*GenerateResult, error)
+```
+
+### 系统状态
+
+```go
+// Status 返回系统运行状态，不读取配置锁。
+// 本地配置源每次重算 sha256；HTTP(S) 配置源不主动拉取远程。
+// 用于 GET /api/status。
+func (s *Service) Status(ctx context.Context) (*StatusResult, error)
+```
+
+---
+
+## DTO 定义
+
+### ConfigSnapshotResult
+
+```go
+type ConfigSnapshotResult struct {
+    ConfigRevision string          `json:"config_revision"` // sha256:<hex>
+    Config         json.RawMessage `json:"config"`
+}
+```
+
+### SaveConfigInput
+
+```go
+type SaveConfigInput struct {
+    ConfigRevision string          `json:"config_revision"`
+    Config         json.RawMessage `json:"config"`
+}
+```
+
+### SaveConfigResult
+
+```go
+type SaveConfigResult struct {
+    ConfigRevision string `json:"config_revision"` // 写回后新的 sha256:<hex>
+}
+```
+
+### ValidateResult
+
+```go
+type ValidateResult struct {
+    Valid    bool              `json:"valid"`
+    Errors   []DiagnosticItem  `json:"errors"`
+    Warnings []DiagnosticItem  `json:"warnings"`
+    Infos    []DiagnosticItem  `json:"infos"`
+}
+
+type DiagnosticItem struct {
+    Severity    string          `json:"severity"`  // "error" | "warning" | "info"
+    Code        string          `json:"code"`      // 稳定错误码
+    Message     string          `json:"message"`   // 中文错误描述
+    DisplayPath string          `json:"display_path"` // 用户可读路径，不作为定位依据
+    Locator     DiagnosticLocator `json:"locator"`
+}
+// 后端不感知前端页面结构；前端根据 Locator.Section 自行决定展示位置。
+
+type DiagnosticLocator struct {
+    Section    string `json:"section"`
+    Key        string `json:"key,omitempty"`
+    Index      int    `json:"index,omitempty"`
+    ValuePath  string `json:"value_path,omitempty"`
+    JSONPointer string `json:"json_pointer"` // 唯一稳定定位依据
+}
+```
+
+### ReloadResult
+
+```go
+type ReloadResult struct {
+    Success    bool  `json:"success"`
+    DurationMs int64 `json:"duration_ms"`
+}
+```
+
+### NodePreviewResult
+
+```go
+type NodePreviewResult struct {
+    Nodes         []NodePreviewItem `json:"nodes"`
+    Total         int               `json:"total"`
+    ActiveCount   int               `json:"active_count"`
+    FilteredCount int               `json:"filtered_count"`
+}
+
+type NodePreviewItem struct {
+    Name     string `json:"name"`
+    Type     string `json:"type"`
+    Kind     string `json:"kind"`     // "subscription" | "snell" | "vless" | "custom"
+    Server   string `json:"server"`
+    Port     int    `json:"port"`
+    Filtered bool   `json:"filtered"` // 是否被 filters.exclude 排除
+}
+```
+
+### GroupPreviewResult
+
+```go
+type GroupPreviewResult struct {
+    NodeGroups    []GroupItem `json:"node_groups"`
+    ChainedGroups []GroupItem `json:"chained_groups"`
+    ServiceGroups []ServiceGroupItem `json:"service_groups"`
+    AllProxies    []string    `json:"all_proxies"`
+}
+
+type GroupItem struct {
+    Name     string   `json:"name"`
+    Strategy string   `json:"strategy"`
+    Members  []string `json:"members"`
+}
+
+type ServiceGroupItem struct {
+    Name            string                `json:"name"`
+    Strategy        string                `json:"strategy"`
+    Members         []string              `json:"members"`
+    ExpandedMembers []ExpandedMemberItem  `json:"expanded_members"`
+}
+
+type ExpandedMemberItem struct {
+    Value  string `json:"value"`
+    Origin string `json:"origin"` // "literal" | "auto_expanded" | "all_expanded"
+}
+```
+
+### GenerateResult
+
+```go
+type GenerateResult struct {
+    ContentType string // "text/yaml; charset=utf-8" 或 "text/plain; charset=utf-8"
+    Body        []byte // 完整配置文本
+}
+```
+
+### StatusResult
+
+```go
+type StatusResult struct {
+    Version                string       `json:"version"`
+    Commit                 string       `json:"commit"`
+    BuildDate              string       `json:"build_date"`
+    ConfigSource           ConfigSource `json:"config_source"`
+    ConfigRevision         string       `json:"config_revision"`          // 配置源已保存内容的 revision
+    RuntimeConfigRevision  string       `json:"runtime_config_revision"`  // 当前 RuntimeConfig 的 revision
+    ConfigLoadedAt         string       `json:"config_loaded_at"`         // ISO 8601
+    ConfigDirty            bool         `json:"config_dirty"`             // config_revision != runtime_config_revision
+    Capabilities           Capabilities `json:"capabilities"`
+    LastReload             LastReload   `json:"last_reload"`
+}
+
+type ConfigSource struct {
+    Location string `json:"location"`
+    Type     string `json:"type"`     // "local" | "remote"
+    Writable bool   `json:"writable"`
+}
+
+type Capabilities struct {
+    ConfigWrite bool `json:"config_write"`
+    Reload      bool `json:"reload"`
+}
+
+type LastReload struct {
+    Time       string `json:"time"`       // ISO 8601，空字符串表示从未 reload
+    Success    bool   `json:"success"`
+    DurationMs int64  `json:"duration_ms"`
+}
+```
+
+---
+
+## DTO 转换边界
+
+`app.Service` 方法在内部完成以下转换，`admin` 不接触 `model` 包：
+
+| app 方法 | 内部消费的 model 类型 | 返回的 DTO |
+|----------|---------------------|-----------|
+| `PreviewNodes` | `model.Proxy` (FilterResult.Included + Excluded) | `NodePreviewResult` |
+| `PreviewGroups` | `model.Pipeline` (GroupResult + RouteResult) | `GroupPreviewResult` |
+| `Generate` | `model.Pipeline` (经 Target 投影) → render 输出 | `GenerateResult` |
+| `Status` | `*config.RuntimeConfig` 元信息 | `StatusResult` |
+
+设计原则：
+- DTO 是 `model` 的**子集视图**：只暴露前端需要的字段，不暴露内部实现细节
+- `Kind` 枚举在 DTO 层用字符串表示（`"subscription"` / `"snell"` / `"vless"` / `"custom"`），避免 `model.ProxyKind` 泄漏到 HTTP 契约
+- `GroupPreviewResult` 中的 `ExpandedMembers` 携带 `origin` 字段，区分用户显式声明 / `@auto` 展开 / `@all` 展开
+
+### ConfigError → DiagnosticItem 翻译
+
+`config.Prepare` 产出的 `ConfigError` 携带结构化路径（`Section`、`Key`、`Index`、`ValuePath`），这些是配置域概念，不涉及 JSON 序列化格式。`app.Service` 在返回 `ValidateResult` 和 `PUT /api/config` 校验失败响应时，在 app 层完成翻译：
+
+```text
+ConfigError{Section:"groups", Key:"🇭🇰 Hong Kong", Index:0, ValuePath:"match"}
+  ↓ app 层翻译（知道 OrderedMap JSON 是 [{key,value}] 数组）
+DiagnosticItem{Locator:{Section:"groups", Key:"🇭🇰 Hong Kong", Index:0, ValuePath:"match", JSONPointer:"/config/groups/0/value/match"}}
+```
+
+职责分界：
+- `config` 包：负责产出结构化路径字段（配置域知识），不感知 JSON 序列化格式
+- `app` 包：负责计算 `json_pointer`（知道 OrderedMap 在 JSON 中是数组，需要 index），组装完整 `DiagnosticItem`
+- `admin` 包：透传 `DiagnosticItem` 到 JSON 响应，不做任何路径计算
+
+---
+
+## 错误处理
+
+`app.Service` 方法返回标准 Go `error`。`admin` 层将错误映射为 HTTP 状态码和 JSON 响应体。
+
+错误类型约定：
+
+| 错误类型 | 定义位置 | 判断方式 | HTTP 状态码 |
+|----------|---------|----------|------------|
+| `*errtype.ConfigError` | `internal/errtype` | `errors.As` | 400 |
+| `errtype.ErrNotWritable` | `internal/errtype`（sentinel） | `errors.Is` | 409 |
+| `errtype.ErrRevisionConflict` | `internal/errtype`（sentinel） | `errors.Is` | 409 |
+| `errtype.ErrReloadInProgress` | `internal/errtype`（sentinel） | `errors.Is` | 429 |
+| `*errtype.FetchError` | `internal/errtype` | `errors.As` | 502 |
+| `*errtype.BuildError` / `*errtype.TargetError` / `*errtype.RenderError` | `internal/errtype` | `errors.As` | 400/500（按 `validation.md` 映射） |
+
+sentinel error 定义形式：
+
+```go
+var (
+    ErrNotWritable      = errors.New("config source is not writable")
+    ErrRevisionConflict = errors.New("config revision conflict")
+    ErrReloadInProgress = errors.New("reload already in progress")
+)
+```
+
+选择 sentinel error 而非结构体的理由：这三个错误不需要携带额外字段信息，且 `errors.Is` 比 `errors.As` 更轻量。
+
+`admin` 对 sentinel error 使用 `errors.Is`，对结构化错误使用 `errors.As`，不解析错误消息字符串。
+
+---
+
+## 并发安全
+
+`app.Service` 内部持有 `sync.RWMutex`：
+
+- 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`、`Status`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
+- 写路径（`Reload`）：`WLock` 只保护指针替换，不包含 `LoadConfig` / `Prepare` / I/O
+- 慢速订阅拉取、模板加载和渲染不持有配置锁
+- `SaveConfig` 的原子写回使用临时文件 + `os.Rename`，与配置锁独立
+- Reload 互斥：`app.Service` 内部持有独立的 `reloadMu sync.Mutex`。`Reload` 入口处 `TryLock`，失败时返回 `ErrReloadInProgress`（`admin` 映射为 429）。此锁独立于 `RWMutex`，不影响读路径
+- `SaveConfig` 的 revision 检查依赖文件系统原子性（`os.Rename`），不使用进程内锁保护 check-then-write 序列。理论上存在 TOCTOU 窗口（外部进程在 revision 比对和 rename 之间修改文件），但单用户场景下该窗口极窄且可接受
+
+---
+
+## 与 admin 的协作模式
+
+```text
+HTTP Request
+  │
+  ├─► admin/config_handler.go      解析 JSON，调用 app.ConfigSnapshot / app.SaveConfig
+  ├─► admin/validate_handler.go    解析 JSON，调用 app.ValidateDraft
+  ├─► admin/reload_handler.go      无需 body，调用 app.Reload
+  ├─► admin/preview_handler.go     解析 query/body，调用 app.PreviewNodes / app.PreviewGroups
+  ├─► admin/generate_preview_handler.go  解析 query/body，调用 app.Generate / app.GenerateFromDraft
+  └─► admin/status_handler.go      无需 body，调用 app.Status
+```
+
+所有 handler 的共同模式：
+1. 解析 HTTP 输入为 Go 值
+2. 调用对应的 `app.Service` 方法
+3. 将 DTO 序列化为 JSON 响应
+4. 将 `error` 按类型映射为 HTTP 状态码 + JSON 错误体

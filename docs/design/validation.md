@@ -1,5 +1,7 @@
 # 校验设计
 
+> 状态提示：本文描述 v2.0 校验与错误映射目标契约；当前可用能力与规划能力的边界见 docs/README.md 状态矩阵。
+
 ## 目标
 
 本文件定义配置校验与引用校验的边界。校验分为三类：字段级静态校验、构建期校验和图级语义校验。
@@ -117,9 +119,10 @@
 HTTP 层映射：
 
 - `400`：请求参数错误、静态配置错误、图级语义错误、可归因于用户配置的构建错误
+- `400`：`TargetError` 中的 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty`。这类错误表示用户配置在目标格式级联过滤后不可生成，用户可通过调整 fallback、分组或格式专属节点配置修复
 - `401`：服务端启用访问 token 时，请求缺少 token 或 token 不匹配
 - `502`：远程资源拉取失败，或远程订阅内容不可用（如 0 个有效节点）
-- `500`：本地资源读取失败、目标投影错误、渲染错误或未分类内部错误
+- `500`：本地资源读取失败、目标投影内部不变量错误、渲染错误或未分类内部错误
 
 目标：
 
@@ -143,7 +146,7 @@ HTTP 层映射：
 - `Target` 承接 format-specific 过滤与校验
 - `Render` 只负责文本序列化
 
-当前 Target 阶段统一使用 `TargetError`，以保持阶段语义清晰；其中 fallback 被清空使用 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty`，内部不变量异常使用独立 projection 错误码。HTTP 层仍将 `TargetError` 映射为 500，保持外部错误码语义稳定。
+当前 Target 阶段统一使用 `TargetError`，以保持阶段语义清晰；HTTP 层按错误码分流：fallback 被清空使用 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty`，映射为 400；内部不变量异常使用独立 projection 错误码，映射为 500。
 
 ---
 
@@ -167,9 +170,8 @@ HTTP 层映射：
 | `severity` | `error`（阻塞保存/重载）、`warning`（建议修改）、`info`（提示） |
 | `code` | 稳定错误码，用于前端分类展示和测试断言 |
 | `message` | 中文错误描述 |
-| `page` | 对应前端页面标识（A1-A8）；当前前端布局的辅助提示，非稳定 API 契约——前端定位以 `locator.json_pointer` 为准 |
 | `display_path` | 面向用户展示的 YAML 风格路径，不作为程序定位依据 |
-| `locator` | 结构化定位信息，包含 `section` / `key` / `index` / `value_path` / `json_pointer` |
+| `locator` | 结构化定位信息，包含 `section` / `key` / `index` / `value_path` / `json_pointer`；前端根据 `section` 自行映射到对应页面 |
 
 示例：
 
@@ -178,14 +180,13 @@ HTTP 层映射：
   "severity": "error",
   "code": "invalid_regex",
   "message": "正则表达式无效：...",
-  "page": "A3",
   "display_path": "groups.🇭🇰 Hong Kong.match",
   "locator": {
     "section": "groups",
     "key": "🇭🇰 Hong Kong",
     "index": 0,
     "value_path": "match",
-    "json_pointer": "/config/groups/0/value/match"
+    "json_pointer": "/config/groups/0/value/match"    ← 指向请求体 `config` 键下的路径
   }
 }
 ```
@@ -205,9 +206,9 @@ HTTP 层映射：
 静态校验与生成可用性的关系：
 
 - `validate` 不拉取订阅、不执行 Source / Filter / Group / Route / Target / Render，因此不能证明生成一定成功
-- 远程源不可用、远程源为空、过滤后节点组为空、目标格式级联过滤后 fallback 清空等问题，只能由预览或生成路径发现
-- A8 页面应命名为“静态配置校验”或明确标注静态边界
-- B1/B2/B3 或 `POST /api/generate/preview?format=...` 才是生成可用性检查入口
+- 远程源不可用、远程源为空、过滤后节点组为空、目标格式级联过滤后 fallback 清空等问题，只能由预览或生成路径发现；其中 `GET/POST /api/preview/groups` 执行到 ValidateGraph，能提前发现格式无关图级错误
+- `POST /api/config/validate` 的 API 语义是”静态配置校验”——仅覆盖 Prepare 阶段，不涉及运行时数据
+- `GET/POST /api/preview/*` 和 `GET/POST /api/generate/preview?format=...` 才是生成可用性检查入口
 
 前端实时校验：
 

@@ -1,0 +1,47 @@
+# 文档状态矩阵
+
+本目录顶层文档描述 subconverter v2.0 的目标设计契约。当前代码仍处于 v1.0 核心能力 + v2.0 Web 原型阶段；除明确标记为"当前可用"的能力外，均属于后续 M6-M10 规划内容，不应作为当前发布的生产能力使用。
+
+## 文档导航
+
+按问题领域速查：
+
+| 你想知道 | 读这份文档 |
+|----------|----------|
+| 系统整体如何工作、模块边界、关键决策 | `architecture.md` |
+| 用户配置文件的完整字段定义 | `design/config-schema.md` |
+| 管道每个阶段做了什么、输入输出是什么 | `design/pipeline.md` |
+| Proxy / ProxyGroup / Ruleset 等实体的字段语义 | `design/domain-model.md` |
+| 每个 API 端点的请求/响应格式 | `design/api.md` |
+| `app.Service` 的 Go 层接口契约与 DTO | `design/app-service.md` |
+| Clash Meta / Surge 的输出映射与级联过滤 | `design/rendering.md` |
+| 配置校验的三层边界与错误码 | `design/validation.md` |
+| 远程资源拉取的缓存策略 | `design/caching.md` |
+| Web 管理后台的前端页面设计与交互 | `design/web-ui.md` |
+| 怎么构建/部署/Docker Compose | `deployment.md` |
+| v2.0 各里程碑的工作项与验收标准 | `implementation/implementation-plan.md` |
+| Go 代码目录布局与包依赖约束 | `implementation/project-structure.md` |
+| 测试编号体系与覆盖策略 | `implementation/testing-strategy.md` |
+| v1.0 归档设计 | `v1.0/` |
+
+## 能力状态矩阵
+
+| 能力 | 状态 | 里程碑 | 当前发布可用 | 说明 |
+| `GET /generate` | 当前可用 | v1.0 | 是 | 生成 Clash Meta / Surge 配置。 |
+| `GET /healthz` | 当前可用 | v1.0 | 是 | 进程健康检查。 |
+| Snell / VLESS 来源、链式组、目标格式投影 | 当前可用 | v1.0 | 是 | 由当前 Go 后端实现并有测试覆盖。 |
+| `GET/PUT /api/config` | 设计中 | M6 | 否 | 配置 CRUD 与 JSON/YAML round-trip 契约。 |
+| `POST /api/config/validate` | 设计中 | M6 | 否 | 静态配置校验与结构化诊断。 |
+| `POST /api/reload` | 设计中 | M6 | 否 | 运行时热重载与 `RuntimeConfig` 快照替换。 |
+| `GET/POST /api/preview/nodes` | 设计中 | M7 | 否 | 节点预览 API。 |
+| `GET/POST /api/preview/groups` | 设计中 | M7 | 否 | 分组预览 API，目标契约为执行到 `ValidateGraph`。 |
+| `GET/POST /api/generate/preview` | 设计中 | M7 | 否 | 页面内生成预览，不触发下载。 |
+| `GET /api/status` | 设计中 | M7 | 否 | 系统状态、配置 revision、dirty 状态。 |
+| Web 管理后台正式 SPA | 设计中 | M9-M10 | 否 | 当前 `web/` 是可静态托管的设计原型，不是已接入后端的正式后台。 |
+| `api + web` Docker Compose 生产部署 | 设计中 | M8-M10 | 否 | 当前可作为部署设计示例参考，不代表 `/api/*` 已可用。 |
+
+状态定义：
+
+- **当前可用**：当前代码和发布产物已经提供的能力。
+- **设计中**：本文档锁定的 v2.0 目标契约，需等对应里程碑实现和验收后才可作为生产能力使用。
+

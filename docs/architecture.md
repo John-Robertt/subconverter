@@ -1,6 +1,8 @@
 # 系统架构设计
 
 > v1.0 架构文档已归档至 docs/v1.0/architecture.md
+>
+> 状态提示：本文描述 v2.0 目标架构契约；当前可运行能力与规划能力的边界见 docs/README.md 状态矩阵。
 
 ## 概述
 
@@ -34,7 +36,7 @@ v2.0 在 v1.0 核心管道基础上新增：
 本系统按**单用户信任模型**设计：运行者 = 使用者，所有通过鉴权的 API 输入视为可信。
 
 - `POST /api/preview/*` 接受草稿配置中的任意订阅 URL 并实际拉取——这是设计意图（允许用户预览新增来源的效果），而非安全疏忽
-- `/generate?token=...` 的 token 会出现在 URL 中（nginx access log、浏览器历史记录等），使用者应知悉此泄漏路径
+- `/generate?token=...` 的 token 会出现在 URL 中（nginx access log、浏览器历史记录等），使用者应知悉此泄漏路径；同理，若 `-config` 参数是含 token 的私有远程 URL（如 GitHub Raw `?token=...`），该 URL 同样可能出现在 nginx access log 或进程日志中
 - 建议生产部署始终通过 `-access-token` 开启鉴权；未配置 token 时所有接口无访问控制
 - 本系统不提供 rate limiting、IP 白名单或 RBAC——若需要这些能力，由前置反向代理（nginx、Cloudflare Tunnel 等）承担
 
@@ -75,7 +77,7 @@ config.yaml + remote sources
         └─► /healthz                        （健康检查）
 ```
 
-生产部署时，浏览器不直接访问 `subconverter` 后端端口，而是访问 Docker Compose 中的 `web` 容器：
+v2.0 正式 Web 部署时，浏览器不直接访问 `subconverter` 后端端口，而是访问 Docker Compose 中的 `web` 容器：
 
 ```text
 browser
@@ -136,7 +138,7 @@ RUnlock()
 预览请求（`/api/preview/*`）执行管道的部分阶段：
 
 - `/api/preview/nodes`：执行 `Source + Filter`，返回节点列表
-- `/api/preview/groups`：执行 `Source + Filter + Group + Route`，返回节点组、链式组、服务组与宏展开结果
+- `/api/preview/groups`：执行 `Source + Filter + Group + Route + ValidateGraph`，返回节点组、链式组、服务组与宏展开结果；图级错误返回 400 结构化诊断
 - `POST /api/preview/*` 使用草稿配置生成临时 `RuntimeConfig`，不替换当前运行时配置
 
 ---
@@ -177,7 +179,7 @@ RUnlock()
 - 状态管理：React Query（服务端状态）+ React 本地状态
 - 构建产物输出到 `web/dist/`
 
-### 生产部署方式
+### 生产部署方式（v2.0 目标）
 
 - 前端构建产物输出到 `web/dist/`
 - `web/Dockerfile` 使用 Node 构建前端，并用 nginx 托管静态资源
@@ -352,7 +354,8 @@ Web 管理后台
 
 - **现象**：`PUT /api/config` 将 JSON 反序列化为 `Config` 后通过 `yaml.Marshal` 写回，`gopkg.in/yaml.v3` 的 `Marshal` 不保留原始文件中的注释节点和格式风格（缩进、引号选择）
 - **影响**：每次通过 Web 后台保存配置后，YAML 文件中的注释永久丢失；原有缩进和引号风格可能改变
-- **缓解**：`PUT /api/config` 首次写回时自动备份原始文件为 `config.yaml.bak`；API 响应中包含 `warning` 提示注释将丢失
+- **缓解**：Web UI 在本地可写配置源首次保存前弹出确认，明确提示注释、引号和格式风格可能丢失；用户确认后才发起 `PUT /api/config`
+- **API 契约**：`PUT /api/config` 成功响应保持 `{ "config_revision": "sha256:<hex>" }`，不承担自动备份或 warning 响应语义
 - **长期方案（未实施）**：用 `yaml.Node` 级 patch-merge 策略替代全量 Marshal——在 AST 层只替换变更的节点，保留其余注释和格式。复杂度显著上升，当前规模下不必处理
 
 ---
