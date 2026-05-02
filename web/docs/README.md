@@ -1,6 +1,6 @@
 # Web 管理后台文档契约
 
-本目录定义正式 v2.0 Web 管理后台的前端产品、交互、数据和验收契约。当前 `web/` 仍是高保真原型，但文档契约只维护正式 v2.0 目标。
+本目录定义正式 v2.0 Web 管理后台的前端产品、交互、数据和验收契约。当前 `web/` 是正式 Vite SPA 工程；旧高保真原型位于 `web/prototype/`，只作为参考。
 
 ## 权威来源
 
@@ -31,8 +31,8 @@
 
 ## 当前状态
 
-- `web/` 当前仍可静态托管高保真原型。
-- 正式 SPA 目标技术栈是 Vite + React + TypeScript + React Query。
+- `web/` 当前是 Vite + React + TypeScript + React Query 工程骨架。
+- `web/prototype/` 保留旧高保真原型，不参与正式构建。
 - 正式管理接口统一使用 `/api/*`；生成接口继续使用 `/generate`。
 - Web 管理后台使用管理员登录态和 `session_id` Cookie；`SUBCONVERTER_TOKEN` 只用于 `/generate` 订阅链接。
 - v2.0 当前不承诺内建配置版本恢复、多用户权限系统或服务端节点测速图表。

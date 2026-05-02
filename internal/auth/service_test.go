@@ -3,12 +3,14 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSetupStoresPasswordAndSessionHashes(t *testing.T) {
@@ -99,6 +101,25 @@ func TestLoginFailureLocksAfterFiveAttempts(t *testing.T) {
 	}
 	if status.LockedUntil.IsZero() {
 		t.Fatal("Status().LockedUntil should report active login lock")
+	}
+}
+
+func TestRecordFailureReturnsAuthStateNotWritable(t *testing.T) {
+	dir := t.TempDir()
+	blockingFile := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(blockingFile, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{
+		statePath: filepath.Join(blockingFile, "auth.json"),
+		now:       time.Now,
+	}
+	state := stateFile{}
+
+	err := svc.recordFailure(&state, "127.0.0.1|admin")
+	var authErr *Error
+	if !errors.As(err, &authErr) || authErr.Code != CodeAuthStateNotWritable {
+		t.Fatalf("recordFailure error = %T %[1]v, want %s", err, CodeAuthStateNotWritable)
 	}
 }
 

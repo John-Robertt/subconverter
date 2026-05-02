@@ -25,7 +25,9 @@ func TestAdminDoesNotImportPipelineOrModel(t *testing.T) {
 		}
 		for _, imp := range file.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
-			if strings.HasSuffix(importPath, "/internal/pipeline") || strings.HasSuffix(importPath, "/internal/model") {
+			if strings.HasSuffix(importPath, "/internal/pipeline") ||
+				strings.HasSuffix(importPath, "/internal/model") ||
+				strings.HasSuffix(importPath, "/internal/generate") {
 				t.Fatalf("%s imports forbidden package %s", path, importPath)
 			}
 		}

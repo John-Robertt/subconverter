@@ -34,8 +34,8 @@
 |--------|------|----------|----------|----------|--------|
 | M6 Admin API 基线 | 已验收 | `REQ-14` - `REQ-17`, `REQ-27` | `T-ADM-*`, `T-RLD-*`, `T-CCH-*` | 配置 CRUD、静态校验、热重载、Admin auth/session 已实现并通过验证 | 启动 M7 预览与状态 API |
 | M7 预览与状态 API | 已验收 | `REQ-18` - `REQ-21` | `T-PRV-*` | 预览、生成预览、订阅链接与状态 API 已实现并通过验证 | 启动 M8 Web 镜像与 Compose 集成；M9 可依赖 M7 API |
-| M8 Web 镜像与 Compose 集成 | 未开始 | `REQ-22`, `REQ-23` | `T-SPA-*` | 当前 `web/` 是静态原型，不是正式 SPA 工程；M6/M7 后端 API 已稳定 | 启动基础工程与 nginx 代理 |
-| M9 前端工程与核心页面 | 未开始 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | 依赖 M7 预览 API 与 M8 前端工程基础 | M7 + M8 验收后启动 |
+| M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SPA-*` | 正式 Vite SPA 工程、nginx 配置、Compose 示例和 CI Web 校验已实现，并通过 Docker build 与 Compose 反向代理验证 | 启动 M9 前端工程与核心页面 |
+| M9 前端工程与核心页面 | 未开始 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | M7 预览 API 与 M8 前端工程基础已就绪 | 启动 M9 核心页面实现 |
 | M10 前端完善与端到端验收 | 未开始 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-020`, `T-E2E-*` | 端到端场景已在测试策略中定义 | M9 验收后启动 |
 
 ## M6 Admin API 基线
@@ -108,13 +108,55 @@
 
 | 工作包 | 状态 | 范围 | 依赖文档 | 交付物 | 验收证据 | 阻塞项 |
 |--------|------|------|----------|--------|----------|--------|
-| M8-WP1 正式前端工程骨架 | 未开始 | Vite + React + TypeScript、最小 SPA、脚本 | `web/docs/frontend-architecture.md` | `web/src` 工程骨架 | `T-SPA-001`, `npm test` | 依赖 M6 路由稳定 |
-| M8-WP2 nginx 与 Compose 代理 | 未开始 | `web/Dockerfile`、`web/nginx.conf`、Compose 示例、fallback | `docs/deployment.md`, `docs/design/web-ui.md` | Web 镜像与反代路径 | `T-SPA-002` - `T-SPA-008` | 依赖 M6；`T-SPA-007` 依赖 M7 |
-| M8-WP3 M8 收口验收 | 未开始 | Web 镜像构建、代理验证、文档同步 | `implementation/implementation-plan.md` | M8 验收记录 | 本文件更新，构建和代理测试结果 | 依赖 M6 |
+| M8-WP1 正式前端工程骨架 | 已验收 | Vite + React + TypeScript、最小 SPA、脚本、旧原型迁移 | `web/docs/frontend-architecture.md` | `web/src` 工程骨架、`web/prototype` 原型归档 | `npm test`、`npm run build` | 无 |
+| M8-WP2 nginx 与 Compose 代理 | 已验收 | `web/Dockerfile`、`web/nginx.conf`、Compose 示例、fallback | `docs/deployment.md`, `docs/design/web-ui.md` | Web 镜像与反代路径 | `docker build -f web/Dockerfile web`、Compose 反代 smoke test | 无 |
+| M8-WP3 M8 收口验收 | 已验收 | Web 镜像构建、代理验证、文档同步 | `implementation/implementation-plan.md` | M8 验收记录 | 本文件更新，前端/Go/Docker 测试结果记录 | 无 |
 
-测试命令结果：未执行，能力尚未实现。
+### M8 验收记录（2026-05-03）
 
-已知限制：当前 `web/` 仍是高保真原型，不代表正式管理后台。
+- 状态：已验收。
+- 实现的 REQ：`REQ-22`、`REQ-23`。
+- 完成的工作包：`M8-WP1`、`M8-WP2`、`M8-WP3`。
+- 依赖的设计文档：`docs/deployment.md`、`docs/design/web-ui.md`、`web/docs/frontend-architecture.md`、`web/docs/acceptance.md`。
+- 新增或通过的测试：
+  - `web/src/App.test.tsx`：最小 SPA shell、`/download` 前端路由、`/login` 路由烟测。
+  - Web build：Vite production build 输出 `dist/index.html` 和 hashed assets。
+  - Docker build：Node 22 阶段执行 `npm ci` 与 `npm run build`，nginx 阶段只复制 `dist/`。
+  - Compose smoke test：`web` 是唯一浏览器入口，验证 SPA fallback、`/healthz`、`/api/status` 与 `/generate` 反向代理。
+  - 后端回归：`go test ./...`、`go vet ./...`。
+- 测试命令与结果：
+  - `cd web && npm ci`：通过。
+  - `cd web && npm test`：通过，1 个测试文件 / 3 个测试。
+  - `cd web && npm run build`：通过。
+  - `cd web && npm run dev -- --host 127.0.0.1`：通过，Vite dev server 监听 `http://127.0.0.1:5173/`。
+  - `curl http://127.0.0.1:5173/`、`/sources`、`/download`：均返回 `200`。
+  - `docker --version`：通过，Docker `29.4.1`。
+  - `docker compose version`：通过，Docker Compose `v5.1.3`。
+  - `docker build -f web/Dockerfile web`：通过。
+  - `docker compose -f deploy/compose.readonly.yaml config --quiet`：通过。
+  - `docker compose -f deploy/compose.writable.yaml config --quiet`：通过。
+  - `docker compose -p subconverter-m8 -f deploy/compose.readonly.yaml -f /private/tmp/subconverter-m8/compose.override.yaml up -d --build`：通过，`api` 与 `web` 均启动，`api` healthcheck healthy。
+  - Compose 入口 `curl http://127.0.0.1:18080/`、`/sources`、`/download`：均返回 `200 text/html`，内容为 Vite SPA `index.html`。
+  - Compose 入口 `curl http://127.0.0.1:18080/healthz`：返回 `200 OK`，响应头 `Cache-Control: no-store`。
+  - Compose 入口 `curl http://127.0.0.1:18080/api/status`：未登录返回 `401 auth_required` JSON，响应头 `Cache-Control: no-store`，证明 `/api/*` 已命中后端而非 SPA fallback。
+  - Compose 入口 `curl http://127.0.0.1:18080/generate?format=clash`：返回 `200 text/yaml`，带 `Content-Disposition: attachment; filename="clash.yaml"`。
+  - Compose 入口 `curl http://127.0.0.1:18080/generate?format=surge`：返回 `200 text/plain`，带 `Content-Disposition: attachment; filename="surge.conf"`。
+  - Compose 入口 `curl http://127.0.0.1:18080/generate/path`：返回 `200 text/html` SPA `index.html`，证明仅精确 `/generate` 被反代。
+  - `GOCACHE=/private/tmp/subconverter-gocache go test ./...`：通过。
+  - `GOCACHE=/private/tmp/subconverter-gocache go vet ./...`：通过。
+  - `git diff --check -- web deploy docs .github README.md .gitignore`：通过。
+- 关键证据：
+  - `web/package.json` / `web/package-lock.json`：正式 npm 工程与锁文件。
+  - `web/Dockerfile`：Node 22 `npm ci` + `npm run build`，nginx 仅托管 `dist/`。
+  - `web/nginx.conf`：`/api/*`、精确 `/generate`、精确 `/healthz` 优先反代；其他路径 fallback 到 `index.html`。
+  - `deploy/compose.readonly.yaml`、`deploy/compose.writable.yaml`：`api` 仅 expose，`web` 映射 `8080:80`。
+- 示例输入或 fixture：Compose 验证使用临时只读配置 `/private/tmp/subconverter-m8/config/config.yaml`，订阅源由本地临时 HTTP 服务提供，包含 1 个 `HK-01` 节点。
+- 关键响应：`/download` 不触发下载、返回 SPA；`/generate?format=clash|surge` 触发后端下载响应；`/api/status` 未登录时返回 `auth_required`；`/healthz` 返回 `OK`。
+- 已知错误案例：未登录访问 `/api/*` 返回 `401 auth_required`；`/generate/path` 非精确生成端点，按 SPA fallback 处理。
+- 已知限制：M8 只交付工程、容器和部署入口；登录、配置编辑、API client、主题切换、保存/预览工作流归属 M9/M10。
+- 下一步：启动 M9 前端工程与核心页面，基于 M7 API 和 M8 SPA/Compose 基础实现正式后台交互。
+
+已知限制：正式 Web 工程当前仍是 M8 占位 SPA，不代表完整管理后台；旧高保真原型位于 `web/prototype/`，仅作参考。
 
 ## M9 前端工程与核心页面
 

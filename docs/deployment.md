@@ -1,6 +1,6 @@
 # 构建与部署
 
-> 状态提示：当前发布可用能力以 `/generate`、`/healthz` 和核心生成管道为主；Web 管理后台、`/api/*` 与 `api + web` Compose 部署仍是 v2.0 规划能力。完整状态见 docs/README.md。
+> 状态提示：当前源码已包含 `/generate`、`/healthz`、`/api/*` 后端接口，以及 M8 的 Web 静态镜像和 `api + web` Compose 示例。正式管理后台页面仍在 M9-M10 规划中；里程碑验收状态见 docs/implementation/progress.md。
 
 ## 目标
 
@@ -14,7 +14,7 @@
 
 - GitHub Release 二进制压缩包
 - GHCR 后端 Docker 镜像（`api` 服务）
-- Web Docker 镜像（当前托管设计原型；正式管理后台属于 M8-M10 规划能力）
+- Web Docker 镜像（nginx 托管正式 Vite SPA，并同源反向代理到 `api` 服务）
 
 二进制平台矩阵：
 
@@ -43,7 +43,7 @@ Docker 镜像平台矩阵：
 - 运行 lint（golangci-lint）、格式检查（gofmt）、测试（go test）和 vet（go vet）
 - 用 GoReleaser 发布二进制和 `checksums.txt` 到 GitHub Release
 - 构建并推送 GHCR 多架构后端镜像
-- 构建 Web 镜像以验证静态托管链路；正式 `api + web` 生产部署需等待 M8-M10 完成
+- 运行 Web 前端依赖安装、测试和构建，并构建 Web 镜像验证静态托管与反向代理链路
 
 ---
 
@@ -126,11 +126,11 @@ docker run -d \
   ghcr.io/john-robertt/subconverter:latest
 ```
 
-这种模式适合当前发布以及 GitOps / 外部系统管理配置文件的部署方式。v2.0 Web 后台实现后，`api` 服务会把只读挂载识别为不可写配置源，`PUT /api/config` 返回 `409`，配置保存按钮应禁用。
+这种模式适合 GitOps / 外部系统管理配置文件的部署方式。`api` 服务会把只读挂载识别为不可写配置源，`PUT /api/config` 返回 `409 config_source_readonly`；正式 Web 页面应据此禁用保存入口。
 
 ### Docker 部署（可写目录挂载，为 v2.0 写回预留）
 
-当前发布不会通过 Web 后台写回配置。若要为后续 v2.0 可写配置源预留部署形态，可挂载整个配置目录，并确保容器内运行用户对该目录有写权限：
+若要允许 Web 后台写回配置，可挂载整个配置目录，并确保容器内运行用户对该目录有写权限：
 
 ```bash
 mkdir -p ./config
@@ -148,55 +148,88 @@ docker run -d \
 
 如果需要额外挂载自定义模板，可以在配置文件中改成绝对路径，并将模板文件挂载进容器。
 
-### Docker Compose 部署规划（Web 后台只读配置）
+### Docker Compose 部署（Web 后台只读配置）
 
-以下是 v2.0 M8-M10 的目标部署形态，当前发布不可把它视作已可用的生产后台。正式 Web 后台完成后，浏览器只访问 `web` 服务端口；`web` 容器用 nginx 托管 SPA，并同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api:8080`。
+只读配置适合 GitOps 或外部系统管理配置文件的部署方式。浏览器只访问 `web` 服务端口；`web` 容器用 nginx 托管 SPA，并同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api:8080`。
+
+仓库内示例文件：
+
+```bash
+cp configs/base_config.yaml config.yaml
+mkdir -p auth
+docker compose -f deploy/compose.readonly.yaml up -d --build
+```
+
+核心结构如下：
 
 ```yaml
 services:
   api:
     image: ghcr.io/john-robertt/subconverter:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
     environment:
-      SUBCONVERTER_LISTEN: :8080
+      SUBCONVERTER_LISTEN: ":8080"
       SUBCONVERTER_TOKEN: your-token
       SUBCONVERTER_AUTH_STATE: /auth/auth.json
       SUBCONVERTER_SETUP_TOKEN: change-this-bootstrap-token
     volumes:
-      - ./config.yaml:/config/config.yaml:ro
-      - ./auth:/auth
+      - ../config.yaml:/config/config.yaml:ro
+      - ../auth:/auth
     expose:
       - "8080"
 
   web:
     image: ghcr.io/john-robertt/subconverter-web:latest
+    build:
+      context: ../web
+      dockerfile: Dockerfile
     depends_on:
       - api
     ports:
       - "8080:80"
 ```
 
-这种模式适合 GitOps 或外部系统管理配置文件的部署方式。v2.0 实现后，`api` 服务会把配置源标记为不可写，Web 后台应禁用保存入口，`PUT /api/config` 返回 `409`。
+这种模式下 `api` 服务会把配置源标记为不可写，`PUT /api/config` 返回 `409 config_source_readonly`。
 
-### Docker Compose 部署规划（Web 后台可编辑配置）
+### Docker Compose 部署（Web 后台可编辑配置）
 
-以下同样是 v2.0 规划示例。若正式 Web 后台需要保存配置，应挂载整个配置目录：
+若 Web 后台需要保存配置，应挂载整个配置目录，使 `PUT /api/config` 能以“临时文件 + rename”的方式原子写回。
+
+仓库内示例文件：
+
+```bash
+mkdir -p config auth
+cp configs/base_config.yaml config/config.yaml
+docker compose -f deploy/compose.writable.yaml up -d --build
+```
+
+核心结构如下：
 
 ```yaml
 services:
   api:
     image: ghcr.io/john-robertt/subconverter:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
     environment:
-      SUBCONVERTER_LISTEN: :8080
+      SUBCONVERTER_LISTEN: ":8080"
       SUBCONVERTER_TOKEN: your-token
-      SUBCONVERTER_AUTH_STATE: /config/auth.json
+      SUBCONVERTER_AUTH_STATE: /auth/auth.json
       SUBCONVERTER_SETUP_TOKEN: change-this-bootstrap-token
     volumes:
-      - ./config:/config
+      - ../config:/config
+      - ../auth:/auth
     expose:
       - "8080"
 
   web:
     image: ghcr.io/john-robertt/subconverter-web:latest
+    build:
+      context: ../web
+      dockerfile: Dockerfile
     depends_on:
       - api
     ports:
@@ -205,14 +238,10 @@ services:
 
 `SUBCONVERTER_TOKEN` 只配置在 `api` 服务上，且只用于 `/generate` 订阅访问控制。v2.0 Web 页面访问 `/api/*` 时使用 `session_id` Cookie；复制 Clash / Surge 订阅链接时，前端调用 `GET /api/generate/link`，由后端按需把 token 写入 `/generate?token=...` query 并返回完整链接。
 
-若 auth state 中没有管理员凭据，首次访问 `/login` 会进入 setup 流程。setup 请求必须携带 bootstrap setup token：生产部署推荐显式设置 `SUBCONVERTER_SETUP_TOKEN`，完成 setup 后移除该环境变量并重启；若未设置，服务启动时会生成一次性 32-byte URL-safe token 并只打印到服务日志，不通过 HTTP 返回。setup 会把管理员 PBKDF2 密码哈希和 session token 哈希写入 `SUBCONVERTER_AUTH_STATE` 指向的文件；该文件权限必须为 `0600`，所在目录建议只允许运行用户访问。如果该路径不可写，后台保持关闭并展示部署配置错误。只读配置部署应像上例一样额外挂载 `./auth:/auth`，避免把只读 YAML 挂载误认为后台可初始化。
+若 auth state 中没有管理员凭据，首次访问 `/login` 会进入 setup 流程。setup 请求必须携带 bootstrap setup token：生产部署推荐显式设置 `SUBCONVERTER_SETUP_TOKEN`，完成 setup 后移除该环境变量并重启；若未设置，服务启动时会生成一次性 32-byte URL-safe token 并只打印到服务日志，不通过 HTTP 返回。setup 会把管理员 PBKDF2 密码哈希和 session token 哈希写入 `SUBCONVERTER_AUTH_STATE` 指向的文件；该文件权限必须为 `0600`，所在目录建议只允许运行用户访问。如果该路径不可写，后台保持关闭并展示部署配置错误。两种 Compose 示例都额外挂载 `../auth:/auth`，避免把只读 YAML 挂载误认为后台可初始化，也避免把 auth state 混入配置文件写回目录。
 
-若需要在本地源码基础上构建 Web 镜像，可将 `web.image` 替换为：
+示例文件同时保留 `image` 和 `build`。发布环境可直接使用 GHCR 镜像；本地源码验证可使用 `--build` 重建后端和 Web 镜像。
 
-```yaml
-build:
-  context: ./web
-```
 
 ### 健康检查
 
@@ -312,17 +341,22 @@ Release workflow 会为镜像写入 OCI 元数据：
 
 ---
 
-## 前端镜像（v2.0 规划）
+## 前端镜像
 
-v2.0 目标是新增 Web 管理后台（React SPA），前端源码位于 `web/` 目录。当前 `web/` 是设计原型，可用于验证 nginx 静态托管和反向代理配置，不代表 Admin API 已可用。
+Web 管理后台前端源码位于 `web/` 目录。当前 M8 交付正式 Vite SPA 工程骨架、nginx 静态托管和反向代理配置；旧高保真原型位于 `web/prototype/`，不参与正式镜像构建。
 
 ### 构建流程
 
 ```bash
+cd web
+npm ci
+npm test
+npm run build
+cd ..
 docker build -t subconverter-web ./web
 ```
 
-`web/Dockerfile` 使用 Node 阶段构建前端产物（若尚无 `package.json`，则托管当前设计原型），再用 nginx 托管 `dist/`。nginx 配置位于 `web/nginx.conf`，目标职责为：
+`web/Dockerfile` 使用 Node 22 阶段执行 `npm ci` 与 `npm run build`，再用 nginx 托管 `dist/`。nginx 配置位于 `web/nginx.conf`，目标职责为：
 
 - `/`：静态资源与 SPA fallback
 - `/api/*`：反向代理到 `api:8080`
@@ -335,24 +369,26 @@ docker build -t subconverter-web ./web
 - SPA 入口 `index.html` 使用 `Cache-Control: no-cache` 或等价重验证策略，确保发布后能及时发现新构建
 - Vite 生成的带 hash 静态资源可使用长期缓存，例如 `Cache-Control: public, max-age=31536000, immutable`
 
-### Release 流程变更
+### Release 流程
 
-Release workflow 需要分别发布后端镜像与 Web 镜像：
+Release workflow 分别发布后端镜像与 Web 镜像：
 
-1. `go build` / 后端 Docker build（`Dockerfile`）
-2. Web Docker build（`web/Dockerfile`）
+1. Go lint / format / test / vet
+2. `cd web && npm ci && npm test && npm run build`
+3. 后端 Docker build（`Dockerfile`）
+4. Web Docker build（`web/Dockerfile`）
 
-v2.0 正式交付时通过 Docker Compose 把两个镜像组合起来。后端二进制和后端镜像不包含 Web 静态资源。
+Docker Compose 把两个镜像组合起来。后端二进制和后端镜像不包含 Web 静态资源。
 
 ---
 
-## 开发模式（v2.0 规划）
+## 开发模式
 
 前后端分离开发：
 
 - **前端**：`cd web && npm run dev`（启动 Vite dev server，默认 `localhost:5173`）
 - **后端**：`go run ./cmd/subconverter -config ...`
 
-v2.0 正式前端工程接入后，推荐在 Vite 配置中把 `/api/*`、`/generate`、`/healthz` 代理到 Go 后端。Cookie session 依赖同源语义，本地调试后台登录也应优先使用 Vite proxy；正式生产 Compose 部署不需要 CORS。
+Vite 配置已把 `/api/*`、`/generate`、`/healthz` 代理到 Go 后端。Cookie session 依赖同源语义，本地调试后台登录也应优先使用 Vite proxy；正式生产 Compose 部署不需要 CORS。
 
 本地开发若不想预先准备管理员凭据，可删除临时 auth state 后重新走 `/login` setup，并从启动日志读取自动生成的 setup token；不要在公网部署中使用临时或弱密码。

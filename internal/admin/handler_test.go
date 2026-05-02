@@ -162,6 +162,69 @@ func TestM7EndpointsRequireSessionAndReturnExpectedShapes(t *testing.T) {
 	}
 }
 
+func TestSameOriginChecksSchemeAndHost(t *testing.T) {
+	tests := []struct {
+		name    string
+		target  string
+		headers map[string]string
+		want    bool
+	}{
+		{
+			name:   "https request accepts matching https origin",
+			target: "https://example.test/api/auth/setup",
+			headers: map[string]string{
+				"Origin": "https://example.test",
+			},
+			want: true,
+		},
+		{
+			name:   "https request rejects same host with http origin",
+			target: "https://example.test/api/auth/setup",
+			headers: map[string]string{
+				"Origin": "http://example.test",
+			},
+			want: false,
+		},
+		{
+			name:   "forwarded https scheme accepts matching origin",
+			target: "http://example.test/api/auth/setup",
+			headers: map[string]string{
+				"Origin":            "https://example.test",
+				"X-Forwarded-Proto": "https,http",
+			},
+			want: true,
+		},
+		{
+			name:   "host comparison preserves port",
+			target: "http://localhost:8080/api/auth/setup",
+			headers: map[string]string{
+				"Origin": "http://localhost:8080",
+			},
+			want: true,
+		},
+		{
+			name:   "port mismatch is rejected",
+			target: "http://localhost:8080/api/auth/setup",
+			headers: map[string]string{
+				"Origin": "http://localhost",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tt.target, nil)
+			for key, value := range tt.headers {
+				req.Header.Set(key, value)
+			}
+			if got := sameOrigin(req); got != tt.want {
+				t.Fatalf("sameOrigin() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 type adminMapFetcher struct {
 	responses map[string][]byte
 }

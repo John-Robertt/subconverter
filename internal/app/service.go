@@ -245,7 +245,7 @@ func (s *Service) Reload(ctx context.Context) (*ReloadResult, error) {
 	}, nil
 }
 
-func (s *Service) Generate(ctx context.Context, req generate.Request) (*generate.Result, error) {
+func (s *Service) Generate(ctx context.Context, req GenerateInput) (*GenerateResult, error) {
 	cfg := s.runtimeSnapshot()
 	return s.generator.Generate(ctx, cfg, req)
 }

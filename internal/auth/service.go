@@ -286,11 +286,15 @@ func (s *Service) recordFailure(state *stateFile, key string) error {
 		record.LockedUntil = s.now().Add(lockDuration)
 		record.Count = maxFailures
 		state.Failures[key] = record
-		_ = s.writeState(*state)
+		if err := s.writeState(*state); err != nil {
+			return err
+		}
 		return &Error{Code: CodeAuthLocked, Message: "登录失败次数过多，请稍后再试", Until: record.LockedUntil}
 	}
 	state.Failures[key] = record
-	_ = s.writeState(*state)
+	if err := s.writeState(*state); err != nil {
+		return err
+	}
 	return &Error{Code: CodeInvalidCredentials, Message: "用户名或密码错误", Remaining: remaining}
 }
 
@@ -329,7 +333,10 @@ func (s *Service) writeState(state stateFile) error {
 	if err != nil {
 		return err
 	}
-	return writeStateAtomically(s.statePath, append(data, '\n'))
+	if err := writeStateAtomically(s.statePath, append(data, '\n')); err != nil {
+		return authError(CodeAuthStateNotWritable, "auth state 不可写")
+	}
+	return nil
 }
 
 func (s *Service) lock() {

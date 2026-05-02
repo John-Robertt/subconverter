@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/John-Robertt/subconverter/internal/config"
-	"github.com/John-Robertt/subconverter/internal/generate"
 	"github.com/John-Robertt/subconverter/internal/model"
 	"github.com/John-Robertt/subconverter/internal/pipeline"
 )
@@ -93,7 +92,7 @@ func (s *Service) PreviewGroupsFromDraft(ctx context.Context, configJSON json.Ra
 	return groupPreviewFromStage(result), nil
 }
 
-func (s *Service) GenerateFromDraft(ctx context.Context, req generate.Request, configJSON json.RawMessage) (*generate.Result, error) {
+func (s *Service) GenerateFromDraft(ctx context.Context, req GenerateInput, configJSON json.RawMessage) (*GenerateResult, error) {
 	cfg, err := runtimeFromDraft(configJSON)
 	if err != nil {
 		return nil, err

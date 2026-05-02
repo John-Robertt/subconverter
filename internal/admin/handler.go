@@ -11,7 +11,6 @@ import (
 	"github.com/John-Robertt/subconverter/internal/app"
 	"github.com/John-Robertt/subconverter/internal/auth"
 	"github.com/John-Robertt/subconverter/internal/errtype"
-	"github.com/John-Robertt/subconverter/internal/generate"
 )
 
 type Handler struct {
@@ -154,7 +153,7 @@ func (h *Handler) handleAuthSetup(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	if err := h.auth.Logout(sessionID(r)); err != nil {
-		writeError(w, http.StatusInternalServerError, "auth_state_error", "注销失败")
+		h.writeAuthError(w, err)
 		return
 	}
 	clearSessionCookie(w, r)
@@ -266,7 +265,7 @@ func (h *Handler) handleGeneratePreview(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var (
-		result *generate.Result
+		result *app.GenerateResult
 		err    error
 	)
 	if r.Method == http.MethodPost {
@@ -457,20 +456,15 @@ func decodeConfigBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, 
 	return input.Config, true
 }
 
-func parseGenerateRequest(w http.ResponseWriter, r *http.Request) (generate.Request, bool) {
+func parseGenerateRequest(w http.ResponseWriter, r *http.Request) (app.GenerateInput, bool) {
 	query := r.URL.Query()
-	format := query.Get("format")
-	if !generate.ValidFormat(format) {
-		writeError(w, http.StatusBadRequest, "invalid_request", "format 参数无效：必须为 clash 或 surge")
-		return generate.Request{}, false
-	}
 	_, filenamePresent := query["filename"]
-	filename, err := generate.ResolveFilename(query.Get("filename"), filenamePresent, format)
+	req, err := app.NewGenerateInput(query.Get("format"), query.Get("filename"), filenamePresent)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-		return generate.Request{}, false
+		writeServiceError(w, err, false)
+		return app.GenerateInput{}, false
 	}
-	return generate.Request{Format: format, Filename: filename}, true
+	return req, true
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
@@ -542,20 +536,20 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 
 func sameOrigin(r *http.Request) bool {
 	if origin := r.Header.Get("Origin"); origin != "" {
-		return originMatchesHost(origin, r.Host)
+		return originMatchesRequest(origin, r)
 	}
 	if referer := r.Header.Get("Referer"); referer != "" {
-		return originMatchesHost(referer, r.Host)
+		return originMatchesRequest(referer, r)
 	}
 	return false
 }
 
-func originMatchesHost(raw, host string) bool {
+func originMatchesRequest(raw string, r *http.Request) bool {
 	u, err := url.Parse(raw)
-	if err != nil {
+	if err != nil || u.Scheme == "" || u.Host == "" {
 		return false
 	}
-	return strings.EqualFold(u.Host, host)
+	return strings.EqualFold(u.Scheme, requestScheme(r)) && strings.EqualFold(u.Host, r.Host)
 }
 
 func isSafeMethod(method string) bool {
@@ -563,7 +557,19 @@ func isSafeMethod(method string) bool {
 }
 
 func isHTTPS(r *http.Request) bool {
-	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	return requestScheme(r) == "https"
+}
+
+func requestScheme(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded != "" {
+		if scheme := strings.ToLower(strings.TrimSpace(strings.Split(forwarded, ",")[0])); scheme != "" {
+			return scheme
+		}
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
 }
 
 func formatTime(t time.Time) string {

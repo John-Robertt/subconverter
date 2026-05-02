@@ -57,50 +57,25 @@ curl "http://localhost:8080/healthz"
 
 ### Docker Compose
 
-```yaml
-services:
-  subconverter:
-    image: ghcr.io/john-robertt/subconverter:latest
-    environment:
-      SUBCONVERTER_LISTEN: :8080
-      SUBCONVERTER_TOKEN: your_token
-    ports:
-      - 8080:8080
-    restart: unless-stopped
-    volumes:
-      - ./config.yaml:/config/config.yaml:ro
-    healthcheck:
-      test: ["CMD", "/app/subconverter", "-healthcheck"]
-      interval: 10s
-      timeout: 3s
-      retries: 20
-```
+v2.0 Web 部署使用 `api` + `web` 双服务。浏览器只访问 `web` 服务端口，nginx 同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api:8080`，生产路径不需要 CORS。
+
+只读配置适合 GitOps 或外部系统管理 YAML：
 
 ```bash
-docker compose up -d
+cp configs/base_config.yaml config.yaml
+mkdir -p auth
+docker compose -f deploy/compose.readonly.yaml up -d --build
 ```
 
-使用远程配置时，去掉 `volumes` 挂载并覆盖启动命令：
+可写配置适合后续 Web 后台保存完整配置：
 
-```yaml
-services:
-  subconverter:
-    image: ghcr.io/john-robertt/subconverter:latest
-    command: ["-config", "https://example.com/config.yaml"]
-    environment:
-      SUBCONVERTER_LISTEN: :8080
-      SUBCONVERTER_TOKEN: your_token
-    ports:
-      - 8080:8080
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "/app/subconverter", "-healthcheck"]
-      interval: 10s
-      timeout: 3s
-      retries: 20
+```bash
+mkdir -p config auth
+cp configs/base_config.yaml config/config.yaml
+docker compose -f deploy/compose.writable.yaml up -d --build
 ```
 
-修改容器监听端口时，推荐只改一次 `SUBCONVERTER_LISTEN`。主服务和内置 `-healthcheck` 都会按相同优先级解析监听地址：显式 `-listen` > `SUBCONVERTER_LISTEN` > `:8080`。
+`SUBCONVERTER_TOKEN` 只保护 `/generate` 客户端订阅访问；Web 管理后台使用管理员账号和 `session_id` Cookie。首次 setup 需要 `SUBCONVERTER_SETUP_TOKEN`，生产环境应改掉示例中的默认值。
 
 ### 预编译二进制
 
@@ -133,6 +108,9 @@ make build
 | `-cache-ttl`    | `5m`       | 订阅和模板缓存的 TTL                                                                        |
 | `-timeout`      | `30s`      | 拉取订阅的 HTTP 超时时间                                                                    |
 | `-access-token` | _空_       | `/generate` 访问 token；未显式传入时可由 `SUBCONVERTER_TOKEN` 提供                          |
+| `-auth-state`   | 系统配置目录 | 管理员密码哈希与 session 状态文件；未显式传入时可由 `SUBCONVERTER_AUTH_STATE` 提供          |
+| `-setup-token`  | 自动生成   | 首次 setup bootstrap token；未显式传入时可由 `SUBCONVERTER_SETUP_TOKEN` 提供                |
+| `-cors`         | `false`    | 仅本地开发调试使用；生产 Compose 通过 `web` 同源反代，不需要 CORS                           |
 | `-healthcheck`  |            | 按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 探活并退出 |
 | `-version`      |            | 打印版本信息并退出                                                                          |
 

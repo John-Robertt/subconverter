@@ -42,8 +42,8 @@
 | `GET/POST /api/generate/preview` | 当前可用 | M7 | 是 | 页面内生成预览，不设置下载响应头。 |
 | `GET /api/generate/link` | 当前可用 | M7 | 是 | 已登录后台中由服务端生成客户端订阅链接；前端复制确认流仍属 M10。 |
 | `GET /api/status` | 当前可用 | M7 | 是 | 系统状态、配置 revision、dirty 状态。 |
-| Web 管理后台正式 SPA | 设计中 | M9-M10 | 否 | 当前 `web/` 是可静态托管的设计原型，不是已接入后端的正式后台。 |
-| `api + web` Docker Compose 生产部署 | 设计中 | M8-M10 | 否 | 当前可作为部署设计示例参考；正式 Web 反代与前端集成仍待 M8-M10。 |
+| Web 管理后台正式 SPA | 设计中 | M9-M10 | 否 | 当前 `web/` 是 M8 Vite SPA 骨架；完整配置编辑、预览和生成页面待 M9-M10。 |
+| `api + web` Docker Compose 生产部署 | 当前可用 | M8 | 是 | M8 Compose 示例、Web 镜像、SPA fallback 与 nginx 同源反代已通过验收；完整 Web 页面功能仍待 M9-M10。 |
 
 状态定义：
 

@@ -17,6 +17,11 @@ coverage.html
 go.work
 go.work.sum
 
+# Web workspace
+web/node_modules/
+web/dist/
+web/coverage/
+
 # IDE / editor
 .idea/
 .vscode/

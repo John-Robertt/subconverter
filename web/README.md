@@ -1,31 +1,45 @@
-# subconverter-go Admin
+# subconverter Admin
 
-## 快速开始
+本目录是 v2.0 Web 管理后台的正式前端工程。M8 阶段交付 Vite + React + TypeScript 骨架、nginx 静态托管和 Docker Compose 同源反向代理；完整页面和业务工作流在 M9/M10 继续实现。
+
+## 开发
 
 ```bash
-open "subconverter Admin.html"
-# 或
-python3 -m http.server 8000
+npm ci
+npm run dev
 ```
 
-无需任何构建工具，浏览器直接打开。
+Vite dev server 默认监听 `localhost:5173`，并把 `/api/*`、`/generate`、`/healthz` 代理到 `http://localhost:8080`。后台登录依赖同源 Cookie，本地调试时优先通过该 proxy 访问后端。
 
-## Docker 预览
-
-`web/Dockerfile` 用于 v2.0 的生产 Web 容器。当前目录还是设计原型时，镜像会把原型文件静态托管起来；后续接入正式 Vite 工程后，同一个 Dockerfile 会执行 `npm run build` 并用 nginx 托管 `dist/`。
+## 验证
 
 ```bash
+npm test
+npm run build
 docker build -t subconverter-web .
-docker run --rm -p 8080:80 subconverter-web
 ```
 
-## 看什么
+`npm test` 在 M8 只覆盖最小 SPA 路由烟测；正式页面组件、API client 和工作流测试归属 M9/M10。
 
-- **设计画布** 列出 13 个核心页面（订阅来源 / 过滤器 / 分组 / 路由 / 规则集 / 内联规则 / 其他配置 / 校验 / 节点预览 / 分组预览 / 生成下载 / 系统状态）
-- **Tweaks 面板**（右上角切换）
-  - 演示状态：在 A1 订阅来源 / A8 校验上叠加 5 种交互模式（Modal / Toast 成功 / Toast 失败 / 校验中 / 保存中 / 删除确认 / 校验 Drawer）
-  - 主题：浅色 / 深色
-  - 强调色：6 个预设色板
+## 生产容器
+
+`web/Dockerfile` 使用 Node 22 执行 `npm ci` 和 `npm run build`，再用 nginx 托管 `dist/`。`web/nginx.conf` 负责：
+
+- `/` 和前端路由：静态资源与 SPA fallback
+- `/api/*`：反向代理到 `api:8080`
+- `/generate`：反向代理到 `api:8080`
+- `/healthz`：反向代理到 `api:8080`
+
+生产 Compose 示例位于仓库根目录的 `deploy/`：
+
+```bash
+docker compose -f deploy/compose.readonly.yaml up -d --build
+docker compose -f deploy/compose.writable.yaml up -d --build
+```
+
+## 原型
+
+旧高保真原型已迁移到 `web/prototype/`，仅作为视觉和交互参考，不参与正式 Vite 构建，也不会被 Web 镜像复制。
 
 ## 文档
 
@@ -35,34 +49,4 @@ docker run --rm -p 8080:80 subconverter-web
 | [docs/product.md](docs/product.md) | 产品目标、范围和非目标 |
 | [docs/pages.md](docs/pages.md) | 页面、路由、数据来源和页面状态 |
 | [docs/workflows.md](docs/workflows.md) | 草稿、保存、reload、revision 和 dirty 工作流 |
-
-## 文件结构
-
-```
-subconverter Admin.html       入口
-├ app.jsx                     主入口（assemble）
-├ direction-b.jsx             Shell + 通用组件 + Sources
-├ screens-config.jsx          A2–A7 编辑页
-├ screens-runtime.jsx         A8 / B 区 / C 区
-├ interaction-layer.jsx       state-driven 交互覆盖层
-├ demos-modal.jsx             Modal/Drawer/Confirm 组件
-├ demos-feedback.jsx          Toast/Spinner 组件
-├ mock-data.jsx               节点 / 分组 / 路由 mock
-├ mock-data-extra.jsx         校验 / 热重载 mock
-├ design-canvas.jsx           设计画布
-└ tweaks-panel.jsx            Tweaks 面板
-docs/                         正式 Web 契约文档
-```
-
-## 锁定的交互模式
-
-| 场景                   | 模式                                     |
-| ---------------------- | ---------------------------------------- |
-| 添加订阅 / 复杂表单    | 居中 Modal                               |
-| 保存成功               | 右下绿色 Toast（4s 自动消失）            |
-| 保存失败               | 右下红色 Toast（不消失，必带"查看详情"） |
-| 校验中 / 保存中        | 顶栏按钮 Spinner 替换 + 禁用             |
-| 删除订阅等不可撤销操作 | 居中红色确认弹窗                         |
-| 校验报错跳修           | 右侧 Drawer 直接编辑字段                 |
-
-正式交互契约见 [docs/interaction.md](docs/interaction.md)。
+| [docs/frontend-architecture.md](docs/frontend-architecture.md) | 前端架构、状态边界和 API client 约束 |
