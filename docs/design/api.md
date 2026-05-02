@@ -119,7 +119,7 @@
 4. JSON 反序列化为 `Config`
 5. 执行 `Prepare` 校验
 6. 校验通过 → 序列化为 YAML → 写入同目录临时文件 → 原子 rename 覆盖原配置文件 → 重新计算新的 `config_revision` → 同步更新 `app.Service` 内缓存的 `config_revision` → 返回新的 `config_revision`
-7. 校验失败 → 不写入，返回 `400` + 结构化错误
+7. 校验失败 → 不写入，返回 `400` + `ValidateResult`（`valid=false`）
 
 成功响应：
 
@@ -132,7 +132,28 @@
 错误响应：
 
 - `400`：缺少 `config_revision`、请求 JSON 无法解析，或校验失败
-- `409`：只读配置源、本地文件不可写，或 `config_revision` 与当前文件不一致
+- `409`：只读配置源、本地文件不可写，或 `config_revision` 与当前文件不一致；响应必须携带可分流的 `error.code`
+
+配置语义校验失败响应体与 `POST /api/config/validate` 复用同一结构，但 HTTP 状态为 `400`：
+
+```json
+{
+  "valid": false,
+  "errors": [],
+  "warnings": [],
+  "infos": []
+}
+```
+
+缺少字段、请求 JSON 无法解析、只读配置源、文件不可写和 revision 冲突等非配置语义错误继续使用 `{ "error": { ... } }` 响应体。
+
+409 错误码：
+
+| code | 场景 |
+|------|------|
+| `config_revision_conflict` | 请求 revision 与当前配置源 revision 不一致 |
+| `config_source_readonly` | 当前配置源是 HTTP(S) URL 等只读来源 |
+| `config_file_not_writable` | 本地配置文件或所在目录不可写 |
 
 revision 冲突响应示例：
 
@@ -149,12 +170,14 @@ revision 冲突响应示例：
 说明：
 
 - 仅本地文件配置源支持 `PUT /api/config`
-- 当 `-config` 是 HTTP(S) URL，或本地文件权限不可写时，返回 `409`，不尝试写入
+- 当 `-config` 是 HTTP(S) URL，返回 `409 config_source_readonly`，不尝试写入
+- 当本地文件或所在目录不可写时，返回 `409 config_file_not_writable`，不尝试写入
 - `PUT /api/config` 仅写回文件，不自动触发热重载
 - 前端需在保存后显式调用 `POST /api/reload` 使新配置生效
 - YAML 写回可能改变格式细节并丢失原始文件中的注释
 - 本地可写配置源首次保存前，Web UI 必须弹出确认，提示注释、引号和格式风格可能丢失；`PUT /api/config` 成功响应只返回新的 `config_revision`
-- 多标签页、外部编辑器或 GitOps 进程改写配置时，revision 校验会阻止后台静默覆盖外部修改
+- `config_revision` 是乐观并发令牌，用于防止旧页面或旧 revision 静默覆盖已观测到的新配置；它不提供外部多写者的线性一致性保证
+- 多标签页、外部编辑器或 GitOps 进程在保存前已改写配置时，revision 校验会拒绝陈旧请求；若外部进程恰好在 revision 比对和 `rename` 之间改写文件，当前单用户设计不额外加文件锁或备份
 
 ### `POST /api/config/validate`
 
@@ -165,7 +188,7 @@ revision 冲突响应示例：
 - 本接口只执行 JSON 反序列化与 `Prepare` 阶段校验
 - 本接口不拉取订阅、不执行 Source / Filter / Group / Route / Target / Render
 - 因此它能提前发现字段、正则、URL 基本格式、命名冲突、跨段引用和环路等静态问题
-- 它不能发现远程源不可用、远程源为空、过滤后组为空、目标格式级联过滤后 fallback 清空等生成期问题
+- 它不能发现订阅/Snell/VLESS 来源不可用、远程来源为空、过滤后组为空、目标格式级联过滤后 fallback 清空等生成期问题
 - 生成可用性由 `POST /api/preview/nodes`、`POST /api/preview/groups` 和 `POST /api/generate/preview?format=...` 覆盖
 
 请求体：
@@ -173,12 +196,42 @@ revision 冲突响应示例：
 - `Content-Type: application/json`
 - Body：`{ "config": { ... } }`，与 `PUT /api/config` 的 `config` 字段结构一致；校验作用于 `config` 键下的完整配置 JSON
 
-成功响应：`200`，Body 为校验结果 JSON：
+响应语义：
+
+- `200`：请求体形状合法，Body 为校验结果 JSON；配置语义无效时也返回 `200`，但 `valid=false` 且 `errors` 非空
+- `400`：请求 JSON 无法解析、缺少 `config` 字段，或 `config` 字段不是对象
+
+有效配置响应示例：
 
 ```json
 {
   "valid": true,
   "errors": [],
+  "warnings": [],
+  "infos": []
+}
+```
+
+无效配置响应示例（HTTP 状态仍为 `200`）：
+
+```json
+{
+  "valid": false,
+  "errors": [
+    {
+      "severity": "error",
+      "code": "invalid_regex",
+      "message": "正则表达式无效：...",
+      "display_path": "groups.🇭🇰 Hong Kong.match",
+      "locator": {
+        "section": "groups",
+        "key": "🇭🇰 Hong Kong",
+        "index": 0,
+        "value_path": "match",
+        "json_pointer": "/config/groups/0/value/match"
+      }
+    }
+  ],
   "warnings": [],
   "infos": []
 }
@@ -231,7 +284,7 @@ revision 冲突响应示例：
 1. 读取配置源（`LoadConfig`；本地文件或 HTTP(S) URL）
 2. 执行 `Prepare` 校验
 3. 校验通过 → `WLock` 替换 `RuntimeConfig` 指针，同时将重读主配置源得到的 `config_revision`（`sha256:<hex>`）写入 `runtime_config_revision`，此后 `GET /api/status` 的 `config_dirty` 变为 `false` → 返回 `200`
-4. 校验失败 → 不替换，返回 `400` + 与 `POST /api/config/validate` 相同结构的静态诊断
+4. 校验失败 → 不替换，返回 `400` + `ValidateResult` 结构的静态诊断（与 `POST /api/config/validate` 的 Body 结构一致，但 HTTP 状态不同）
 
 成功响应：
 
@@ -242,13 +295,15 @@ revision 冲突响应示例：
 }
 ```
 
-并发行为：同一时刻只允许一次 reload 操作。若 reload 正在执行时收到第二个 `POST /api/reload` 请求，立即返回 `429 Too Many Requests`，不排队等待。
+边界：reload 只执行 `LoadConfig + Prepare`，不拉取订阅/Snell/VLESS 来源，不执行 Source / Filter / Group / Target / Render，因此不证明生成一定可用。订阅源不可用、过滤后空组、目标格式级联过滤和渲染错误由预览或生成路径发现。
+
+并发行为：同一时刻只允许一次 reload 操作。若 reload 正在执行时收到第二个 `POST /api/reload` 请求，立即返回 `429 Too Many Requests`，不排队等待。429 响应不携带 `Retry-After` header；客户端应短间隔退避后重试，避免循环重放请求。
 
 错误响应：
 
 - `400`：配置校验失败（静态诊断）
-- `429`：另一个 reload 正在执行中
-- `502`：远程配置拉取失败
+- `429`：另一个 reload 正在执行中（不携带 `Retry-After`）
+- `502`：远程主配置源拉取失败（仅当 `-config` 为 HTTP(S) URL 时；不表示订阅源拉取失败）
 
 ---
 
@@ -292,7 +347,7 @@ revision 冲突响应示例：
 
 用途：基于前端编辑中的草稿配置预览节点列表，响应结构与 `GET /api/preview/nodes` 相同。
 
-注意：此端点会实际拉取草稿配置中的全部订阅 URL。如果草稿包含新增来源且不在 TTL 缓存中，响应时间受上游网络影响（通常 10-30s）。前端应显示"正在拉取订阅..."等明确提示，而非仅显示 spinner。
+注意：此端点会实际拉取草稿配置中的全部订阅 URL。如果草稿包含新增来源且不在 TTL 缓存中，响应时间受上游网络影响（通常 10-30s）。前端应显示"正在拉取订阅..."等明确提示，而非仅显示 spinner。订阅拉取超时继承 `-timeout` 参数（默认 30s）；超时返回 `502`（`FetchError`），与配置校验失败的 `400` 可通过 HTTP 状态码区分。
 
 请求体：
 
@@ -445,11 +500,13 @@ revision 冲突响应示例：
 
 本节描述 v2.0 目标错误语义。当前 v1.0 `/generate` 已可用，但仍将所有 `TargetError` 映射为 `500`；v2.0 实现 M7 时会把可归因于用户配置的 fallback 清空错误调整为 `400`，内部投影不变量错误继续保持 `500`。
 
+例外：`POST /api/config/validate` 是校验查询接口，请求体合法但配置语义无效时返回 `200 valid=false`；下表中的“配置语义 / 图校验失败”适用于 `PUT /api/config`、`POST /api/reload`、预览和生成路径。
+
 | 状态码 | 场景 |
 |------|------|
 | `400` | 请求参数非法；配置语义 / 图校验失败；热重载校验失败；目标格式级联过滤导致 fallback 清空 |
-| `401` | 缺少 token，或 token 不匹配 |
-| `409` | 当前配置源不支持该操作；配置 revision 冲突 |
+| `401` | 缺少 token、token 不匹配，或 Admin API 默认鉴权要求未配置 token |
+| `409` | 当前配置源不支持该操作、本地配置文件不可写，或配置 revision 冲突 |
 | `429` | reload 操作正在执行中，拒绝并发 reload 请求 |
 | `502` | 远程资源拉取失败，或远程订阅内容不可用 |
 | `500` | 本地资源读取失败、内部投影不变量失败，或内部处理 / 渲染失败 |
@@ -457,7 +514,7 @@ revision 冲突响应示例：
 错误响应格式：
 
 - `/generate`：`text/plain; charset=utf-8`，中文纯文本
-- `/api/*`：`application/json`，结构化 JSON（含 `error` / `errors` 字段）
+- `/api/*`：`application/json`，结构化 JSON（含 `error` / `errors` 字段）；单错误响应的 `error.code` 必须稳定可测试，供前端区分 409 等同状态码下的不同行为
 
 ---
 
@@ -466,8 +523,18 @@ revision 冲突响应示例：
 - 所有 `/api/*` 和 `/generate` 共享同一 token 值
 - `/api/*` 仅通过 `Authorization: Bearer ...` header 传递 token；后台 SPA 不把 token 放入 API query
 - `/generate` 继续支持 `token=...` query 参数，用于 Clash / Surge 订阅链接兼容；也可接受 `Authorization: Bearer ...` header 供浏览器内下载调用
-- 服务端未配置 token 时（`-access-token` 为空），所有请求免鉴权
+- `/generate` 保持 v1.0 兼容：服务端未配置 token 时（`-access-token` 为空），`/generate` 不启用鉴权
+- `/api/*` 默认要求服务端配置 token；当 `-access-token` 为空且未显式允许无鉴权 Admin 时，返回 `401 admin_auth_required`
+- 若用户确认部署在本机或受信网络中，可通过 `-allow-unauthenticated-admin` 或 `SUBCONVERTER_ALLOW_UNAUTHENTICATED_ADMIN=true` 显式允许 `/api/*` 无鉴权访问；该开关只影响 `/api/*`，不改变 `/generate` 兼容语义
 - 前端复制订阅链接时，必须显式确认是否把当前 token 写入 query 参数
+
+`/api/*` 的 401 错误码：
+
+| code | 场景 |
+|------|------|
+| `token_required` | 服务端已配置 token，但请求缺少 `Authorization: Bearer ...` |
+| `token_invalid` | 请求 token 与服务端 token 不匹配 |
+| `admin_auth_required` | 服务端未配置 token，且未显式开启无鉴权 Admin |
 
 ---
 
@@ -489,12 +556,13 @@ revision 冲突响应示例：
 - `-listen`：HTTP 监听地址（默认 `:8080`）
 - `-cache-ttl`：订阅、模板和远程配置的缓存 TTL（默认 `5m`）
 - `-timeout`：拉取订阅的 HTTP 超时时间（默认 `30s`）
-- `-access-token`：为全部接口启用访问 token（默认空 = 不鉴权）
+- `-access-token`：访问 token。对 `/generate`，空值表示不鉴权；对 `/api/*`，空值默认返回 `401 admin_auth_required`，除非显式允许无鉴权 Admin
+- `-allow-unauthenticated-admin`：允许 `/api/*` 在未配置 token 时无鉴权访问（默认 `false`，仅适合本机或受信网络）
 - `-cors`：启用 CORS 中间件（默认 `false`，仅开发模式使用）
 - `-healthcheck`：健康检查模式
 - `-version`：打印版本信息
 
-环境变量：`SUBCONVERTER_LISTEN`、`SUBCONVERTER_TOKEN`、`SUBCONVERTER_CORS`
+环境变量：`SUBCONVERTER_LISTEN`、`SUBCONVERTER_TOKEN`、`SUBCONVERTER_ALLOW_UNAUTHENTICATED_ADMIN`、`SUBCONVERTER_CORS`
 
 ---
 

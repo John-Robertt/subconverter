@@ -261,7 +261,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 > **触及时行动**：若用户反馈注释丢失影响过大 → 评估 `yaml.Node` 级 patch-merge 方案（见 `docs/architecture.md` 局限 #5）。
 
 - **现象**：`PUT /api/config` 通过 `yaml.Marshal` 写回，不保留原始注释和格式风格
-- **缓解**：首次写回时自动备份为 `config.yaml.bak`
+- **缓解**：Web UI 在本地可写配置源首次保存前弹出确认，提示注释、引号和格式风格可能丢失；后端不自动创建 `.bak` 文件
 
 ---
 

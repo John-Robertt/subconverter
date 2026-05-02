@@ -29,11 +29,12 @@ docker run --rm -p 8080:80 subconverter-web
 
 ## 文档
 
-| 文件                                       | 说明                                             |
-| ------------------------------------------ | ------------------------------------------------ |
-| [docs/PRD.md](docs/PRD.md)                 | 产品需求：场景、信息架构、功能模块、交互模式锁定 |
-| [docs/Design-Spec.md](docs/Design-Spec.md) | 设计 Tokens、组件库、交互规范                    |
-| [docs/Dev-Guide.md](docs/Dev-Guide.md)     | 工程结构、运行调试、扩展指南、接入真实后端       |
+| 文件 | 说明 |
+|------|------|
+| [docs/README.md](docs/README.md) | 正式 v2.0 Web 管理后台文档契约入口 |
+| [docs/product.md](docs/product.md) | 产品目标、范围和非目标 |
+| [docs/pages.md](docs/pages.md) | 页面、路由、数据来源和页面状态 |
+| [docs/workflows.md](docs/workflows.md) | 草稿、保存、reload、revision 和 dirty 工作流 |
 
 ## 文件结构
 
@@ -50,7 +51,7 @@ subconverter Admin.html       入口
 ├ mock-data-extra.jsx         校验 / 热重载 mock
 ├ design-canvas.jsx           设计画布
 └ tweaks-panel.jsx            Tweaks 面板
-docs/                         三份文档
+docs/                         正式 Web 契约文档
 ```
 
 ## 锁定的交互模式
@@ -64,4 +65,4 @@ docs/                         三份文档
 | 删除订阅等不可撤销操作 | 居中红色确认弹窗                         |
 | 校验报错跳修           | 右侧 Drawer 直接编辑字段                 |
 
-详见 PRD 第 5 节。
+正式交互契约见 [docs/interaction.md](docs/interaction.md)。

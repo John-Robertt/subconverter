@@ -18,8 +18,10 @@
 | 配置校验的三层边界与错误码 | `design/validation.md` |
 | 远程资源拉取的缓存策略 | `design/caching.md` |
 | Web 管理后台的前端页面设计与交互 | `design/web-ui.md` |
+| Web 管理后台正式前端契约 | `../web/docs/README.md` |
 | 怎么构建/部署/Docker Compose | `deployment.md` |
 | v2.0 各里程碑的工作项与验收标准 | `implementation/implementation-plan.md` |
+| v2.0 当前开发进度、证据、已知限制 | `implementation/progress.md` |
 | Go 代码目录布局与包依赖约束 | `implementation/project-structure.md` |
 | 测试编号体系与覆盖策略 | `implementation/testing-strategy.md` |
 | v1.0 归档设计 | `v1.0/` |
@@ -44,4 +46,3 @@
 
 - **当前可用**：当前代码和发布产物已经提供的能力。
 - **设计中**：本文档锁定的 v2.0 目标契约，需等对应里程碑实现和验收后才可作为生产能力使用。
-

@@ -36,8 +36,9 @@ internal/admin ──► internal/app ──► internal/config
 func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, error)
 
 // SaveConfig 基于 config_revision 做条件写回。
-// 仅本地可写配置源支持；HTTP(S) 配置源返回 ErrNotWritable(409)。
-// revision 冲突返回 ErrRevisionConflict(409)。
+// 仅本地可写配置源支持；HTTP(S) 配置源返回 ErrConfigSourceReadonly(409)。
+// 本地文件或所在目录不可写返回 ErrConfigFileNotWritable(409)。
+// revision 冲突返回 RevisionConflictError(409)，并携带当前 revision。
 // 写回成功后不自动 reload。
 // 用于 PUT /api/config。
 func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*SaveConfigResult, error)
@@ -104,8 +105,11 @@ func (s *Service) GenerateFromDraft(ctx context.Context, format string, configJS
 ### 系统状态
 
 ```go
-// Status 返回系统运行状态，不读取配置锁。
-// 本地配置源每次重算 sha256；HTTP(S) 配置源不主动拉取远程。
+// Status 返回系统运行状态。
+// 只在 RLock 内复制 runtime_config_revision、config_loaded_at、
+// last_reload 和远程配置最近观测 revision 等内存态。
+// 本地配置源的 sha256 在释放锁后重新读取文件计算；
+// HTTP(S) 配置源不主动拉取远程。
 // 用于 GET /api/status。
 func (s *Service) Status(ctx context.Context) (*StatusResult, error)
 ```
@@ -310,26 +314,35 @@ DiagnosticItem{Locator:{Section:"groups", Key:"🇭🇰 Hong Kong", Index:0, Val
 
 错误类型约定：
 
-| 错误类型 | 定义位置 | 判断方式 | HTTP 状态码 |
-|----------|---------|----------|------------|
+| 错误类型 | 定义位置 | 判断方式 | HTTP 状态 / code |
+|----------|---------|----------|------------------|
 | `*errtype.ConfigError` | `internal/errtype` | `errors.As` | 400 |
-| `errtype.ErrNotWritable` | `internal/errtype`（sentinel） | `errors.Is` | 409 |
-| `errtype.ErrRevisionConflict` | `internal/errtype`（sentinel） | `errors.Is` | 409 |
+| `*errtype.RevisionConflictError` | `internal/errtype` | `errors.As` | `409 config_revision_conflict` |
+| `errtype.ErrConfigSourceReadonly` | `internal/errtype`（sentinel） | `errors.Is` | `409 config_source_readonly` |
+| `errtype.ErrConfigFileNotWritable` | `internal/errtype`（sentinel） | `errors.Is` | `409 config_file_not_writable` |
 | `errtype.ErrReloadInProgress` | `internal/errtype`（sentinel） | `errors.Is` | 429 |
 | `*errtype.FetchError` | `internal/errtype` | `errors.As` | 502 |
 | `*errtype.BuildError` / `*errtype.TargetError` / `*errtype.RenderError` | `internal/errtype` | `errors.As` | 400/500（按 `validation.md` 映射） |
+
+revision 冲突需要携带当前配置源 revision，供 `PUT /api/config` 的 `409 config_revision_conflict` 响应返回 `current_config_revision`：
+
+```go
+type RevisionConflictError struct {
+    CurrentConfigRevision string
+}
+```
 
 sentinel error 定义形式：
 
 ```go
 var (
-    ErrNotWritable      = errors.New("config source is not writable")
-    ErrRevisionConflict = errors.New("config revision conflict")
-    ErrReloadInProgress = errors.New("reload already in progress")
+    ErrConfigSourceReadonly  = errors.New("config source is read-only")
+    ErrConfigFileNotWritable = errors.New("config file is not writable")
+    ErrReloadInProgress      = errors.New("reload already in progress")
 )
 ```
 
-选择 sentinel error 而非结构体的理由：这三个错误不需要携带额外字段信息，且 `errors.Is` 比 `errors.As` 更轻量。
+只读配置源、文件不可写和 reload 互斥不需要携带额外字段信息，使用 sentinel error；revision 冲突需要携带当前 revision，使用结构体错误。
 
 `admin` 对 sentinel error 使用 `errors.Is`，对结构化错误使用 `errors.As`，不解析错误消息字符串。
 
@@ -339,12 +352,14 @@ var (
 
 `app.Service` 内部持有 `sync.RWMutex`：
 
-- 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`、`Status`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
+- 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
+- `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 由响应中的 `config_revision != runtime_config_revision` 计算
 - 写路径（`Reload`）：`WLock` 只保护指针替换，不包含 `LoadConfig` / `Prepare` / I/O
 - 慢速订阅拉取、模板加载和渲染不持有配置锁
 - `SaveConfig` 的原子写回使用临时文件 + `os.Rename`，与配置锁独立
 - Reload 互斥：`app.Service` 内部持有独立的 `reloadMu sync.Mutex`。`Reload` 入口处 `TryLock`，失败时返回 `ErrReloadInProgress`（`admin` 映射为 429）。此锁独立于 `RWMutex`，不影响读路径
-- `SaveConfig` 的 revision 检查依赖文件系统原子性（`os.Rename`），不使用进程内锁保护 check-then-write 序列。理论上存在 TOCTOU 窗口（外部进程在 revision 比对和 rename 之间修改文件），但单用户场景下该窗口极窄且可接受
+- `SaveConfig` 使用 `config_revision` 作为乐观并发令牌，目标是防止旧页面、旧标签页或旧 revision 覆盖已经观测到的新配置；它不承诺外部多写者线性一致
+- `SaveConfig` 的 revision 检查依赖文件系统原子性（`os.Rename`），不使用额外文件锁保护 check-then-write 序列。理论上存在 TOCTOU 窗口（外部进程在 revision 比对和 rename 之间修改文件），但单用户场景下该窗口极窄且可接受；若未来明确支持 GitOps 多写者并发写入，再引入文件锁、rename 前重检或备份策略
 
 ---
 

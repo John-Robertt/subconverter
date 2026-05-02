@@ -37,7 +37,8 @@ v2.0 在 v1.0 核心管道基础上新增：
 
 - `POST /api/preview/*` 接受草稿配置中的任意订阅 URL 并实际拉取——这是设计意图（允许用户预览新增来源的效果），而非安全疏忽
 - `/generate?token=...` 的 token 会出现在 URL 中（nginx access log、浏览器历史记录等），使用者应知悉此泄漏路径；同理，若 `-config` 参数是含 token 的私有远程 URL（如 GitHub Raw `?token=...`），该 URL 同样可能出现在 nginx access log 或进程日志中
-- 建议生产部署始终通过 `-access-token` 开启鉴权；未配置 token 时所有接口无访问控制
+- 建议生产部署始终通过 `-access-token` 开启鉴权；`/api/*` 默认要求配置 token，若未配置 token 且未显式开启 `-allow-unauthenticated-admin`，Admin API 返回 `401 admin_auth_required`
+- `-allow-unauthenticated-admin` / `SUBCONVERTER_ALLOW_UNAUTHENTICATED_ADMIN=true` 只适合本机或受信网络；该开关只影响 `/api/*`，`/generate` 继续保留未配置 token 时免鉴权的 v1.0 兼容语义
 - 本系统不提供 rate limiting、IP 白名单或 RBAC——若需要这些能力，由前置反向代理（nginx、Cloudflare Tunnel 等）承担
 
 ---
@@ -312,7 +313,7 @@ Web 管理后台
 | **Admin API 前缀** | `/api/*` | 与 `/generate` 平行，不冲突 |
 | **YAML 真相源** | UI 是 YAML 的可视化外壳 | 数据一致性，修改可追溯 |
 | **配置源写入边界** | 本地文件可写，HTTP(S) 配置只读 | 远程配置源无法可靠写回，需显式暴露能力 |
-| **条件写回** | `config_revision = sha256:<hex>` | 避免多标签页或外部进程静默覆盖配置 |
+| **条件写回** | `config_revision = sha256:<hex>` | 乐观并发令牌，防止旧页面或旧 revision 覆盖已观测到的新配置；不承诺外部多写者线性一致 |
 | **应用服务边界** | `admin -> app -> pipeline/generate` | HTTP 层保持薄边界，管道编排不泄漏到 handler |
 
 ---
@@ -357,6 +358,15 @@ Web 管理后台
 - **缓解**：Web UI 在本地可写配置源首次保存前弹出确认，明确提示注释、引号和格式风格可能丢失；用户确认后才发起 `PUT /api/config`
 - **API 契约**：`PUT /api/config` 成功响应保持 `{ "config_revision": "sha256:<hex>" }`，不承担自动备份或 warning 响应语义
 - **长期方案（未实施）**：用 `yaml.Node` 级 patch-merge 策略替代全量 Marshal——在 AST 层只替换变更的节点，保留其余注释和格式。复杂度显著上升，当前规模下不必处理
+
+### 6. 用户正则表达式无执行复杂度限制
+
+> **触及时行动**：若用户反馈正则匹配导致请求明显变慢 → 先用 profiling 确认瓶颈，再考虑限制节点名长度/节点数量、为请求路径增加超时或取消传播。
+
+- **现象**：`groups[].match`、`filters.exclude`、`relay_through.match` 的正则由用户输入，`Prepare` 阶段仅校验"是否可编译"，不限制匹配时的输入规模
+- **影响**：Go 标准库 `regexp` 使用 RE2 引擎，匹配时间随输入规模线性增长，不存在典型指数回溯 ReDoS；但在节点数量或节点名极大时，Filter/Group 阶段仍可能出现可感知延迟
+- **缓解**：当前保持标准库 `regexp`，避免引入新正则引擎；若出现真实慢请求，优先用输入规模限制、请求级超时/取消和 profiling 定位处理
+- **当前判断**：单用户工具，攻击面有限。无需为尚未验证的性能风险增加外部依赖或替换正则语义
 
 ---
 

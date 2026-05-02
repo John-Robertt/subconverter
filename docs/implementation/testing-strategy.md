@@ -82,19 +82,47 @@
 建议覆盖：
 
 - `T-ADM-001`：Config CRUD round-trip（`GET → PUT → GET` 幂等）
-- `T-ADM-002`：PUT 非法配置返回 400 + 结构化错误，诊断项包含 `code`、`display_path` 和 `locator.json_pointer`
-- `T-ADM-003`：Validate 返回 errors / warnings / infos 三级结构，且只执行 JSON 反序列化与 `Prepare` 静态校验
+- `T-ADM-002`：PUT 配置语义校验失败返回 400 + `ValidateResult`（`valid=false`），诊断项包含 `code`、`display_path` 和 `locator.json_pointer`
+- `T-ADM-003`：Validate 请求体合法时始终返回 200；配置无效返回 `valid=false` + errors / warnings / infos，JSON 无法解析、缺少 `config` 或 `config` 非对象返回 400
 - `T-ADM-004`：Reload 成功路径（新 RuntimeConfig 生效）
 - `T-ADM-005`：Reload 失败路径（旧 RuntimeConfig 不变）
-- `T-ADM-006`：慢速生成/预览请求不持有配置读锁，不阻塞 reload 指针替换
-- `T-ADM-007`：保序字段 JSON round-trip 顺序不变
-- `T-ADM-008`：HTTP(S) 配置源下 `PUT /api/config` 返回 409，且不尝试写回远端
+- `T-ADM-006`：慢速 `/generate` 请求不持有配置读锁，不阻塞 reload 指针替换
+- `T-ADM-007`：保序字段 JSON round-trip 顺序不变，覆盖 `groups` / `routing` / `rulesets`、`sources.fetch_order` 和 `rules`；`sources.fetch_order` 同时覆盖缺失/空值默认、完整排列、重复值、未知值和缺项
+- `T-ADM-008`：HTTP(S) 配置源下 `PUT /api/config` 返回 `409 config_source_readonly`，且不尝试写回远端
 - `T-ADM-009`：`GET /api/config` 返回 `config_revision=sha256:<hex>`
 - `T-ADM-010`：`PUT /api/config` 缺少 revision 返回 400，revision 冲突返回 `409 config_revision_conflict` 且不写入
 - `T-ADM-011`：远程主配置 URL 在 TTL 未过期时执行 reload 仍读取最新内容
-- `T-ADM-012`：`/api/*` 接受 `Authorization: Bearer ...`，query token 仅对 `/generate` 兼容路径生效
+- `T-ADM-012`：`/api/*` 仅接受 `Authorization: Bearer ...`；未配置 token 且未开启 `allow-unauthenticated-admin` 时返回 `401 admin_auth_required`，开启后允许无鉴权 Admin；query token 仅对 `/generate` 兼容路径生效
 - `T-ADM-013`：`internal/admin` 不直接依赖 `internal/pipeline` 或 `internal/model`
 - `T-ADM-014`：诊断定位对含空格、点号或 emoji 的 `groups` / `routing` / `rulesets` key 仍稳定，前端可通过 `locator.index` / `locator.json_pointer` 定位
+- `T-ADM-015`：`groups` 为空时 `POST /api/config/validate` 返回 `200 valid=false` + 结构化配置诊断；`PUT /api/config` / `POST /api/reload` 返回 400，不允许保存或重载为有效配置
+- `T-ADM-016`：本地配置文件或目录不可写时 `PUT /api/config` 返回 `409 config_file_not_writable`，且不覆盖原配置
+
+---
+
+## 热重载测试（v2.0）
+
+建议覆盖：
+
+- `T-RLD-001`：并发 reload 互斥——第二个 `POST /api/reload` 在前一个执行中时立即返回 429，不排队等待
+- `T-RLD-002`：reload 期间生成请求不阻塞——慢速 `/generate` 请求不持有配置读锁，不阻塞 reload 获取写锁
+- `T-RLD-003`：reload 失败后旧 RuntimeConfig 不变——`Prepare` 校验失败返回错误，后续 `/generate` 仍使用旧配置生成
+- `T-RLD-004`：reload 成功后新请求使用新配置——`POST /api/reload` 成功返回后，后续 `/generate` 使用新 RuntimeConfig
+- `T-RLD-005`：reload 成功前已取得快照的请求继续使用旧配置完成——不发生中途切换
+- `T-RLD-006`：reload 成功后 `GET /api/status` 的 `runtime_config_revision` 更新，`config_dirty` 变为 `false`
+- `T-RLD-007`：远程主配置源读取失败时 reload 返回 502，旧 RuntimeConfig 不变，`config_dirty` 不被错误清除
+- `T-RLD-008`：reload 429 后锁状态可恢复——当前 reload 完成后，后续重试可以成功进入 reload 流程
+- `T-RLD-009`：reload 不拉取订阅/Snell/VLESS 来源；订阅源不可用不影响 reload 成功，但会由预览或生成路径返回对应错误
+
+---
+
+## 缓存契约测试（v2.0）
+
+建议覆盖：
+
+- `T-CCH-001`：远程主配置 reload 会 invalidate / bypass 该配置 URL 的未过期缓存
+- `T-CCH-002`：reload 不主动 invalidate 订阅和模板缓存，未过期条目继续命中
+- `T-CCH-003`：订阅 URL 变更后使用新 URL 作为缓存键；旧 URL 过期后不再命中，但测试不依赖后台主动清理
 
 ---
 
@@ -111,8 +139,9 @@
 - `T-PRV-007`：POST 草稿 generate preview 输出草稿配置结果，不改变 `config_dirty`、`last_reload` 或 RuntimeConfig
 - `T-PRV-008`：POST 草稿 generate preview 能发现 `config/validate` 不覆盖的生成期问题，例如远程源为空、过滤后组为空、fallback 级联清空或模板渲染错误
 - `T-PRV-009`：Preview groups 执行到 ValidateGraph；空节点组、空链式组、非法引用或循环引用返回 400 结构化诊断，不返回部分成功分组结果
-- `T-PRV-010`：本地配置源的 `GET /api/status` 每次重算 sha256，能发现同大小且 mtime 未变化的外部改写
+- `T-PRV-010`：本地配置源的 `GET /api/status` 释放运行时配置锁后每次重算 sha256，能发现同大小且 mtime 未变化的外部改写，且不阻塞 reload 指针替换
 - `T-PRV-011`：`/generate` 与 `/api/generate/preview` 中，`CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` 经 HTTP 层返回 400，projection invariant 类 TargetError 仍返回 500
+- `T-PRV-012`：reload 期间预览请求不阻塞——慢速 `/api/preview/*` 请求不持有配置读锁，不阻塞 reload 获取写锁
 
 ---
 
@@ -127,6 +156,7 @@
 - `T-SPA-005`：`/healthz` 经 `web` 容器反向代理到 `api` 成功
 - `T-SPA-006`：生产 Compose 路径不依赖 CORS；浏览器访问的 Web 页面与 API 为同源
 - `T-SPA-007`：M7 完成后补充验证 `/api/status` 经 `web` 容器反向代理到 `api` 成功
+- `T-SPA-008`：刷新 B3 前端路由 `/download` 时由 nginx fallback 到 `index.html`，且不会命中后端 `/generate`
 
 ---
 
@@ -134,34 +164,39 @@
 
 建议覆盖：
 
-- `T-WEB-001`：组件渲染测试（React Testing Library）
+- `T-WEB-001`：组件渲染与主题测试（React Testing Library；覆盖浅色/深色、系统偏好、手动切换、刷新后保持和关键状态可读性）
 - `T-WEB-002`：API 集成测试（mock backend）
 - `T-WEB-003`：交互模式测试（Modal / Toast / Confirm / Spinner / Drawer）
-- `T-WEB-004`：保序字段编辑后顺序不变
+- `T-WEB-004`：保序字段编辑后顺序不变，覆盖 `groups` / `routing` / `rulesets`、`sources.fetch_order` 和 `rules`
 - `T-WEB-005`：校验结果展示与跳转定位使用 `locator.json_pointer`，`display_path` 只作为用户可读文案
 - `T-WEB-006`：A2/A3 编辑态调用 POST 草稿预览，而 B1/B2 运行时页调用 GET 预览
-- `T-WEB-007`：token 输入后 API client 使用 Authorization header；复制订阅链接时显式确认 query token
+- `T-WEB-007`：token 输入后 API client 使用 Authorization header；`401 admin_auth_required` 展示部署配置错误；复制订阅链接时显式确认 query token
 - `T-WEB-008`：本地可写配置首次保存前显示 YAML 注释、引号和格式风格可能丢失的确认；用户确认后才发起 `PUT /api/config`
-- `T-WEB-009`：B2 分组预览页面展示节点组/链式组/服务组树形结构，ValidateGraph 失败时显示诊断且不展示部分成功结果
-- `T-WEB-010`：B3 生成下载页面完成预览 → 下载 → 复制订阅链接全流程；未配置 `base_url` 时复制订阅链接功能给出提示
+- `T-WEB-009`：reload 成功或 status poll 发现 `runtime_config_revision` 变化后，当前已实现的运行时预览页使用新 query key 重新加载；B2/B3 在 M10 复用同一规则
+- `T-WEB-010`：409 按 `error.code` 分流，分别覆盖 `config_revision_conflict`、`config_source_readonly`、`config_file_not_writable` 和未知 409 code
 - `T-WEB-011`：A5 规则集页面 URL/Policy 绑定编辑，多条 URL 顺序不变（归属 M10）
 - `T-WEB-012`：A6 内联规则页面自由文本 + Policy 选择器编辑（归属 M10）
 - `T-WEB-013`：A7 其他配置页面 fallback / base_url / templates 字段编辑（归属 M10）
 - `T-WEB-014`：A8 静态校验 Drawer 展示 errors/warnings/infos 三级，通过 `locator.json_pointer` 跳转到对应页面字段（归属 M10）
 - `T-WEB-015`：B2 分组预览页面树形展示，ValidateGraph 失败时显示诊断且不展示部分成功结果（归属 M10）
 - `T-WEB-016`：B3 生成下载页面预览 → 下载 → 复制订阅链接全流程，含草稿预览模式（归属 M10）
-- `T-WEB-017`：[占位] 端到端测试：空配置 → 逐步编辑 → 保存 → 重载 → 预览 → 生成 → 下载（归属 M10）
-- `T-WEB-018`：[占位] 端到端测试：错误路径覆盖（静态校验失败/分组预览图级错误/生成预览失败/重载失败）（归属 M10）
-- `T-WEB-019`：[占位] 端到端测试：两种输出格式的内容校验（归属 M10）
-- `T-WEB-020`：[占位] 端到端测试：HTTP(S) 配置源只读模式全流程（归属 M10）
-
----
-
-## Admin API 补充测试（归属 M7）
-
-建议覆盖：
-
-- `T-ADM-011`：远程主配置 URL 在 TTL 未过期时执行 reload 仍 bypass 缓存，读取最新内容
-- `T-ADM-012`：`/api/*` 仅接受 `Authorization: Bearer ...` header，query token 仅对 `/generate` 兼容路径生效
-- `T-ADM-013`：`internal/admin` 包不直接依赖 `internal/pipeline` 或 `internal/model`
-- `T-ADM-014`：诊断定位对含空格、点号或 emoji 的 `groups` / `routing` / `rulesets` key 仍稳定，前端可通过 `locator.index` 和 `locator.json_pointer` 定位
+- `T-WEB-017`：端到端测试：本地可写配置全流程（归属 M10）
+  - 测试入口：正式前端 E2E runner；后端使用临时本地配置文件、fake 订阅源和 fake 模板资源
+  - fixture：最小可启动 YAML、至少一个 SS 订阅节点、一个规则集 URL、Clash / Surge 模板
+  - 操作步骤：打开 SPA → 加载 `GET /api/config` 草稿 → 在 A1/A3/A4/A7 补齐来源、节点组、路由和 fallback → A8 validate → 首次保存确认 → `PUT /api/config` → `POST /api/reload` → B1/B2/B3 预览 → 下载生成结果
+  - 预期结果：保存后返回新 `config_revision`；reload 后 `runtime_config_revision` 更新且 `config_dirty=false`；B1 有 active 节点；B2 展示节点组和服务组；B3 生成预览与下载内容一致
+- `T-WEB-018`：端到端测试：错误路径覆盖（归属 M10）
+  - 测试入口：正式前端 E2E runner；后端或 mock backend 提供可控错误响应
+  - fixture：非法正则配置、会导致 ValidateGraph 失败的空组配置、会导致目标格式 fallback 清空的配置、reload 校验失败配置
+  - 操作步骤：分别触发 A8 静态校验、B2 分组预览、B3 生成预览、保存后 reload
+  - 预期结果：静态校验失败显示 `200 valid=false` 诊断；B2 图级错误不展示部分成功结果；B3 生成期错误保留草稿；reload 失败后旧 RuntimeConfig 不变并保持 dirty 提示
+- `T-WEB-019`：端到端测试：Clash / Surge 双格式生成与下载路径（归属 M10）
+  - 测试入口：正式前端 E2E runner；后端使用同一份已 reload 的本地配置
+  - fixture：同时包含 SS、Snell、VLESS、rulesets、fallback 和 base_url 的配置，覆盖格式专属过滤
+  - 操作步骤：在 B3 分别选择 Clash Meta 与 Surge → 调用当前运行时生成预览 → 触发下载 → 复制订阅链接确认
+  - 预期结果：Clash 响应为 YAML 且不含 Snell；Surge 响应为 text/plain 且不含 VLESS；预览无 `Content-Disposition`，下载有附件响应；复制含 token 链接前出现确认
+- `T-WEB-020`：端到端测试：HTTP(S) 配置源只读模式（归属 M10）
+  - 测试入口：正式前端 E2E runner；后端以 HTTP(S) 主配置源启动
+  - fixture：远程主配置 URL、fake 订阅源、有效 token
+  - 操作步骤：打开 SPA → 读取 status/config → 进入 A1-A8 → 尝试编辑保存 → 运行 validate、B 区预览、B3 生成预览、reload
+  - 预期结果：`capabilities.config_write=false`；编辑页禁用保存、新增、删除和排序；`PUT /api/config` 路径不可被静默触发；validate、preview、generate preview 和 reload 仍可用；409 `config_source_readonly` 进入只读模式并保留草稿

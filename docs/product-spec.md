@@ -220,7 +220,7 @@ HK-03 → HK-ISP
 请求参数语义：
 
 - `format=clash|surge`：必填，决定输出格式
-- `token=<access-token>`：当服务端启用了访问 token 时，`/generate` 可通过 query 参数携带；Admin API 使用 `Authorization: Bearer ...` header；客户端订阅更新仍通过 query 参数携带
+- `token=<access-token>`：当服务端启用了访问 token 时，`/generate` 可通过 query 参数携带；Admin API 使用 `Authorization: Bearer ...` header，且默认要求服务端配置 token；客户端订阅更新仍通过 query 参数携带
 - `filename=<custom-name>`：可选，自定义下载文件名；未传时默认使用 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`
 
 补充约束：
@@ -248,7 +248,7 @@ HK-03 → HK-ISP
 
 ### 4.2 信息架构
 
-后台页面划分为三个区域，共 13 个页面：
+后台划分为三个区域，共 12 个路由页面，另有一个校验 Drawer 组件用于诊断修复引导：
 
 | 区域 | 定位 | 页面数 | 典型页面 |
 | ---- | ---- | ------ | -------- |
@@ -400,7 +400,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
 | Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG` 并继承请求中的 `token` / `filename` | 用户显式控制，无需依赖反向代理头 |
-| HTTP 访问控制      | `token` 作为运行时参数，不进入 YAML 配置；`/api/*` 使用 Authorization header，`/generate` 保留 query token 兼容订阅链接 | 与配置生成语义解耦，降低敏感信息泄露风险 |
+| HTTP 访问控制      | `token` 作为运行时参数，不进入 YAML 配置；`/api/*` 默认要求 token 并使用 Authorization header，只有显式开启无鉴权 Admin 时才允许空 token；`/generate` 保留 query token 兼容订阅链接 | 与配置生成语义解耦，降低敏感信息泄露风险 |
 | 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf` | 客户端订阅与浏览器下载都需要稳定文件名 |
 | Web 管理后台       | React SPA 通过 Docker Compose 中的 `web` 静态容器托管，并同源反代到 `api` | 避免 Go 嵌入目录边界，生产部署路径清晰 |
 | 配置热重载         | RWMutex 保护 RuntimeConfig，写回 YAML + re-Prepare | 编辑后无需重启服务               |

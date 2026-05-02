@@ -39,7 +39,9 @@
 - `relay_through.type=group` 时必须提供 `name`
 - `relay_through.type=select` 时必须提供 `match`
 - `fallback` 必填
+- `groups` 不得为空（至少声明一个地区节点组）
 - `base_url` 可选；若非空，必须以 `http://` 或 `https://` 开头
+- `sources.fetch_order` 缺失或为空时使用默认顺序；非空时只能包含 `subscriptions`、`snell`、`vless` 且三项各出现一次，否则返回 `invalid_fetch_order`
 - `routing` 中同一 entry 内 `@auto` 最多出现一次
 - `routing` 中同一 entry 内 `@all` 与 `@auto` 不能同时出现
 
@@ -96,6 +98,7 @@
 - `routing` 中引用的节点组、服务组、保留字都必须可解析
 - 自动生成的链式组必须至少包含一个成员
 - 地区节点组匹配结果不得为空
+- 若 `@all` 展开后为空列表（所有原始节点被过滤），引用 `@all` 的服务组成员可能为空，由空组检查或 Target 阶段的级联过滤捕获
 
 ---
 
@@ -120,7 +123,7 @@ HTTP 层映射：
 
 - `400`：请求参数错误、静态配置错误、图级语义错误、可归因于用户配置的构建错误
 - `400`：`TargetError` 中的 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty`。这类错误表示用户配置在目标格式级联过滤后不可生成，用户可通过调整 fallback、分组或格式专属节点配置修复
-- `401`：服务端启用访问 token 时，请求缺少 token 或 token 不匹配
+- `401`：请求缺少 token、token 不匹配，或 Admin API 默认鉴权要求未配置 token
 - `502`：远程资源拉取失败，或远程订阅内容不可用（如 0 个有效节点）
 - `500`：本地资源读取失败、目标投影内部不变量错误、渲染错误或未分类内部错误
 
@@ -153,6 +156,13 @@ HTTP 层映射：
 ## Web 管理后台校验集成（v2.0）
 
 `POST /api/config/validate` 触发 `Prepare` 阶段静态校验流程，返回结构化 JSON。它不执行订阅拉取、分组构建、目标格式投影或渲染。
+
+HTTP 语义：
+
+- 请求体合法时始终返回 `200`；配置语义无效时返回 `valid=false` 和诊断数组
+- JSON 无法解析、缺少 `config` 或 `config` 不是对象时返回 `400`
+- `PUT /api/config` 与 `POST /api/reload` 的静态配置错误返回 `400`，Body 复用同一个 `ValidateResult` 结构并设置 `valid=false`
+- 缺少字段、请求 JSON 无法解析、revision 冲突、只读配置源等非配置语义错误不使用 `ValidateResult`，继续返回 `{ "error": { ... } }`
 
 ```json
 {
@@ -200,7 +210,7 @@ HTTP 层映射：
 校验与热重载的关系：
 
 - `POST /api/reload` 内部先执行与 `validate` 相同的校验流程
-- 校验失败则拒绝重载，返回与 `validate` 相同格式的错误
+- 校验失败则拒绝重载，返回 `400` + `ValidateResult` 结构的错误
 - 前端可在保存前调用 `validate` 预检，避免保存后因静态配置错误导致重载失败
 
 静态校验与生成可用性的关系：
