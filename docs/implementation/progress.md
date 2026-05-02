@@ -34,8 +34,8 @@
 |--------|------|----------|----------|----------|--------|
 | M6 Admin API 基线 | 已验收 | `REQ-14` - `REQ-17`, `REQ-27` | `T-ADM-*`, `T-RLD-*`, `T-CCH-*` | 配置 CRUD、静态校验、热重载、Admin auth/session 已实现并通过验证 | 启动 M7 预览与状态 API |
 | M7 预览与状态 API | 已验收 | `REQ-18` - `REQ-21` | `T-PRV-*` | 预览、生成预览、订阅链接与状态 API 已实现并通过验证 | 启动 M8 Web 镜像与 Compose 集成；M9 可依赖 M7 API |
-| M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SPA-*` | 正式 Vite SPA 工程、nginx 配置、Compose 示例和 CI Web 校验已实现，并通过 Docker build 与 Compose 反向代理验证 | 启动 M9 前端工程与核心页面 |
-| M9 前端工程与核心页面 | 未开始 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | M7 预览 API 与 M8 前端工程基础已就绪 | 启动 M9 核心页面实现 |
+| M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SPA-*` | 正式 Vite SPA 工程、nginx 配置、Compose 示例和 CI Web 校验已实现，并通过 Docker build 与 Compose 反向代理验证 | 已启动并完成 M9 前端核心页面 |
+| M9 前端工程与核心页面 | 已验收 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | Shell、API client、登录/setup、A1-A4、B1、C、主题、保存-reload 工作流已实现并通过验证 | 启动 M10 前端完善与端到端验收 |
 | M10 前端完善与端到端验收 | 未开始 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-020`, `T-E2E-*` | 端到端场景已在测试策略中定义 | M9 验收后启动 |
 
 ## M6 Admin API 基线
@@ -164,14 +164,36 @@
 
 | 工作包 | 状态 | 范围 | 依赖文档 | 交付物 | 验收证据 | 阻塞项 |
 |--------|------|------|----------|--------|----------|--------|
-| M9-WP1 Shell、API client 与草稿状态 | 未开始 | 布局、导航、登录态、React Query、草稿管理、错误归一化 | `web/docs/frontend-architecture.md`, `web/docs/auth-and-security.md`, `web/docs/workflows.md` | 前端应用基础 | `T-WEB-001` - `T-WEB-003`, `T-WEB-007`, `T-WEB-010`, `T-WEB-021` | 依赖 M7/M8 |
-| M9-WP2 A1-A4 核心编辑页 | 未开始 | 来源、过滤器、节点分组、路由策略、拖拽保序、草稿预览 | `web/docs/page-specs.md`, `web/docs/data-contract.md` | A1-A4 可用 | `T-WEB-004`, `T-WEB-006`, `T-WEB-008` | 依赖 M7/M8 |
-| M9-WP3 B1/C 与保存-reload 工作流 | 未开始 | 节点预览、系统状态、validate-save-reload、dirty 提示、主题 | `web/docs/workflows.md`, `web/docs/acceptance.md` | B1、C 与核心工作流 | `T-WEB-009`, `npm test` | 依赖 M7/M8 |
-| M9-WP4 M9 收口验收 | 未开始 | 核心页面验收、视觉状态、文档同步 | `web/docs/page-specs.md` | M9 验收记录 | 本文件更新，前端测试结果 | 依赖 M7/M8 |
+| M9-WP1 Shell、API client 与草稿状态 | 已验收 | 布局、导航、登录态、React Query、草稿管理、错误归一化 | `web/docs/frontend-architecture.md`, `web/docs/auth-and-security.md`, `web/docs/workflows.md` | 前端应用基础 | `T-WEB-001` - `T-WEB-003`, `T-WEB-007`, `T-WEB-010`, `T-WEB-021` | 无 |
+| M9-WP2 A1-A4 核心编辑页 | 已验收 | 来源、过滤器、节点分组、路由策略、拖拽保序、草稿预览 | `web/docs/page-specs.md`, `web/docs/data-contract.md` | A1-A4 可用 | `T-WEB-004`, `T-WEB-006`, `T-WEB-008` | 无 |
+| M9-WP3 B1/C 与保存-reload 工作流 | 已验收 | 节点预览、系统状态、validate-save-reload、dirty 提示、主题 | `web/docs/workflows.md`, `web/docs/acceptance.md` | B1、C 与核心工作流 | `T-WEB-009`, `npm test` | 无 |
+| M9-WP4 M9 收口验收 | 已验收 | 核心页面验收、视觉状态、文档同步 | `web/docs/page-specs.md` | M9 验收记录 | 本文件更新，前端测试结果 | 无 |
 
-测试命令结果：未执行，能力尚未实现。
+测试命令结果：
 
-已知限制：M9 不包含 A5-A8、B2、B3 的完整功能，这些归属 M10。
+- `cd web && npm test`：通过，2 个测试文件 / 17 个测试。
+- `cd web && npm run build`：通过，Vite 生产构建成功。
+- `docker build -f web/Dockerfile web`：通过，Web 镜像构建阶段执行 `npm ci` 与 `npm run build` 成功。
+- `go test ./...`：通过，15 个 Go package 均通过。
+- `cd web && npm run dev -- --host 127.0.0.1` + 本地 mock API：通过，Chrome 冒烟验证 `/sources`、`/filters` 草稿节点预览、`/nodes` 运行时节点预览可渲染且无明显首屏溢出。
+
+关键产出：
+
+- `web/src/api/`：统一 API client、错误归一化和前端消费类型；`401 auth_required/session_expired` 触发登录跳转，409 按稳定 `error.code` 分流。
+- `web/src/state/`、`web/src/features/`：主题、Toast、Confirm、配置草稿 Context、保存-validate-reload 工作流与保序/脱敏工具。
+- `web/src/layout/`、`web/src/components/`、`web/src/pages/`：正式 Shell、导航、基础 UI 组件、DND 排序、登录/setup、A1-A4、B1、C 与 M10 占位路由。
+
+示例输入或 fixture：前端测试使用 mock backend，包含本地可写配置源、1 个 SS 订阅 URL、1 个 `HK` 节点组、1 个 `Proxy` 路由服务组和 1 个 `HK-01` 节点预览结果。
+
+关键响应：
+
+- A2 草稿节点预览调用 `POST /api/preview/nodes`，B1 运行时节点预览调用 `GET /api/preview/nodes`。
+- 首次保存前展示 YAML 注释、引号和格式风格可能丢失的确认；确认后才调用 `PUT /api/config`，随后调用 `POST /api/reload`。
+- `PUT /api/config` 成功但 `POST /api/reload` 失败时，前端更新已保存 revision，提示“已保存但未生效”，并保留重试 reload 入口。
+- `409 config_revision_conflict`、`config_source_readonly`、`config_file_not_writable` 与未知 409 已按 `error.code` 分流；`reload_in_progress` 展示退避重试提示。
+- M10 页面保持受保护路由和占位状态，不触发业务写入。
+
+已知限制：M9 不包含 A5-A8、B2、B3 的完整功能和端到端真实后端场景，这些归属 M10；M9 的浏览器视觉验收使用本地 mock API 冒烟，不替代 M10 的正式 E2E。
 
 ## M10 前端完善与端到端验收
 

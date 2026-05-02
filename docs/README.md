@@ -33,7 +33,7 @@
 | `GET /generate` | 当前可用 | v1.0 | 是 | 生成 Clash Meta / Surge 配置。 |
 | `GET /healthz` | 当前可用 | v1.0 | 是 | 进程健康检查。 |
 | Snell / VLESS 来源、链式组、目标格式投影 | 当前可用 | v1.0 | 是 | 由当前 Go 后端实现并有测试覆盖。 |
-| `/api/auth/*` | 当前可用 | M6 | 是 | 管理后台登录、首次 setup、session 状态和注销；前端登录页面仍属后续 M9。 |
+| `/api/auth/*` | 当前可用 | M6 | 是 | 管理后台登录、首次 setup、session 状态和注销；M9 已接入前端登录/setup/logout 闭环。 |
 | `GET/PUT /api/config` | 当前可用 | M6 | 是 | 配置 CRUD 与 JSON/YAML round-trip。 |
 | `POST /api/config/validate` | 当前可用 | M6 | 是 | 静态配置校验与结构化诊断。 |
 | `POST /api/reload` | 当前可用 | M6 | 是 | 运行时热重载与 `RuntimeConfig` 快照替换。 |
@@ -42,8 +42,8 @@
 | `GET/POST /api/generate/preview` | 当前可用 | M7 | 是 | 页面内生成预览，不设置下载响应头。 |
 | `GET /api/generate/link` | 当前可用 | M7 | 是 | 已登录后台中由服务端生成客户端订阅链接；前端复制确认流仍属 M10。 |
 | `GET /api/status` | 当前可用 | M7 | 是 | 系统状态、配置 revision、dirty 状态。 |
-| Web 管理后台正式 SPA | 设计中 | M9-M10 | 否 | 当前 `web/` 是 M8 Vite SPA 骨架；完整配置编辑、预览和生成页面待 M9-M10。 |
-| `api + web` Docker Compose 生产部署 | 当前可用 | M8 | 是 | M8 Compose 示例、Web 镜像、SPA fallback 与 nginx 同源反代已通过验收；完整 Web 页面功能仍待 M9-M10。 |
+| Web 管理后台正式 SPA | 部分可用 | M9-M10 | 否 | M9 已交付登录/setup、A1-A4、B1、C、主题和保存-reload 工作流；A5-A8、B2-B3 与正式 E2E 待 M10。 |
+| `api + web` Docker Compose 生产部署 | 当前可用 | M8 | 是 | M8 Compose 示例、Web 镜像、SPA fallback 与 nginx 同源反代已通过验收；完整 Web 页面功能仍待 M10。 |
 
 状态定义：
 
