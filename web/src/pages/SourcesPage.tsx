@@ -1,8 +1,9 @@
-import { Pencil, Plus, RefreshCw, Shield, Trash2 } from "lucide-react";
+import { Link2, Pencil, Plus, Radio, RefreshCw, Shield, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Config, CustomProxy, FetchSourceKind, RelayThrough } from "../api/types";
 import { SortableList } from "../components/SortableList";
 import { Button, Chip, EmptyState, Field, IconButton, Modal, SelectInput, StatCard, TextInput } from "../components/ui";
+import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { ensureSources, fetchSourceKinds, maskUrl } from "../features/configModel";
 import { useConfigState } from "../state/config";
 import { useConfirm } from "../state/confirm";
@@ -19,6 +20,12 @@ const sourceDescriptions: Record<FetchSourceKind, string> = {
   vless: "Reality / Vision 等高级特性"
 };
 
+const sourceIcons: Record<FetchSourceKind, ReactNode> = {
+  subscriptions: <Link2 size={18} aria-hidden="true" />,
+  snell: <Shield size={18} aria-hidden="true" />,
+  vless: <Radio size={18} aria-hidden="true" />
+};
+
 type SourceEditor =
   | { type: "fetch"; kind: FetchSourceKind; index: number | null; url: string }
   | { type: "custom"; index: number | null; proxy: CustomProxy }
@@ -27,6 +34,7 @@ type SourceEditor =
 export function SourcesPage() {
   const { draft, updateDraft, isReadonly } = useConfigState();
   const confirm = useConfirm();
+  const activePointer = useDiagnosticPointer();
   const [editor, setEditor] = useState<SourceEditor>(null);
   const sources = ensureSources(draft?.sources);
   const totalFetch = sources.subscriptions.length + sources.snell.length + sources.vless.length;
@@ -91,7 +99,7 @@ export function SourcesPage() {
         <StatCard label="Clash-only" value={sources.vless.length} sub="VLESS" tone="success" />
       </div>
 
-      <section className="content-panel source-order-panel">
+      <section className={focusClassName(activePointer, ["/config/sources/fetch_order"], "content-panel source-order-panel")}>
         <div className="section-heading row">
           <div>
             <h3>拉取顺序</h3>
@@ -121,7 +129,9 @@ export function SourcesPage() {
           subtitle={sourceDescriptions[kind]}
           count={sources[kind].length}
           tag={kind === "snell" ? "仅 Surge" : kind === "vless" ? "仅 Clash" : undefined}
+          icon={sourceIcons[kind]}
           readonly={isReadonly}
+          className={focusClassName(activePointer, [`/config/sources/${kind}`], "source-section")}
           onAdd={() => setEditor({ type: "fetch", kind, index: null, url: "" })}
         >
           {sources[kind].map((source, index) => (
@@ -143,7 +153,9 @@ export function SourcesPage() {
         title="自定义代理"
         subtitle="单节点直连，可链式中转"
         count={sources.custom_proxies.length}
+        icon={<Radio size={18} aria-hidden="true" />}
         readonly={isReadonly}
+        className={focusClassName(activePointer, ["/config/sources/custom_proxies"], "source-section")}
         onAdd={() => setEditor({ type: "custom", index: null, proxy: { name: "", url: "" } })}
       >
         {sources.custom_proxies.map((proxy, index) => (
@@ -172,7 +184,9 @@ function SourceSection({
   subtitle,
   count,
   tag,
+  icon,
   readonly,
+  className = "source-section",
   onAdd,
   children
 }: {
@@ -180,16 +194,21 @@ function SourceSection({
   subtitle: string;
   count: number;
   tag?: string;
+  icon?: ReactNode;
   readonly: boolean;
+  className?: string;
   onAdd: () => void;
   children: ReactNode;
 }) {
   return (
-    <section className="source-section">
+    <section className={className}>
       <div className="source-section-header">
-        <div>
-          <h3>{title}</h3>
-          <p>{subtitle}</p>
+        <div className="source-section-title">
+          {icon ? <span className="source-section-icon" aria-hidden="true">{icon}</span> : null}
+          <div>
+            <h3>{title}</h3>
+            <p>{subtitle}</p>
+          </div>
         </div>
         <Chip>{count}</Chip>
         {tag ? <Chip tone={tag.includes("Surge") ? "warning" : "info"}>{tag}</Chip> : null}
@@ -226,12 +245,12 @@ function SourceCard({
     <article className="source-card">
       <span className="drag-handle static" aria-hidden="true">⠿</span>
       <div className="source-card-main">
-        <div>
+        <code>{subtitle}</code>
+        <div className="source-card-meta">
           <strong>{title}</strong>
           <Chip tone="neutral">{meta}</Chip>
           <Chip tone={tag.includes("待") ? "warning" : "success"}>{tag}</Chip>
         </div>
-        <code>{subtitle}</code>
       </div>
       <div className="source-card-actions">
         <IconButton label="刷新来源" variant="ghost" disabled>

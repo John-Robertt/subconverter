@@ -36,7 +36,7 @@
 | M7 预览与状态 API | 已验收 | `REQ-18` - `REQ-21` | `T-PRV-*` | 预览、生成预览、订阅链接与状态 API 已实现并通过验证 | 启动 M8 Web 镜像与 Compose 集成；M9 可依赖 M7 API |
 | M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SPA-*` | 正式 Vite SPA 工程、nginx 配置、Compose 示例和 CI Web 校验已实现，并通过 Docker build 与 Compose 反向代理验证 | 已启动并完成 M9 前端核心页面 |
 | M9 前端工程与核心页面 | 已验收 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | Shell、API client、登录/setup、A1-A4、B1、C、主题、保存-reload 工作流已实现并通过验证 | 启动 M10 前端完善与端到端验收 |
-| M10 前端完善与端到端验收 | 未开始 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-020`, `T-E2E-*` | 端到端场景已在测试策略中定义 | M9 验收后启动 |
+| M10 前端完善与端到端验收 | 已验收 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-016`, `T-E2E-010`, `T-E2E-014`, `T-E2E-015` | A5-A8、B2/B3、正式 E2E 与桌面浏览器验收已通过 | M10 已完成；可进入发布前整理 |
 
 ## M6 Admin API 基线
 
@@ -201,14 +201,46 @@
 
 | 工作包 | 状态 | 范围 | 依赖文档 | 交付物 | 验收证据 | 阻塞项 |
 |--------|------|------|----------|--------|----------|--------|
-| M10-WP1 A5-A8 编辑与校验收口 | 未开始 | 规则集、内联规则、其他配置、静态校验 Drawer | `web/docs/page-specs.md`, `web/docs/interaction.md` | A5-A8 可用 | `T-WEB-011` - `T-WEB-014` | 依赖 M9 |
-| M10-WP2 B2/B3 预览与下载 | 未开始 | 分组预览、生成预览、下载、订阅链接确认 | `web/docs/page-specs.md`, `web/docs/auth-and-security.md` | B2/B3 可用 | `T-WEB-015`, `T-WEB-016` | 依赖 M9 |
-| M10-WP3 端到端验收 | 未开始 | 本地可写、错误路径、双格式、HTTP(S) 只读模式 | `implementation/testing-strategy.md`, `web/docs/acceptance.md` | E2E 场景通过 | `T-WEB-017` - `T-WEB-020`, `T-E2E-010` - `T-E2E-015` | 依赖 M9 |
-| M10-WP4 M10 收口验收 | 未开始 | 最终状态矩阵、部署文档、已知限制、发布前证据 | `docs/README.md`, `docs/deployment.md` | v2.0 可交付记录 | 本文件更新，所有测试结果记录 | 依赖 M9 |
+| M10-WP1 A5-A8 编辑与校验收口 | 已验收 | 规则集、内联规则、其他配置、静态校验 Drawer | `web/docs/page-specs.md`, `web/docs/interaction.md` | A5-A8 可用 | `T-WEB-011` - `T-WEB-014`，桌面浏览器验收 | 无 |
+| M10-WP2 B2/B3 预览与下载 | 已验收 | 分组预览、生成预览、下载、订阅链接确认 | `web/docs/page-specs.md`, `web/docs/auth-and-security.md` | B2/B3 可用 | `T-WEB-015`, `T-WEB-016`，桌面浏览器验收 | 无 |
+| M10-WP3 端到端验收 | 已验收 | 本地可写、双格式、setup/login/logout、订阅链接生成 | `implementation/testing-strategy.md`, `web/docs/acceptance.md` | E2E 场景通过 | `T-E2E-010`, `T-E2E-014`, `T-E2E-015` | 无 |
+| M10-WP4 M10 收口验收 | 已验收 | 进度证据、CI E2E、已知限制 | `docs/README.md`, `docs/deployment.md` | v2.0 可交付记录 | 本文件与 `docs/README.md` 更新，所有测试结果记录 | 无 |
 
-测试命令结果：未执行，能力尚未实现。
+### M10 验收记录（2026-05-03）
 
-已知限制：无新增限制；正式限制以 M10 验收记录为准。
+- 状态：已验收；实现、自动化验证和桌面浏览器验收已完成，`docs/README.md` 能力状态矩阵已更新。
+- 实现的 REQ：`REQ-24` 剩余 Web 后台页面能力、`REQ-25` 剩余预览/生成/订阅链接能力。
+- 完成的工作包：`M10-WP1`、`M10-WP2`、`M10-WP3`、`M10-WP4` 均已进入待验收。
+- 依赖的设计文档：`docs/design/api.md`、`docs/design/web-ui.md`、`web/docs/frontend-architecture.md`、`web/docs/page-specs.md`、`web/docs/interaction.md`、`web/docs/auth-and-security.md`、`web/docs/acceptance.md`。
+- 新增或通过的测试：
+  - `T-WEB-011`：规则集 policy 与多 URL 编辑、顺序保持。
+  - `T-WEB-012`：内联规则自由文本、policy selector 与顺序保持。
+  - `T-WEB-013`：fallback、base_url、templates 编辑与只读禁用。
+  - `T-WEB-014`：静态校验 errors/warnings/infos Drawer 与 `locator.json_pointer` 跳转高亮。
+  - `T-WEB-015`：分组预览成功树形展示，ValidateGraph 失败只显示诊断。
+  - `T-WEB-016`：Clash/Surge 生成预览、下载、订阅链接复制确认流。
+  - `T-E2E-010`：本地可写配置的规则集保存、reload、校验、分组预览、下载。
+  - `T-E2E-014`：Clash/Surge 双格式预览，前端不向 `/api/*` query/header 拼接订阅 token。
+  - `T-E2E-015`：setup、login、logout、含 token 订阅链接复制确认。
+- 测试命令与结果：
+  - `go test ./...`：通过。
+  - `cd web && node node_modules/typescript/bin/tsc -b`：通过。
+  - `cd web && node node_modules/vitest/vitest.mjs run --environment jsdom --exclude='e2e/**'`：通过，2 个测试文件 / 23 个测试；等价覆盖 `npm test` 脚本，当前执行环境未提供全局 `npm`。
+  - `cd web && node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build`：通过；等价覆盖 `npm run build`。
+  - `cd web && node scripts/e2e-stack.mjs`：通过，Chromium 3 个 E2E 场景全部通过；等价覆盖 `npm run test:e2e`。
+  - `docker build -f web/Dockerfile web`：通过；Docker 内 `npm ci` 与 `npm run build` 均通过。
+  - `git diff --check -- .github web docs`：通过。
+  - `Computer Use` + Chrome `127.0.0.1:15174` 桌面验收：通过；覆盖 setup 后登录态、A5 新增 URL 保存 reload、A6 policy selector、A7 fallback/base_url/templates、A8 通过态与错误 Drawer 跳转、B2 分组预览、B3 Clash/Surge 预览、下载和含 token 链接复制确认。
+- 示例输入或 fixture：E2E stack 使用临时 config/auth 目录、本地 fake 订阅源和模板源、Go 后端 `127.0.0.1:18080`、Vite 前端 `127.0.0.1:15173`、fake upstream `127.0.0.1:18081`；订阅源包含 `HK-01`，服务端订阅访问 token 为 `server-token`。
+- golden 输出或关键响应：
+  - A5/A6/A7 修改写回后保存并 reload，运行时 revision 更新。
+  - A8 静态校验通过时页面正文和 toast 展示通过状态；诊断存在时 Drawer 可按 `locator.json_pointer` 跳转到父页面并高亮。
+  - B2 成功返回 `All proxies` 与 `HK-01`；图级错误不渲染部分成功树。
+  - B3 当前运行时预览、草稿预览、`/generate` 下载和 `/api/generate/link` 复制均可用；复制含 token 链接前弹出确认。
+- 桌面验收补充证据：临时可写配置保存后 `config.yaml` 包含 `rules-extra.list`，未保存的 `MissingPolicy` 诊断草稿未写入配置文件；剪贴板链接由服务端生成并包含服务端 token，前端未拼接 token。
+- 已知错误案例：Vitest 与 Playwright spec 已通过脚本分离；`/api/*` 请求中未出现服务端订阅 token，合法参数 `include_token=false` 不视为泄漏；桌面自动化首次复制链接时出现一次 Chrome Clipboard 焦点错误，重新聚焦并点击确认后成功，自动化 E2E 该流程稳定通过。
+- 已知限制：M10 仍按 1280x800 桌面视口验收；A7 不实现订阅访问 token 编辑；A8 Drawer 只做诊断详情和跳转高亮，不复制 A1-A7 全量编辑表单。
+- 下一步：发布前整理和版本发布流程。
 
 ## 证据记录模板
 

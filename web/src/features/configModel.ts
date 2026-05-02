@@ -72,6 +72,31 @@ export function getRoutingMemberOptions(config: Config): string[] {
   return Array.from(new Set([...groupNames, ...routingNames, "DIRECT", "REJECT", "@all", "@auto"]));
 }
 
+export function getPolicyOptions(config: Config): string[] {
+  const routingNames = config.routing?.map((entry) => entry.key).filter(Boolean) ?? [];
+  return Array.from(new Set([...routingNames, "DIRECT", "REJECT"]));
+}
+
+export function splitRulePolicy(rule: string): { body: string; policy: string; parseable: boolean } {
+  const index = rule.lastIndexOf(",");
+  if (index < 0) {
+    return { body: rule, policy: "", parseable: false };
+  }
+  return {
+    body: rule.slice(0, index),
+    policy: rule.slice(index + 1).trim(),
+    parseable: true
+  };
+}
+
+export function replaceRulePolicy(rule: string, policy: string): string {
+  const parsed = splitRulePolicy(rule);
+  if (!parsed.parseable) {
+    return rule;
+  }
+  return `${parsed.body},${policy}`;
+}
+
 export function isConfigChanged(a: Config | undefined, b: Config | undefined): boolean {
   return JSON.stringify(a ?? {}) !== JSON.stringify(b ?? {});
 }

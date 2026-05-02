@@ -5,6 +5,7 @@ export interface OrderedEntry<TValue> {
 
 export type ProxyStrategy = "select" | "url-test";
 export type FetchSourceKind = "subscriptions" | "snell" | "vless";
+export type GenerateFormat = "clash" | "surge";
 
 export interface FetchSource {
   url: string;
@@ -175,6 +176,11 @@ export interface GroupPreviewResponse {
   chained_groups: PreviewGroup[];
   service_groups: PreviewGroup[];
   all_proxies: string[];
+}
+
+export interface GenerateLinkResponse {
+  url: string;
+  token_included: boolean;
 }
 
 export interface ApiErrorPayload {

@@ -3,12 +3,17 @@ import { CheckCircle2, FileText, LogOut, Moon, Save, Sun, SunMoon, TriangleAlert
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { queryKeys } from "../app/queryKeys";
-import { findPage, pages, sectionLabels } from "../app/pages";
+import { findPage, pages, sectionLabels, type PageSection } from "../app/pages";
 import { useSaveWorkflow } from "../features/useSaveWorkflow";
 import { useConfigState } from "../state/config";
 import { useTheme, type ThemePreference } from "../state/theme";
 import { useToast } from "../state/toast";
 import { Button, IconButton, LoadingState, StatusBadge } from "../components/ui";
+
+const sidebarNavGroups: Array<{ label: string; sections: PageSection[] }> = [
+  { label: "配置", sections: ["config"] },
+  { label: "运行时", sections: ["runtime", "system"] }
+];
 
 export function AppShell() {
   const location = useLocation();
@@ -55,7 +60,10 @@ export function AppShell() {
     sources: (draft?.sources?.subscriptions?.length ?? 0) + (draft?.sources?.snell?.length ?? 0) + (draft?.sources?.vless?.length ?? 0) + (draft?.sources?.custom_proxies?.length ?? 0),
     filters: draft?.filters?.exclude ? 1 : 0,
     groups: draft?.groups?.length ?? 0,
-    routing: draft?.routing?.length ?? 0
+    routing: draft?.routing?.length ?? 0,
+    rulesets: draft?.rulesets?.length ?? 0,
+    rules: draft?.rules?.length ?? 0,
+    settings: [draft?.fallback, draft?.base_url, draft?.templates?.clash, draft?.templates?.surge].filter(Boolean).length
   };
 
   if (isLoading) {
@@ -71,7 +79,7 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
-        <aside className="sidebar" aria-label="主导航">
+      <aside className="sidebar" aria-label="主导航">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">S</span>
           <div>
@@ -79,21 +87,36 @@ export function AppShell() {
             <div className="brand-subtitle">{status?.version ? `v${status.version}` : "Admin"}</div>
           </div>
         </div>
-        <div className="nav-section-label">配置</div>
-        <nav className="nav-list">
-          {pages.map((page) => {
-            const Icon = page.icon;
-            const pageKey = page.path.replace("/", "") as keyof typeof navCount;
-            const count = navCount[pageKey];
+
+        <nav className="nav-groups" aria-label="主导航">
+          {sidebarNavGroups.map((group) => {
+            const sectionPages = pages.filter((page) => group.sections.includes(page.section));
+            if (sectionPages.length === 0) return null;
             return (
-              <NavLink key={page.path} to={page.path} className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-                <Icon size={17} aria-hidden="true" />
-                <span>{page.label}</span>
-                <small>{typeof count === "number" && count > 0 ? count : page.milestone}</small>
-              </NavLink>
+              <section key={group.label} className="nav-section" aria-labelledby={`nav-section-${group.label}`}>
+                <div id={`nav-section-${group.label}`} className="nav-section-label">
+                  {group.label}
+                </div>
+                <div className="nav-list">
+                  {sectionPages.map((page) => {
+                    const Icon = page.icon;
+                    const pageKey = page.path.replace("/", "") as keyof typeof navCount;
+                    const count = navCount[pageKey];
+                    const badge = typeof count === "number" && count > 0 ? count : null;
+                    return (
+                      <NavLink key={page.path} to={page.path} className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+                        <Icon size={17} aria-hidden="true" />
+                        <span>{page.label}</span>
+                        {badge ? <small>{badge}</small> : null}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              </section>
             );
           })}
         </nav>
+
         <div className="sidebar-status-card">
           <span className={status?.config_dirty ? "status-dot warning" : "status-dot"} aria-hidden="true" />
           <div>

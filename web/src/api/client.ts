@@ -3,6 +3,8 @@ import type {
   AuthStatus,
   Config,
   ConfigSnapshot,
+  GenerateFormat,
+  GenerateLinkResponse,
   GroupPreviewResponse,
   LoginRequest,
   LoginResponse,
@@ -122,5 +124,27 @@ export const api = {
   healthz: () => apiRequest<string>("/healthz"),
   previewNodes: () => apiRequest<NodePreviewResponse>("/api/preview/nodes"),
   previewNodesDraft: (config: Config) => apiRequest<NodePreviewResponse>("/api/preview/nodes", { method: "POST", body: { config } }),
-  previewGroupsDraft: (config: Config) => apiRequest<GroupPreviewResponse>("/api/preview/groups", { method: "POST", body: { config } })
+  previewGroups: () => apiRequest<GroupPreviewResponse>("/api/preview/groups"),
+  previewGroupsDraft: (config: Config) => apiRequest<GroupPreviewResponse>("/api/preview/groups", { method: "POST", body: { config } }),
+  generatePreview: (format: GenerateFormat) => apiRequest<string>(`/api/generate/preview?${buildGenerateQuery(format)}`),
+  generatePreviewDraft: (format: GenerateFormat, config: Config) =>
+    apiRequest<string>(`/api/generate/preview?${buildGenerateQuery(format)}`, { method: "POST", body: { config } }),
+  generateLink: (format: GenerateFormat, filename: string, includeToken = true) =>
+    apiRequest<GenerateLinkResponse>(`/api/generate/link?${buildGenerateQuery(format, filename, includeToken)}`)
 };
+
+export function buildGeneratePath(format: GenerateFormat, filename: string): string {
+  return `/generate?${buildGenerateQuery(format, filename)}`;
+}
+
+function buildGenerateQuery(format: GenerateFormat, filename?: string, includeToken?: boolean): string {
+  const params = new URLSearchParams({ format });
+  const trimmedFilename = filename?.trim();
+  if (trimmedFilename) {
+    params.set("filename", trimmedFilename);
+  }
+  if (typeof includeToken === "boolean") {
+    params.set("include_token", String(includeToken));
+  }
+  return params.toString();
+}

@@ -1,14 +1,19 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "./app/ProtectedRoute";
 import { AppShell } from "./layout/AppShell";
+import { DownloadPage } from "./pages/DownloadPage";
 import { FiltersPage } from "./pages/FiltersPage";
+import { GroupPreviewPage } from "./pages/GroupPreviewPage";
 import { GroupsPage } from "./pages/GroupsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NodesPage } from "./pages/NodesPage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { RoutingPage } from "./pages/RoutingPage";
+import { RulesetsPage } from "./pages/RulesetsPage";
+import { RulesPage } from "./pages/RulesPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { StatusPage } from "./pages/StatusPage";
+import { ValidatePage } from "./pages/ValidatePage";
 
 function App() {
   return (
@@ -23,12 +28,12 @@ function App() {
           <Route path="/routing" element={<RoutingPage />} />
           <Route path="/nodes" element={<NodesPage />} />
           <Route path="/status" element={<StatusPage />} />
-          <Route path="/rulesets" element={<PlaceholderPage title="规则集" />} />
-          <Route path="/rules" element={<PlaceholderPage title="内联规则" />} />
-          <Route path="/settings" element={<PlaceholderPage title="其他配置" />} />
-          <Route path="/validate" element={<PlaceholderPage title="静态配置校验" />} />
-          <Route path="/preview/groups" element={<PlaceholderPage title="分组预览" />} />
-          <Route path="/download" element={<PlaceholderPage title="生成下载" />} />
+          <Route path="/rulesets" element={<RulesetsPage />} />
+          <Route path="/rules" element={<RulesPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/validate" element={<ValidatePage />} />
+          <Route path="/preview/groups" element={<GroupPreviewPage />} />
+          <Route path="/download" element={<DownloadPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/sources" replace />} />

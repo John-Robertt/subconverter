@@ -1,18 +1,20 @@
 import { useMutation } from "@tanstack/react-query";
 import { Plus, Search, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { Diagnostic, GroupConfig, OrderedEntry, ValidateResult } from "../api/types";
+import { useEffect, useMemo, useState } from "react";
+import type { Diagnostic, GroupConfig, OrderedEntry } from "../api/types";
 import { api } from "../api/client";
-import { getErrorMessage, isApiError } from "../api/errors";
+import { getErrorMessage } from "../api/errors";
 import { DiagnosticList } from "../components/Diagnostics";
 import { SortableList } from "../components/SortableList";
 import { Button, Chip, EmptyState, ErrorState, Field, IconButton, LoadingState, RailPanel, SelectInput, SplitWorkbench, StatCard, TextInput } from "../components/ui";
+import { focusClassName, getValidateResult, useDiagnosticPointer } from "../features/diagnostics";
 import { useConfigState } from "../state/config";
 import { useConfirm } from "../state/confirm";
 
 export function GroupsPage() {
   const { draft, updateDraft, isReadonly } = useConfigState();
   const confirm = useConfirm();
+  const activePointer = useDiagnosticPointer();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const groups = draft?.groups ?? [];
   const activeIndex = groups.length === 0 ? -1 : Math.min(selectedIndex, groups.length - 1);
@@ -33,6 +35,13 @@ export function GroupsPage() {
       return api.previewGroupsDraft(draft);
     }
   });
+
+  useEffect(() => {
+    const match = activePointer?.match(/^\/config\/groups\/(\d+)/);
+    if (match) {
+      setSelectedIndex(Number(match[1]));
+    }
+  }, [activePointer]);
 
   function setGroups(nextGroups: OrderedEntry<GroupConfig>[]) {
     updateDraft((config) => ({ ...config, groups: nextGroups }));
@@ -109,7 +118,7 @@ export function GroupsPage() {
             onReorder={setGroups}
             renderItem={(group, index, handle) => (
               <div
-                className={index === activeIndex ? "group-pill active" : "group-pill"}
+                className={focusClassName(activePointer, [`/config/groups/${index}`], index === activeIndex ? "group-pill active" : "group-pill")}
                 role="button"
                 tabIndex={0}
                 onClick={() => setSelectedIndex(index)}
@@ -124,7 +133,7 @@ export function GroupsPage() {
         )}
 
         {activeGroup ? (
-          <section className="content-panel editor-panel">
+          <section className={focusClassName(activePointer, [`/config/groups/${activeIndex}`], "content-panel editor-panel")}>
             <div className="section-heading row">
               <div>
                 <h3>编辑分组</h3>
@@ -167,27 +176,6 @@ export function GroupsPage() {
         ) : null}
       </div>
     </SplitWorkbench>
-  );
-}
-
-function getValidateResult(error: unknown): ValidateResult | null {
-  if (!isApiError(error)) return null;
-  if (isValidateResult(error.details)) return error.details;
-  if (isValidateResult(error.payload)) return error.payload;
-  return null;
-}
-
-function isValidateResult(value: unknown): value is ValidateResult {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "valid" in value &&
-    "errors" in value &&
-    "warnings" in value &&
-    "infos" in value &&
-    Array.isArray((value as ValidateResult).errors) &&
-    Array.isArray((value as ValidateResult).warnings) &&
-    Array.isArray((value as ValidateResult).infos)
   );
 }
 

@@ -36,8 +36,14 @@ const sampleConfig = {
     filters: { exclude: "" },
     groups: [{ key: "HK", value: { match: "(HK)", strategy: "select" } }],
     routing: [{ key: "Proxy", value: ["HK", "@auto"] }],
-    rulesets: [],
-    rules: []
+    rulesets: [{ key: "Proxy", value: ["https://rules.example.com/a.list", "https://rules.example.com/b.list"] }],
+    rules: ["DOMAIN-SUFFIX,example.com,Proxy", "DOMAIN-KEYWORD,internal,DIRECT"],
+    fallback: "Proxy",
+    base_url: "https://sub.example.com",
+    templates: {
+      clash: "configs/base_clash.yaml",
+      surge: "configs/base_surge.conf"
+    }
   }
 };
 
@@ -76,6 +82,7 @@ interface MockBackendOptions {
   setupRequired?: boolean;
   readonly?: boolean;
   saveError?: { status: number; code: string; message: string };
+  validateResult?: unknown;
   reloadErrors?: { status: number; code: string; message: string }[];
   groupPreviewValidationError?: boolean;
 }
@@ -117,7 +124,7 @@ function mockBackend(options: MockBackendOptions = {}) {
       }
       return json(configSnapshot);
     }
-    if (path === "/api/config/validate") return json({ valid: true, errors: [], warnings: [], infos: [] });
+    if (path === "/api/config/validate") return json(options.validateResult ?? { valid: true, errors: [], warnings: [], infos: [] });
     if (path === "/api/reload") {
       const reloadError = reloadErrors.shift();
       if (reloadError) {
@@ -161,6 +168,19 @@ function mockBackend(options: MockBackendOptions = {}) {
         all_proxies: ["HK-01"]
       });
     }
+    if (path.startsWith("/api/generate/preview")) {
+      return text(init?.method === "POST" ? "proxies:\n  - name: draft-proxy\n" : "proxies:\n  - name: runtime-proxy\n");
+    }
+    if (path.startsWith("/api/generate/link")) {
+      const url = new URL(path, "http://localhost");
+      const includeToken = url.searchParams.get("include_token") !== "false";
+      const format = url.searchParams.get("format") ?? "clash";
+      const filename = url.searchParams.get("filename") ?? `${format}.yaml`;
+      return json({
+        url: `https://sub.example.com/generate?format=${format}${includeToken ? "&token=server-token" : ""}&filename=${filename}`,
+        token_included: includeToken
+      });
+    }
     if (path === "/healthz") return text("OK");
     return json({ error: { code: "not_found", message: path } }, 404);
   });
@@ -170,6 +190,12 @@ function mockBackend(options: MockBackendOptions = {}) {
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function lastSavedConfig(calls: { path: string; init?: RequestInit }[]) {
+  const saveCall = calls.filter((item) => item.path === "/api/config" && item.init?.method === "PUT").at(-1);
+  if (!saveCall?.init?.body) return null;
+  return (JSON.parse(String(saveCall.init.body)) as { config: typeof sampleConfig.config }).config;
 }
 
 function renderApp(initialPath = "/sources") {
@@ -209,12 +235,167 @@ describe("M9 app shell", () => {
     expect(screen.getByRole("button", { name: "保存并热重载" }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("keeps M10 routes inside the protected SPA as placeholders", async () => {
+  it("keeps M10 routes inside the protected SPA", async () => {
     mockBackend();
     renderApp("/download");
 
     expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
-    expect(screen.getByText("该页面归属 M10，M9 仅保留受保护路由和统一页面状态框架。")).toBeTruthy();
+    expect(screen.getByText("尚未生成预览")).toBeTruthy();
+  });
+});
+
+describe("M10 frontend workflows", () => {
+  it("T-WEB-011 edits ruleset policy and URL list while preserving order", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    renderApp("/rulesets");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "规则集" })).toBeTruthy();
+    expect(await screen.findByDisplayValue("https://rules.example.com/a.list")).toBeTruthy();
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "DIRECT" } });
+    const urlInputs = screen.getAllByPlaceholderText("https://example.com/rules.list");
+    fireEvent.change(urlInputs[1], { target: { value: "https://rules.example.com/c.list" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
+
+    await waitFor(() => {
+      const saved = lastSavedConfig(backend.calls);
+      expect(saved?.rulesets?.[0]).toEqual({
+        key: "DIRECT",
+        value: ["https://rules.example.com/a.list", "https://rules.example.com/c.list"]
+      });
+    });
+  });
+
+  it("T-WEB-012 keeps raw inline rules as source of truth and replaces only the trailing policy", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    renderApp("/rules");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "内联规则" })).toBeTruthy();
+    const ruleInput = await screen.findByDisplayValue("DOMAIN-SUFFIX,example.com,Proxy");
+    const policySelector = await screen.findByDisplayValue("Proxy");
+    expect((policySelector as HTMLSelectElement).disabled).toBe(false);
+    fireEvent.change(ruleInput, { target: { value: "DOMAIN-SUFFIX,example.com,DIRECT" } });
+    expect(await screen.findByDisplayValue("DOMAIN-SUFFIX,example.com,DIRECT")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
+
+    await waitFor(() => {
+      const saved = lastSavedConfig(backend.calls);
+      expect(saved?.rules).toEqual(["DOMAIN-SUFFIX,example.com,DIRECT", "DOMAIN-KEYWORD,internal,DIRECT"]);
+    });
+  });
+
+  it("T-WEB-013 edits settings and disables fields for readonly config sources", async () => {
+    const writableBackend = mockBackend();
+    renderApp("/settings");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "其他配置" })).toBeTruthy();
+    fireEvent.change(await screen.findByDisplayValue("https://sub.example.com"), { target: { value: "https://edge.example.com" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存并热重载" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
+    expect(await screen.findByRole("dialog", { name: "确认首次写回 YAML" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认保存" }));
+
+    await waitFor(() => expect(lastSavedConfig(writableBackend.calls)?.base_url).toBe("https://edge.example.com"));
+    cleanup();
+    vi.restoreAllMocks();
+    installMatchMedia();
+    localStorage.clear();
+
+    mockBackend({ readonly: true });
+    renderApp("/settings");
+
+    expect((await screen.findByDisplayValue("https://sub.example.com") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByDisplayValue("Proxy") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByDisplayValue("configs/base_clash.yaml") as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("T-WEB-014 shows validation diagnostics in a drawer and jumps by json pointer", async () => {
+    mockBackend({
+      validateResult: {
+        valid: false,
+        errors: [
+          {
+            severity: "error",
+            code: "invalid_group_regex",
+            message: "分组正则无效",
+            display_path: "groups[0].match",
+            locator: { json_pointer: "/config/groups/0/value/match", index: 0 }
+          }
+        ],
+        warnings: [
+          {
+            severity: "warning",
+            code: "base_url_empty",
+            message: "base_url 为空",
+            display_path: "base_url",
+            locator: { json_pointer: "/config/base_url" }
+          }
+        ],
+        infos: [
+          {
+            severity: "info",
+            code: "templates_optional",
+            message: "模板可选",
+            display_path: "templates",
+            locator: { json_pointer: "/config/templates" }
+          }
+        ]
+      }
+    });
+    renderApp("/validate");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "静态校验" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行静态校验" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "运行静态校验" }));
+    fireEvent.click(await screen.findByText("invalid_group_regex"));
+
+    expect(await screen.findByRole("dialog", { name: "分组正则无效" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "跳转字段" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "节点分组" })).toBeTruthy();
+    expect(screen.getByDisplayValue("(HK)")).toBeTruthy();
+  });
+
+  it("T-WEB-015 renders runtime group preview success and graph diagnostics failure", async () => {
+    mockBackend();
+    renderApp("/preview/groups");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "分组预览" })).toBeTruthy();
+    expect(await screen.findByText("All proxies")).toBeTruthy();
+    expect(screen.getAllByText("HK-01").length).toBeGreaterThan(0);
+
+    cleanup();
+    vi.restoreAllMocks();
+    installMatchMedia();
+    localStorage.clear();
+
+    mockBackend({ groupPreviewValidationError: true });
+    renderApp("/preview/groups");
+
+    expect(await screen.findByText("图级校验失败", {}, { timeout: 3000 })).toBeTruthy();
+    expect(screen.getByText("empty_group")).toBeTruthy();
+    expect(screen.queryByText("All proxies")).toBeNull();
+  });
+
+  it("T-WEB-016 previews generated config and confirms copying token-included links", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const backend = mockBackend();
+    renderApp("/download");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "当前运行时预览" }));
+    expect(await screen.findByText(/runtime-proxy/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "草稿生成预览" }));
+    expect(await screen.findByText(/draft-proxy/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "复制订阅链接" }));
+    expect(await screen.findByRole("dialog", { name: "复制含 token 的订阅链接？" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认复制" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("token=server-token")));
+    expect(backend.calls.some((item) => item.path.startsWith("/api/generate/link") && !item.path.includes("token=server-token"))).toBe(true);
+    expect(backend.calls.some((item) => item.path === "/api/generate/preview?format=clash" && item.init?.method === "POST")).toBe(true);
   });
 });
 

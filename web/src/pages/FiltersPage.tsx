@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { api } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import { Button, Chip, EmptyState, ErrorState, Field, LoadingState, RailPanel, SplitWorkbench, StatCard, TextInput } from "../components/ui";
+import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { useConfigState } from "../state/config";
 
 const templates = [
@@ -16,6 +17,7 @@ const templates = [
 
 export function FiltersPage() {
   const { draft, updateDraft, isReadonly } = useConfigState();
+  const activePointer = useDiagnosticPointer();
   const exclude = draft?.filters?.exclude ?? "";
   const regexState = useMemo(() => {
     if (!exclude) return { valid: true, message: "" };
@@ -70,7 +72,7 @@ export function FiltersPage() {
       }
     >
       <div className="page-stack">
-        <section className="content-panel editor-panel">
+        <section className={focusClassName(activePointer, ["/config/filters"], "content-panel editor-panel")}>
           <div className="section-heading row">
             <div>
               <h3>排除规则</h3>

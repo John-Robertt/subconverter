@@ -1,6 +1,6 @@
 # 文档状态矩阵
 
-本目录顶层文档描述 subconverter v2.0 的目标设计契约。当前代码仍处于 v1.0 核心能力 + v2.0 Web 原型阶段；除明确标记为"当前可用"的能力外，均属于后续 M6-M10 规划内容，不应作为当前发布的生产能力使用。
+本目录顶层文档描述 subconverter v2.0 的目标设计契约。当前代码已完成 M6-M10，实现后端 Admin API、正式 Web 管理后台、Web 镜像与端到端验收；能力状态以本文矩阵和 `implementation/progress.md` 的最新验收记录为准。
 
 ## 文档导航
 
@@ -40,10 +40,10 @@
 | `GET/POST /api/preview/nodes` | 当前可用 | M7 | 是 | 节点预览 API，支持运行时与草稿双模式。 |
 | `GET/POST /api/preview/groups` | 当前可用 | M7 | 是 | 分组预览 API，执行到 `ValidateGraph`，图级错误返回结构化诊断。 |
 | `GET/POST /api/generate/preview` | 当前可用 | M7 | 是 | 页面内生成预览，不设置下载响应头。 |
-| `GET /api/generate/link` | 当前可用 | M7 | 是 | 已登录后台中由服务端生成客户端订阅链接；前端复制确认流仍属 M10。 |
+| `GET /api/generate/link` | 当前可用 | M7/M10 | 是 | 已登录后台中由服务端生成客户端订阅链接；M10 前端复制确认流已通过验收。 |
 | `GET /api/status` | 当前可用 | M7 | 是 | 系统状态、配置 revision、dirty 状态。 |
-| Web 管理后台正式 SPA | 部分可用 | M9-M10 | 否 | M9 已交付登录/setup、A1-A4、B1、C、主题和保存-reload 工作流；A5-A8、B2-B3 与正式 E2E 待 M10。 |
-| `api + web` Docker Compose 生产部署 | 当前可用 | M8 | 是 | M8 Compose 示例、Web 镜像、SPA fallback 与 nginx 同源反代已通过验收；完整 Web 页面功能仍待 M10。 |
+| Web 管理后台正式 SPA | 当前可用 | M9-M10 | 是 | 登录/setup、A1-A8、B1-B3、C、主题、保存-reload、诊断跳转、预览下载和订阅链接确认流已通过自动化与桌面浏览器验收。 |
+| `api + web` Docker Compose 生产部署 | 当前可用 | M8-M10 | 是 | Compose 示例、Web 镜像、SPA fallback、nginx 同源反代和完整 Web 页面功能已通过验收。 |
 
 状态定义：
 

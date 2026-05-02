@@ -42,6 +42,8 @@ export function useSaveWorkflow() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.status });
       void queryClient.invalidateQueries({ queryKey: ["previewNodes"] });
+      void queryClient.invalidateQueries({ queryKey: ["previewGroups"] });
+      void queryClient.invalidateQueries({ queryKey: ["generatePreview"] });
     }
   });
 

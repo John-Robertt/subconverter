@@ -1,9 +1,10 @@
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { OrderedEntry } from "../api/types";
 import { SortableList } from "../components/SortableList";
 import { Button, Chip, EmptyState, Field, IconButton, RailPanel, SplitWorkbench, TextInput } from "../components/ui";
 import { getRoutingMemberOptions } from "../features/configModel";
+import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { useConfigState } from "../state/config";
 import { useConfirm } from "../state/confirm";
 
@@ -17,12 +18,20 @@ const specialMembers = [
 export function RoutingPage() {
   const { draft, updateDraft, isReadonly } = useConfigState();
   const confirm = useConfirm();
+  const activePointer = useDiagnosticPointer();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const routing = draft?.routing ?? [];
   const groups = draft?.groups ?? [];
   const memberOptions = getRoutingMemberOptions(draft ?? {});
   const activeIndex = routing.length === 0 ? -1 : Math.min(selectedIndex, routing.length - 1);
   const activeRoute = activeIndex >= 0 ? routing[activeIndex] : undefined;
+
+  useEffect(() => {
+    const match = activePointer?.match(/^\/config\/routing\/(\d+)/);
+    if (match) {
+      setSelectedIndex(Number(match[1]));
+    }
+  }, [activePointer]);
 
   function setRouting(nextRouting: OrderedEntry<string[]>[]) {
     updateDraft((config) => ({ ...config, routing: nextRouting }));
@@ -122,7 +131,10 @@ export function RoutingPage() {
             disabled={isReadonly}
             onReorder={setRouting}
             renderItem={(entry, index, handle) => (
-              <article className={index === activeIndex ? "routing-card active" : "routing-card"} onClick={() => setSelectedIndex(index)}>
+              <article
+                className={focusClassName(activePointer, [`/config/routing/${index}`], index === activeIndex ? "routing-card active" : "routing-card")}
+                onClick={() => setSelectedIndex(index)}
+              >
                 <div className="routing-card-header">
                   <div className="row-title">
                     {handle}

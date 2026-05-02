@@ -1,7 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const apiTarget = "http://localhost:8080";
+const apiTarget = process.env.SUBCONVERTER_API_TARGET ?? "http://localhost:8080";
+const proxyTarget = {
+  target: apiTarget,
+  changeOrigin: true,
+  headers: {
+    Origin: apiTarget
+  },
+  configure(proxy: { on: (event: "proxyReq", handler: (proxyReq: { setHeader: (name: string, value: string) => void }) => void) => void }) {
+    proxy.on("proxyReq", (proxyReq) => {
+      proxyReq.setHeader("Origin", apiTarget);
+    });
+  }
+};
 
 export default defineConfig({
   plugins: [react()],
@@ -9,16 +21,13 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: apiTarget,
-        changeOrigin: true
+        ...proxyTarget
       },
       "/generate": {
-        target: apiTarget,
-        changeOrigin: true
+        ...proxyTarget
       },
       "/healthz": {
-        target: apiTarget,
-        changeOrigin: true
+        ...proxyTarget
       }
     }
   }
