@@ -16,10 +16,14 @@ Vite dev server 默认监听 `localhost:5173`，并把 `/api/*`、`/generate`、
 ```bash
 npm test
 npm run build
+npm run test:e2e:int   # Playwright 集成测试（route-mock + Vite dev server）
+npm run test:e2e       # Playwright 端到端测试（带真后端，需要 Go 工具链）
 docker build -t subconverter-web .
 ```
 
-`npm test` 在 M8 只覆盖最小 SPA 路由烟测；正式页面组件、API client 和工作流测试归属 M9/M10。
+- `npm test`：vitest 单元/组件测试。
+- `npm run test:e2e:int`：`web/e2e/integration/` 下的 53 个集成测试。Vite dev server 由 `playwright.integration.config.ts` 自动启动，所有 `/api/*`、`/generate`、`/healthz` 通过 `page.route` 拦截 mock，无需 Go 后端。覆盖登录/setup/锁定/注销、A1–A8 编辑页、B1/B2/B3 运行时预览、保存工作流（首次确认 / revision 冲突 / reload 失败 / 只读源）、C 系统状态，以及跨页边界（session 失效跳转、reload 429 自动重试、后端不可达条幅、保序、只读全局禁用）。
+- `npm run test:e2e`：`web/scripts/e2e-stack.mjs` 启动真实的 Go 后端 + Vite + 跑 `web/e2e/m10.spec.ts`，用于回归 M10 端到端不变量。
 
 ## 生产容器
 

@@ -99,6 +99,15 @@ export interface LastReloadStatus {
   error?: string;
 }
 
+export interface RuntimeEnvironment {
+  listen_addr: string;
+  working_dir: string;
+  go_runtime: string;
+  memory_alloc_mb: string;
+  request_count_24h: number;
+  uptime_seconds: number;
+}
+
 export interface StatusResponse {
   version: string;
   commit?: string;
@@ -113,6 +122,7 @@ export interface StatusResponse {
     reload: boolean;
   };
   last_reload?: LastReloadStatus;
+  runtime_environment?: RuntimeEnvironment;
 }
 
 export interface ReloadResult {
@@ -167,6 +177,7 @@ export interface ExpandedMember {
 export interface PreviewGroup {
   name: string;
   strategy: string;
+  match?: string;
   members: string[];
   expanded_members?: ExpandedMember[];
 }

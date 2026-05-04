@@ -1,14 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FileText, LogOut, Moon, Save, Sun, SunMoon, TriangleAlert } from "lucide-react";
+import { FileText, LogOut, Moon, RefreshCcw, Save, Sun, SunMoon, TriangleAlert } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { queryKeys } from "../app/queryKeys";
-import { findPage, pages, sectionLabels, type PageSection } from "../app/pages";
+import { findPage, pages, type PageSection } from "../app/pages";
 import { useSaveWorkflow } from "../features/useSaveWorkflow";
 import { useConfigState } from "../state/config";
 import { useTheme, type ThemePreference } from "../state/theme";
 import { useToast } from "../state/toast";
-import { Button, IconButton, LoadingState, StatusBadge } from "../components/ui";
+import { Button, IconButton, LoadingState } from "../components/ui";
 
 const sidebarNavGroups: Array<{ label: string; sections: PageSection[] }> = [
   { label: "配置", sections: ["config"] },
@@ -18,9 +18,9 @@ const sidebarNavGroups: Array<{ label: string; sections: PageSection[] }> = [
 export function AppShell() {
   const location = useLocation();
   const currentPage = findPage(location.pathname);
-  const { draft, status, isLoading, isDraftDirty, isReadonly, externalRevisionChanged, resetDraft } = useConfigState();
+  const { draft, status, isLoading, isDraftDirty, isReadonly, externalRevisionChanged, resetDraft, statusError } = useConfigState();
   const { preference, setPreference } = useTheme();
-  const { saveDraft, isSaving, validateDraft, isValidating } = useSaveWorkflow();
+  const { saveDraft, isSaving, reloadOnly, isReloading } = useSaveWorkflow();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { pushToast } = useToast();
@@ -40,20 +40,6 @@ export function AppShell() {
       dark: "system"
     };
     setPreference(next[preference]);
-  }
-
-  async function runValidation() {
-    try {
-      const result = await validateDraft();
-      const total = result.errors.length + result.warnings.length + result.infos.length;
-      pushToast({
-        kind: result.valid ? "success" : "warning",
-        title: result.valid ? "静态校验通过" : "静态校验发现问题",
-        message: result.valid ? "当前草稿可以进入保存流程。" : `发现 ${total} 个诊断项，请在保存前检查。`
-      });
-    } catch (error) {
-      pushToast({ kind: "error", title: "校验失败", message: error instanceof Error ? error.message : "请求失败", persistent: true });
-    }
   }
 
   const navCount = {
@@ -84,7 +70,7 @@ export function AppShell() {
           <span className="brand-mark" aria-hidden="true">S</span>
           <div>
             <div className="brand-name">subconverter</div>
-            <div className="brand-subtitle">{status?.version ? `v${status.version}` : "Admin"}</div>
+            <div className="brand-version">{status?.version ? `v${status.version}` : ""}</div>
           </div>
         </div>
 
@@ -117,36 +103,22 @@ export function AppShell() {
           })}
         </nav>
 
-        <div className="sidebar-status-card">
-          <span className={status?.config_dirty ? "status-dot warning" : "status-dot"} aria-hidden="true" />
-          <div>
-            <strong>{status?.config_dirty ? "待热重载" : "服务运行中"}</strong>
-            <small>{status?.last_reload?.time ? `上次 reload ${formatRelative(status.last_reload.time)}` : status?.runtime_config_revision ?? "等待状态"}</small>
-          </div>
-        </div>
+        <SidebarStatusCard status={status} statusError={statusError} />
+
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <p className="eyebrow">{sectionLabels[currentPage.section]}</p>
             <h1>{currentPage.title}</h1>
             <p>{currentPage.subtitle}</p>
           </div>
 
-          <div className="topbar-status">
-            <StatusBadge tone={status?.config_dirty ? "warning" : "success"}>config.yaml</StatusBadge>
-            {isReadonly ? <StatusBadge tone="warning">readonly</StatusBadge> : <StatusBadge tone="info">writable</StatusBadge>}
-            {isDraftDirty ? <StatusBadge tone="warning">draft changed</StatusBadge> : <StatusBadge>draft clean</StatusBadge>}
-          </div>
-
           <div className="topbar-actions">
+            <span className="topbar-dim-text">config.yaml</span>
             <IconButton label={`主题：${preference}`} variant="ghost" onClick={cycleTheme}>
               {preference === "system" ? <SunMoon size={18} aria-hidden="true" /> : preference === "dark" ? <Moon size={18} aria-hidden="true" /> : <Sun size={18} aria-hidden="true" />}
             </IconButton>
-            <Button variant="secondary" icon={<CheckCircle2 size={16} aria-hidden="true" />} loading={isValidating} disabled={!draft} onClick={() => void runValidation()}>
-              校验
-            </Button>
             <Button
               variant="primary"
               icon={<Save size={16} aria-hidden="true" />}
@@ -154,7 +126,15 @@ export function AppShell() {
               disabled={isReadonly || !isDraftDirty}
               onClick={() => void saveDraft().catch(() => undefined)}
             >
-              保存并热重载
+              保存
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<RefreshCcw size={16} aria-hidden="true" />}
+              loading={isReloading}
+              onClick={() => void reloadOnly()}
+            >
+              热重载
             </Button>
             <IconButton label="注销" variant="ghost" onClick={() => void logoutMutation.mutateAsync()}>
               <LogOut size={18} aria-hidden="true" />
@@ -199,4 +179,58 @@ function formatRelative(value: string) {
   if (minutes < 60) return `${minutes} 分钟前`;
   const hours = Math.round(minutes / 60);
   return `${hours} 小时前`;
+}
+
+type SidebarTone = "success" | "warning" | "error";
+
+interface SidebarStatusView {
+  tone: SidebarTone;
+  title: string;
+  detail: string;
+}
+
+function deriveSidebarStatus(
+  status: ReturnType<typeof useConfigState>["status"],
+  statusError: unknown
+): SidebarStatusView {
+  if (statusError) {
+    return { tone: "error", title: "后端不可达", detail: "请求 /api/status 失败" };
+  }
+  if (status?.last_reload?.success === false) {
+    return {
+      tone: "error",
+      title: "上次热重载失败",
+      detail: status.last_reload.time ? `${formatRelative(status.last_reload.time)}失败` : "请检查日志"
+    };
+  }
+  if (status?.config_dirty) {
+    return { tone: "warning", title: "配置待重载", detail: "草稿已保存但未生效" };
+  }
+  if (status?.last_reload?.time) {
+    return { tone: "success", title: "服务运行中", detail: `${formatRelative(status.last_reload.time)}热重载` };
+  }
+  if (status?.config_loaded_at) {
+    return { tone: "success", title: "服务运行中", detail: `${formatRelative(status.config_loaded_at)}加载` };
+  }
+  return { tone: "success", title: "服务运行中", detail: "等待状态信息" };
+}
+
+function SidebarStatusCard({
+  status,
+  statusError
+}: {
+  status: ReturnType<typeof useConfigState>["status"];
+  statusError: unknown;
+}) {
+  const view = deriveSidebarStatus(status, statusError);
+  const dotClass = view.tone === "success" ? "status-dot" : `status-dot ${view.tone}`;
+  return (
+    <div className="sidebar-status-card">
+      <span className={dotClass} aria-hidden="true" />
+      <div>
+        <strong>{view.title}</strong>
+        <small>{view.detail}</small>
+      </div>
+    </div>
+  );
 }

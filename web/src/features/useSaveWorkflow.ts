@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { isApiError } from "../api/errors";
-import type { Config } from "../api/types";
+import type { ValidateResult } from "../api/types";
 import { queryKeys } from "../app/queryKeys";
 import { useConfirm } from "../state/confirm";
 import { useConfigState } from "../state/config";
@@ -10,32 +11,21 @@ import { useToast } from "../state/toast";
 const firstSaveStorageKey = "subconverter.firstSaveConfirmed";
 const reloadRetryDelayMs = 1500;
 
-class ReloadAfterSaveError extends Error {
-  savedRevision: string;
-  savedDraft: Config;
-  reloadError: unknown;
-
-  constructor(savedRevision: string, savedDraft: Config, reloadError: unknown) {
-    super("配置已保存，但 reload 未完成");
-    this.name = "ReloadAfterSaveError";
-    this.savedRevision = savedRevision;
-    this.savedDraft = savedDraft;
-    this.reloadError = reloadError;
+class ValidationFailedError extends Error {
+  result: ValidateResult;
+  constructor(result: ValidateResult) {
+    super("配置校验未通过");
+    this.name = "ValidationFailedError";
+    this.result = result;
   }
 }
 
 export function useSaveWorkflow() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const { pushToast } = useToast();
   const { draft, baseRevision, replaceDraft, forceReadonly, resetDraft } = useConfigState();
-
-  const validateMutation = useMutation({
-    mutationFn: () => {
-      if (!draft) throw new Error("配置尚未加载");
-      return api.validateConfig(draft);
-    }
-  });
 
   const reloadMutation = useMutation({
     mutationFn: reloadWithBackoff,
@@ -56,15 +46,13 @@ export function useSaveWorkflow() {
 
       const validation = await api.validateConfig(savingDraft);
       if (!validation.valid) {
-        const first = validation.errors[0] ?? validation.warnings[0] ?? validation.infos[0];
-        const location = first?.locator?.json_pointer ?? first?.display_path ?? "/config";
-        throw new Error(first ? `配置校验未通过：${first.code} ${first.message}（${location}）` : "配置校验未通过");
+        throw new ValidationFailedError(validation);
       }
 
       if (!localStorage.getItem(firstSaveStorageKey)) {
         const accepted = await confirm({
-          title: "确认首次写回 YAML",
-          message: "保存会把当前结构化配置写回 YAML，原文件中的注释、引号和部分格式风格可能丢失。",
+          title: "将草稿写入 YAML 文件？",
+          message: "保存会用当前草稿覆盖 YAML 文件，原文件中的注释、引号和部分格式风格可能丢失。保存后不会自动热重载，请按需点击右上角\"热重载\"。",
           confirmLabel: "确认保存"
         });
         if (!accepted) {
@@ -74,33 +62,26 @@ export function useSaveWorkflow() {
       }
 
       const saved = await api.saveConfig(baseRevision, savingDraft);
-      try {
-        const reloadStatus = await reloadWithBackoff();
-        return { saved, savedDraft: savingDraft, reloadStatus };
-      } catch (reloadError) {
-        throw new ReloadAfterSaveError(saved.config_revision, savingDraft, reloadError);
-      }
+      return { saved, savedDraft: savingDraft };
     },
     onSuccess: async ({ saved, savedDraft }) => {
       replaceDraft(savedDraft, saved.config_revision);
       await queryClient.invalidateQueries({ queryKey: queryKeys.config });
       await queryClient.invalidateQueries({ queryKey: queryKeys.status });
-      pushToast({ kind: "success", title: "配置已保存并生效" });
+      pushToast({
+        kind: "success",
+        title: "草稿已写入 YAML 文件",
+        message: "如需立即生效，请点击右上角\"热重载\"。"
+      });
     },
     onError: async (error) => {
-      if (error instanceof ReloadAfterSaveError) {
-        replaceDraft(error.savedDraft, error.savedRevision);
-        await queryClient.invalidateQueries({ queryKey: queryKeys.config });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.status });
+      if (error instanceof ValidationFailedError) {
+        navigate("/validate", { state: { validateResult: error.result } });
+        const total = error.result.errors.length + error.result.warnings.length + error.result.infos.length;
         pushToast({
           kind: "warning",
-          title: "配置已保存，reload 未完成",
-          message: `配置文件已写回，但 RuntimeConfig 仍可能使用旧 revision。${formatError(error.reloadError)}`,
-          persistent: true,
-          action: {
-            label: "重试 reload",
-            onClick: () => void reloadOnly()
-          }
+          title: "保存被阻断：静态校验未通过",
+          message: `发现 ${total} 个诊断项，已跳转到校验页查看详情。`
         });
         return;
       }
@@ -118,7 +99,7 @@ export function useSaveWorkflow() {
         return;
       }
 
-      pushToast({ kind: "error", title: "保存失败", message: "配置校验未通过或请求失败", persistent: true });
+      pushToast({ kind: "error", title: "保存失败", message: "保存请求失败", persistent: true });
     }
   });
 
@@ -213,8 +194,6 @@ export function useSaveWorkflow() {
   }
 
   return {
-    validateDraft: validateMutation.mutateAsync,
-    isValidating: validateMutation.isPending,
     saveDraft: saveMutation.mutateAsync,
     isSaving: saveMutation.isPending,
     reloadOnly,
@@ -225,13 +204,6 @@ export function useSaveWorkflow() {
 
 function isReloadInProgress(error: unknown) {
   return isApiError(error) && (error.status === 429 || error.code === "reload_in_progress");
-}
-
-function formatError(error: unknown) {
-  if (isApiError(error)) {
-    return `${error.status} ${error.code}: ${error.message}`;
-  }
-  return error instanceof Error ? error.message : "reload 失败";
 }
 
 function delay(ms: number) {

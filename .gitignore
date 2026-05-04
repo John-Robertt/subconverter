@@ -37,4 +37,6 @@ Thumbs.db
 .env
 *.pem
 
+test-results
+
 ss*.txt

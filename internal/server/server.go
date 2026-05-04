@@ -24,6 +24,9 @@ type Options struct {
 	AdminHandler          http.Handler
 	AdminSessionValidator func(*http.Request) bool
 	EnableCORS            bool
+	// RequestCounter, if set, is invoked once per inbound request and feeds
+	// the runtime environment surface on /api/status.
+	RequestCounter func()
 }
 
 // New creates a Server with the given generator.
@@ -40,8 +43,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /generate", s.handleGenerate)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	var handler http.Handler = mux
+	if s.opts.RequestCounter != nil {
+		handler = requestCounterMiddleware(handler, s.opts.RequestCounter)
+	}
 	if s.opts.EnableCORS {
 		handler = corsMiddleware(handler)
 	}
 	return handler
+}
+
+func requestCounterMiddleware(next http.Handler, counter func()) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip CORS preflight and the health probe so the counter reflects
+		// real client / admin traffic only.
+		if r.Method != http.MethodOptions && r.URL.Path != "/healthz" {
+			counter()
+		}
+		next.ServeHTTP(w, r)
+	})
 }

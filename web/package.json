@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run --environment jsdom --exclude='e2e/**'",
     "test:e2e": "node scripts/e2e-stack.mjs",
+    "test:e2e:int": "playwright test --config playwright.integration.config.ts",
     "typecheck": "tsc -b"
   },
   "dependencies": {

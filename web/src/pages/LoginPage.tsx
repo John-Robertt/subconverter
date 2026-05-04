@@ -1,19 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, KeyRound, LogIn, Moon, RefreshCw, Sun } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Eye, EyeOff, KeyRound, LogIn, Moon, Sun } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { getErrorMessage, isApiError } from "../api/errors";
 import { queryKeys } from "../app/queryKeys";
-import { Button, Field, IconButton, TextInput } from "../components/ui";
+import { Button, Field, TextInput } from "../components/ui";
 import { useTheme } from "../state/theme";
 import { useToast } from "../state/toast";
-
-interface InlineAuthError {
-  title: string;
-  message: string;
-  tone: "error" | "warning";
-}
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -28,7 +22,6 @@ export function LoginPage() {
   const [setupToken, setSetupToken] = useState("");
   const [remember, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [inlineError, setInlineError] = useState<InlineAuthError | null>(null);
   const [lockedUntil, setLockedUntil] = useState("");
 
   const authQuery = useQuery({
@@ -49,9 +42,26 @@ export function LoginPage() {
     return "";
   }, [confirmPassword, mode, password]);
 
+  const networkErrorRef = useRef<unknown>(null);
+  const refetchAuth = authQuery.refetch;
+  useEffect(() => {
+    if (!authQuery.isError) {
+      networkErrorRef.current = null;
+      return;
+    }
+    if (networkErrorRef.current === authQuery.error) return;
+    networkErrorRef.current = authQuery.error;
+    pushToast({
+      kind: "error",
+      title: "后端不可达",
+      message: getErrorMessage(authQuery.error),
+      persistent: true,
+      action: { label: "重试", onClick: () => void refetchAuth() }
+    });
+  }, [authQuery.error, authQuery.isError, pushToast, refetchAuth]);
+
   const mutation = useMutation({
     mutationFn: async () => {
-      setInlineError(null);
       if (mode === "setup") {
         if (password.length < 12) throw new Error("密码至少 12 位");
         if (password !== confirmPassword) throw new Error("两次密码不一致");
@@ -68,20 +78,34 @@ export function LoginPage() {
         const until = typeof error.payload === "object" && error.payload && "until" in error.payload ? String(error.payload.until ?? "") : "";
         if (error.code === "auth_locked") {
           setLockedUntil(until);
-          setInlineError({ tone: "warning", title: "账号已临时锁定", message: until ? `请于 ${until} 后重试。` : error.message });
+          pushToast({
+            kind: "warning",
+            title: "账号已临时锁定",
+            message: until ? `连续登录失败 · 请于 ${until} 后重试，或联系管理员重置。` : error.message,
+            persistent: true
+          });
           return;
         }
         if (error.code === "invalid_credentials") {
           const remaining = typeof error.payload === "object" && error.payload && "remaining" in error.payload ? String(error.payload.remaining ?? "") : "";
-          setInlineError({ tone: "error", title: "用户名或密码错误", message: remaining ? `还可尝试 ${remaining} 次。` : error.message });
+          pushToast({
+            kind: "error",
+            title: "用户名或密码错误",
+            message: remaining ? `还可尝试 ${remaining} 次。` : error.message,
+            persistent: true
+          });
           return;
         }
-        setInlineError({ tone: "error", title: mode === "setup" ? "Setup 失败" : "登录失败", message: `${error.status} ${error.code}: ${error.message}` });
+        pushToast({
+          kind: "error",
+          title: mode === "setup" ? "Setup 失败" : "登录失败",
+          message: `${error.status} ${error.code}: ${error.message}`,
+          persistent: true
+        });
         return;
       }
 
       const message = error instanceof Error ? error.message : "登录失败";
-      setInlineError({ tone: "error", title: mode === "setup" ? "Setup 失败" : "登录失败", message });
       pushToast({ kind: "error", title: mode === "setup" ? "Setup 失败" : "登录失败", message, persistent: true });
     }
   });
@@ -91,8 +115,6 @@ export function LoginPage() {
   }
 
   const isLocked = Boolean(lockedUntil || authQuery.data?.locked_until);
-  const effectiveLockedUntil = lockedUntil || authQuery.data?.locked_until;
-  const networkError = authQuery.isError ? getErrorMessage(authQuery.error) : "";
 
   return (
     <main className="login-screen">
@@ -105,19 +127,7 @@ export function LoginPage() {
         </button>
       </div>
 
-      {networkError ? (
-        <div className="login-network-banner" role="alert">
-          <span aria-hidden="true" />
-          <strong>后端不可达</strong>
-          <p>{networkError}</p>
-          <button type="button" onClick={() => void authQuery.refetch()}>
-            <RefreshCw size={13} aria-hidden="true" />
-            重试
-          </button>
-        </div>
-      ) : null}
-
-      <section className="login-panel" aria-labelledby="login-title">
+      <section className="login-panel" aria-label={mode === "setup" ? "首次部署管理员账号" : "登录管理后台"}>
         <div className="login-wordmark">
           <span className="brand-mark" aria-hidden="true">S</span>
           <strong>subconverter</strong>
@@ -125,27 +135,18 @@ export function LoginPage() {
 
         {mode === "setup" ? (
           <div className="setup-notice">
-            <strong>首次部署 · 设置管理员账号</strong>
+            <div className="setup-notice-row">
+              <span className="setup-notice-mark" aria-hidden="true">✓</span>
+              <h2>首次创建管理员</h2>
+            </div>
             <p>检测到尚未初始化。请从服务日志复制 Setup Token，凭据将写入 auth.yaml。</p>
           </div>
-        ) : null}
-
-        <div className="login-title-block">
-          <h1 id="login-title">{mode === "setup" ? "首次创建管理员" : "登录管理后台"}</h1>
-          <p>{mode === "setup" ? "创建后会自动进入后台" : "使用管理员账号继续"}</p>
-        </div>
-
-        {isLocked ? (
-          <div className="login-inline-error warning" role="alert">
-            <strong>账号已临时锁定</strong>
-            <p>{effectiveLockedUntil ? `请于 ${effectiveLockedUntil} 后重试。` : "请稍后重试，或联系管理员重置。"}</p>
+        ) : (
+          <div className="login-title-block">
+            <h1>登录管理后台</h1>
+            <p>使用管理员账号继续</p>
           </div>
-        ) : inlineError ? (
-          <div className={`login-inline-error ${inlineError.tone}`} role="alert">
-            <strong>{inlineError.title}</strong>
-            <p>{inlineError.message}</p>
-          </div>
-        ) : null}
+        )}
 
         <form
           className="form-stack"
@@ -173,9 +174,16 @@ export function LoginPage() {
                 autoComplete={mode === "setup" ? "new-password" : "current-password"}
                 placeholder={mode === "setup" ? "至少 12 位，含字母与数字" : ""}
               />
-              <IconButton label={showPassword ? "隐藏密码" : "显示密码"} variant="ghost" type="button" onClick={() => setShowPassword((value) => !value)}>
-                {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
-              </IconButton>
+              <button
+                type="button"
+                className="password-toggle"
+                aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                title={showPassword ? "隐藏密码" : "显示密码"}
+                tabIndex={-1}
+                onClick={() => setShowPassword((value) => !value)}
+              >
+                {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+              </button>
             </div>
             {mode === "setup" ? (
               <div className="password-strength" aria-label={`密码强度：${passwordStrength.label}`}>
@@ -209,7 +217,13 @@ export function LoginPage() {
         </form>
       </section>
 
-      <footer className="login-footer">subconverter v{authQuery.data ? "2.0" : "0.9.4"} · 文档 · GitHub</footer>
+      <footer className="login-footer">
+        <span>subconverter v{authQuery.data ? "2.0" : "0.9.4"}</span>
+        <span className="login-footer-dot" aria-hidden="true" />
+        <a href="https://github.com/Stealthy-Dev/subconverter" target="_blank" rel="noreferrer">文档</a>
+        <span className="login-footer-dot" aria-hidden="true" />
+        <a href="https://github.com/Stealthy-Dev/subconverter" target="_blank" rel="noreferrer">GitHub</a>
+      </footer>
     </main>
   );
 }

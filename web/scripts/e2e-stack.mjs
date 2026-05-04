@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,15 +14,12 @@ const fakePort = Number(process.env.E2E_FAKE_PORT ?? "18081");
 const setupToken = process.env.E2E_SETUP_TOKEN ?? "setup-e2e-secret";
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? "admin-password-123";
 const tempRoot = path.join(tmpdir(), `subconverter-e2e-${Date.now()}`);
-const runtimeNodeModules = "/Users/yin/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules";
 
 const children = [];
-const tempSymlinks = [];
 let fakeServer;
 
 try {
   await mkdir(tempRoot, { recursive: true });
-  await ensureLocalPlaywrightFallback();
   fakeServer = await startFakeUpstream(fakePort);
   await writeFixtureConfig(path.join(tempRoot, "config.yaml"));
 
@@ -65,8 +62,7 @@ try {
     env: {
       E2E_BASE_URL: `http://127.0.0.1:${webPort}`,
       E2E_SETUP_TOKEN: setupToken,
-      E2E_ADMIN_PASSWORD: adminPassword,
-      NODE_PATH: [path.join(webDir, "node_modules"), runtimeNodeModules].filter(Boolean).join(path.delimiter)
+      E2E_ADMIN_PASSWORD: adminPassword
     }
   });
   process.exitCode = result;
@@ -76,9 +72,6 @@ try {
   }
   if (fakeServer) {
     await new Promise((resolve) => fakeServer.close(resolve));
-  }
-  for (const linkPath of tempSymlinks.reverse()) {
-    await rm(linkPath, { recursive: true, force: true });
   }
   await rm(tempRoot, { recursive: true, force: true });
 }
@@ -208,15 +201,5 @@ async function waitForHTTP(url, expectedText) {
 function resolvePlaywrightCli() {
   const local = path.join(webDir, "node_modules/playwright/cli.js");
   if (existsSync(local)) return local;
-  const bundled = path.join(runtimeNodeModules, "playwright/cli.js");
-  if (existsSync(bundled)) return bundled;
-  throw new Error("Playwright CLI not found. Run npm install in web/ first.");
-}
-
-async function ensureLocalPlaywrightFallback() {
-  const local = path.join(webDir, "node_modules/playwright");
-  const bundled = path.join(runtimeNodeModules, "playwright");
-  if (existsSync(local) || !existsSync(bundled)) return;
-  await symlink(bundled, local, "dir");
-  tempSymlinks.push(local);
+  throw new Error("Playwright CLI not found. Run `npm install` in web/ first.");
 }

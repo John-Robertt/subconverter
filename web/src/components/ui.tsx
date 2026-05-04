@@ -153,15 +153,17 @@ export function StatCard({
   label,
   value,
   sub,
-  tone = "neutral"
+  tone = "neutral",
+  className
 }: {
   label: string;
   value: string | number;
   sub?: string;
   tone?: "neutral" | "success" | "warning" | "error" | "info";
+  className?: string;
 }) {
   return (
-    <div className={`stat-card stat-${tone}`}>
+    <div className={`stat-card stat-${tone}${className ? ` ${className}` : ""}`}>
       <span>{label}</span>
       <strong>{value}</strong>
       {sub ? <small>{sub}</small> : null}
@@ -205,15 +207,18 @@ export function Chip({
   children,
   tone = "neutral",
   removable = false,
-  onRemove
+  onRemove,
+  className
 }: {
   children: ReactNode;
   tone?: "neutral" | "accent" | "success" | "warning" | "error" | "info";
   removable?: boolean;
   onRemove?: () => void;
+  className?: string;
 }) {
+  const cls = className ? `chip chip-${tone} ${className}` : `chip chip-${tone}`;
   return (
-    <span className={`chip chip-${tone}`}>
+    <span className={cls}>
       {children}
       {removable ? (
         <button type="button" aria-label="移除" onClick={onRemove}>

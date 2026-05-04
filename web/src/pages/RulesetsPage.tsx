@@ -1,8 +1,7 @@
-import { Link2, Plus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { useMemo } from "react";
 import type { OrderedEntry } from "../api/types";
-import { SortableList } from "../components/SortableList";
-import { Button, Chip, EmptyState, Field, IconButton, SelectInput, TextInput } from "../components/ui";
+import { Button, Chip, EmptyState, Field, IconButton, SelectInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { getPolicyOptions } from "../features/configModel";
 import { useConfigState } from "../state/config";
@@ -12,18 +11,8 @@ export function RulesetsPage() {
   const { draft, updateDraft, isReadonly } = useConfigState();
   const confirm = useConfirm();
   const activePointer = useDiagnosticPointer();
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const rulesets = draft?.rulesets ?? [];
   const policyOptions = useMemo(() => getPolicyOptions(draft ?? {}), [draft]);
-  const activeIndex = rulesets.length === 0 ? -1 : Math.min(selectedIndex, rulesets.length - 1);
-  const activeRuleset = activeIndex >= 0 ? rulesets[activeIndex] : undefined;
-
-  useEffect(() => {
-    const match = activePointer?.match(/^\/config\/rulesets\/(\d+)/);
-    if (match) {
-      setSelectedIndex(Number(match[1]));
-    }
-  }, [activePointer]);
 
   function setRulesets(nextRulesets: OrderedEntry<string[]>[]) {
     updateDraft((config) => ({ ...config, rulesets: nextRulesets }));
@@ -41,7 +30,6 @@ export function RulesetsPage() {
     const used = new Set(rulesets.map((entry) => entry.key));
     const nextPolicy = policyOptions.find((policy) => !used.has(policy)) ?? "";
     setRulesets([...rulesets, { key: nextPolicy, value: [] }]);
-    setSelectedIndex(rulesets.length);
   }
 
   async function deleteRuleset(index: number) {
@@ -53,7 +41,6 @@ export function RulesetsPage() {
     });
     if (!accepted) return;
     setRulesets(rulesets.filter((_, rulesetIndex) => rulesetIndex !== index));
-    setSelectedIndex(Math.max(0, index - 1));
   }
 
   async function deleteUrl(entryIndex: number, urlIndex: number) {
@@ -79,103 +66,107 @@ export function RulesetsPage() {
       {rulesets.length === 0 ? (
         <EmptyState title="暂无规则集绑定" message={isReadonly ? "只读模式下不可新增规则集。" : "为服务组绑定远端规则列表后，生成时会按顺序输出。"} />
       ) : (
-        <SortableList
-          items={rulesets}
-          getId={(item, index) => `${item.key || "ruleset"}-${index}`}
-          disabled={isReadonly}
-          onReorder={setRulesets}
-          renderItem={(entry, index, handle) => (
-            <article
-              className={focusClassName(activePointer, [`/config/rulesets/${index}`], index === activeIndex ? "routing-card active" : "routing-card")}
-              onClick={() => setSelectedIndex(index)}
-            >
-              <div className="routing-card-header">
-                <div className="row-title">
-                  {handle}
-                  <code>{String(index + 1).padStart(2, "0")}</code>
-                  <strong>{entry.key || `规则集 #${index + 1}`}</strong>
-                  <Chip>{entry.value.length} 条 URL</Chip>
-                </div>
-                <IconButton label="删除规则集" variant="danger" disabled={isReadonly} onClick={() => void deleteRuleset(index)}>
-                  <Trash2 size={15} aria-hidden="true" />
-                </IconButton>
-              </div>
-              {index === activeIndex ? (
-                <div className="form-stack">
-                  <Field label="绑定 Policy" hint="应引用 A4 路由策略中的服务组；未知 key 会保留并交给 validate 报错。">
-                    <SelectInput value={entry.key} disabled={isReadonly} onChange={(event) => patchEntry(index, { key: event.target.value })}>
-                      {entry.key && !policyOptions.includes(entry.key) ? <option value={entry.key}>{entry.key}（当前配置）</option> : null}
-                      <option value="">选择服务组</option>
-                      {policyOptions.map((policy) => (
-                        <option key={policy} value={policy}>{policy}</option>
-                      ))}
-                    </SelectInput>
-                  </Field>
-                  <RulesetUrlEditor
-                    entryIndex={index}
-                    urls={entry.value}
-                    readonly={isReadonly}
-                    activePointer={activePointer}
-                    onChange={(urls) => patchUrls(index, urls)}
-                    onDelete={(urlIndex) => void deleteUrl(index, urlIndex)}
-                  />
-                </div>
-              ) : null}
-            </article>
-          )}
-        />
+        <div className="stack-list" style={{ gap: 14 }}>
+          {rulesets.map((entry, index) => (
+            <RulesetCard
+              key={`${entry.key || "ruleset"}-${index}`}
+              entry={entry}
+              index={index}
+              readonly={isReadonly}
+              policyOptions={policyOptions}
+              activePointer={activePointer}
+              onPatchEntry={(patch) => patchEntry(index, patch)}
+              onPatchUrls={(urls) => patchUrls(index, urls)}
+              onDelete={() => void deleteRuleset(index)}
+              onDeleteUrl={(urlIndex) => void deleteUrl(index, urlIndex)}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-function RulesetUrlEditor({
-  entryIndex,
-  urls,
+function RulesetCard({
+  entry,
+  index,
   readonly,
+  policyOptions,
   activePointer,
-  onChange,
-  onDelete
+  onPatchEntry,
+  onPatchUrls,
+  onDelete,
+  onDeleteUrl
 }: {
-  entryIndex: number;
-  urls: string[];
+  entry: OrderedEntry<string[]>;
+  index: number;
   readonly: boolean;
+  policyOptions: string[];
   activePointer?: string;
-  onChange: (urls: string[]) => void;
-  onDelete: (index: number) => void;
+  onPatchEntry: (patch: Partial<OrderedEntry<string[]>>) => void;
+  onPatchUrls: (urls: string[]) => void;
+  onDelete: () => void;
+  onDeleteUrl: (urlIndex: number) => void;
 }) {
-  function patchUrl(index: number, value: string) {
-    onChange(urls.map((url, urlIndex) => (urlIndex === index ? value : url)));
-  }
-
   return (
-    <div className="editor-block">
-      <div className="editor-block-header">
-        <div>
-          <strong>URL 列表</strong>
-          <p className="muted">多条 URL 会合并匹配同一服务组，顺序按当前列表写回。</p>
+    <article className={focusClassName(activePointer, [`/config/rulesets/${index}`], "content-panel")} style={{ padding: "18px 22px" }}>
+      <div className="routing-card-header">
+        <div className="row-title">
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{entry.key || `规则集 #${index + 1}`}</h3>
+          <Chip>{entry.value.length} 条 URL</Chip>
+          <span className="muted" style={{ fontSize: 12 }}>{policyOptions.includes(entry.key) ? "已绑定服务组" : "未绑定"}</span>
         </div>
-        <Button variant="secondary" icon={<Link2 size={15} aria-hidden="true" />} disabled={readonly} onClick={() => onChange([...urls, ""])}>
-          添加 URL
-        </Button>
+        <div className="source-card-actions">
+          <IconButton label="删除规则集" variant="danger" disabled={readonly} onClick={onDelete}>
+            <Trash2 size={15} aria-hidden="true" />
+          </IconButton>
+        </div>
       </div>
-      {urls.length === 0 ? <EmptyState title="该服务组未挂载任何规则集" message={readonly ? "只读模式下不可新增 URL。" : "添加一条 HTTP(S) URL 后再运行静态校验。"} /> : null}
-      <SortableList
-        items={urls}
-        getId={(url, index) => `${index}-${url}`}
-        disabled={readonly}
-        onReorder={onChange}
-        renderItem={(url, index, handle) => (
-          <div className={focusClassName(activePointer, [`/config/rulesets/${entryIndex}/value/${index}`], "inline-editor-row")}>
-            {handle}
-            <span className="row-number">{String(index + 1).padStart(2, "0")}</span>
-            <TextInput className="mono-input" value={url} disabled={readonly} onChange={(event) => patchUrl(index, event.target.value)} placeholder="https://example.com/rules.list" />
-            <IconButton label="删除规则集 URL" variant="danger" disabled={readonly} onClick={() => onDelete(index)}>
-              <Trash2 size={15} aria-hidden="true" />
-            </IconButton>
-          </div>
-        )}
-      />
-    </div>
+
+      <Field label="绑定 Policy" hint="引用 A4 路由策略中的服务组">
+        <SelectInput value={entry.key} disabled={readonly} onChange={(event) => onPatchEntry({ key: event.target.value })}>
+          {entry.key && !policyOptions.includes(entry.key) ? <option value={entry.key}>{entry.key}（当前配置）</option> : null}
+          <option value="">选择服务组</option>
+          {policyOptions.map((policy) => (
+            <option key={policy} value={policy}>{policy}</option>
+          ))}
+        </SelectInput>
+      </Field>
+
+      {entry.value.length === 0 ? (
+        <EmptyState title="该服务组未挂载任何规则集" message={readonly ? "只读模式下不可新增 URL。" : "添加规则集 URL 后再运行静态校验。"} />
+      ) : (
+        <div className="stack-list" style={{ gap: 6 }}>
+          {entry.value.map((url, urlIndex) => (
+            <div
+              key={`${urlIndex}-${url}`}
+              className={focusClassName(activePointer, [`/config/rulesets/${index}/value/${urlIndex}`], "ruleset-url-row")}
+            >
+              <span className="drag-handle static" aria-hidden="true">⠿</span>
+              <input
+                className="ruleset-url-input"
+                type="text"
+                value={url}
+                placeholder="https://example.com/rules.list"
+                disabled={readonly}
+                onChange={(e) => {
+                  const next = [...entry.value];
+                  next[urlIndex] = e.target.value;
+                  onPatchUrls(next);
+                }}
+              />
+              <IconButton label="删除 URL" variant="danger" disabled={readonly} onClick={() => onDeleteUrl(urlIndex)}>
+                <Trash2 size={13} aria-hidden="true" />
+              </IconButton>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button className="add-dashed" type="button" disabled={readonly} onClick={() => onPatchUrls([...entry.value, ""])} style={{ marginTop: 10, width: "100%" }}>
+        <Plus size={14} aria-hidden="true" />
+        添加规则集 URL
+      </button>
+    </article>
   );
 }

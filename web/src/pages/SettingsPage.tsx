@@ -1,6 +1,5 @@
-import { ExternalLink, FileCode2 } from "lucide-react";
 import { useMemo } from "react";
-import { Chip, Field, SelectInput, TextInput } from "../components/ui";
+import { SelectInput, TextInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { getPolicyOptions } from "../features/configModel";
 import { useConfigState } from "../state/config";
@@ -27,9 +26,9 @@ export function SettingsPage() {
       <section className={focusClassName(activePointer, ["/config/fallback"], "setting-block")}>
         <div className="setting-copy">
           <h3>fallback 服务组</h3>
-          <p>所有规则都不匹配时使用的兜底出口，必须引用 A4 中定义的服务组。</p>
+          <p>所有规则都不匹配时使用的兜底。建议指向「全球代理」类的服务组。</p>
         </div>
-        <Field label="Fallback">
+        <div className="setting-input-row">
           <SelectInput value={fallback} disabled={isReadonly} onChange={(event) => patchConfig({ fallback: event.target.value })}>
             {fallback && !routingOptions.includes(fallback) ? <option value={fallback}>{fallback}（当前配置）</option> : null}
             <option value="">选择服务组</option>
@@ -37,40 +36,43 @@ export function SettingsPage() {
               <option key={policy} value={policy}>{policy}</option>
             ))}
           </SelectInput>
-        </Field>
+        </div>
       </section>
 
       <section className={focusClassName(activePointer, ["/config/base_url"], "setting-block")}>
         <div className="setting-copy">
           <h3>base_url</h3>
-          <p>服务的外部访问地址，用于订阅链接和 Surge Managed Profile。订阅 token 属于服务端运行参数，不在前端编辑。</p>
+          <p>生成订阅链接时使用的基础地址，仅 scheme 和 host。Surge Managed Profile 会用到。</p>
         </div>
-        <Field label="Base URL" hint="只允许 scheme + host，不包含 path、query 或 fragment。" error={baseURLState.valid ? undefined : baseURLState.message}>
+        <div className="setting-input-row">
           <TextInput className="mono-input" value={baseURL} disabled={isReadonly} onChange={(event) => patchConfig({ base_url: event.target.value })} placeholder="https://sub.example.com" />
-        </Field>
-        <div className="setting-preview">
-          <ExternalLink size={15} aria-hidden="true" />
-          <span>订阅链接预览</span>
-          <code>{baseURLState.valid && baseURL ? `${baseURL}/generate?format=clash&filename=clash.yaml` : "等待有效 base_url"}</code>
+        </div>
+        {baseURLState.valid ? null : <div className="field-error">{baseURLState.message}</div>}
+        {baseURLState.valid && baseURL ? (
+          <div className="setting-preview">
+            <span>预览：</span>
+            <code style={{ color: "var(--primary)" }}>{baseURL}/generate?format=clash&token=••••</code>
+          </div>
+        ) : null}
+      </section>
+
+      <section className={focusClassName(activePointer, ["/config/templates/clash"], "setting-block")}>
+        <div className="setting-copy">
+          <h3>Clash 模板</h3>
+          <p>生成 Clash Meta 配置时使用的基础模板。可填本地路径或 HTTP URL。</p>
+        </div>
+        <div className="setting-input-row">
+          <TextInput className="mono-input" value={templates.clash ?? ""} disabled={isReadonly} onChange={(event) => patchTemplate("clash", event.target.value)} placeholder="./templates/clash.yaml" />
         </div>
       </section>
 
-      <section className={focusClassName(activePointer, ["/config/templates"], "setting-block")}>
+      <section className={focusClassName(activePointer, ["/config/templates/surge"], "setting-block")}>
         <div className="setting-copy">
-          <h3>模板路径</h3>
-          <p>可填本地文件路径或 HTTP(S) URL；模板读取和渲染错误由 B3 生成预览或 `/generate` 暴露。</p>
+          <h3>Surge 模板</h3>
+          <p>生成 Surge 配置时使用的基础模板。</p>
         </div>
-        <div className="form-grid two">
-          <Field label="Clash 模板">
-            <TextInput className="mono-input" value={templates.clash ?? ""} disabled={isReadonly} onChange={(event) => patchTemplate("clash", event.target.value)} placeholder="configs/base_clash.yaml" />
-          </Field>
-          <Field label="Surge 模板">
-            <TextInput className="mono-input" value={templates.surge ?? ""} disabled={isReadonly} onChange={(event) => patchTemplate("surge", event.target.value)} placeholder="https://example.com/base_surge.conf" />
-          </Field>
-        </div>
-        <div className="template-summary">
-          <Chip tone={templates.clash ? "success" : "neutral"}><FileCode2 size={12} aria-hidden="true" /> Clash</Chip>
-          <Chip tone={templates.surge ? "success" : "neutral"}><FileCode2 size={12} aria-hidden="true" /> Surge</Chip>
+        <div className="setting-input-row">
+          <TextInput className="mono-input" value={templates.surge ?? ""} disabled={isReadonly} onChange={(event) => patchTemplate("surge", event.target.value)} placeholder="./templates/surge.conf" />
         </div>
       </section>
     </div>

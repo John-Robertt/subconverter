@@ -86,7 +86,15 @@ export function GroupsPage() {
           ) : null}
           {preview ? (
             <div className="group-preview-stack">
-              <StatCard label="当前匹配" value={activePreviewGroup?.members.length ?? 0} sub={activeGroup?.key || "未选择"} tone={activePreviewGroup ? "success" : "warning"} />
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                <strong style={{ fontSize: 32, fontWeight: 600, color: activePreviewGroup ? "var(--primary)" : "var(--error)", letterSpacing: "-0.02em" }}>{activePreviewGroup?.members.length ?? 0}</strong>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>个节点 / {preview.node_groups.reduce((sum, g) => sum + g.members.length, 0)} 总数</span>
+              </div>
+              {activePreviewGroup ? (
+                <div style={{ height: 4, borderRadius: 2, background: "var(--surface-muted)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${Math.min(100, (activePreviewGroup.members.length / Math.max(1, preview.node_groups.reduce((sum, g) => sum + g.members.length, 0))) * 100)}%`, background: "var(--primary)", transition: "width 0.3s" }} />
+                </div>
+              ) : null}
               <PreviewGroupList title="节点组" groups={preview.node_groups} />
               <PreviewGroupList title="链式组" groups={preview.chained_groups} />
               <PreviewGroupList title="服务组" groups={preview.service_groups} />
@@ -99,9 +107,6 @@ export function GroupsPage() {
     >
       <div className="page-stack">
         <div className="group-toolbar">
-          <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} disabled={isReadonly} onClick={addGroup}>
-            新增组
-          </Button>
           <Button variant="secondary" icon={<Search size={16} aria-hidden="true" />} loading={previewMutation.isPending} disabled={!draft} onClick={() => previewMutation.mutate()}>
             草稿分组预览
           </Button>
@@ -109,27 +114,39 @@ export function GroupsPage() {
         </div>
 
         {groups.length === 0 ? (
-          <EmptyState title="暂无节点组" message={isReadonly ? "只读模式下不可新增节点组。" : "至少添加一个地区节点组后，路由策略才能引用。"} />
+          <div className="group-pill-row">
+            <button type="button" className="add-chip" disabled={isReadonly} onClick={addGroup}>
+              <Plus size={13} aria-hidden="true" />
+              新建分组
+            </button>
+            <span className="muted" style={{ fontSize: 12 }}>{isReadonly ? "只读模式下不可新增节点组。" : "至少添加一个地区节点组后，路由策略才能引用。"}</span>
+          </div>
         ) : (
-          <SortableList
-            items={groups}
-            getId={(item, index) => `${item.key || "group"}-${index}`}
-            disabled={isReadonly}
-            onReorder={setGroups}
-            renderItem={(group, index, handle) => (
-              <div
-                className={focusClassName(activePointer, [`/config/groups/${index}`], index === activeIndex ? "group-pill active" : "group-pill")}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedIndex(index)}
-                onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && setSelectedIndex(index)}
-              >
-                {handle}
-                <span>{group.key || `节点组 #${index + 1}`}</span>
-                <Chip tone={group.value.strategy === "url-test" ? "success" : "info"}>{group.value.strategy}</Chip>
-              </div>
-            )}
-          />
+          <div className="group-pill-row">
+            <SortableList
+              items={groups}
+              getId={(item, index) => `${item.key || "group"}-${index}`}
+              disabled={isReadonly}
+              onReorder={setGroups}
+              renderItem={(group, index, handle) => (
+                <div
+                  className={focusClassName(activePointer, [`/config/groups/${index}`], index === activeIndex ? "group-pill active" : "group-pill")}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedIndex(index)}
+                  onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && setSelectedIndex(index)}
+                >
+                  {handle}
+                  <span>{group.key || `节点组 #${index + 1}`}</span>
+                  <Chip tone={group.value.strategy === "url-test" ? "success" : "info"}>{group.value.strategy}</Chip>
+                </div>
+              )}
+            />
+            <button type="button" className="add-chip-large" disabled={isReadonly} onClick={addGroup}>
+              <Plus size={14} aria-hidden="true" />
+              新建分组
+            </button>
+          </div>
         )}
 
         {activeGroup ? (

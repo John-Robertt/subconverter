@@ -1,47 +1,52 @@
-import { useMutation } from "@tanstack/react-query";
-import { Clipboard, Download, FileDown, RefreshCcw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Clipboard, FileDown } from "lucide-react";
+import { useMemo, type ReactNode } from "react";
 import { api, buildGeneratePath } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import type { GenerateFormat } from "../api/types";
-import { Button, Chip, EmptyState, ErrorState, Field, LoadingState, StatCard, TextInput } from "../components/ui";
+import { Button, Chip, ErrorState, LoadingState, StatCard } from "../components/ui";
 import { useConfigState } from "../state/config";
 import { useConfirm } from "../state/confirm";
 import { useToast } from "../state/toast";
-
-type PreviewMode = "runtime" | "draft";
-
-interface PreviewState {
-  format: GenerateFormat;
-  mode: PreviewMode;
-  text: string;
-}
 
 export function DownloadPage() {
   const { draft, status } = useConfigState();
   const confirm = useConfirm();
   const { pushToast } = useToast();
-  const [format, setFormat] = useState<GenerateFormat>("clash");
-  const [filename, setFilename] = useState("");
-  const [includeToken, setIncludeToken] = useState(true);
-  const [preview, setPreview] = useState<PreviewState | null>(null);
-  const downloadPath = useMemo(() => buildGeneratePath(format, filename), [filename, format]);
+  const runtimeRevision = status?.runtime_config_revision;
 
-  const previewMutation = useMutation({
-    mutationFn: async (mode: PreviewMode) => {
-      if (mode === "draft") {
-        if (!draft) throw new Error("配置尚未加载");
-        return api.generatePreviewDraft(format, draft);
-      }
-      return api.generatePreview(format);
-    },
-    onSuccess: (text, mode) => {
-      setPreview({ format, mode, text });
-    }
+  const nodesQuery = useQuery({
+    queryKey: ["previewNodes", runtimeRevision],
+    queryFn: api.previewNodes,
+    enabled: Boolean(runtimeRevision)
+  });
+
+  const clashPreviewQuery = useQuery({
+    queryKey: ["generatePreview", "clash", runtimeRevision],
+    queryFn: () => api.generatePreview("clash"),
+    enabled: Boolean(runtimeRevision)
+  });
+
+  const surgePreviewQuery = useQuery({
+    queryKey: ["generatePreview", "surge", runtimeRevision],
+    queryFn: () => api.generatePreview("surge"),
+    enabled: Boolean(runtimeRevision)
+  });
+
+  const clashLinkQuery = useQuery({
+    queryKey: ["generateLink", "clash", runtimeRevision],
+    queryFn: () => api.generateLink("clash", "", false),
+    enabled: Boolean(runtimeRevision)
+  });
+
+  const surgeLinkQuery = useQuery({
+    queryKey: ["generateLink", "surge", runtimeRevision],
+    queryFn: () => api.generateLink("surge", "", false),
+    enabled: Boolean(runtimeRevision)
   });
 
   const linkMutation = useMutation({
-    mutationFn: () => api.generateLink(format, filename, includeToken),
+    mutationFn: (format: GenerateFormat) => api.generateLink(format, "", true),
     onSuccess: async (result) => {
       if (result.token_included) {
         const accepted = await confirm({
@@ -63,123 +68,204 @@ export function DownloadPage() {
     }
   });
 
-  function startDownload() {
-    window.location.assign(downloadPath);
-  }
+  const stats = useMemo(() => deriveStats(draft, nodesQuery.data), [draft, nodesQuery.data]);
+  const hasBaseURL = Boolean(draft?.base_url?.trim());
+  const previewError = clashPreviewQuery.error ?? surgePreviewQuery.error;
+  const previewLoading = clashPreviewQuery.isLoading || surgePreviewQuery.isLoading;
 
   return (
     <div className="page-stack download-page">
       {status?.config_dirty ? (
         <section className="content-panel info-panel">
-          当前运行时预览和下载仍基于旧 RuntimeConfig；可使用“草稿生成预览”检查尚未 reload 的草稿。
+          当前预览基于运行时配置，已保存草稿尚未 reload；如需查看草稿生成结果，请先点击"热重载"。
         </section>
       ) : null}
 
       <div className="stats-grid">
-        <StatCard label="格式" value={format === "clash" ? "Clash" : "Surge"} sub={format === "clash" ? "text/yaml" : "text/plain"} tone="info" />
-        <StatCard label="Runtime revision" value={status?.runtime_config_revision ? "已加载" : "-"} sub={status?.runtime_config_revision ?? "等待状态"} />
-        <StatCard label="草稿状态" value={status?.config_dirty ? "dirty" : "clean"} sub="config_revision vs runtime" tone={status?.config_dirty ? "warning" : "success"} />
-        <StatCard label="预览来源" value={preview ? (preview.mode === "runtime" ? "运行时" : "草稿") : "-"} sub={preview ? preview.format : "尚未预览"} />
+        <StatCard label="节点（过滤后）" value={stats.activeNodes} sub={`原始 ${stats.totalNodes}`} />
+        <StatCard label="分组" value={stats.groupsTotal} sub={`${stats.groupsSelect} select · ${stats.groupsUrlTest} url-test`} />
+        <StatCard label="服务组" value={stats.serviceTotal} sub={`${stats.serviceWithRuleset} 带规则集`} />
+        <StatCard label="规则总数" value={stats.totalRules} sub={`${stats.rulesetUrls} 含规则集`} />
       </div>
 
-      <section className="content-panel download-controls">
-        <div className="form-grid three">
-          <div className="field">
-            <span className="field-label">目标格式</span>
-            <div className="format-segmented" role="radiogroup" aria-label="目标格式">
-              <FormatOption value="clash" label="Clash Meta" detail="text/yaml" current={format} onChange={setFormat} />
-              <FormatOption value="surge" label="Surge" detail="text/plain" current={format} onChange={setFormat} />
-            </div>
-          </div>
-          <Field label="文件名" hint="可选；后端会校验安全 ASCII 文件名。">
-            <TextInput className="mono-input" value={filename} onChange={(event) => setFilename(event.target.value)} placeholder={format === "clash" ? "clash.yaml" : "surge.conf"} />
-          </Field>
-          <label className="checkbox-row token-checkbox">
-            <input type="checkbox" checked={includeToken} onChange={(event) => setIncludeToken(event.target.checked)} />
-            <span>复制订阅链接时请求服务端附带 token</span>
-          </label>
-        </div>
-        <div className="download-action-row">
-          <Button variant="secondary" icon={<RefreshCcw size={16} aria-hidden="true" />} loading={previewMutation.isPending} onClick={() => previewMutation.mutate("runtime")}>
-            当前运行时预览
-          </Button>
-          <Button variant="secondary" icon={<RefreshCcw size={16} aria-hidden="true" />} loading={previewMutation.isPending} disabled={!draft} onClick={() => previewMutation.mutate("draft")}>
-            草稿生成预览
-          </Button>
-          <Button variant="primary" icon={<FileDown size={16} aria-hidden="true" />} onClick={startDownload}>
-            下载配置
-          </Button>
-          <Button variant="secondary" icon={<Clipboard size={16} aria-hidden="true" />} loading={linkMutation.isPending} onClick={() => linkMutation.mutate()}>
-            复制订阅链接
-          </Button>
-        </div>
-        <div className="setting-preview">
-          <Download size={15} aria-hidden="true" />
-          <span>下载路径</span>
-          <code>{downloadPath}</code>
-        </div>
-      </section>
+      {previewError ? (
+        <ErrorState message={getErrorMessage(previewError)} action={<Button variant="secondary" onClick={() => { void clashPreviewQuery.refetch(); void surgePreviewQuery.refetch(); }}>重试生成</Button>} />
+      ) : null}
 
-      {previewMutation.isPending ? <LoadingState message={`正在生成 ${format} ${previewMutation.variables === "draft" ? "草稿" : "运行时"}预览`} /> : null}
-      {previewMutation.error ? <ErrorState message={getErrorMessage(previewMutation.error)} action={<Button variant="secondary" onClick={() => previewMutation.mutate(previewMutation.variables ?? "runtime")}>重试生成</Button>} /> : null}
+      {previewLoading && !previewError ? <LoadingState message="正在生成双格式预览" /> : null}
 
-      <section className="code-preview-panel">
-        {preview ? (
-          <>
-            <header>
-              <div>
-                <h3>{preview.format === "clash" ? "Clash Meta" : "Surge"} 生成预览</h3>
-                <p>{preview.mode === "runtime" ? "当前 RuntimeConfig" : "前端草稿"} · {preview.text.length.toLocaleString()} bytes</p>
-              </div>
-              <Chip tone={preview.mode === "runtime" ? "info" : "warning"}>{preview.mode}</Chip>
-            </header>
-            <CodePreview text={preview.text} />
-          </>
-        ) : (
-          <EmptyState title="尚未生成预览" message="先选择格式，再运行当前预览或草稿预览；下载按钮会直接调用后端 `/generate`。" />
-        )}
-      </section>
+      <div className="preview-grid">
+        <PreviewCard
+          title="Clash Meta"
+          badge="YAML"
+          filename="config.yaml"
+          format="clash"
+          previewText={clashPreviewQuery.data ?? null}
+          downloadPath={buildGeneratePath("clash", "config.yaml")}
+          subUrl={clashLinkQuery.data?.url ?? buildGeneratePath("clash", "config.yaml")}
+          subUrlChip="SUB URL"
+          onCopyLink={() => linkMutation.mutate("clash")}
+          linkLoading={linkMutation.isPending && linkMutation.variables === "clash"}
+        />
+        <PreviewCard
+          title="Surge"
+          badge="conf"
+          filename="config.conf"
+          format="surge"
+          previewText={surgePreviewQuery.data ?? null}
+          downloadPath={buildGeneratePath("surge", "config.conf")}
+          subUrl={surgeLinkQuery.data?.url ?? buildGeneratePath("surge", "config.conf")}
+          subUrlChip={hasBaseURL ? "MANAGED" : "SUB URL"}
+          onCopyLink={() => linkMutation.mutate("surge")}
+          linkLoading={linkMutation.isPending && linkMutation.variables === "surge"}
+        />
+      </div>
     </div>
   );
 }
 
-function FormatOption({
-  value,
-  label,
-  detail,
-  current,
-  onChange
-}: {
-  value: GenerateFormat;
-  label: string;
-  detail: string;
-  current: GenerateFormat;
-  onChange: (value: GenerateFormat) => void;
-}) {
-  const checked = current === value;
+interface PreviewCardProps {
+  title: string;
+  badge: string;
+  filename: string;
+  format: GenerateFormat;
+  previewText: string | null;
+  downloadPath: string;
+  subUrl: string;
+  subUrlChip: string;
+  onCopyLink: () => void;
+  linkLoading: boolean;
+}
+
+function PreviewCard({ title, badge, filename, format, previewText, downloadPath, subUrl, subUrlChip, onCopyLink, linkLoading }: PreviewCardProps) {
+  const sizeKb = previewText ? `${(previewText.length / 1024).toFixed(1)} KB` : "—";
   return (
-    <label className={checked ? "format-option active" : "format-option"}>
-      <input type="radio" name="generate-format" value={value} checked={checked} onChange={() => onChange(value)} />
-      <span>
-        <strong>{label}</strong>
-        <small>{detail}</small>
-      </span>
-    </label>
+    <section className="code-preview-panel">
+      <header>
+        <div className="preview-header-meta">
+          <Chip tone="neutral">{badge}</Chip>
+          <div>
+            <h3>{title}</h3>
+            <p>{filename} · {sizeKb}</p>
+          </div>
+        </div>
+        <div className="page-actions">
+          <Button variant="primary" icon={<FileDown size={15} aria-hidden="true" />} onClick={() => window.location.assign(downloadPath)}>
+            下载
+          </Button>
+        </div>
+      </header>
+      <div className="sub-url-row">
+        <span className="sub-url-chip">{subUrlChip}</span>
+        <code>{subUrl}</code>
+        <Button variant="secondary" icon={<Clipboard size={13} aria-hidden="true" />} loading={linkLoading} onClick={onCopyLink}>
+          复制
+        </Button>
+      </div>
+      {previewText ? <CodePreview text={previewText} format={format} /> : <div className="code-preview placeholder">正在加载预览…</div>}
+    </section>
   );
 }
 
-function CodePreview({ text }: { text: string }) {
+function CodePreview({ text, format }: { text: string; format: GenerateFormat }) {
   const lines = text.split("\n");
   return (
     <pre className="code-preview">
       {lines.map((line, index) => (
         <span key={`${index}-${line}`}>
           <em>{index + 1}</em>
-          <code>{line || " "}</code>
+          <code>{highlightLine(line, format) ?? " "}</code>
         </span>
       ))}
     </pre>
   );
+}
+
+function highlightLine(line: string, format: GenerateFormat): ReactNode {
+  if (line.length === 0) return null;
+  return format === "clash" ? highlightYAML(line) : highlightSurge(line);
+}
+
+function highlightYAML(line: string): ReactNode {
+  if (/^\s*#/.test(line)) return <span className="hl-comment">{line}</span>;
+  const kv = line.match(/^(\s*-?\s*)([\w./-]+)(:)(.*)$/);
+  if (kv) {
+    return (
+      <>
+        <span>{kv[1]}</span>
+        <span className="hl-key">{kv[2]}</span>
+        <span className="hl-punct">{kv[3]}</span>
+        {kv[4] ? <span className="hl-string">{kv[4]}</span> : null}
+      </>
+    );
+  }
+  return <span>{line}</span>;
+}
+
+function highlightSurge(line: string): ReactNode {
+  if (/^\s*(#|\/\/)/.test(line)) return <span className="hl-comment">{line}</span>;
+  const section = line.match(/^(\s*\[)([^\]]+)(\])\s*$/);
+  if (section) {
+    return (
+      <>
+        <span className="hl-punct">{section[1]}</span>
+        <span className="hl-key">{section[2]}</span>
+        <span className="hl-punct">{section[3]}</span>
+      </>
+    );
+  }
+  const kv = line.match(/^(\s*)([^=,\s][^=,]*?)(\s*=\s*)(.*)$/);
+  if (kv) {
+    return (
+      <>
+        <span>{kv[1]}</span>
+        <span className="hl-key">{kv[2]}</span>
+        <span className="hl-punct">{kv[3]}</span>
+        <span className="hl-string">{kv[4]}</span>
+      </>
+    );
+  }
+  return <span>{line}</span>;
+}
+
+interface DownloadStats {
+  activeNodes: number | string;
+  totalNodes: number | string;
+  groupsTotal: number;
+  groupsSelect: number;
+  groupsUrlTest: number;
+  serviceTotal: number;
+  serviceWithRuleset: number;
+  totalRules: number;
+  rulesetUrls: number;
+}
+
+function deriveStats(
+  draft: ReturnType<typeof useConfigState>["draft"],
+  nodes: { total: number; active_count: number } | undefined
+): DownloadStats {
+  const groups = draft?.groups ?? [];
+  const routing = draft?.routing ?? [];
+  const rulesets = draft?.rulesets ?? [];
+  const rules = draft?.rules ?? [];
+
+  const groupsSelect = groups.filter((g) => g.value?.strategy === "select").length;
+  const groupsUrlTest = groups.filter((g) => g.value?.strategy === "url-test").length;
+  const rulesetKeys = new Set(rulesets.map((entry) => entry.key));
+  const serviceWithRuleset = routing.filter((entry) => rulesetKeys.has(entry.key)).length;
+  const rulesetUrls = rulesets.reduce((sum, entry) => sum + (entry.value?.length ?? 0), 0);
+
+  return {
+    activeNodes: nodes?.active_count ?? "—",
+    totalNodes: nodes?.total ?? "—",
+    groupsTotal: groups.length,
+    groupsSelect,
+    groupsUrlTest,
+    serviceTotal: routing.length,
+    serviceWithRuleset,
+    totalRules: rules.length + rulesetUrls,
+    rulesetUrls
+  };
 }
 
 async function copyToClipboard(value: string) {

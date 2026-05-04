@@ -488,6 +488,7 @@ revision 冲突响应示例：
   "node_groups": [
     {
       "name": "🇭🇰 Hong Kong",
+      "match": "(港|HK|Hong Kong)",
       "strategy": "select",
       "members": ["HK-01", "HK-02"]
     }
@@ -518,6 +519,7 @@ revision 冲突响应示例：
 - `service_groups` 展示 Route 阶段产出的服务组结果
 - `expanded_members` 用于前端区分用户显式声明、`@auto` 展开和 `@all` 展开结果
 - `origin` 可选值：`literal`、`auto_expanded`、`all_expanded`
+- `node_groups[].match` 是该地区组在 YAML 中声明的原始正则字符串（透传，不做转义）；`chained_groups` 由 `relay_through` 派生，没有 match 概念，字段省略（JSON 中以 `omitempty` 形式不输出）
 - 若 ValidateGraph 发现空节点组、空链式组、非法成员引用或循环引用等图级错误，本接口返回 `400` + 结构化诊断，不返回部分成功的分组结果
 
 ### `POST /api/preview/groups`
@@ -639,6 +641,8 @@ revision 冲突响应示例：
 - 本地配置源检测策略：每次 `GET /api/status` 都重新读取配置文件并计算 `sha256:<hex>`，不以 `(mtime, size)` 作为跳过 hash 的强判断；因此同大小改写或保留 mtime 的外部修改也能被下一次 status 请求发现
 - HTTP(S) 配置源检测策略：status 不主动拉取远程配置；`config_revision` 与 dirty 状态基于最近一次 `GET /api/config` 或 `POST /api/reload` 观测到的内容
 - `capabilities.config_write`：前端是否应启用保存入口
+- `last_reload`：可选字段。仅在进程曾经触发过 `POST /api/reload`（无论成功或失败）时存在；从未发生过 reload 时该字段被省略（`omitempty`）。这避免用 zero value 同时表达"未发生"与"失败"两种语义——前端据此区分"运行中（未重载）"与"上次重载失败"
+- `last_reload.error`：仅在 `success=false` 时填充，记录最近一次 reload 失败的错误消息（用于 UI 直接展示原因）；`success=true` 时省略
 
 ---
 

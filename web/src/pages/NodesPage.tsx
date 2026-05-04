@@ -79,10 +79,6 @@ export function NodesPage() {
           <Field label="名称">
             <TextInput value={nameFilter} onChange={(event) => setNameFilter(event.target.value)} placeholder="搜索节点名" />
           </Field>
-          <div className="node-revision">
-            <span>Runtime revision</span>
-            <code>{runtimeRevision ?? "-"}</code>
-          </div>
         </div>
 
         {nodesQuery.isLoading ? <LoadingState message="正在拉取订阅并生成运行时节点预览" /> : null}

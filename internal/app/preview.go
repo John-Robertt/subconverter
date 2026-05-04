@@ -34,6 +34,7 @@ type GroupPreviewResult struct {
 
 type GroupItem struct {
 	Name     string   `json:"name"`
+	Match    string   `json:"match,omitempty"`
 	Strategy string   `json:"strategy"`
 	Members  []string `json:"members"`
 }
@@ -77,7 +78,7 @@ func (s *Service) PreviewGroups(ctx context.Context) (*GroupPreviewResult, error
 	if err != nil {
 		return nil, err
 	}
-	return groupPreviewFromStage(result), nil
+	return groupPreviewFromStage(result, cfg), nil
 }
 
 func (s *Service) PreviewGroupsFromDraft(ctx context.Context, configJSON json.RawMessage) (*GroupPreviewResult, error) {
@@ -89,7 +90,7 @@ func (s *Service) PreviewGroupsFromDraft(ctx context.Context, configJSON json.Ra
 	if err != nil {
 		return nil, err
 	}
-	return groupPreviewFromStage(result), nil
+	return groupPreviewFromStage(result, cfg), nil
 }
 
 func (s *Service) GenerateFromDraft(ctx context.Context, req GenerateInput, configJSON json.RawMessage) (*GenerateResult, error) {
@@ -135,7 +136,7 @@ func nodePreviewItem(proxy model.Proxy, filtered bool) NodePreviewItem {
 	}
 }
 
-func groupPreviewFromStage(stage *pipeline.GroupPreviewStageResult) *GroupPreviewResult {
+func groupPreviewFromStage(stage *pipeline.GroupPreviewStageResult, cfg *config.RuntimeConfig) *GroupPreviewResult {
 	if stage == nil || stage.Group == nil || stage.Route == nil {
 		return &GroupPreviewResult{
 			NodeGroups:    []GroupItem{},
@@ -144,19 +145,33 @@ func groupPreviewFromStage(stage *pipeline.GroupPreviewStageResult) *GroupPrevie
 			AllProxies:    []string{},
 		}
 	}
+	matchByName := groupMatchMap(cfg)
 	return &GroupPreviewResult{
-		NodeGroups:    groupItems(stage.Group.RegionGroups),
-		ChainedGroups: groupItems(stage.Group.ChainedGroups),
+		NodeGroups:    groupItems(stage.Group.RegionGroups, matchByName),
+		ChainedGroups: groupItems(stage.Group.ChainedGroups, matchByName),
 		ServiceGroups: serviceGroupItems(stage.Route),
 		AllProxies:    append([]string(nil), stage.Group.AllProxies...),
 	}
 }
 
-func groupItems(groups []model.ProxyGroup) []GroupItem {
+func groupMatchMap(cfg *config.RuntimeConfig) map[string]string {
+	if cfg == nil {
+		return nil
+	}
+	groups := cfg.GroupInput()
+	m := make(map[string]string, len(groups))
+	for _, g := range groups {
+		m[g.Name] = g.RawMatch
+	}
+	return m
+}
+
+func groupItems(groups []model.ProxyGroup, matchByName map[string]string) []GroupItem {
 	result := make([]GroupItem, 0, len(groups))
 	for _, group := range groups {
 		result = append(result, GroupItem{
 			Name:     group.Name,
+			Match:    matchByName[group.Name],
 			Strategy: group.Strategy,
 			Members:  append([]string(nil), group.Members...),
 		})

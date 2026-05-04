@@ -168,7 +168,7 @@ func TestIntegration_SpotCheckValues(t *testing.T) {
 	}
 
 	// filters
-	if cfg.Filters.Exclude != "(过期|剩余流量|到期)" {
+	if cfg.Filters.Exclude != "过期|剩余流量|到期" {
 		t.Errorf("Filters.Exclude = %q", cfg.Filters.Exclude)
 	}
 

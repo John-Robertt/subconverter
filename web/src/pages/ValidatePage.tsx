@@ -1,11 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, ShieldCheck, X } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import type { Diagnostic, ValidateResult } from "../api/types";
-import { Button, EmptyState, ErrorState, LoadingState, StatCard, StatusBadge } from "../components/ui";
+import { Button, EmptyState, ErrorState, LoadingState, StatusBadge } from "../components/ui";
 import { diagnosticTarget, diagnosticsFromResult } from "../features/diagnostics";
 import { useConfigState } from "../state/config";
 import { useToast } from "../state/toast";
@@ -13,25 +13,28 @@ import { useToast } from "../state/toast";
 export function ValidatePage() {
   const { draft, status } = useConfigState();
   const navigate = useNavigate();
+  const location = useLocation();
   const { pushToast } = useToast();
   const [selectedDiagnostic, setSelectedDiagnostic] = useState<Diagnostic | null>(null);
+  const initialResult = (location.state as { validateResult?: ValidateResult } | null)?.validateResult ?? null;
+  const [result, setResult] = useState<ValidateResult | null>(initialResult);
   const validateMutation = useMutation({
     mutationFn: () => {
       if (!draft) throw new Error("配置尚未加载");
       return api.validateConfig(draft);
     },
-    onSuccess: (result) => {
-      const total = result.errors.length + result.warnings.length + result.infos.length;
+    onSuccess: (data) => {
+      setResult(data);
+      const total = data.errors.length + data.warnings.length + data.infos.length;
       pushToast({
-        kind: result.valid ? "success" : "warning",
-        title: result.valid ? "静态校验通过" : "静态校验发现问题",
-        message: result.valid ? "当前草稿没有静态诊断项。" : `发现 ${total} 个诊断项。`
+        kind: data.valid ? "success" : "warning",
+        title: data.valid ? "静态校验通过" : "静态校验发现问题",
+        message: data.valid ? "当前草稿没有静态诊断项。" : `发现 ${total} 个诊断项。`
       });
     }
   });
 
-  const result = validateMutation.data;
-  const diagnostics = diagnosticsFromResult(result);
+  const diagnostics = diagnosticsFromResult(result ?? undefined);
 
   function locateDiagnostic(diagnostic: Diagnostic) {
     const target = diagnosticTarget(diagnostic);
@@ -43,9 +46,27 @@ export function ValidatePage() {
       {status?.config_dirty ? <section className="content-panel info-panel">当前校验对象是前端草稿；已保存配置尚未 reload 时，运行时预览仍使用旧 RuntimeConfig。</section> : null}
 
       <div className="stats-grid three">
-        <StatCard label="错误" value={result?.errors.length ?? "-"} sub="阻塞保存 / reload" tone={result?.errors.length ? "error" : "success"} />
-        <StatCard label="警告" value={result?.warnings.length ?? "-"} sub="建议修复" tone={result?.warnings.length ? "warning" : "neutral"} />
-        <StatCard label="提示" value={result?.infos.length ?? "-"} sub="可选优化" tone={result?.infos.length ? "info" : "neutral"} />
+        <div className="summary-stat summary-stat-error">
+          <div className="summary-stat-row">
+            {result ? <strong>{result.errors.length}</strong> : null}
+            <span>错误</span>
+          </div>
+          <small>必须修复才能保存</small>
+        </div>
+        <div className="summary-stat summary-stat-warning">
+          <div className="summary-stat-row">
+            {result ? <strong>{result.warnings.length}</strong> : null}
+            <span>警告</span>
+          </div>
+          <small>建议修复但不阻塞</small>
+        </div>
+        <div className="summary-stat summary-stat-info">
+          <div className="summary-stat-row">
+            {result ? <strong>{result.infos.length}</strong> : null}
+            <span>提示</span>
+          </div>
+          <small>可选优化建议</small>
+        </div>
       </div>
 
       <section className="content-panel">
@@ -104,18 +125,21 @@ function DiagnosticSection({
   return (
     <section className="diagnostic-section">
       <div className="section-heading row">
-        <h3>{title}</h3>
-        <StatusBadge tone={tone}>{items.length}</StatusBadge>
+        <span className="nav-section-label">{title} · {items.length}</span>
       </div>
-      <div className="diagnostic-table">
+      <div className="content-panel" style={{ padding: 0, overflow: "hidden" }}>
         {items.map((item, index) => (
-          <button key={`${item.code}-${index}`} type="button" className={`diagnostic-row diagnostic-row-${tone}`} onClick={() => onOpen(item)}>
-            <span className="diagnostic-dot" aria-hidden="true" />
-            <strong>{item.code}</strong>
-            <span>{item.message}</span>
-            <code>{item.locator?.json_pointer ?? "未定位"}</code>
-            <ArrowRight size={15} aria-hidden="true" />
-          </button>
+          <div key={`${item.code}-${index}`} className={`diagnostic-row diagnostic-row-${tone}`} style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 18px", borderBottom: index < items.length - 1 ? "1px solid var(--border)" : "none", cursor: "pointer", gridTemplateColumns: "unset" }} onClick={() => onOpen(item)}>
+            <span className="diagnostic-dot" style={{ marginTop: 7, flex: "0 0 8px" }} aria-hidden="true" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 14, fontWeight: 600 }}>{item.message}</strong>
+                <code style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--surface-muted)", color: "var(--text-muted)" }}>{item.code}</code>
+              </div>
+              {item.locator?.json_pointer ? <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{item.locator.json_pointer}</div> : null}
+            </div>
+            <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onOpen(item); }}>跳转</Button>
+          </div>
         ))}
       </div>
     </section>

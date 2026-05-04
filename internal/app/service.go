@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/John-Robertt/subconverter/internal/config"
@@ -43,10 +44,12 @@ type lastReloadState struct {
 	Time       time.Time
 	Success    bool
 	DurationMs int64
+	Error      string
 }
 
 type Options struct {
 	ConfigLocation string
+	ListenAddr     string
 	Fetcher        fetch.Fetcher
 	Generate       generate.Options
 	Now            func() time.Time
@@ -57,6 +60,8 @@ type Options struct {
 
 type Service struct {
 	configLocation string
+	listenAddr     string
+	startedAt      time.Time
 	fetcher        fetch.Fetcher
 	generator      *generate.Service
 	now            func() time.Time
@@ -64,6 +69,8 @@ type Service struct {
 	commit         string
 	buildDate      string
 	accessToken    string
+
+	requestCount atomic.Uint64
 
 	mu                     sync.RWMutex
 	runtimeCfg             *config.RuntimeConfig
@@ -75,6 +82,12 @@ type Service struct {
 	reloadMu sync.Mutex
 }
 
+// IncrementRequestCount records an inbound request for the runtime environment
+// stat surface. Called from the HTTP middleware on every non-internal request.
+func (s *Service) IncrementRequestCount() {
+	s.requestCount.Add(1)
+}
+
 func New(ctx context.Context, opts Options) (*Service, error) {
 	now := opts.Now
 	if now == nil {
@@ -82,6 +95,8 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 	}
 	s := &Service{
 		configLocation: opts.ConfigLocation,
+		listenAddr:     opts.ListenAddr,
+		startedAt:      now(),
 		fetcher:        opts.Fetcher,
 		generator:      generate.New(opts.Fetcher, opts.Generate),
 		now:            now,
@@ -113,6 +128,7 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 func NewWithRuntime(location string, runtimeCfg *config.RuntimeConfig, fetcher fetch.Fetcher, genOpts generate.Options) *Service {
 	return &Service{
 		configLocation:         location,
+		startedAt:              time.Now(),
 		fetcher:                fetcher,
 		generator:              generate.New(fetcher, genOpts),
 		now:                    time.Now,
@@ -211,19 +227,19 @@ func (s *Service) Reload(ctx context.Context) (*ReloadResult, error) {
 	start := s.now()
 	raw, err := s.readConfigBytes(ctx, true)
 	if err != nil {
-		s.recordReload(start, false)
+		s.recordReload(start, false, err)
 		return nil, err
 	}
 	revision := configRevision(raw)
 	s.setObservedConfigRevision(revision)
 	cfg, err := parseConfigYAML(raw)
 	if err != nil {
-		s.recordReload(start, false)
+		s.recordReload(start, false, err)
 		return nil, err
 	}
 	runtimeCfg, err := prepareAdminConfig(cfg, false)
 	if err != nil {
-		s.recordReload(start, false)
+		s.recordReload(start, false, err)
 		return nil, err
 	}
 
@@ -263,13 +279,17 @@ func (s *Service) setObservedConfigRevision(revision string) {
 	s.mu.Unlock()
 }
 
-func (s *Service) recordReload(start time.Time, success bool) {
+func (s *Service) recordReload(start time.Time, success bool, reloadErr error) {
 	s.mu.Lock()
-	s.lastReload = lastReloadState{
+	state := lastReloadState{
 		Time:       s.now(),
 		Success:    success,
 		DurationMs: s.now().Sub(start).Milliseconds(),
 	}
+	if !success && reloadErr != nil {
+		state.Error = reloadErr.Error()
+	}
+	s.lastReload = state
 	s.mu.Unlock()
 }
 

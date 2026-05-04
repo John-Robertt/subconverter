@@ -218,6 +218,7 @@ type GroupPreviewResult struct {
 
 type GroupItem struct {
     Name     string   `json:"name"`
+    Match    string   `json:"match,omitempty"` // 地区组原始正则；链式组无此概念，nil 时省略
     Strategy string   `json:"strategy"`
     Members  []string `json:"members"`
 }
@@ -272,7 +273,7 @@ type StatusResult struct {
     ConfigLoadedAt         string       `json:"config_loaded_at"`         // ISO 8601
     ConfigDirty            bool         `json:"config_dirty"`             // config_revision != runtime_config_revision
     Capabilities           Capabilities `json:"capabilities"`
-    LastReload             LastReload   `json:"last_reload"`
+    LastReload             *LastReload  `json:"last_reload,omitempty"` // 仅在曾发生过 reload 时填充，否则 nil 并在 JSON 中省略
 }
 
 type ConfigSource struct {
@@ -287,10 +288,14 @@ type Capabilities struct {
 }
 
 type LastReload struct {
-    Time       string `json:"time"`       // ISO 8601，空字符串表示从未 reload
+    Time       string `json:"time"`       // ISO 8601，仅在 LastReload 非 nil 时存在
     Success    bool   `json:"success"`
     DurationMs int64  `json:"duration_ms"`
+    Error      string `json:"error,omitempty"` // 仅在 Success=false 时填充，记录 reload 失败的错误消息
 }
+// 注意：LastReload 用指针 + omitempty，让"从未 reload"（nil → JSON 省略字段）与
+// "上次 reload 失败"（非 nil + Success=false）在 wire format 上明确区分；前端可通过
+// 字段是否存在判断"运行中（未重载）"，而不必再依赖 Time 是否为空字符串作为语义副信道。
 ```
 
 ---

@@ -204,7 +204,7 @@ func TestReloadInvalidatesRemoteConfigCache(t *testing.T) {
 	if status.ConfigRevision == status.RuntimeConfigRevision {
 		t.Fatalf("status should expose last observed remote revision after failed reload: %+v", status)
 	}
-	if status.LastReload.Time == "" || status.LastReload.Success {
+	if status.LastReload == nil || status.LastReload.Time == "" || status.LastReload.Success {
 		t.Fatalf("failed reload should be recorded in last_reload: %+v", status.LastReload)
 	}
 }
@@ -252,7 +252,7 @@ func TestPreviewNodesRuntimeAndDraftAreIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status after: %v", err)
 	}
-	if after.RuntimeConfigRevision != before.RuntimeConfigRevision || after.ConfigDirty != before.ConfigDirty || after.LastReload.Time != before.LastReload.Time {
+	if after.RuntimeConfigRevision != before.RuntimeConfigRevision || after.ConfigDirty != before.ConfigDirty || lastReloadTimeOf(after) != lastReloadTimeOf(before) {
 		t.Fatalf("draft preview mutated status: before=%+v after=%+v", before, after)
 	}
 }
@@ -330,7 +330,7 @@ func TestGenerateFromDraftDoesNotMutateRuntimeStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status after: %v", err)
 	}
-	if after.RuntimeConfigRevision != before.RuntimeConfigRevision || after.ConfigDirty != before.ConfigDirty || after.LastReload.Time != before.LastReload.Time {
+	if after.RuntimeConfigRevision != before.RuntimeConfigRevision || after.ConfigDirty != before.ConfigDirty || lastReloadTimeOf(after) != lastReloadTimeOf(before) {
 		t.Fatalf("draft generate mutated status: before=%+v after=%+v", before, after)
 	}
 }
@@ -488,4 +488,11 @@ func configJSON(subURL, exclude, groupName string) string {
   "rules": [],
   "fallback": "proxy"
 }`
+}
+
+func lastReloadTimeOf(status *StatusResult) string {
+	if status == nil || status.LastReload == nil {
+		return ""
+	}
+	return status.LastReload.Time
 }

@@ -1,8 +1,8 @@
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { OrderedEntry } from "../api/types";
 import { SortableList } from "../components/SortableList";
-import { Button, Chip, EmptyState, Field, IconButton, RailPanel, SplitWorkbench, TextInput } from "../components/ui";
+import { Chip, EmptyState, Field, IconButton, RailPanel, SplitWorkbench, TextInput } from "../components/ui";
 import { getRoutingMemberOptions } from "../features/configModel";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { useConfigState } from "../state/config";
@@ -19,12 +19,16 @@ export function RoutingPage() {
   const { draft, updateDraft, isReadonly } = useConfigState();
   const confirm = useConfirm();
   const activePointer = useDiagnosticPointer();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  // null = no service group selected (toggleable on click)
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const routing = draft?.routing ?? [];
   const groups = draft?.groups ?? [];
   const memberOptions = getRoutingMemberOptions(draft ?? {});
-  const activeIndex = routing.length === 0 ? -1 : Math.min(selectedIndex, routing.length - 1);
-  const activeRoute = activeIndex >= 0 ? routing[activeIndex] : undefined;
+  const activeIndex =
+    selectedIndex === null || routing.length === 0
+      ? null
+      : Math.min(selectedIndex, routing.length - 1);
+  const activeRoute = activeIndex !== null ? routing[activeIndex] : undefined;
 
   useEffect(() => {
     const match = activePointer?.match(/^\/config\/routing\/(\d+)/);
@@ -46,14 +50,28 @@ export function RoutingPage() {
     setSelectedIndex(routing.length);
   }
 
+  function toggleSelection(index: number) {
+    setSelectedIndex((current) => (current === index ? null : index));
+  }
+
   function addMember(member: string) {
-    if (!activeRoute || isReadonly) return;
+    if (activeIndex === null || !activeRoute || isReadonly) return;
     patchEntry(activeIndex, { value: [...activeRoute.value, member] });
   }
 
   function removeMember(memberIndex: number) {
-    if (!activeRoute || isReadonly) return;
+    if (activeIndex === null || !activeRoute || isReadonly) return;
     patchEntry(activeIndex, { value: activeRoute.value.filter((_, index) => index !== memberIndex) });
+  }
+
+  function toggleMember(member: string) {
+    if (activeIndex === null || !activeRoute || isReadonly) return;
+    const index = activeRoute.value.indexOf(member);
+    if (index === -1) {
+      patchEntry(activeIndex, { value: [...activeRoute.value, member] });
+    } else {
+      patchEntry(activeIndex, { value: activeRoute.value.filter((_, i) => i !== index) });
+    }
   }
 
   async function deleteRoute(index: number) {
@@ -65,61 +83,137 @@ export function RoutingPage() {
     });
     if (!accepted) return;
     setRouting(routing.filter((_, routingIndex) => routingIndex !== index));
-    setSelectedIndex(Math.max(0, index - 1));
+    setSelectedIndex((current) => {
+      if (current === null) return null;
+      if (current === index) return null;
+      return current > index ? current - 1 : current;
+    });
   }
 
   return (
     <SplitWorkbench
       rail={
-        <RailPanel eyebrow="Members" title="可选成员">
-          <div className="palette-section">
-            <span>特殊关键字</span>
-            <div className="member-palette-grid">
-              {specialMembers.map((member) => (
-                <button key={member.value} type="button" disabled={isReadonly || !activeRoute} onClick={() => addMember(member.value)}>
-                  <strong>{member.value}</strong>
-                  <small>{member.desc}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="palette-section">
-            <span>节点分组（{groups.length}）</span>
-            <div className="palette-list">
-              {groups.map((group) => (
-                <button key={group.key} type="button" disabled={isReadonly || !activeRoute} onClick={() => addMember(group.key)}>
-                  <span>{group.key}</span>
-                  <small>{group.value.strategy}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="palette-section">
-            <span>服务组引用</span>
-            <div className="palette-list">
-              {routing.filter((_, index) => index !== activeIndex).map((route) => (
-                <button key={route.key} type="button" disabled={isReadonly || !activeRoute} onClick={() => addMember(route.key)}>
-                  <span>{route.key || "未命名服务组"}</span>
-                  <small>{route.value.length} 成员</small>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="constraint-hint">
-            <strong>约束提示</strong>
-            <p>@all 和 @auto 不能同时出现</p>
-            <p>@auto 每组最多一个</p>
-            <p>REJECT 不会包含在 @auto 里</p>
-          </div>
+        <RailPanel eyebrow={activeRoute ? "Editing" : "Members"} title={activeRoute ? "编辑服务组" : "选择服务组"}>
+          {activeRoute && activeIndex !== null ? (
+            <>
+              <Field label="服务组名称" hint="支持 emoji 前缀；保存后写回 YAML 的 routing 段。">
+                <TextInput
+                  value={activeRoute.key}
+                  placeholder={`服务组 #${activeIndex + 1}`}
+                  disabled={isReadonly}
+                  onChange={(event) => patchEntry(activeIndex, { key: event.target.value })}
+                />
+              </Field>
+
+              <div className="palette-section">
+                <span>当前成员（{activeRoute.value.length}）</span>
+                <div className="member-chip-list">
+                  {activeRoute.value.length === 0 ? <p className="muted">暂无成员</p> : null}
+                  {activeRoute.value.map((member, memberIndex) => (
+                    <Chip
+                      key={`${member}-${memberIndex}`}
+                      tone={memberTone(member)}
+                      removable={!isReadonly}
+                      onRemove={() => removeMember(memberIndex)}
+                    >
+                      {member}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+
+              <div className="palette-section">
+                <span>特殊关键字</span>
+                <div className="member-palette-grid">
+                  {specialMembers.map((member) => {
+                    const selected = activeRoute.value.includes(member.value);
+                    return (
+                      <button
+                        key={member.value}
+                        type="button"
+                        className={paletteClass(selected, memberTone(member.value))}
+                        aria-pressed={selected}
+                        disabled={isReadonly}
+                        onClick={() => toggleMember(member.value)}
+                      >
+                        <strong>{member.value}</strong>
+                        <small>{member.desc}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="palette-section">
+                <span>节点分组（{groups.length}）</span>
+                <div className="palette-list">
+                  {groups.length === 0 ? <p className="muted">尚未配置节点分组</p> : null}
+                  {groups.map((group) => {
+                    const selected = activeRoute.value.includes(group.key);
+                    return (
+                      <button
+                        key={group.key}
+                        type="button"
+                        className={paletteClass(selected, memberTone(group.key))}
+                        aria-pressed={selected}
+                        disabled={isReadonly}
+                        onClick={() => toggleMember(group.key)}
+                      >
+                        <span>{group.key}</span>
+                        <small>{group.value.strategy}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="palette-section">
+                <span>服务组引用</span>
+                <div className="palette-list">
+                  {routing.filter((_, index) => index !== activeIndex).length === 0 ? (
+                    <p className="muted">无其它服务组可引用</p>
+                  ) : null}
+                  {routing
+                    .filter((_, index) => index !== activeIndex)
+                    .map((route) => {
+                      const selected = activeRoute.value.includes(route.key);
+                      return (
+                        <button
+                          key={route.key}
+                          type="button"
+                          className={paletteClass(selected, memberTone(route.key))}
+                          aria-pressed={selected}
+                          disabled={isReadonly}
+                          onClick={() => toggleMember(route.key)}
+                        >
+                          <span>{route.key || "未命名服务组"}</span>
+                          <small>{route.value.length} 成员</small>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
+              <div className="constraint-hint">
+                <strong>约束提示</strong>
+                <p>@all 和 @auto 不能同时出现</p>
+                <p>@auto 每组最多一个</p>
+                <p>REJECT 不会包含在 @auto 里</p>
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              title="未选中服务组"
+              message="点击左侧任一服务组卡片进行编辑；再次点击同一卡片可以取消选中。"
+            />
+          )}
         </RailPanel>
       }
     >
       <div className="page-stack">
         <div className="group-toolbar">
-          <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} disabled={isReadonly} onClick={addServiceGroup}>
-            新增服务组
-          </Button>
-          <span>共 {routing.length} 个服务组 · 成员可引用节点组、服务组、DIRECT、REJECT、@all、@auto</span>
+          <span>共 {routing.length} 个服务组 · 点击卡片切换选中，编辑面板在右侧</span>
+          {memberOptions.length > 0 ? <span className="muted" style={{ fontSize: 12 }}>{memberOptions.length} 个候选成员</span> : null}
         </div>
 
         {routing.length === 0 ? (
@@ -133,47 +227,55 @@ export function RoutingPage() {
             renderItem={(entry, index, handle) => (
               <article
                 className={focusClassName(activePointer, [`/config/routing/${index}`], index === activeIndex ? "routing-card active" : "routing-card")}
-                onClick={() => setSelectedIndex(index)}
+                onClick={() => toggleSelection(index)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    toggleSelection(index);
+                  }
+                }}
               >
                 <div className="routing-card-header">
                   <div className="row-title">
                     {handle}
-                    <code>{String(index + 1).padStart(2, "0")}</code>
+                    <code className="routing-card-index">{String(index + 1).padStart(2, "0")}</code>
                     <strong>{entry.key || `服务组 #${index + 1}`}</strong>
                     <Chip>{entry.value.length} 个成员</Chip>
+                    {index === activeIndex ? <Chip tone="accent">已选中</Chip> : null}
                   </div>
                   <div className="source-card-actions">
-                    <IconButton label="编辑服务组" variant="ghost" disabled={isReadonly} onClick={() => setSelectedIndex(index)}>
-                      <Pencil size={15} aria-hidden="true" />
-                    </IconButton>
-                    <IconButton label="删除服务组" variant="danger" disabled={isReadonly} onClick={() => void deleteRoute(index)}>
+                    <IconButton
+                      label="删除服务组"
+                      variant="danger"
+                      disabled={isReadonly}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void deleteRoute(index);
+                      }}
+                    >
                       <Trash2 size={15} aria-hidden="true" />
                     </IconButton>
                   </div>
                 </div>
-                {index === activeIndex ? (
-                  <Field label="服务组名">
-                    <TextInput value={entry.key} disabled={isReadonly} onChange={(event) => patchEntry(index, { key: event.target.value })} />
-                  </Field>
-                ) : null}
-                <div className="member-chip-list">
+                <div className="member-chip-list readonly">
                   {entry.value.length === 0 ? <p className="muted">暂无成员</p> : null}
                   {entry.value.map((member, memberIndex) => (
-                    <Chip key={`${member}-${memberIndex}`} tone={memberTone(member)} removable={!isReadonly && index === activeIndex} onRemove={() => removeMember(memberIndex)}>
+                    <Chip key={`${member}-${memberIndex}`} tone={memberTone(member)}>
                       {member}
                     </Chip>
                   ))}
-                  {index === activeIndex ? (
-                    <button type="button" className="add-chip" disabled={isReadonly || memberOptions.length === 0} onClick={() => addMember(memberOptions[0] ?? "@auto")}>
-                      <Plus size={13} aria-hidden="true" />
-                      添加成员
-                    </button>
-                  ) : null}
                 </div>
               </article>
             )}
           />
         )}
+
+        <button type="button" className="add-dashed-block" disabled={isReadonly} onClick={addServiceGroup}>
+          <Plus size={15} aria-hidden="true" />
+          新建服务组
+        </button>
       </div>
     </SplitWorkbench>
   );
@@ -184,4 +286,8 @@ function memberTone(member: string): "neutral" | "accent" | "success" | "error" 
   if (member === "REJECT") return "error";
   if (member.startsWith("@")) return "accent";
   return "info";
+}
+
+function paletteClass(selected: boolean, tone: ReturnType<typeof memberTone>): string {
+  return [`palette-tone-${tone}`, selected ? "is-selected" : ""].filter(Boolean).join(" ");
 }

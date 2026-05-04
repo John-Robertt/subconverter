@@ -1,14 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCcw } from "lucide-react";
 import { api } from "../api/client";
 import { getErrorMessage } from "../api/errors";
-import { Button, Chip, ErrorState, LoadingState, StatCard } from "../components/ui";
-import { useSaveWorkflow } from "../features/useSaveWorkflow";
+import { Chip, ErrorState, LoadingState, StatCard } from "../components/ui";
 import { useConfigState } from "../state/config";
 
 export function StatusPage() {
-  const { status, isStatusLoading, statusError } = useConfigState();
-  const { reloadOnly, isReloading } = useSaveWorkflow();
+  const { status, draft, isStatusLoading, statusError } = useConfigState();
   const healthQuery = useQuery({
     queryKey: ["healthz"],
     queryFn: api.healthz
@@ -16,74 +13,181 @@ export function StatusPage() {
 
   return (
     <div className="page-stack">
-      <section className="status-hero">
-        <div>
-          <span className={healthQuery.isError ? "status-dot error" : "status-dot"} aria-hidden="true" />
-          <div>
-            <h2>{healthQuery.isError ? "服务健康检查失败" : "服务运行中"}</h2>
-            <p>{status?.last_reload?.time ? `最近 reload：${status.last_reload.time}` : "暂无 reload 记录"}</p>
-          </div>
-        </div>
-        <Button variant="secondary" icon={<RefreshCcw size={16} aria-hidden="true" />} loading={isReloading} onClick={() => void reloadOnly()}>
-          触发 reload
-        </Button>
-      </section>
-
       {isStatusLoading ? <LoadingState message="正在加载系统状态" /> : null}
       {statusError ? <ErrorState message={getErrorMessage(statusError)} /> : null}
       {healthQuery.isError ? <ErrorState title="健康检查失败" message={getErrorMessage(healthQuery.error)} /> : null}
 
       <div className="stats-grid">
-        <StatCard label="healthz" value={healthQuery.isError ? "failed" : healthQuery.data || "OK"} tone={healthQuery.isError ? "error" : "success"} />
-        <StatCard label="version" value={status?.version ?? "-"} sub={status?.build_date ?? "build date 未提供"} />
-        <StatCard label="config dirty" value={status?.config_dirty ? "true" : "false"} tone={status?.config_dirty ? "warning" : "success"} />
-        <StatCard label="last reload" value={status?.last_reload?.success === false ? "failed" : status?.last_reload ? "success" : "-"} tone={status?.last_reload?.success === false ? "error" : "success"} />
+        <StatCard
+          label="服务状态"
+          value={healthQuery.isError ? "异常" : "运行中"}
+          sub={formatServiceSub(healthQuery.isError, status)}
+          tone={healthQuery.isError ? "error" : "success"}
+          className={healthQuery.isError ? undefined : "stat-with-dot"}
+        />
+        <StatCard
+          label="版本"
+          value={status?.version ? `v${status.version}` : "-"}
+          sub={formatVersionSub(status)}
+        />
+        <StatCard
+          label="配置"
+          value={status?.config_dirty ? "待重载" : "已加载"}
+          sub={formatConfigSub(draft)}
+          tone={status?.config_dirty ? "warning" : "success"}
+          className={status?.config_dirty ? undefined : "stat-with-dot"}
+        />
+        <StatCard
+          label="上次热重载"
+          value={status?.last_reload?.time ? formatRelativeShort(status.last_reload.time) : "-"}
+          sub={formatReloadSub(status)}
+          tone={status?.last_reload?.success === false ? "error" : "info"}
+        />
       </div>
 
-      <section className="content-panel status-detail-panel">
-        <div className="section-heading row">
-          <div>
-            <h3>配置源</h3>
-            <p>配置源、写入能力和 revision 是保存/reload 工作流的边界。</p>
+      <div className="status-two-col">
+        <section className="content-panel">
+          <div className="section-heading row">
+            <div>
+              <h3>最近 reload</h3>
+              <p>热重载历史记录。</p>
+            </div>
+            <Chip tone={status?.last_reload?.success === false ? "error" : "success"}>
+              {status?.last_reload?.success === false ? "最近失败" : "正常"}
+            </Chip>
           </div>
-          <Chip tone={status?.config_source.writable ? "success" : "warning"}>{status?.config_source.writable ? "writable" : "readonly"}</Chip>
-        </div>
-        <div className="detail-grid">
-          <Detail label="类型" value={status?.config_source.type ?? "-"} />
-          <Detail label="位置" value={status?.config_source.location ?? "-"} mono />
-          <Detail label="保存能力" value={status?.capabilities.config_write ? "可保存" : "只读"} badge={status?.capabilities.config_write ? "success" : "warning"} />
-          <Detail label="reload 能力" value={status?.capabilities.reload ? "可 reload" : "不可 reload"} badge={status?.capabilities.reload ? "success" : "warning"} />
-          <Detail label="config_revision" value={status?.config_revision ?? "-"} mono />
-          <Detail label="runtime_config_revision" value={status?.runtime_config_revision ?? "-"} mono />
-          <Detail label="config_loaded_at" value={status?.config_loaded_at ?? "-"} mono />
-          <Detail label="commit" value={status?.commit ?? "-"} mono />
-        </div>
-      </section>
+          {status?.last_reload ? (
+            <div className="stack-list">
+              <div className="reload-history-row">
+                <code>{status.last_reload.time ? formatTimeOnly(status.last_reload.time) : "-"}</code>
+                <Chip tone={status.last_reload.success ? "success" : "error"}>{status.last_reload.success ? "ok" : "failed"}</Chip>
+                <span>{status.last_reload.success ? "配置正常加载" : (status.last_reload.error || "reload 失败，详情见日志")}</span>
+                <code style={{ textAlign: "right" }}>{typeof status.last_reload.duration_ms === "number" ? `${status.last_reload.duration_ms}ms` : "-"}</code>
+              </div>
+            </div>
+          ) : (
+            <p className="muted">暂无 reload 记录。</p>
+          )}
+        </section>
 
-      <section className="content-panel status-detail-panel">
-        <div className="section-heading">
-          <h3>最近 reload</h3>
+        <div className="page-stack">
+          <section className="content-panel">
+            <div className="section-heading">
+              <h3>运行环境</h3>
+            </div>
+            <div className="stack-list">
+              <EnvRow label="配置文件" value={status?.config_source.location ?? "-"} title={status?.config_source.location} />
+              <EnvRow label="监听地址" value={status?.runtime_environment?.listen_addr ?? "-"} />
+              <EnvRow label="工作目录" value={status?.runtime_environment?.working_dir ?? "-"} title={status?.runtime_environment?.working_dir} />
+              <EnvRow label="Go runtime" value={status?.runtime_environment?.go_runtime ?? "-"} />
+              <EnvRow label="内存占用" value={status?.runtime_environment ? `${status.runtime_environment.memory_alloc_mb} MB` : "-"} />
+              <EnvRow label="请求总数" value={formatRequestCount(status?.runtime_environment?.request_count_24h, status?.runtime_environment?.uptime_seconds)} />
+            </div>
+          </section>
+
+          <section className="content-panel">
+            <div className="section-heading">
+              <h3>健康探针</h3>
+            </div>
+            <div className="stack-list">
+              <ProbeRow method="GET" path="/healthz" status={healthQuery.isError ? "err" : "200"} />
+            </div>
+          </section>
         </div>
-        {status?.last_reload ? (
-          <div className="detail-grid">
-            <Detail label="时间" value={status.last_reload.time} mono />
-            <Detail label="结果" value={status.last_reload.success ? "成功" : "失败"} badge={status.last_reload.success ? "success" : "error"} />
-            <Detail label="耗时" value={`${status.last_reload.duration_ms} ms`} />
-            {status.last_reload.error ? <Detail label="错误" value={status.last_reload.error} /> : null}
-          </div>
-        ) : (
-          <p className="muted">暂无 reload 记录。</p>
-        )}
-      </section>
+      </div>
     </div>
   );
 }
 
-function Detail({ label, value, mono, badge }: { label: string; value: string; mono?: boolean; badge?: "success" | "warning" | "error" }) {
+function EnvRow({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="detail-item">
+    <div className="env-row">
       <span>{label}</span>
-      {badge ? <Chip tone={badge}>{value}</Chip> : <strong className={mono ? "mono-cell" : undefined}>{value}</strong>}
+      <code title={title ?? value}>{value}</code>
     </div>
   );
+}
+
+function formatRequestCount(count?: number, uptimeSeconds?: number): string {
+  if (count === undefined) return "-";
+  const formatted = new Intl.NumberFormat("en-US").format(count);
+  if (uptimeSeconds !== undefined && uptimeSeconds < 24 * 3600) {
+    return `${formatted}（自启动）`;
+  }
+  return `${formatted}（过去 24h）`;
+}
+
+function ProbeRow({ method, path, status }: { method: string; path: string; status: string }) {
+  return (
+    <div className="probe-row">
+      <span className={`probe-method probe-method-${method.toLowerCase()}`}>{method}</span>
+      <code className="probe-path">{path}</code>
+      <code className="probe-status" style={{ background: status === "200" ? "var(--success-soft)" : "var(--surface-muted)", color: status === "200" ? "var(--success)" : "var(--text-muted)" }}>{status}</code>
+    </div>
+  );
+}
+
+function formatRelativeShort(value: string) {
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return value;
+  const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (seconds < 60) return `${seconds} 秒前`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} 小时前`;
+}
+
+function formatVersionSub(status: ReturnType<typeof useConfigState>["status"]): string {
+  const parts: string[] = [];
+  if (status?.commit) parts.push(`git ${status.commit.slice(0, 7)}`);
+  if (status?.build_date) parts.push(status.build_date);
+  return parts.length > 0 ? parts.join(" · ") : "构建信息未提供";
+}
+
+function formatServiceSub(unhealthy: boolean, status: ReturnType<typeof useConfigState>["status"]): string {
+  if (unhealthy) return "/healthz 不可达";
+  if (status?.config_loaded_at) {
+    const loadedAt = new Date(status.config_loaded_at).getTime();
+    if (!Number.isNaN(loadedAt)) {
+      const seconds = Math.max(0, Math.round((Date.now() - loadedAt) / 1000));
+      return `已运行 ${formatDuration(seconds)}`;
+    }
+  }
+  return "/healthz 200";
+}
+
+function formatConfigSub(draft: ReturnType<typeof useConfigState>["draft"]): string {
+  if (!draft) return "配置加载中";
+  const sources = draft.sources;
+  const fetchSourceCount =
+    (sources?.subscriptions?.length ?? 0) + (sources?.snell?.length ?? 0) + (sources?.vless?.length ?? 0) + (sources?.custom_proxies?.length ?? 0);
+  return `${fetchSourceCount} 来源 · ${draft.groups?.length ?? 0} 分组 · ${draft.routing?.length ?? 0} 路由`;
+}
+
+function formatReloadSub(status: ReturnType<typeof useConfigState>["status"]): string {
+  const parts: string[] = [];
+  if (typeof status?.last_reload?.duration_ms === "number") parts.push(`${status.last_reload.duration_ms}ms`);
+  if (status?.last_reload?.success === false) parts.push("最近失败");
+  else if (status?.last_reload) parts.push("成功");
+  return parts.length > 0 ? parts.join(" · ") : "无记录";
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
+function formatTimeOnly(value: string) {
+  try {
+    const d = new Date(value);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  } catch {
+    return value;
+  }
 }

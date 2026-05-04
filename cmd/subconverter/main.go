@@ -95,6 +95,7 @@ func main() {
 	// Load and validate config at startup (fail-fast).
 	appSvc, err := app.New(context.Background(), app.Options{
 		ConfigLocation: *configPath,
+		ListenAddr:     listenAddr,
 		Fetcher:        cachedFetcher,
 		Generate:       generate.Options{AccessToken: resolvedAccessToken},
 		Version:        version,
@@ -121,7 +122,8 @@ func main() {
 			cookie, err := r.Cookie(auth.SessionCookieName)
 			return err == nil && authSvc.IsSessionValid(cookie.Value)
 		},
-		EnableCORS: resolvedCORS,
+		EnableCORS:     resolvedCORS,
+		RequestCounter: appSvc.IncrementRequestCount,
 	})
 	httpServer := newHTTPServer(listenAddr, srv.Handler())
 

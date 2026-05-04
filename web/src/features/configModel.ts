@@ -77,16 +77,17 @@ export function getPolicyOptions(config: Config): string[] {
   return Array.from(new Set([...routingNames, "DIRECT", "REJECT"]));
 }
 
-export function splitRulePolicy(rule: string): { body: string; policy: string; parseable: boolean } {
+export function splitRulePolicy(rule: string): { body: string; policy: string; parseable: boolean; type: string; match: string } {
   const index = rule.lastIndexOf(",");
   if (index < 0) {
-    return { body: rule, policy: "", parseable: false };
+    return { body: rule, policy: "", parseable: false, type: "", match: rule };
   }
-  return {
-    body: rule.slice(0, index),
-    policy: rule.slice(index + 1).trim(),
-    parseable: true
-  };
+  const body = rule.slice(0, index);
+  const policy = rule.slice(index + 1).trim();
+  const firstComma = body.indexOf(",");
+  const type = firstComma >= 0 ? body.slice(0, firstComma).trim() : body.trim();
+  const match = firstComma >= 0 ? body.slice(firstComma + 1).trim() : "";
+  return { body, policy, parseable: true, type, match };
 }
 
 export function replaceRulePolicy(rule: string, policy: string): string {

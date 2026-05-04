@@ -94,9 +94,9 @@ export function SourcesPage() {
     <div className="page-stack">
       <div className="stats-grid">
         <StatCard label="订阅总数" value={totalSources} sub={`${sources.fetch_order.length} 类拉取顺序`} />
-        <StatCard label="订阅来源" value={totalFetch} sub="subscriptions / snell / vless" tone="info" />
-        <StatCard label="Surge-only" value={sources.snell.length} sub="Snell" tone="warning" />
-        <StatCard label="Clash-only" value={sources.vless.length} sub="VLESS" tone="success" />
+        <StatCard label="订阅来源" value={totalFetch} sub="subscriptions / snell / vless" />
+        <StatCard label="Surge-only" value={sources.snell.length} sub="Snell" />
+        <StatCard label="Clash-only" value={sources.vless.length} sub="VLESS" />
       </div>
 
       <section className={focusClassName(activePointer, ["/config/sources/fetch_order"], "content-panel source-order-panel")}>
@@ -204,20 +204,22 @@ function SourceSection({
     <section className={className}>
       <div className="source-section-header">
         <div className="source-section-title">
-          {icon ? <span className="source-section-icon" aria-hidden="true">{icon}</span> : null}
           <div>
-            <h3>{title}</h3>
+            <h3>
+              {icon ? <span className="source-section-icon" aria-hidden="true">{icon}</span> : null}
+              <span>{title}</span>
+              <Chip>{count}</Chip>
+              {tag ? <Chip tone={tag.includes("Surge") ? "warning" : "info"}>{tag}</Chip> : null}
+            </h3>
             <p>{subtitle}</p>
           </div>
         </div>
-        <Chip>{count}</Chip>
-        {tag ? <Chip tone={tag.includes("Surge") ? "warning" : "info"}>{tag}</Chip> : null}
       </div>
       <div className="source-card-list">
         {count === 0 ? <EmptyState title="暂无来源" message={readonly ? "只读模式下不可新增来源。" : "添加一个来源后再保存生效。"} /> : children}
         <button className="add-dashed" type="button" disabled={readonly} onClick={onAdd}>
           <Plus size={15} aria-hidden="true" />
-          添加{title}
+          <span>添加 {title}</span>
         </button>
       </div>
     </section>
@@ -241,17 +243,13 @@ function SourceCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const ready = !tag.includes("待");
+  const status = ready ? meta : "待补齐";
   return (
-    <article className="source-card">
+    <article className="source-card" title={title}>
       <span className="drag-handle static" aria-hidden="true">⠿</span>
-      <div className="source-card-main">
-        <code>{subtitle}</code>
-        <div className="source-card-meta">
-          <strong>{title}</strong>
-          <Chip tone="neutral">{meta}</Chip>
-          <Chip tone={tag.includes("待") ? "warning" : "success"}>{tag}</Chip>
-        </div>
-      </div>
+      <code className="source-card-url">{subtitle}</code>
+      <span className={ready ? "source-card-meta" : "source-card-meta warning"}>{status}</span>
       <div className="source-card-actions">
         <IconButton label="刷新来源" variant="ghost" disabled>
           <RefreshCw size={15} aria-hidden="true" />
@@ -315,14 +313,12 @@ function SourceEditorModal({
         </Field>
       ) : editor?.type === "custom" ? (
         <div className="form-stack">
-          <div className="form-grid two">
-            <Field label="名称">
-              <TextInput value={editor.proxy.name} disabled={readonly} onChange={(event) => patchCustom({ name: event.target.value })} autoFocus />
-            </Field>
-            <Field label="URL" hint={editor.proxy.url ? maskUrl(editor.proxy.url) : "ss://、socks5:// 或 http://"}>
-              <TextInput className="text-input mono-input" value={editor.proxy.url} disabled={readonly} onChange={(event) => patchCustom({ url: event.target.value })} />
-            </Field>
-          </div>
+          <Field label="名称">
+            <TextInput value={editor.proxy.name} disabled={readonly} onChange={(event) => patchCustom({ name: event.target.value })} autoFocus />
+          </Field>
+          <Field label="URL" hint={editor.proxy.url ? maskUrl(editor.proxy.url) : "ss://、socks5:// 或 http://"}>
+            <TextInput className="text-input mono-input" value={editor.proxy.url} disabled={readonly} onChange={(event) => patchCustom({ url: event.target.value })} />
+          </Field>
           <label className="checkbox-row">
             <input
               type="checkbox"

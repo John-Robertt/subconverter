@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import { useMemo } from "react";
 import { api } from "../api/client";
 import { getErrorMessage } from "../api/errors";
-import { Button, Chip, EmptyState, ErrorState, Field, LoadingState, RailPanel, SplitWorkbench, StatCard, TextInput } from "../components/ui";
+import { Button, Chip, EmptyState, ErrorState, Field, LoadingState, RailPanel, SplitWorkbench, TextInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { useConfigState } from "../state/config";
 
@@ -95,14 +95,23 @@ export function FiltersPage() {
               value={exclude}
               disabled={isReadonly}
               onChange={(event) => updateDraft((config) => ({ ...config, filters: { ...config.filters, exclude: event.target.value } }))}
-              placeholder="(过期|剩余流量|到期)"
+              placeholder="过期|剩余流量|到期"
             />
           </Field>
 
           <div className="stats-grid three">
-            <StatCard label="原始节点" value={total || "-"} sub={preview ? "来自草稿预览" : "等待预览"} />
-            <StatCard label="剔除" value={preview ? filtered : "-"} sub={regexState.valid ? "exclude 命中" : "正则无效"} tone="error" />
-            <StatCard label="保留" value={preview ? active : "-"} sub={preview ? "可进入分组" : "等待预览"} tone="success" />
+            <div className="big-stat big-stat-neutral">
+              <span>原始节点</span>
+              <strong>{total || "-"}</strong>
+            </div>
+            <div className="big-stat big-stat-error">
+              <span>剔除</span>
+              <strong>{preview ? filtered : "-"}</strong>
+            </div>
+            <div className="big-stat big-stat-success">
+              <span>保留</span>
+              <strong>{preview ? active : "-"}</strong>
+            </div>
           </div>
         </section>
 

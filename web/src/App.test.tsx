@@ -232,15 +232,15 @@ describe("M9 app shell", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "订阅来源" })).toBeTruthy();
     expect(screen.getByRole("link", { name: /节点预览/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "保存并热重载" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("keeps M10 routes inside the protected SPA", async () => {
-    mockBackend();
+    const backend = mockBackend();
     renderApp("/download");
 
     expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
-    expect(screen.getByText("尚未生成预览")).toBeTruthy();
+    await waitFor(() => expect(backend.calls.some((c) => c.path === "/api/generate/preview?format=clash")).toBe(true));
   });
 });
 
@@ -255,7 +255,7 @@ describe("M10 frontend workflows", () => {
     fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "DIRECT" } });
     const urlInputs = screen.getAllByPlaceholderText("https://example.com/rules.list");
     fireEvent.change(urlInputs[1], { target: { value: "https://rules.example.com/c.list" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       const saved = lastSavedConfig(backend.calls);
@@ -277,7 +277,7 @@ describe("M10 frontend workflows", () => {
     expect((policySelector as HTMLSelectElement).disabled).toBe(false);
     fireEvent.change(ruleInput, { target: { value: "DOMAIN-SUFFIX,example.com,DIRECT" } });
     expect(await screen.findByDisplayValue("DOMAIN-SUFFIX,example.com,DIRECT")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       const saved = lastSavedConfig(backend.calls);
@@ -291,9 +291,9 @@ describe("M10 frontend workflows", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "其他配置" })).toBeTruthy();
     fireEvent.change(await screen.findByDisplayValue("https://sub.example.com"), { target: { value: "https://edge.example.com" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存并热重载" }).hasAttribute("disabled")).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
-    expect(await screen.findByRole("dialog", { name: "确认首次写回 YAML" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByRole("dialog", { name: "将草稿写入 YAML 文件？" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "确认保存" }));
 
     await waitFor(() => expect(lastSavedConfig(writableBackend.calls)?.base_url).toBe("https://edge.example.com"));
@@ -361,7 +361,7 @@ describe("M10 frontend workflows", () => {
     renderApp("/preview/groups");
 
     expect(await screen.findByRole("heading", { level: 1, name: "分组预览" })).toBeTruthy();
-    expect(await screen.findByText("All proxies")).toBeTruthy();
+    expect(await screen.findByText(/All proxies/)).toBeTruthy();
     expect(screen.getAllByText("HK-01").length).toBeGreaterThan(0);
 
     cleanup();
@@ -374,7 +374,7 @@ describe("M10 frontend workflows", () => {
 
     expect(await screen.findByText("图级校验失败", {}, { timeout: 3000 })).toBeTruthy();
     expect(screen.getByText("empty_group")).toBeTruthy();
-    expect(screen.queryByText("All proxies")).toBeNull();
+    expect(screen.queryByText(/All proxies/)).toBeNull();
   });
 
   it("T-WEB-016 previews generated config and confirms copying token-included links", async () => {
@@ -384,18 +384,15 @@ describe("M10 frontend workflows", () => {
     renderApp("/download");
 
     expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "当前运行时预览" }));
-    expect(await screen.findByText(/runtime-proxy/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "草稿生成预览" }));
-    expect(await screen.findByText(/draft-proxy/)).toBeTruthy();
+    expect((await screen.findAllByText(/runtime-proxy/)).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "复制订阅链接" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /复制/ })[0]);
     expect(await screen.findByRole("dialog", { name: "复制含 token 的订阅链接？" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "确认复制" }));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("token=server-token")));
-    expect(backend.calls.some((item) => item.path.startsWith("/api/generate/link") && !item.path.includes("token=server-token"))).toBe(true);
-    expect(backend.calls.some((item) => item.path === "/api/generate/preview?format=clash" && item.init?.method === "POST")).toBe(true);
+    expect(backend.calls.some((item) => item.path.startsWith("/api/generate/link"))).toBe(true);
+    expect(backend.calls.some((item) => item.path === "/api/generate/preview?format=clash")).toBe(true);
   });
 });
 
@@ -436,45 +433,54 @@ describe("preview workflows", () => {
 });
 
 describe("save workflow", () => {
-  it("confirms YAML formatting loss before the first PUT", async () => {
+  it("confirms YAML formatting loss before the first PUT and does not auto-reload", async () => {
     const backend = mockBackend();
     renderApp("/sources");
 
     await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getByRole("button", { name: "添加SS 订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加 SS 订阅" }));
     expect(await screen.findByRole("dialog", { name: "添加 SS 订阅" })).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://sub.example.com/new?token=secret" } });
     fireEvent.click(screen.getByRole("button", { name: "保存来源" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存并热重载" }).hasAttribute("disabled")).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(await screen.findByRole("dialog", { name: "确认首次写回 YAML" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "将草稿写入 YAML 文件？" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "确认保存" }));
 
     await waitFor(() => {
       expect(backend.calls.some((item) => item.path === "/api/config/validate" && item.init?.method === "POST")).toBe(true);
       expect(backend.calls.some((item) => item.path === "/api/config" && item.init?.method === "PUT")).toBe(true);
-      expect(backend.calls.some((item) => item.path === "/api/reload" && item.init?.method === "POST")).toBe(true);
     });
+    expect(backend.calls.some((item) => item.path === "/api/reload" && item.init?.method === "POST")).toBe(false);
   });
 
-  it("keeps the saved revision when reload fails after PUT", async () => {
+  it("navigates to /validate when static validation fails on save", async () => {
     localStorage.setItem("subconverter.firstSaveConfirmed", "true");
     const backend = mockBackend({
-      reloadErrors: [{ status: 502, code: "remote_config_fetch_failed", message: "远程主配置源拉取失败" }]
+      validateResult: {
+        valid: false,
+        errors: [
+          {
+            severity: "error",
+            code: "empty_group",
+            message: "节点组 HK 为空",
+            display_path: "groups[HK].match",
+            locator: { section: "groups", json_pointer: "/config/groups/0/value/match" }
+          }
+        ],
+        warnings: [],
+        infos: []
+      }
     });
     renderApp("/sources");
 
     await addSubscriptionDraft();
-    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(await screen.findByText("配置已保存，reload 未完成")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "重试 reload" })).toBeTruthy();
-    await waitFor(() => {
-      expect(backend.calls.some((item) => item.path === "/api/config" && item.init?.method === "PUT")).toBe(true);
-      expect(backend.calls.some((item) => item.path === "/api/reload" && item.init?.method === "POST")).toBe(true);
-      expect(screen.getByRole("button", { name: "保存并热重载" }).hasAttribute("disabled")).toBe(true);
-    });
+    expect(await screen.findByRole("heading", { level: 1, name: "静态校验" })).toBeTruthy();
+    expect(await screen.findByText("节点组 HK 为空")).toBeTruthy();
+    expect(backend.calls.some((item) => item.path === "/api/config" && item.init?.method === "PUT")).toBe(false);
   });
 
   it.each([
@@ -504,7 +510,7 @@ describe("save workflow", () => {
     renderApp("/sources");
 
     await addSubscriptionDraft();
-    fireEvent.click(screen.getByRole("button", { name: "保存并热重载" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findByText(title)).toBeTruthy();
     if (action) {
@@ -514,16 +520,6 @@ describe("save workflow", () => {
 });
 
 describe("high fidelity interactions", () => {
-  it("runs static validation from the topbar and shows a bottom toast", async () => {
-    mockBackend();
-    renderApp("/sources");
-
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getByRole("button", { name: "校验" }));
-
-    expect(await screen.findByText("静态校验通过")).toBeTruthy();
-  });
-
   it("adds a routing member from the A4 palette", async () => {
     mockBackend();
     renderApp("/routing");
@@ -531,7 +527,7 @@ describe("high fidelity interactions", () => {
     await screen.findByRole("heading", { level: 1, name: "路由策略" });
     fireEvent.click(screen.getByRole("button", { name: /@all/ }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存并热重载" }).hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
     expect(screen.getAllByText("@all").length).toBeGreaterThan(0);
   });
 
@@ -540,7 +536,7 @@ describe("high fidelity interactions", () => {
     renderApp("/status");
 
     await screen.findByRole("heading", { level: 1, name: "系统状态" });
-    fireEvent.click(screen.getByRole("button", { name: "触发 reload" }));
+    fireEvent.click(screen.getByRole("button", { name: "热重载" }));
 
     expect(await screen.findByText("Reload 正在执行")).toBeTruthy();
     expect(await screen.findByText("RuntimeConfig 已重新加载", {}, { timeout: 3000 })).toBeTruthy();
@@ -584,9 +580,9 @@ describe("API client", () => {
 
 async function addSubscriptionDraft() {
   await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-  fireEvent.click(screen.getByRole("button", { name: "添加SS 订阅" }));
+  fireEvent.click(screen.getByRole("button", { name: "添加 SS 订阅" }));
   expect(await screen.findByRole("dialog", { name: "添加 SS 订阅" })).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://sub.example.com/new?token=secret" } });
   fireEvent.click(screen.getByRole("button", { name: "保存来源" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "保存并热重载" }).hasAttribute("disabled")).toBe(false));
+  await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
 }
