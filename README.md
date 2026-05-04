@@ -94,6 +94,57 @@ pnpm compose:up
 
 `SUBCONVERTER_TOKEN` 只保护 `/generate` 客户端订阅访问；Web 管理后台使用管理员账号和 `session_id` Cookie。首次 setup 需要 `SUBCONVERTER_SETUP_TOKEN`，生产环境应改掉示例中的默认值。
 
+### 反向代理
+
+Web 管理后台的 `POST /api/*` 请求会校验同源 `Origin` / `Referer`，`/api/auth/setup` 也包含在内。通过 nginx 反代时，后端看到的 `Host` 和 `X-Forwarded-Proto` 必须与浏览器地址栏中的外部访问地址一致；否则 setup / login / save 可能返回 `403 csrf_check_failed: 请求来源无效`。
+
+nginx 作为公网入口时，可按以下方式代理到 subconverter：
+
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_redirect off;
+
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location = /generate {
+    proxy_pass http://127.0.0.1:8080/generate;
+    proxy_http_version 1.1;
+    proxy_redirect off;
+
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location = /healthz {
+    proxy_pass http://127.0.0.1:8080/healthz;
+    proxy_http_version 1.1;
+    proxy_redirect off;
+
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+如果公网 HTTPS 终止在更外层代理，内层 nginx 到 subconverter 是 HTTP，不能继续把 `$scheme` 传成 `http`；需要透传外层协议，或在确认入口固定为 HTTPS 时显式写死：
+
+```nginx
+# 方案一：外层代理已传入 X-Forwarded-Proto
+proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+
+# 方案二：确认公网入口固定为 HTTPS
+proxy_set_header X-Forwarded-Proto https;
+```
+
 ### Docker Run
 
 单容器运行适合只提供 `/generate` 和 `/healthz`，或使用远程配置的只读部署：
@@ -148,18 +199,18 @@ curl "http://localhost:8080/healthz"
 
 ## 命令行参数
 
-| 参数            | 默认值     | 说明                                                                                        |
-| --------------- | ---------- | ------------------------------------------------------------------------------------------- |
-| `-config`       | _（必填）_ | YAML 配置文件路径或 HTTP(S) URL                                                             |
-| `-listen`       | `:8080`    | HTTP 监听地址；未显式传入时可由 `SUBCONVERTER_LISTEN` 提供                                  |
-| `-cache-ttl`    | `5m`       | 订阅和模板缓存的 TTL                                                                        |
-| `-timeout`      | `30s`      | 拉取订阅的 HTTP 超时时间                                                                    |
-| `-access-token` | _空_       | `/generate` 访问 token；未显式传入时可由 `SUBCONVERTER_TOKEN` 提供                          |
+| 参数            | 默认值       | 说明                                                                                        |
+| --------------- | ------------ | ------------------------------------------------------------------------------------------- |
+| `-config`       | _（必填）_   | YAML 配置文件路径或 HTTP(S) URL                                                             |
+| `-listen`       | `:8080`      | HTTP 监听地址；未显式传入时可由 `SUBCONVERTER_LISTEN` 提供                                  |
+| `-cache-ttl`    | `5m`         | 订阅和模板缓存的 TTL                                                                        |
+| `-timeout`      | `30s`        | 拉取订阅的 HTTP 超时时间                                                                    |
+| `-access-token` | _空_         | `/generate` 访问 token；未显式传入时可由 `SUBCONVERTER_TOKEN` 提供                          |
 | `-auth-state`   | 系统配置目录 | 管理员密码哈希与 session 状态文件；未显式传入时可由 `SUBCONVERTER_AUTH_STATE` 提供          |
-| `-setup-token`  | 自动生成   | 首次 setup bootstrap token；未显式传入时可由 `SUBCONVERTER_SETUP_TOKEN` 提供                |
-| `-cors`         | `false`    | 仅本地开发调试使用；生产 Compose 由同一个 Go 服务同源托管 SPA 和 API，不需要 CORS           |
-| `-healthcheck`  |            | 按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 探活并退出 |
-| `-version`      |            | 打印版本信息并退出                                                                          |
+| `-setup-token`  | 自动生成     | 首次 setup bootstrap token；未显式传入时可由 `SUBCONVERTER_SETUP_TOKEN` 提供                |
+| `-cors`         | `false`      | 仅本地开发调试使用；生产 Compose 由同一个 Go 服务同源托管 SPA 和 API，不需要 CORS           |
+| `-healthcheck`  |              | 按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 探活并退出 |
+| `-version`      |              | 打印版本信息并退出                                                                          |
 
 ## API
 
@@ -240,17 +291,17 @@ fallback: 🐟 FINAL # 未匹配任何规则的流量走这里
 
 ### 配置段说明
 
-| 配置段      | 用途                                | 必填 |
-| ----------- | ----------------------------------- | ---- |
-| `base_url`  | 外部服务地址，用于 Surge 托管配置头 | 否   |
-| `templates` | Clash Meta / Surge 输出的底版模板   | 否   |
+| 配置段      | 用途                                       | 必填 |
+| ----------- | ------------------------------------------ | ---- |
+| `base_url`  | 外部服务地址，用于 Surge 托管配置头        | 否   |
+| `templates` | Clash Meta / Surge 输出的底版模板          | 否   |
 | `sources`   | 订阅 URL、Snell/VLESS 来源和自定义代理定义 | 是   |
-| `filters`   | 正则排除节点                        | 否   |
-| `groups`    | 地区节点组，含匹配正则和策略        | 是   |
-| `routing`   | 服务路由组，含出口偏好顺序          | 是   |
-| `rulesets`  | 远程规则集 URL 绑定到路由组         | 否   |
-| `rules`     | 内联路由规则                        | 否   |
-| `fallback`  | 兜底路由组，处理未匹配流量          | 是   |
+| `filters`   | 正则排除节点                               | 否   |
+| `groups`    | 地区节点组，含匹配正则和策略               | 是   |
+| `routing`   | 服务路由组，含出口偏好顺序                 | 是   |
+| `rulesets`  | 远程规则集 URL 绑定到路由组                | 否   |
+| `rules`     | 内联路由规则                               | 否   |
+| `fallback`  | 兜底路由组，处理未匹配流量                 | 是   |
 
 完整注释示例参见 [`configs/base_config.yaml`](configs/base_config.yaml)，字段详细说明参见 [`docs/design/config-schema.md`](docs/design/config-schema.md)。
 
