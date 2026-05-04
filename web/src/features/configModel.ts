@@ -69,7 +69,8 @@ export function moveItem<T>(items: T[], from: number, to: number): T[] {
 export function getRoutingMemberOptions(config: Config): string[] {
   const groupNames = config.groups?.map((entry) => entry.key) ?? [];
   const routingNames = config.routing?.map((entry) => entry.key) ?? [];
-  return Array.from(new Set([...groupNames, ...routingNames, "DIRECT", "REJECT", "@all", "@auto"]));
+  const customProxyNames = config.sources?.custom_proxies?.map((entry) => entry.name).filter(Boolean) ?? [];
+  return Array.from(new Set([...groupNames, ...routingNames, ...customProxyNames, "DIRECT", "REJECT", "@all", "@auto"]));
 }
 
 export function getPolicyOptions(config: Config): string[] {

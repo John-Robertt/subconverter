@@ -25,6 +25,8 @@
   --error-soft: #fee2e2;
   --info: #0284c7;
   --info-soft: #e0f2fe;
+  --chain: #0d9488;
+  --chain-soft: #ccfbf1;
   --focus: #6366f1;
   --code-bg: #f1f5f9;
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
@@ -56,6 +58,8 @@
   --error-soft: #3c171b;
   --info: #38bdf8;
   --info-soft: #102f44;
+  --chain: #2dd4bf;
+  --chain-soft: #0f3a36;
   --focus: #a5b4fc;
   --code-bg: #1a2031;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
@@ -758,6 +762,12 @@ code {
   color: var(--primary-strong);
 }
 
+.chip-chain {
+  border-color: color-mix(in srgb, var(--chain) 36%, var(--border));
+  background: var(--chain-soft);
+  color: var(--chain);
+}
+
 .chip button {
   display: inline-flex;
   margin: 0 -3px 0 5px;
@@ -959,6 +969,15 @@ code {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 12px;
+}
+
+/* Table cells should let the wrapper scroll horizontally rather than break
+   tokens character-by-character; the global `code { overflow-wrap: anywhere }`
+   rule otherwise tells the table layout that any column's min-content is 1ch,
+   collapsing short tokens like `vless` / port numbers onto multiple lines. */
+.table-wrap td code {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 table {
@@ -1670,7 +1689,7 @@ tr:last-child td {
 
 /* Palette button selected-state mirrors the "current member" chip palette
    (memberTone): accent for @auto/@all, success for DIRECT, error for REJECT,
-   info for node / service group references. */
+   info for node / service group references, chain for relay_through groups. */
 .member-palette-grid button.is-selected.palette-tone-accent,
 .palette-list button.is-selected.palette-tone-accent {
   border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
@@ -1704,6 +1723,13 @@ tr:last-child td {
   border-color: var(--border);
   background: var(--surface-muted);
   color: var(--text);
+}
+
+.member-palette-grid button.is-selected.palette-tone-chain,
+.palette-list button.is-selected.palette-tone-chain {
+  border-color: color-mix(in srgb, var(--chain) 36%, var(--border));
+  background: var(--chain-soft);
+  color: var(--chain);
 }
 
 .member-palette-grid button.is-selected strong,

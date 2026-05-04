@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { OrderedEntry } from "../api/types";
 import { SortableList } from "../components/SortableList";
 import { Chip, EmptyState, Field, IconButton, RailPanel, SplitWorkbench, TextInput } from "../components/ui";
-import { getRoutingMemberOptions } from "../features/configModel";
+import { ensureSources, getRoutingMemberOptions } from "../features/configModel";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { useConfigState } from "../state/config";
 import { useConfirm } from "../state/confirm";
@@ -23,6 +23,10 @@ export function RoutingPage() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const routing = draft?.routing ?? [];
   const groups = draft?.groups ?? [];
+  const customProxies = ensureSources(draft?.sources).custom_proxies;
+  const chainNames = new Set(
+    customProxies.filter((proxy) => Boolean(proxy.relay_through) && proxy.name).map((proxy) => proxy.name)
+  );
   const memberOptions = getRoutingMemberOptions(draft ?? {});
   const activeIndex =
     selectedIndex === null || routing.length === 0
@@ -112,7 +116,7 @@ export function RoutingPage() {
                   {activeRoute.value.map((member, memberIndex) => (
                     <Chip
                       key={`${member}-${memberIndex}`}
-                      tone={memberTone(member)}
+                      tone={memberTone(member, chainNames)}
                       removable={!isReadonly}
                       onRemove={() => removeMember(memberIndex)}
                     >
@@ -154,13 +158,38 @@ export function RoutingPage() {
                       <button
                         key={group.key}
                         type="button"
-                        className={paletteClass(selected, memberTone(group.key))}
+                        className={paletteClass(selected, memberTone(group.key, chainNames))}
                         aria-pressed={selected}
                         disabled={isReadonly}
                         onClick={() => toggleMember(group.key)}
                       >
                         <span>{group.key}</span>
                         <small>{group.value.strategy}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="palette-section">
+                <span>自定义代理（{customProxies.length}）</span>
+                <div className="palette-list">
+                  {customProxies.length === 0 ? <p className="muted">尚未配置自定义代理</p> : null}
+                  {customProxies.map((proxy) => {
+                    if (!proxy.name) return null;
+                    const selected = activeRoute.value.includes(proxy.name);
+                    const isChain = Boolean(proxy.relay_through);
+                    return (
+                      <button
+                        key={proxy.name}
+                        type="button"
+                        className={paletteClass(selected, memberTone(proxy.name, chainNames))}
+                        aria-pressed={selected}
+                        disabled={isReadonly}
+                        onClick={() => toggleMember(proxy.name)}
+                      >
+                        <span>{proxy.name}</span>
+                        <small>{isChain ? `链式 · ${proxy.relay_through?.strategy ?? "select"}` : "自定义节点"}</small>
                       </button>
                     );
                   })}
@@ -181,7 +210,7 @@ export function RoutingPage() {
                         <button
                           key={route.key}
                           type="button"
-                          className={paletteClass(selected, memberTone(route.key))}
+                          className={paletteClass(selected, memberTone(route.key, chainNames))}
                           aria-pressed={selected}
                           disabled={isReadonly}
                           onClick={() => toggleMember(route.key)}
@@ -262,7 +291,7 @@ export function RoutingPage() {
                 <div className="member-chip-list readonly">
                   {entry.value.length === 0 ? <p className="muted">暂无成员</p> : null}
                   {entry.value.map((member, memberIndex) => (
-                    <Chip key={`${member}-${memberIndex}`} tone={memberTone(member)}>
+                    <Chip key={`${member}-${memberIndex}`} tone={memberTone(member, chainNames)}>
                       {member}
                     </Chip>
                   ))}
@@ -281,13 +310,16 @@ export function RoutingPage() {
   );
 }
 
-function memberTone(member: string): "neutral" | "accent" | "success" | "error" | "info" {
+type MemberTone = "neutral" | "accent" | "success" | "error" | "info" | "chain";
+
+function memberTone(member: string, chainNames?: Set<string>): MemberTone {
+  if (chainNames?.has(member)) return "chain";
   if (member === "DIRECT") return "success";
   if (member === "REJECT") return "error";
   if (member.startsWith("@")) return "accent";
   return "info";
 }
 
-function paletteClass(selected: boolean, tone: ReturnType<typeof memberTone>): string {
+function paletteClass(selected: boolean, tone: MemberTone): string {
   return [`palette-tone-${tone}`, selected ? "is-selected" : ""].filter(Boolean).join(" ");
 }

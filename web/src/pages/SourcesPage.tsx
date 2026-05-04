@@ -1,4 +1,4 @@
-import { Link2, Pencil, Plus, Radio, RefreshCw, Shield, Trash2 } from "lucide-react";
+import { Link2, Pencil, Plus, Radio, Shield, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Config, CustomProxy, FetchSourceKind, RelayThrough } from "../api/types";
 import { SortableList } from "../components/SortableList";
@@ -251,9 +251,6 @@ function SourceCard({
       <code className="source-card-url">{subtitle}</code>
       <span className={ready ? "source-card-meta" : "source-card-meta warning"}>{status}</span>
       <div className="source-card-actions">
-        <IconButton label="刷新来源" variant="ghost" disabled>
-          <RefreshCw size={15} aria-hidden="true" />
-        </IconButton>
         <IconButton label="编辑来源" variant="ghost" disabled={readonly} onClick={onEdit}>
           <Pencil size={15} aria-hidden="true" />
         </IconButton>

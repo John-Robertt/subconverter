@@ -211,7 +211,7 @@ export function Chip({
   className
 }: {
   children: ReactNode;
-  tone?: "neutral" | "accent" | "success" | "warning" | "error" | "info";
+  tone?: "neutral" | "accent" | "success" | "warning" | "error" | "info" | "chain";
   removable?: boolean;
   onRemove?: () => void;
   className?: string;
