@@ -1,6 +1,6 @@
 // T-INT-GRP — A3 节点分组 page interactions.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("groups page", () => {

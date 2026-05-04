@@ -1,6 +1,6 @@
 // T-INT-RST — A5 规则集 page interactions.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("rulesets page", () => {

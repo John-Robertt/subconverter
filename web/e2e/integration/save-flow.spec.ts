@@ -1,6 +1,6 @@
 // T-INT-SVF — Save workflow: validate → first-save confirm → PUT.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks, clearFirstSaveFlag, markFirstSaveConfirmed } from "./helpers/mock";
 import { REVISION_DRIFT } from "./helpers/fixtures";
 

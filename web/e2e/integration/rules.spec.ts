@@ -1,6 +1,6 @@
 // T-INT-RUL — A6 内联规则 page interactions.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("rules page", () => {

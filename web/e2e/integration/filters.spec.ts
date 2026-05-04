@@ -1,6 +1,6 @@
 // T-INT-FLT — A2 过滤器 page interactions.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("filters page", () => {

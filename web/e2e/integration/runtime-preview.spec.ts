@@ -1,6 +1,6 @@
 // T-INT-RTM — B1 节点预览 / B2 分组预览 / B3 生成下载.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("runtime preview", () => {

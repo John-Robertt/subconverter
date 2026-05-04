@@ -1,6 +1,6 @@
 // T-INT-VAL — A8 静态校验 page interactions.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 import { validateOk, validateWithErrors } from "./helpers/fixtures";
 

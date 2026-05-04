@@ -3,7 +3,7 @@
 // `state` mid-test to simulate state transitions (login → authed, save → new
 // revision, etc.).
 
-import type { Page, Route } from "playwright/test";
+import type { Page, Route } from "@playwright/test";
 import {
   CLASH_PREVIEW,
   REVISION_BASE,

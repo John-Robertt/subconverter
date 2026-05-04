@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const setupToken = process.env.E2E_SETUP_TOKEN ?? "setup-e2e-secret";
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? "admin-password-123";

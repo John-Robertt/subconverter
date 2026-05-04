@@ -1,6 +1,6 @@
 // T-INT-SET — A7 其他配置 (fallback / base_url / templates) page interactions.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("settings page", () => {

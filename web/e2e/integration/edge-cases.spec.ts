@@ -4,7 +4,7 @@
 //   * Login page shows a connection-error banner when /api/auth/status fails
 //   * Drag-and-drop reordering (here: rules deletion preserves remaining order)
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("edge cases", () => {

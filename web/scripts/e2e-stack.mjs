@@ -199,7 +199,9 @@ async function waitForHTTP(url, expectedText) {
 }
 
 function resolvePlaywrightCli() {
+  const direct = path.join(webDir, "node_modules/@playwright/test/cli.js");
+  if (existsSync(direct)) return direct;
   const local = path.join(webDir, "node_modules/playwright/cli.js");
   if (existsSync(local)) return local;
-  throw new Error("Playwright CLI not found. Run `npm install` in web/ first.");
+  throw new Error("Playwright CLI not found. Run `pnpm install` at the repository root first.");
 }

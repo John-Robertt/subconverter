@@ -3,7 +3,7 @@
 // All tests run against the Vite dev server with API requests intercepted via
 // Playwright route mocking; no Go backend is needed.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 import { fixtureAuthLocked, fixtureAuthLogout, fixtureAuthSetup } from "./helpers/fixtures";
 

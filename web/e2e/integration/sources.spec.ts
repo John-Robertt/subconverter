@@ -1,6 +1,6 @@
 // T-INT-SRC — A1 订阅来源 page interactions.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("sources page", () => {

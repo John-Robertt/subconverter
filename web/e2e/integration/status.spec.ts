@@ -1,6 +1,6 @@
 // T-INT-STA — C 系统状态 page interactions.
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 import { dirtyStatus } from "./helpers/fixtures";
 

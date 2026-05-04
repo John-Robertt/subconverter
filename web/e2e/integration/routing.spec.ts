@@ -4,7 +4,7 @@
 // as non-removable chips); right rail hosts the edit panel for the currently
 // selected card (name input + member palette + member chip with remove).
 
-import { expect, test } from "playwright/test";
+import { expect, test } from "@playwright/test";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("routing page", () => {
