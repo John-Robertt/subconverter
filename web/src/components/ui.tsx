@@ -234,14 +234,15 @@ interface CategoryPillProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   count?: number;
   active?: boolean;
   tag?: string;
+  tagTone?: "warning" | "info";
 }
 
-export function CategoryPill({ label, count, active = false, tag, ...props }: CategoryPillProps) {
+export function CategoryPill({ label, count, active = false, tag, tagTone, ...props }: CategoryPillProps) {
   return (
     <button className={active ? "category-pill active" : "category-pill"} type="button" {...props}>
       <span>{label}</span>
       {typeof count === "number" ? <small>{count}</small> : null}
-      {tag ? <em>{tag}</em> : null}
+      {tag ? <em className={tagTone ? `tone-${tagTone}` : undefined}>{tag}</em> : null}
     </button>
   );
 }

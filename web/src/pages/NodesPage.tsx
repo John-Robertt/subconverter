@@ -56,6 +56,7 @@ export function NodesPage() {
               label={category.label}
               count={category.count}
               tag={category.id === "snell" ? "Surge only" : category.id === "vless" ? "Clash only" : undefined}
+              tagTone={category.id === "vless" ? "info" : undefined}
               active={kindFilter === category.id}
               onClick={() => setKindFilter(category.id)}
             />

@@ -1853,6 +1853,11 @@ tr:last-child td {
   font-style: normal;
 }
 
+.category-pill em.tone-info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
 .node-revision {
   display: grid;
   gap: 6px;
