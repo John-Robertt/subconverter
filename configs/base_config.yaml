@@ -2,8 +2,8 @@
 # subconverter 用户配置文件
 # ============================================================
 #
-# 本文件声明系统的全部输入：订阅源、自定义代理、节点分组、
-# 服务路由、远程规则集、内联规则和兜底策略。
+# 本文件声明系统的全部输入：订阅源、Snell/VLESS 来源、
+# 自定义代理、节点分组、服务路由、远程规则集、内联规则和兜底策略。
 #
 # 工具读取此文件后，结合底版模板（templates），
 # 生成 Clash Meta (.yaml) 或 Surge (.conf) 配置。
@@ -19,7 +19,8 @@
 #
 # 注意：访问 token 不写在这个 YAML 里，而是通过启动参数
 # `-access-token` 或环境变量 `SUBCONVERTER_TOKEN` 提供。
-# 生成的 managed URL 会自动继承当前请求里的 token 和最终文件名。
+# 生成的 managed URL 会使用服务端配置的订阅访问 token（若启用）
+# 和最终文件名，不依赖当前请求是 query token 还是后台 session。
 #
 # 值为 scheme + host，不含路径。为空则 Surge 不输出此头。
 # 示例: "https://my-server.com" 或 "http://192.168.1.1:8080"

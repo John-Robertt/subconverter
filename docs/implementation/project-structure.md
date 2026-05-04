@@ -110,10 +110,11 @@ subconverter/
 
 `internal/server`
 
-- HTTP handler
-- 参数校验
-- 错误映射
-- 路由级 session middleware 与同源 `Origin` / `Referer` 校验
+- HTTP 路由装配
+- `/generate` 和 `/healthz` handler
+- Web SPA fallback、CORS 和请求计数 middleware
+- `/generate` 参数校验、订阅 token / 管理员 session 放行判断和错误映射
+- Admin API 作为注入的 `http.Handler` 挂载到 `/api/`
 
 `internal/ssparse`
 
@@ -126,17 +127,18 @@ subconverter/
 
 ```text
 cmd/subconverter
+  -> admin
   -> config
   -> fetch
   -> app
+  -> auth
   -> generate
   -> server
+  -> webui
 
 server
-  -> app
-  -> admin
-  -> auth
   -> errtype
+  -> generate
 
 admin
   -> app
@@ -144,7 +146,7 @@ admin
   -> errtype
 
 auth
-  -> errtype
+  -> (leaf)
 
 app
   -> config
@@ -198,9 +200,9 @@ ssparse
 - `model` 不依赖其他业务包
 - `errtype` 不依赖其他业务包
 - `render` 不直接读取 YAML 配置
-- `server` 不承担业务转换逻辑
+- `server` 不承担业务转换逻辑，`/api/*` 业务通过注入的 `admin.Handler` 处理
 - `admin` 不直接依赖 `pipeline` / `model`，只调用 `app.Service`
-- `auth` 不依赖 `config` / `pipeline` / `model` / `generate`，避免权限逻辑与配置生成逻辑耦合
+- `auth` 不依赖其他业务包，避免权限逻辑与配置生成逻辑耦合
 - `config` 不直接依赖 `model`
 - `generate` 直接依赖 `model`（用于在 `pipeline.Build` 与 `target.ForXxx` 之间传递 `Pipeline`）
 
@@ -224,8 +226,6 @@ subconverter/
     ├── auth/                     # 管理后台认证服务
     └── webui/                    # 可选嵌入式 Web SPA 资产
 ```
-
-文档目标包名统一为 `internal/auth`。若当前实现仍存在旧命名认证包，包名归一属于实现阶段的独立迁移工作，不改变本文的目标边界。
 
 ### `internal/app` 包职责
 

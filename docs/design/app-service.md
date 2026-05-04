@@ -94,12 +94,12 @@ func (s *Service) PreviewGroupsFromDraft(ctx context.Context, configJSON json.Ra
 ```go
 // Generate 基于当前 RuntimeConfig 快照执行 Build→Target→Render，返回完整配置文本。
 // 用于 /generate 和 GET /api/generate/preview。
-func (s *Service) Generate(ctx context.Context, format string, filename string) (*GenerateResult, error)
+func (s *Service) Generate(ctx context.Context, req GenerateInput) (*GenerateResult, error)
 
 // GenerateFromDraft 接收草稿 Config JSON，Prepare 后执行 Build→Target→Render。
 // 不写文件、不替换 RuntimeConfig。
 // 用于 POST /api/generate/preview。
-func (s *Service) GenerateFromDraft(ctx context.Context, format string, configJSON json.RawMessage) (*GenerateResult, error)
+func (s *Service) GenerateFromDraft(ctx context.Context, req GenerateInput, configJSON json.RawMessage) (*GenerateResult, error)
 
 // GenerateLink 基于当前 RuntimeConfig 的 base_url、目标格式、filename 和服务端配置的订阅访问 token
 // 生成客户端订阅链接。用于 GET /api/generate/link。
@@ -236,10 +236,15 @@ type ExpandedMemberItem struct {
 }
 ```
 
-### GenerateResult
+### GenerateInput / GenerateResult
 
 ```go
+// 当前实现中 GenerateInput 是 generate.Request 的类型别名。
+// 字段：Format string；Filename string（已由 HTTP 层校验并规范化后的最终文件名）。
+type GenerateInput = generate.Request
+
 type GenerateResult struct {
+    Filename    string // 最终下载文件名
     ContentType string // "text/yaml; charset=utf-8" 或 "text/plain; charset=utf-8"
     Body        []byte // 完整配置文本
 }
@@ -264,16 +269,17 @@ type GenerateLinkResult struct {
 
 ```go
 type StatusResult struct {
-    Version                string       `json:"version"`
-    Commit                 string       `json:"commit"`
-    BuildDate              string       `json:"build_date"`
-    ConfigSource           ConfigSource `json:"config_source"`
-    ConfigRevision         string       `json:"config_revision"`          // 配置源已保存内容的 revision
-    RuntimeConfigRevision  string       `json:"runtime_config_revision"`  // 当前 RuntimeConfig 的 revision
-    ConfigLoadedAt         string       `json:"config_loaded_at"`         // ISO 8601
-    ConfigDirty            bool         `json:"config_dirty"`             // config_revision != runtime_config_revision
-    Capabilities           Capabilities `json:"capabilities"`
-    LastReload             *LastReload  `json:"last_reload,omitempty"` // 仅在曾发生过 reload 时填充，否则 nil 并在 JSON 中省略
+    Version                string             `json:"version"`
+    Commit                 string             `json:"commit"`
+    BuildDate              string             `json:"build_date"`
+    ConfigSource           ConfigSource       `json:"config_source"`
+    ConfigRevision         string             `json:"config_revision"`          // 配置源已保存内容的 revision
+    RuntimeConfigRevision  string             `json:"runtime_config_revision"`  // 当前 RuntimeConfig 的 revision
+    ConfigLoadedAt         string             `json:"config_loaded_at"`         // ISO 8601
+    ConfigDirty            bool               `json:"config_dirty"`             // config_revision != runtime_config_revision
+    Capabilities           Capabilities       `json:"capabilities"`
+    LastReload             *LastReload        `json:"last_reload,omitempty"` // 仅在曾发生过 reload 时填充，否则 nil 并在 JSON 中省略
+    RuntimeEnvironment     RuntimeEnvironment `json:"runtime_environment"`
 }
 
 type ConfigSource struct {
@@ -292,6 +298,15 @@ type LastReload struct {
     Success    bool   `json:"success"`
     DurationMs int64  `json:"duration_ms"`
     Error      string `json:"error,omitempty"` // 仅在 Success=false 时填充，记录 reload 失败的错误消息
+}
+
+type RuntimeEnvironment struct {
+    ListenAddr      string `json:"listen_addr"`
+    WorkingDir      string `json:"working_dir"`
+    GoRuntime       string `json:"go_runtime"`
+    MemoryAllocMB   string `json:"memory_alloc_mb"`
+    RequestCount24h uint64 `json:"request_count_24h"` // 当前实现为进程内请求计数，启动未满 24h 时即自启动以来
+    UptimeSeconds   int64  `json:"uptime_seconds"`
 }
 // 注意：LastReload 用指针 + omitempty，让"从未 reload"（nil → JSON 省略字段）与
 // "上次 reload 失败"（非 nil + Success=false）在 wire format 上明确区分；前端可通过
@@ -394,16 +409,10 @@ var (
 ```text
 HTTP Request
   │
-  ├─► admin/config_handler.go      解析 JSON，调用 app.ConfigSnapshot / app.SaveConfig
-  ├─► admin/validate_handler.go    解析 JSON，调用 app.ValidateDraft
-  ├─► admin/reload_handler.go      无需 body，调用 app.Reload
-  ├─► admin/preview_handler.go     解析 query/body，调用 app.PreviewNodes / app.PreviewGroups
-  ├─► admin/generate_preview_handler.go  解析 query/body，调用 app.Generate / app.GenerateFromDraft
-  ├─► admin/generate_link_handler.go     解析 query，调用 app.GenerateLink
-  └─► admin/status_handler.go      无需 body，调用 app.Status
+  └─► admin/handler.go             解析 JSON/query，调用 app/auth 服务并映射错误
 ```
 
-所有 handler 的共同模式：
+当前实现将 Admin API 路由集中在 `admin/handler.go`，各 handler 方法的共同模式：
 1. 解析 HTTP 输入为 Go 值
 2. 调用对应的 `app.Service` 方法
 3. 将 DTO 序列化为 JSON 响应

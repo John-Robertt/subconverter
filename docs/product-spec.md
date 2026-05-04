@@ -221,7 +221,7 @@ HK-03 → HK-ISP
 
 - `format=clash|surge`：必填，决定输出格式
 - `token=<access-token>`：当服务端启用了订阅访问 token 时，`/generate` 可通过 query 参数携带；该 token 只用于 Clash / Surge 等客户端自动更新订阅，不作为 Web 管理后台登录凭据
-- `filename=<custom-name>`：可选，自定义下载文件名；未传时默认使用 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`
+- `filename=<custom-name>`：可选，自定义下载文件名；未传时默认使用 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式；空值、空主体、路径字符、空格和非 ASCII 值会被拒绝
 
 补充约束：
 

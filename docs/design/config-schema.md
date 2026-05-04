@@ -25,7 +25,7 @@ templates:
 各段职责：
 
 - `base_url`：声明服务的外部可访问地址（可选）
-- `sources`：声明订阅源、Snell 来源和自定义代理
+- `sources`：声明订阅源、Snell 来源、VLESS 来源和自定义代理
 - `filters`：定义拉取类节点过滤规则
 - `groups`：声明地区节点组
 - `routing`：声明服务组和出口优先级
@@ -296,7 +296,7 @@ base_url: "https://my-server.com"
 
 - 声明服务的外部可访问地址
 - 用于 Surge 输出时生成 `#!MANAGED-CONFIG` 头，使 Surge 客户端能自动更新配置
-- 生成的 managed URL 会继承当前请求里的 `filename`，以及服务端启用时的订阅访问 `token`
+- 生成的 managed URL 会使用最终 `filename`，以及服务端启用时的订阅访问 `token`；token 来源不依赖当前请求是 query token 还是后台 session
 
 约束：
 

@@ -136,7 +136,7 @@
   - `docker compose -f docker-compose.demo.yaml config --quiet`：通过。
   - `SUBCONVERTER_IMAGE=subconverter:local docker compose -p subconverter-m8 -f docker-compose.demo.yaml -f /private/tmp/subconverter-m8/compose.override.yaml up -d`：通过，单个 `subconverter` 服务启动且 healthcheck healthy。
   - Compose 入口 `curl http://127.0.0.1:18080/`、`/sources`、`/download`：均返回 `200 text/html`，内容为 Vite SPA `index.html`。
-  - Compose 入口 `curl http://127.0.0.1:18080/healthz`：返回 `200 OK`，响应头 `Cache-Control: no-store`。
+  - Compose 入口 `curl http://127.0.0.1:18080/healthz`：返回 `200 OK`。
   - Compose 入口 `curl http://127.0.0.1:18080/api/status`：未登录返回 `401 auth_required` JSON，响应头 `Cache-Control: no-store`，证明 `/api/*` 已命中后端而非 SPA fallback。
   - Compose 入口 `curl http://127.0.0.1:18080/generate?format=clash`：返回 `200 text/yaml`，带 `Content-Disposition: attachment; filename="clash.yaml"`。
   - Compose 入口 `curl http://127.0.0.1:18080/generate?format=surge`：返回 `200 text/plain`，带 `Content-Disposition: attachment; filename="surge.conf"`。
@@ -179,7 +179,7 @@
 
 - `web/src/api/`：统一 API client、错误归一化和前端消费类型；`401 auth_required/session_expired` 触发登录跳转，409 按稳定 `error.code` 分流。
 - `web/src/state/`、`web/src/features/`：主题、Toast、Confirm、配置草稿 Context、保存-validate-reload 工作流与保序/脱敏工具。
-- `web/src/layout/`、`web/src/components/`、`web/src/pages/`：正式 Shell、导航、基础 UI 组件、DND 排序、登录/setup、A1-A4、B1、C 与 M10 占位路由。
+- `web/src/layout/`、`web/src/components/`、`web/src/pages/`：正式 Shell、导航、基础 UI 组件、DND 排序、登录/setup、A1-A4、B1、C，并为后续 M10 页面保留受保护路由入口。
 
 示例输入或 fixture：前端测试使用 mock backend，包含本地可写配置源、1 个 SS 订阅 URL、1 个 `HK` 节点组、1 个 `Proxy` 路由服务组和 1 个 `HK-01` 节点预览结果。
 
@@ -189,7 +189,7 @@
 - 首次保存前展示 YAML 注释、引号和格式风格可能丢失的确认；确认后才调用 `PUT /api/config`，随后调用 `POST /api/reload`。
 - `PUT /api/config` 成功但 `POST /api/reload` 失败时，前端更新已保存 revision，提示“已保存但未生效”，并保留重试 reload 入口。
 - `409 config_revision_conflict`、`config_source_readonly`、`config_file_not_writable` 与未知 409 已按 `error.code` 分流；`reload_in_progress` 展示退避重试提示。
-- M10 页面保持受保护路由和占位状态，不触发业务写入。
+- M9 阶段仅保留 M10 页面受保护路由入口；完整业务功能已在后续 M10 验收中完成。
 
 已知限制：M9 不包含 A5-A8、B2、B3 的完整功能和端到端真实后端场景，这些归属 M10；M9 的浏览器视觉验收使用本地 mock API 冒烟，不替代 M10 的正式 E2E。
 

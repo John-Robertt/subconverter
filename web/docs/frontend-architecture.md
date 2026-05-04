@@ -8,9 +8,9 @@
 - Vite
 - React Router
 - React Query
-- 原生 CSS、CSS Modules 或项目内轻量样式方案
+- 原生 CSS（当前实现为 `web/src/styles.css`）
 
-当前 `subconverter Admin.html` 是高保真原型，不是正式工程结构。
+当前正式工程位于 `web/src/`；旧高保真原型保留在 `web/prototype/`，不参与生产构建。
 
 ## 目录建议
 
@@ -19,14 +19,18 @@ web/
 ├── src/
 │   ├── app/
 │   ├── api/
-│   ├── pages/
 │   ├── components/
 │   ├── features/
+│   ├── layout/
+│   ├── pages/
 │   ├── state/
-│   └── styles/
+│   └── styles.css
+├── e2e/
+├── scripts/
 ├── package.json
-├── vite.config.ts
-└── Dockerfile
+├── playwright.config.ts
+├── playwright.integration.config.ts
+└── vite.config.ts
 ```
 
 ## 状态边界

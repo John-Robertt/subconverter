@@ -2,7 +2,7 @@
 
 > v1.0 架构文档已归档至 docs/v1.0/architecture.md
 >
-> 状态提示：本文描述 v2.0 目标架构契约；当前可运行能力与规划能力的边界见 docs/README.md 状态矩阵。
+> 状态提示：本文描述 v2.0 当前架构契约；当前可运行能力见 docs/README.md 状态矩阵。
 
 ## 概述
 
@@ -162,7 +162,7 @@ RUnlock()
 - `target`：目标格式投影与格式相关级联校验
 - `render`：Clash Meta 与 Surge 渲染器，只做序列化
 - `generate`：单一"生成配置"服务，承接 `Build -> Target -> Render`。v2.0 起改为无状态设计：`Generate` 方法接收 `*RuntimeConfig` 参数，不再通过结构体字段持有配置指针；`app.Service` 在每次请求时取快照后传入
-- `app`：v2.0 应用服务层，统一承接配置快照、条件写回、热重载、运行时预览、草稿预览、订阅链接生成、状态查询；用 `RWMutex` 保护 `*RuntimeConfig` 指针快照与替换。包内按文件拆分职责（`service.go` / `config_revision.go` / `config_source.go` / `preview.go` / `status.go`），保持包级别统一入口而非引入不必要的子包抽象
+- `app`：v2.0 应用服务层，统一承接配置快照、条件写回、热重载、运行时预览、草稿预览、订阅链接生成、状态查询；用 `RWMutex` 保护 `*RuntimeConfig` 指针快照与替换。包内按文件拆分职责（`service.go` / `preview.go` / `generate_link.go` / `diagnostic.go` / `validation.go` / `status.go` / `errors.go` / `generate_input.go`），保持包级别统一入口而非引入不必要的子包抽象
 - `auth`：v2.0 管理后台认证层，承接 bootstrap setup token、管理员 PBKDF2 密码哈希、auth state 文件、session 创建/校验/注销和登录失败锁定；不依赖配置生成管道
 - `admin`：Admin API 处理器，只做 JSON 解析、调用 `app.Service` 或 `auth`、错误映射；不直接编排管道或渲染逻辑
 - `server`：HTTP 接口、路由注册、session middleware、同源校验、参数校验和错误映射
@@ -184,7 +184,7 @@ RUnlock()
 - 状态管理：React Query（服务端状态）+ React 本地状态
 - 构建产物输出到 `web/dist/`
 
-### 生产部署方式（v2.0 目标）
+### 生产部署方式
 
 - 前端构建产物输出到 `web/dist/`
 - 根 `Dockerfile` 使用 pnpm 构建前端，并在 Go 构建阶段用 `webui` build tag 将 `web/dist` 嵌入二进制

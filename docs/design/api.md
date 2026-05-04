@@ -45,7 +45,7 @@
 
 - `format=clash|surge`（必填）
 - `token=<access-token>`（仅当服务端配置了订阅访问 token 且请求没有有效管理员 session 时必填）
-- `filename=<custom-name>`（可选；未传时默认 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`）
+- `filename=<custom-name>`（可选；未传时默认 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时自动补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式）
 
 说明：
 
@@ -576,7 +576,7 @@ revision 冲突响应示例：
 查询参数：
 
 - `format=clash|surge`（必填）
-- `filename=<custom-name>`（可选；校验规则与 `/generate` 相同）
+- `filename=<custom-name>`（可选；校验、自动补扩展名和默认值规则与 `/generate` 相同）
 - `include_token=true|false`（可选，默认 `true`；为 `false` 时返回不含 token 的链接）
 
 成功响应：
@@ -627,6 +627,14 @@ revision 冲突响应示例：
     "time": "2026-05-01T12:30:00Z",
     "success": true,
     "duration_ms": 15
+  },
+  "runtime_environment": {
+    "listen_addr": ":8080",
+    "working_dir": "/app",
+    "go_runtime": "go1.24.0 linux/amd64",
+    "memory_alloc_mb": "12.3",
+    "request_count_24h": 128,
+    "uptime_seconds": 3600
   }
 }
 ```
@@ -643,12 +651,13 @@ revision 冲突响应示例：
 - `capabilities.config_write`：前端是否应启用保存入口
 - `last_reload`：可选字段。仅在进程曾经触发过 `POST /api/reload`（无论成功或失败）时存在；从未发生过 reload 时该字段被省略（`omitempty`）。这避免用 zero value 同时表达"未发生"与"失败"两种语义——前端据此区分"运行中（未重载）"与"上次重载失败"
 - `last_reload.error`：仅在 `success=false` 时填充，记录最近一次 reload 失败的错误消息（用于 UI 直接展示原因）；`success=true` 时省略
+- `runtime_environment`：当前进程运行环境。`request_count_24h` 当前为进程内请求计数；进程启动未满 24 小时时，前端可按“自启动以来”展示
 
 ---
 
 ## 错误语义
 
-本节描述 v2.0 目标错误语义。当前 v1.0 `/generate` 已可用，但仍将所有 `TargetError` 映射为 `500`；v2.0 实现 M7 时会把可归因于用户配置的 fallback 清空错误调整为 `400`，内部投影不变量错误继续保持 `500`。
+本节描述当前错误语义。可归因于用户配置的目标格式 fallback 清空错误返回 `400`，内部投影不变量错误继续保持 `500`。
 
 例外：`POST /api/config/validate` 是校验查询接口，请求体合法但配置语义无效时返回 `200 valid=false`；下表中的“配置语义 / 图校验失败”适用于 `PUT /api/config`、`POST /api/reload`、预览和生成路径。
 

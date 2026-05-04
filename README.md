@@ -169,14 +169,14 @@ curl "http://localhost:8080/healthz"
 
 - **查询参数**：`format`（必填）— `clash` 或 `surge`；`token`（当服务端配置 `-access-token` / `SUBCONVERTER_TOKEN` 时必填）；`filename`（可选，自定义下载文件名）
 - **默认文件名**：`clash.yaml`、`surge.conf`；未显式传入 `filename` 时也会作为下载文件名返回
-- **文件名约束**：`filename` 仅允许 ASCII 字母、数字、`.`、`-`、`_`；非法值直接返回 `400`
+- **文件名约束**：`filename` 仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式；空值、空主体（如 `.yaml`）、路径字符、空格和非 ASCII 值都会返回 `400`
 - **成功**：返回生成的配置文本
 - **响应头**：返回 `Content-Disposition: attachment; ...`，浏览器和下载器会使用最终文件名
 - **错误响应**：返回中文纯文本；已分类错误会直接说明问题，未分类内部错误统一返回 `内部错误`
 - **SS plugin 支持**：Clash Meta 通用透传 SS plugin；Surge 仅支持可映射的 obfs 类 SS plugin，不支持的 plugin 会返回 `500`
 - **错误码**：`400` — 参数无效，或配置语义 / 图校验失败；`401` — 缺少 token 或 token 不匹配；`502` — 远程资源拉取失败，或远程订阅内容无效（如 0 个有效节点）；`500` — 本地资源读取失败、内部处理或渲染错误
 
-如果配置了 `base_url`，Surge 输出中的 `#!MANAGED-CONFIG` 会自动继承当前请求的 `token` 和最终 `filename`，保证客户端后续自动更新仍能访问同一 URL。
+如果配置了 `base_url`，Surge 输出中的 `#!MANAGED-CONFIG` 会使用服务端配置的订阅访问 token（若启用）和最终 `filename`，不依赖当前请求是 query token 还是后台 session，保证客户端后续自动更新仍能访问同一 URL。
 
 ### `GET /healthz`
 
@@ -295,13 +295,16 @@ subconverter/
     app/                 配置读写、状态、预览和生成应用服务
     auth/                管理员 setup、登录、session 状态
     config/              YAML 解析、有序 Map、静态校验、启动期预计算（Prepare → RuntimeConfig）
-    errtype/             类型化错误（Config、Fetch、Resource、Build、Render）
+    errtype/             类型化错误（Config、Fetch、Resource、Build、Target、Render）
     fetch/               HTTP 拉取器、TTL 缓存、资源加载
     generate/            生成订阅配置的应用用例
     model/               格式无关的中间表示
     pipeline/            处理阶段：source、filter、group、route、validate
+    proxyparse/          自定义代理 URL 解析
     render/              Clash Meta YAML 和 Surge conf 渲染器
     server/              HTTP 处理器和错误映射
+    ssparse/             Shadowsocks URI 解析
+    target/              Clash / Surge 目标格式投影与级联过滤
     webui/               可选嵌入 Web 静态资源；默认 Go 构建为空，Docker 发布用 `webui` tag
   web/                   Vite + React + TypeScript 管理后台
   configs/               示例配置和底版模板

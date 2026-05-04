@@ -32,16 +32,19 @@ RLock(RuntimeConfig)
 **包边界**（依赖单向）：
 
 ```
-cmd/subconverter → internal/{config,fetch,generate,admin,server}
-internal/server → internal/{generate,admin,errtype}
-internal/admin → internal/{config,generate,pipeline,model,errtype}
+cmd/subconverter → internal/{admin,app,auth,config,fetch,generate,server,webui}
+internal/server → internal/{generate,errtype}
+internal/admin → internal/{app,auth,errtype}
+internal/app → internal/{config,fetch,generate,pipeline,model,errtype}
 internal/generate → internal/{config,fetch,model,pipeline,target,render}
 internal/pipeline → internal/{config,fetch,model,errtype,proxyparse,ssparse}
+internal/config → internal/{errtype,fetch,proxyparse}
+internal/proxyparse → internal/{ssparse}
 internal/render → internal/{model,errtype}
 internal/target → internal/{model,errtype}
 ```
 
-`model` 和 `errtype` 不依赖其他业务包。`render` 不反向依赖 `config`。`admin` 通过 `generate.Service` 间接访问 `RuntimeConfig`（RWMutex 保护）。
+`model`、`errtype`、`auth`、`ssparse` 不依赖其他业务包。`render` 不反向依赖 `config`。`admin` 通过 `app.Service` 间接访问 `RuntimeConfig`（RWMutex 保护），不直接编排管道或渲染。
 
 **核心术语**（下游章节会反复使用）：
 
