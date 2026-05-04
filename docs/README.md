@@ -42,7 +42,7 @@
 | `GET/POST /api/generate/preview` | 当前可用 | M7 | 是 | 页面内生成预览，不设置下载响应头。 |
 | `GET /api/generate/link` | 当前可用 | M7/M10 | 是 | 已登录后台中由服务端生成客户端订阅链接；M10 前端复制确认流已通过验收。 |
 | `GET /api/status` | 当前可用 | M7 | 是 | 系统状态、配置 revision、dirty 状态。 |
-| Web 管理后台正式 SPA | 当前可用 | M9-M10 | 是 | 登录/setup、A1-A8、B1-B3、C、主题、保存-reload、诊断跳转、预览下载和订阅链接确认流已通过自动化与桌面浏览器验收。 |
+| Web 管理后台正式 SPA | 当前可用 | M9-M10 | 是 | 登录/setup、A1-A8、B1-B3、C、主题、保存与独立 reload、诊断跳转、预览下载和订阅链接确认流已通过自动化与桌面浏览器验收。 |
 | 单镜像 Docker Compose 生产部署 | 当前可用 | M8-M10 | 是 | Compose 示例使用单个 `subconverter` 服务；生产镜像嵌入 Web SPA，由 Go 同源提供 `/`、`/api/*`、`/generate` 和 `/healthz`。 |
 
 状态定义：

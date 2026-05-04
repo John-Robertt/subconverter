@@ -51,11 +51,11 @@ web/
 - `previewGroups(runtime_config_revision)`
 - `generatePreview(runtime_config_revision, format)`
 
-草稿预览是 mutation 或显式触发的 query，避免每次字段变化都自动打满远程来源。
+编辑页草稿预览是 mutation 或显式触发的 query，避免每次字段变化都自动打满远程来源。当前 B3 页面只暴露运行时生成预览；后端 `POST /api/generate/preview` 仍保留为 API 能力。
 
 运行时预览必须以 `GET /api/status` 返回的 `runtime_config_revision` 作为配置快照缓存边界。`POST /api/reload` 成功后先刷新 `status`；当 status poll 或 reload 后发现 `runtime_config_revision` 变化时，B1/B2/B3 当前运行时预览通过 query key 变化重新拉取。`config_revision` 只用于已保存配置草稿和 revision 冲突判断，不作为运行时预览 key 的替代。
 
-B1/B2/B3 的结果还依赖订阅、Snell、VLESS 来源和远程模板的 TTL 缓存。远程资源可能在 `runtime_config_revision` 不变时变化，因此运行时预览页必须提供“刷新预览”操作，调用 React Query `refetch` 主动重新请求。页面首次进入时自动请求；后续不做后台轮询，也不把远程资源变化伪装为 revision 变化。query 的 `staleTime` 应保持较短或为 `0`，避免隐藏手动刷新入口。
+B1/B2/B3 的结果还依赖订阅、Snell、VLESS 来源和远程模板的 TTL 缓存。远程资源可能在 `runtime_config_revision` 不变时变化；B1 通过“重新拉取”调用 React Query `refetch` 主动重新请求，B2/B3 通过页面进入、query key 变化或错误重试重新请求。页面首次进入时自动请求；后续不做后台轮询，也不把远程资源变化伪装为 revision 变化。query 的 `staleTime` 应保持较短或为 `0`。
 
 ## API client
 

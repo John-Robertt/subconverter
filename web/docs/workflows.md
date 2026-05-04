@@ -24,9 +24,8 @@
 2. A8 调用 `POST /api/config/validate` 做静态校验。
 3. 本地可写配置源首次保存前展示 YAML 注释和格式可能丢失的确认框。
 4. 调用 `PUT /api/config` 条件写回完整配置。
-5. 调用 `POST /api/reload` 使配置生效。
 
-`PUT /api/config` 成功不自动表示运行时已更新。reload 成功后，`runtime_config_revision` 才更新为新的 `config_revision`。
+`PUT /api/config` 成功不自动表示运行时已更新。当前 Web UI 将保存和热重载拆成两个显式动作：右上角“保存”只执行 validate + PUT；右上角“热重载”才调用 `POST /api/reload`。reload 成功后，`runtime_config_revision` 才更新为新的 `config_revision`。
 
 ## reload 边界
 
@@ -40,12 +39,12 @@ reload 只执行 `LoadConfig + Prepare`：
 
 ## 中间态
 
-`PUT /api/config` 成功但 `POST /api/reload` 失败时：
+`PUT /api/config` 成功但尚未执行或未成功执行 `POST /api/reload` 时：
 
 - 配置文件已更新。
 - 旧 `RuntimeConfig` 仍继续服务请求。
 - UI 保持 `config_dirty = true` 提示。
-- 用户可重新触发 reload 或继续修改后再保存。
+- 用户可触发 reload，或继续修改后再次保存。
 
 ## 409 保存错误
 

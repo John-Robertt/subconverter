@@ -189,7 +189,7 @@ services:
 
 服务提供 `/healthz` 端点和 `-healthcheck` 标志两种探活方式：
 
-- `/healthz`：HTTP 端点，返回 `200 OK`，用于负载均衡器或外部监控
+- `/healthz`：HTTP 端点，成功时返回 HTTP `200` 与纯文本 `ok`，用于负载均衡器或外部监控
 - `-healthcheck`：二进制自检模式，按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 发请求并退出（退出码 0 = 健康，1 = 异常）
 
 `-healthcheck` 不依赖容器内的 curl 等外部工具，适用于 distroless 镜像。Dockerfile 已内置 `HEALTHCHECK` 指令，Docker Compose 部署时也可显式声明：

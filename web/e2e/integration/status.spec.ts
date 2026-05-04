@@ -16,7 +16,7 @@ test.describe("status page", () => {
     await expect(stats.nth(0)).toContainText("运行中");
     await expect(stats.nth(1)).toContainText("v2.0.0-test");
     await expect(stats.nth(2)).toContainText("已加载");
-    await expect(stats.nth(3)).toContainText(/\d+s 前|\d+m 前|\d+h 前/);
+    await expect(stats.nth(3)).toContainText(/\d+ 秒前|\d+ 分钟前|\d+ 小时前/);
   });
 
   test("T-INT-STA-002 dirty status surfaces warning indicator", async ({ page }) => {
@@ -33,7 +33,7 @@ test.describe("status page", () => {
     await installMocks(page, state);
 
     await page.goto("/status");
-    await page.getByRole("button", { name: "触发 reload" }).click();
+    await page.getByRole("button", { name: "热重载" }).click();
     await expect(page.getByText("RuntimeConfig 已重新加载")).toBeVisible();
 
     expect(state.callLog.some((entry) => entry.url.endsWith("/api/reload"))).toBeTruthy();

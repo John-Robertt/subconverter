@@ -180,7 +180,7 @@ curl "http://localhost:8080/healthz"
 
 ### `GET /healthz`
 
-返回 `200 OK`。用于容器健康检查和负载均衡器探针。
+返回 HTTP `200`，响应体为 `ok`。用于容器健康检查和负载均衡器探针。
 
 在容器场景下，内置 `-healthcheck` 与主服务启动共用监听地址解析规则：显式 `-listen` > `SUBCONVERTER_LISTEN` > `:8080`。
 

@@ -58,9 +58,8 @@ test.describe("runtime preview", () => {
     await installMocks(page, state);
 
     await page.goto("/download");
-    await page.getByRole("button", { name: "当前运行时预览" }).click();
 
-    // Two panels render side-by-side: panel 0 is Clash Meta, panel 1 is Surge.
+    // Two runtime panels render side-by-side automatically: panel 0 is Clash Meta, panel 1 is Surge.
     const clashPanel = page.locator(".code-preview-panel").nth(0);
     const surgePanel = page.locator(".code-preview-panel").nth(1);
     await expect(clashPanel.getByText(/proxies:/).first()).toBeVisible();

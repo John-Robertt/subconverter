@@ -189,28 +189,28 @@
 - `T-WEB-006`：A2/A3 编辑态调用 POST 草稿预览，而 B1/B2 运行时页调用 GET 预览
 - `T-WEB-007`：登录页覆盖 idle、validating、invalid credentials、locked、redirecting、network error 和 setup；未登录访问受保护路由跳转 `/login?next=...`，session 失效后提示并跳回登录页
 - `T-WEB-008`：本地可写配置首次保存前显示 YAML 注释、引号和格式风格可能丢失的确认；用户确认后才发起 `PUT /api/config`
-- `T-WEB-009`：reload 成功或 status poll 发现 `runtime_config_revision` 变化后，当前已实现的运行时预览页使用新 query key 重新加载；B2/B3 在 M10 复用同一规则
+- `T-WEB-009`：reload 成功或 status poll 发现 `runtime_config_revision` 变化后，当前已实现的运行时预览页使用新 query key 重新加载；B1 提供手动重新拉取，B2/B3 依赖页面进入、query key 变化或错误重试重新请求
 - `T-WEB-010`：409 按 `error.code` 分流，分别覆盖 `config_revision_conflict`、`config_source_readonly`、`config_file_not_writable` 和未知 409 code
 - `T-WEB-011`：A5 规则集页面 URL/Policy 绑定编辑，多条 URL 顺序不变（归属 M10）
 - `T-WEB-012`：A6 内联规则页面自由文本 + Policy 选择器编辑（归属 M10）
 - `T-WEB-013`：A7 其他配置页面 fallback / base_url / templates 字段编辑（归属 M10）
 - `T-WEB-014`：A8 静态校验 Drawer 展示 errors/warnings/infos 三级，通过 `locator.json_pointer` 跳转到对应页面字段（归属 M10）
 - `T-WEB-015`：B2 分组预览页面树形展示，ValidateGraph 失败时显示诊断且不展示部分成功结果（归属 M10）
-- `T-WEB-016`：B3 生成下载页面预览 → 下载 → 复制订阅链接全流程，含草稿预览模式（归属 M10）
+- `T-WEB-016`：B3 生成下载页面自动双格式运行时预览 → 下载 → 复制订阅链接全流程（归属 M10）
 - `T-WEB-017`：端到端测试：本地可写配置全流程（归属 M10）
   - 测试入口：正式前端 E2E runner；后端使用临时本地配置文件、fake 订阅源和 fake 模板资源
   - fixture：最小可启动 YAML、至少一个 SS 订阅节点、一个规则集 URL、Clash / Surge 模板
-  - 操作步骤：打开 SPA → 加载 `GET /api/config` 草稿 → 在 A1/A3/A4/A7 补齐来源、节点组、路由和 fallback → A8 validate → 首次保存确认 → `PUT /api/config` → `POST /api/reload` → B1/B2/B3 预览 → 下载生成结果
+  - 操作步骤：打开 SPA → 加载 `GET /api/config` 草稿 → 在 A1/A3/A4/A7 补齐来源、节点组、路由和 fallback → A8 validate → 首次保存确认 → `PUT /api/config` → 用户显式触发 `POST /api/reload` → B1/B2/B3 预览 → 下载生成结果
   - 预期结果：保存后返回新 `config_revision`；reload 后 `runtime_config_revision` 更新且 `config_dirty=false`；B1 有 active 节点；B2 展示节点组和服务组；B3 生成预览与下载内容一致
 - `T-WEB-018`：端到端测试：错误路径覆盖（归属 M10）
   - 测试入口：正式前端 E2E runner；后端或 mock backend 提供可控错误响应
   - fixture：非法正则配置、会导致 ValidateGraph 失败的空组配置、会导致目标格式 fallback 清空的配置、reload 校验失败配置
-  - 操作步骤：分别触发 A8 静态校验、B2 分组预览、B3 生成预览、保存后 reload
-  - 预期结果：静态校验失败显示 `200 valid=false` 诊断；B2 图级错误不展示部分成功结果；B3 生成期错误保留草稿；reload 失败后旧 RuntimeConfig 不变并保持 dirty 提示
+  - 操作步骤：分别触发 A8 静态校验、B2 分组预览、B3 运行时生成预览、保存后手动 reload
+  - 预期结果：静态校验失败显示 `200 valid=false` 诊断；B2 图级错误不展示部分成功结果；B3 生成期错误可重试；reload 失败后旧 RuntimeConfig 不变并保持 dirty 提示
 - `T-WEB-019`：端到端测试：Clash / Surge 双格式生成与下载路径（归属 M10）
   - 测试入口：正式前端 E2E runner；后端使用同一份已 reload 的本地配置
   - fixture：同时包含 SS、Snell、VLESS、rulesets、fallback 和 base_url 的配置，覆盖格式专属过滤
-  - 操作步骤：在 B3 分别选择 Clash Meta 与 Surge → 调用当前运行时生成预览 → 触发下载 → 复制订阅链接确认
+  - 操作步骤：进入 B3 自动加载 Clash Meta 与 Surge 双格式运行时生成预览 → 分别触发下载 → 复制订阅链接确认
   - 预期结果：Clash 响应为 YAML 且不含 Snell；Surge 响应为 text/plain 且不含 VLESS；预览无 `Content-Disposition`，下载有附件响应；复制含 token 链接前出现确认
 - `T-WEB-020`：端到端测试：HTTP(S) 配置源只读模式（归属 M10）
   - 测试入口：正式前端 E2E runner；后端以 HTTP(S) 主配置源启动

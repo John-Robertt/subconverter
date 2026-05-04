@@ -21,7 +21,7 @@
 - `GET /api/status`
 
 生成接口继续使用 `/generate`。
-健康检查继续使用 `GET /healthz`，成功时返回 `200 OK`，不返回 JSON。
+健康检查继续使用 `GET /healthz`，成功时返回 HTTP `200` 与纯文本 `ok`，不返回 JSON。
 
 ## 认证状态
 

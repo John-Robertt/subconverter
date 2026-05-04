@@ -35,7 +35,7 @@
 | M6 Admin API 基线 | 已验收 | `REQ-14` - `REQ-17`, `REQ-27` | `T-ADM-*`, `T-RLD-*`, `T-CCH-*` | 配置 CRUD、静态校验、热重载、Admin auth/session 已实现并通过验证 | 启动 M7 预览与状态 API |
 | M7 预览与状态 API | 已验收 | `REQ-18` - `REQ-21` | `T-PRV-*` | 预览、生成预览、订阅链接与状态 API 已实现并通过验证 | 启动 M8 Web 镜像与 Compose 集成；M9 可依赖 M7 API |
 | M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SPA-*` | 正式 Vite SPA 工程、嵌入式 Web 发布链路、单服务 Compose 示例和 CI Web 校验已实现，并通过 Docker build 与 Compose smoke test 验证 | 已启动并完成 M9 前端核心页面 |
-| M9 前端工程与核心页面 | 已验收 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | Shell、API client、登录/setup、A1-A4、B1、C、主题、保存-reload 工作流已实现并通过验证 | 启动 M10 前端完善与端到端验收 |
+| M9 前端工程与核心页面 | 已验收 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | Shell、API client、登录/setup、A1-A4、B1、C、主题、保存与独立 reload 工作流已实现并通过验证 | 启动 M10 前端完善与端到端验收 |
 | M10 前端完善与端到端验收 | 已验收 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-016`, `T-E2E-010`, `T-E2E-014`, `T-E2E-015` | A5-A8、B2/B3、正式 E2E 与桌面浏览器验收已通过 | M10 已完成；可进入发布前整理 |
 
 ## M6 Admin API 基线
@@ -151,7 +151,7 @@
   - `web/nginx.conf`：保留为路径配置测试夹具；独立 Web 静态镜像入口已移除。
   - `docker-compose.demo.yaml`：只引用已构建镜像，单个 `subconverter` 服务映射 `8080:8080`。
 - 示例输入或 fixture：Compose 验证使用临时只读配置 `/private/tmp/subconverter-m8/config/config.yaml`，订阅源由本地临时 HTTP 服务提供，包含 1 个 `HK-01` 节点。
-- 关键响应：`/download` 不触发下载、返回 SPA；`/generate?format=clash|surge` 触发后端下载响应；`/api/status` 未登录时返回 `auth_required`；`/healthz` 返回 `OK`。
+- 关键响应：`/download` 不触发下载、返回 SPA；`/generate?format=clash|surge` 触发后端下载响应；`/api/status` 未登录时返回 `auth_required`；`/healthz` 返回响应体 `ok`。
 - 已知错误案例：未登录访问 `/api/*` 返回 `401 auth_required`；`/generate/path` 非精确生成端点，按 SPA fallback 处理。
 - 已知限制：M8 只交付工程、嵌入式发布链路和部署入口；登录、配置编辑、API client、主题切换、保存/预览工作流归属 M9/M10。
 - 下一步：启动 M9 前端工程与核心页面，基于 M7 API 和 M8 单服务 SPA/Compose 基础实现正式后台交互。
@@ -164,7 +164,7 @@
 |--------|------|------|----------|--------|----------|--------|
 | M9-WP1 Shell、API client 与草稿状态 | 已验收 | 布局、导航、登录态、React Query、草稿管理、错误归一化 | `web/docs/frontend-architecture.md`, `web/docs/auth-and-security.md`, `web/docs/workflows.md` | 前端应用基础 | `T-WEB-001` - `T-WEB-003`, `T-WEB-007`, `T-WEB-010`, `T-WEB-021` | 无 |
 | M9-WP2 A1-A4 核心编辑页 | 已验收 | 来源、过滤器、节点分组、路由策略、拖拽保序、草稿预览 | `web/docs/page-specs.md`, `web/docs/data-contract.md` | A1-A4 可用 | `T-WEB-004`, `T-WEB-006`, `T-WEB-008` | 无 |
-| M9-WP3 B1/C 与保存-reload 工作流 | 已验收 | 节点预览、系统状态、validate-save-reload、dirty 提示、主题 | `web/docs/workflows.md`, `web/docs/acceptance.md` | B1、C 与核心工作流 | `T-WEB-009`, `pnpm --filter subconverter-web test` | 无 |
+| M9-WP3 B1/C 与保存、reload 工作流 | 已验收 | 节点预览、系统状态、validate-save、独立 reload、dirty 提示、主题 | `web/docs/workflows.md`, `web/docs/acceptance.md` | B1、C 与核心工作流 | `T-WEB-009`, `pnpm --filter subconverter-web test` | 无 |
 | M9-WP4 M9 收口验收 | 已验收 | 核心页面验收、视觉状态、文档同步 | `web/docs/page-specs.md` | M9 验收记录 | 本文件更新，前端测试结果 | 无 |
 
 测试命令结果：
@@ -178,7 +178,7 @@
 关键产出：
 
 - `web/src/api/`：统一 API client、错误归一化和前端消费类型；`401 auth_required/session_expired` 触发登录跳转，409 按稳定 `error.code` 分流。
-- `web/src/state/`、`web/src/features/`：主题、Toast、Confirm、配置草稿 Context、保存-validate-reload 工作流与保序/脱敏工具。
+- `web/src/state/`、`web/src/features/`：主题、Toast、Confirm、配置草稿 Context、validate-save 与独立 reload 工作流、保序/脱敏工具。
 - `web/src/layout/`、`web/src/components/`、`web/src/pages/`：正式 Shell、导航、基础 UI 组件、DND 排序、登录/setup、A1-A4、B1、C，并为后续 M10 页面保留受保护路由入口。
 
 示例输入或 fixture：前端测试使用 mock backend，包含本地可写配置源、1 个 SS 订阅 URL、1 个 `HK` 节点组、1 个 `Proxy` 路由服务组和 1 个 `HK-01` 节点预览结果。
@@ -186,8 +186,8 @@
 关键响应：
 
 - A2 草稿节点预览调用 `POST /api/preview/nodes`，B1 运行时节点预览调用 `GET /api/preview/nodes`。
-- 首次保存前展示 YAML 注释、引号和格式风格可能丢失的确认；确认后才调用 `PUT /api/config`，随后调用 `POST /api/reload`。
-- `PUT /api/config` 成功但 `POST /api/reload` 失败时，前端更新已保存 revision，提示“已保存但未生效”，并保留重试 reload 入口。
+- 首次保存前展示 YAML 注释、引号和格式风格可能丢失的确认；确认后才调用 `PUT /api/config`。热重载由全局“热重载”按钮单独调用 `POST /api/reload`。
+- `PUT /api/config` 成功但尚未 reload 时，前端更新已保存 revision，并通过 dirty 状态提示运行时仍使用旧 RuntimeConfig。
 - `409 config_revision_conflict`、`config_source_readonly`、`config_file_not_writable` 与未知 409 已按 `error.code` 分流；`reload_in_progress` 展示退避重试提示。
 - M9 阶段仅保留 M10 页面受保护路由入口；完整业务功能已在后续 M10 验收中完成。
 
@@ -223,18 +223,18 @@
 - 测试命令与结果：
   - `go test ./...`：通过。
   - `cd web && node node_modules/typescript/bin/tsc -b`：通过。
-  - `pnpm --filter subconverter-web test`：通过，2 个测试文件 / 23 个测试。
+  - `pnpm --filter subconverter-web test`：通过，2 个测试文件 / 22 个测试。
   - `pnpm --filter subconverter-web build`：通过。
   - `pnpm --filter subconverter-web test:e2e`：通过，Chromium 3 个 E2E 场景全部通过。
   - `docker build -t subconverter:local .`：通过；Docker 内 pnpm Web build 与 Go `webui` 构建均通过。
   - `git diff --check -- .github web docs`：通过。
-  - `Computer Use` + Chrome `127.0.0.1:15174` 桌面验收：通过；覆盖 setup 后登录态、A5 新增 URL 保存 reload、A6 policy selector、A7 fallback/base_url/templates、A8 通过态与错误 Drawer 跳转、B2 分组预览、B3 Clash/Surge 预览、下载和含 token 链接复制确认。
+  - `Computer Use` + Chrome `127.0.0.1:15174` 桌面验收：通过；覆盖 setup 后登录态、A5 新增 URL 保存后手动 reload、A6 policy selector、A7 fallback/base_url/templates、A8 通过态与错误 Drawer 跳转、B2 分组预览、B3 Clash/Surge 预览、下载和含 token 链接复制确认。
 - 示例输入或 fixture：E2E stack 使用临时 config/auth 目录、本地 fake 订阅源和模板源、Go 后端 `127.0.0.1:18080`、Vite 前端 `127.0.0.1:15173`、fake upstream `127.0.0.1:18081`；订阅源包含 `HK-01`，服务端订阅访问 token 为 `server-token`。
 - golden 输出或关键响应：
-  - A5/A6/A7 修改写回后保存并 reload，运行时 revision 更新。
+  - A5/A6/A7 修改写回保存后，手动 reload 会更新运行时 revision。
   - A8 静态校验通过时页面正文和 toast 展示通过状态；诊断存在时 Drawer 可按 `locator.json_pointer` 跳转到父页面并高亮。
   - B2 成功返回 `All proxies` 与 `HK-01`；图级错误不渲染部分成功树。
-  - B3 当前运行时预览、草稿预览、`/generate` 下载和 `/api/generate/link` 复制均可用；复制含 token 链接前弹出确认。
+  - B3 自动加载 Clash/Surge 双格式运行时预览，`/generate` 下载和 `/api/generate/link` 复制均可用；复制含 token 链接前弹出确认。后端 `POST /api/generate/preview` 草稿生成 API 保留，但当前页面不暴露独立草稿生成入口。
 - 桌面验收补充证据：临时可写配置保存后 `config.yaml` 包含 `rules-extra.list`，未保存的 `MissingPolicy` 诊断草稿未写入配置文件；剪贴板链接由服务端生成并包含服务端 token，前端未拼接 token。
 - 已知错误案例：Vitest 与 Playwright spec 已通过脚本分离；`/api/*` 请求中未出现服务端订阅 token，合法参数 `include_token=false` 不视为泄漏；桌面自动化首次复制链接时出现一次 Chrome Clipboard 焦点错误，重新聚焦并点击确认后成功，自动化 E2E 该流程稳定通过。
 - 已知限制：M10 仍按 1280x800 桌面视口验收；A7 不实现订阅访问 token 编辑；A8 Drawer 只做诊断详情和跳转高亮，不复制 A1-A7 全量编辑表单。

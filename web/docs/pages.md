@@ -17,7 +17,7 @@
 | `/validate` | A8 静态配置校验 | `POST /api/config/validate` |
 | `/nodes` | B1 节点预览 | `GET /api/preview/nodes` |
 | `/preview/groups` | B2 分组预览 | `GET /api/preview/groups` |
-| `/download` | B3 生成下载 | `GET/POST /api/generate/preview` + `/generate` |
+| `/download` | B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` |
 | `/status` | C 系统状态 | `GET /api/status` + `GET /healthz` |
 
 `/generate` 只表示后端生成接口和订阅链接路径，不作为 SPA 页面路由。
@@ -48,7 +48,7 @@
 - GET 预览只读取当前 `RuntimeConfig`。
 - POST 预览只读取前端草稿，不写文件、不替换运行时配置。
 - B2 若 ValidateGraph 返回图级错误，不展示部分成功结果。
-- B3 必须区分“当前运行时生成预览”和“草稿生成预览”。
+- B3 当前页面自动加载 Clash / Surge 双格式运行时生成预览；草稿生成预览 API 仍由后端提供，但当前页面不暴露独立草稿预览入口。
 
 ## C 区状态页
 

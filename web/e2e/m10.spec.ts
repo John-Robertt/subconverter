@@ -13,7 +13,7 @@ test("T-E2E-015 setup, login, logout and token link confirmation", async ({ page
   await expect(page.getByRole("heading", { name: "订阅来源" })).toBeVisible();
 
   await page.goto("/download");
-  await page.getByRole("button", { name: "复制订阅链接" }).click();
+  await page.locator(".code-preview-panel", { hasText: "Clash Meta" }).getByRole("button", { name: "复制" }).click();
   await expect(page.getByRole("dialog", { name: "复制含 token 的订阅链接？" })).toBeVisible();
   await page.getByRole("button", { name: "确认复制" }).click();
   await expect(page.getByText("订阅链接已复制")).toBeVisible();
@@ -25,7 +25,7 @@ test("T-E2E-010 writable M10 flow validates, previews groups and downloads", asy
 
   await page.goto("/rulesets");
   await expect(page.getByRole("heading", { name: "规则集" })).toBeVisible();
-  await page.getByRole("button", { name: "添加 URL" }).click();
+  await page.getByRole("button", { name: "添加规则集 URL" }).click();
   await page.getByPlaceholder("https://example.com/rules.list").last().fill("http://127.0.0.1:18081/rules.list");
   await saveAndReload(page);
 
@@ -38,13 +38,11 @@ test("T-E2E-010 writable M10 flow validates, previews groups and downloads", asy
   await expect(page.getByText("HK-01").first()).toBeVisible();
 
   await page.goto("/download");
-  await page.getByPlaceholder("clash.yaml").fill("clash-e2e.yaml");
-  await page.getByRole("button", { name: "当前运行时预览" }).click();
   await expect(page.getByText(/HK-01/).first()).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "下载配置" }).click();
+  await page.locator(".code-preview-panel", { hasText: "Clash Meta" }).getByRole("button", { name: "下载" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("clash-e2e.yaml");
+  expect(download.suggestedFilename()).toBe("config.yaml");
 });
 
 test("T-E2E-014 dual format preview keeps subscription token out of API requests", async ({ page }) => {
@@ -57,18 +55,22 @@ test("T-E2E-014 dual format preview keeps subscription token out of API requests
   await loginOrSetup(page);
   await page.goto("/download");
 
-  await page.getByRole("radio", { name: /Surge/ }).check();
-  await page.getByRole("button", { name: "当前运行时预览" }).click();
-  await expect(page.getByText(/HK-01/).first()).toBeVisible();
+  await expect(page.locator(".code-preview-panel", { hasText: "Surge" }).getByText(/HK-01/).first()).toBeVisible();
+  await expect(page.locator(".code-preview-panel", { hasText: "Clash Meta" }).getByText(/HK-01/).first()).toBeVisible();
 
-  await page.getByRole("radio", { name: /Clash Meta/ }).check();
-  await page.getByRole("button", { name: "草稿生成预览" }).click();
-  await expect(page.getByText(/HK-01/).first()).toBeVisible();
+  const surgeDownload = page.waitForEvent("download");
+  await page.locator(".code-preview-panel", { hasText: "Surge" }).getByRole("button", { name: "下载" }).click();
+  expect((await surgeDownload).suggestedFilename()).toBe("config.conf");
 
-  await page.getByText("复制订阅链接时请求服务端附带 token").click();
-  await page.getByRole("button", { name: "复制订阅链接" }).click();
+  const clashDownload = page.waitForEvent("download");
+  await page.locator(".code-preview-panel", { hasText: "Clash Meta" }).getByRole("button", { name: "下载" }).click();
+  expect((await clashDownload).suggestedFilename()).toBe("config.yaml");
+
+  await page.locator(".code-preview-panel", { hasText: "Clash Meta" }).getByRole("button", { name: "复制" }).click();
+  await expect(page.getByRole("dialog", { name: "复制含 token 的订阅链接？" })).toBeVisible();
+  await page.getByRole("button", { name: "确认复制" }).click();
   await expect(page.getByText("订阅链接已复制")).toBeVisible();
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toContain("server-token");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("server-token");
   expect(apiRequests.some((url) => url.includes("server-token"))).toBe(false);
 });
 
@@ -93,11 +95,13 @@ async function loginOrSetup(page: Page) {
 }
 
 async function saveAndReload(page: Page) {
-  await page.getByRole("button", { name: "保存并热重载" }).click();
-  if (await isVisible(page.getByRole("dialog", { name: "确认首次写回 YAML" }), 5_000)) {
+  await page.getByRole("button", { name: "保存" }).click();
+  if (await isVisible(page.getByRole("dialog", { name: "将草稿写入 YAML 文件？" }), 5_000)) {
     await page.getByRole("button", { name: "确认保存" }).click();
   }
-  await expect(page.getByText(/RuntimeConfig 已重新加载|配置已保存并生效/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("草稿已写入 YAML 文件")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "热重载" }).click();
+  await expect(page.getByText("RuntimeConfig 已重新加载")).toBeVisible({ timeout: 20_000 });
 }
 
 async function isVisible(locator: Locator, timeout = 1_000) {

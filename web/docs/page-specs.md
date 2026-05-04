@@ -42,7 +42,7 @@
 | 所属里程碑 | M9 |
 | 字段 / JSON pointer 根 | `/config/sources`、`/config/sources/subscriptions`、`/config/sources/snell`、`/config/sources/vless`、`/config/sources/custom_proxies`、`/config/sources/fetch_order` |
 | 主要动作 | 新增、编辑、删除、排序拉取类来源；编辑 custom proxy 与 `relay_through` |
-| 调用 API | 启动加载用 `GET /api/config`；保存工作流用 `POST /api/config/validate`、`PUT /api/config`、`POST /api/reload` |
+| 调用 API | 启动加载用 `GET /api/config`；保存工作流用 `POST /api/config/validate`、`PUT /api/config`；热重载由全局按钮单独调用 `POST /api/reload` |
 | 只读行为 | 禁用新增、编辑、删除、排序和保存；URL 脱敏展示仍可查看 |
 | dirty 行为 | 顶栏提示 reload；离开页面前不自动覆盖草稿 |
 | loading / empty / error | config 加载显示骨架；四类来源均为空时显示新增入口；保存失败按 `error.code` 展示 |
@@ -192,13 +192,13 @@
 |------|------|
 | 路由 | `/download` |
 | 所属里程碑 | M10 |
-| 数据来源 | 当前运行时生成预览或前端草稿生成预览 |
-| 主要动作 | 选择 Clash/Surge；预览当前运行时；预览草稿；下载；复制订阅链接 |
-| 调用 API | `GET /api/generate/preview?format=...`、`POST /api/generate/preview?format=...`、`/generate?format=...`、`GET /api/generate/link?format=...` |
+| 数据来源 | 当前运行时生成预览 |
+| 主要动作 | 自动展示 Clash/Surge 双格式运行时预览；下载；复制订阅链接 |
+| 调用 API | `GET /api/generate/preview?format=...`、`/generate?format=...`、`GET /api/generate/link?format=...` |
 | 只读行为 | 允许预览、下载和复制链接；不提供保存入口 |
-| dirty 行为 | dirty 时明确区分“当前运行时预览”和“草稿预览” |
+| dirty 行为 | dirty 时提示当前预览基于运行时配置，已保存草稿尚未 reload |
 | loading / empty / error | 生成中显示格式与来源；TargetError 400 和 RenderError/内部错误按 API client 归一化展示 |
-| GET / POST 区分 | GET 读取当前运行时；POST 使用草稿且不改变运行时 |
+| GET / POST 区分 | 当前页面只用 GET 读取当前运行时；后端 POST 草稿生成预览 API 保留但不在页面暴露 |
 | 对应测试 | `T-WEB-016`、`T-WEB-017`、`T-WEB-019`、`T-WEB-020` |
 
 ## C 区系统状态页
@@ -210,7 +210,7 @@
 | 路由 | `/status` |
 | 所属里程碑 | M9 |
 | 数据来源 | `GET /api/status` 与 `GET /healthz` |
-| 主要动作 | 查看健康、版本、配置源、可写性、revision、dirty、最近 reload；触发 reload |
+| 主要动作 | 查看健康、版本、配置源、可写性、revision、dirty、最近 reload；通过全局“热重载”按钮触发 reload |
 | 调用 API | `GET /api/status`、`GET /healthz`、`POST /api/reload` |
 | 只读行为 | 只读配置源仍允许 reload；展示 `capabilities.config_write=false` |
 | dirty 行为 | dirty 时提供 reload 入口；reload 成功后刷新 status |

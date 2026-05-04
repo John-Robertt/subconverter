@@ -39,12 +39,12 @@
 - `POST /api/config/validate` 只做静态校验；配置无效时返回 `200 valid=false`，请求体格式错误才返回 400。
 - `PUT /api/config` 成功后仍需 reload 才生效。
 - reload 失败后保持 dirty 提示。
-- reload 成功后刷新 `status`，B1/B2/B3 当前运行时预览使用新的 `runtime_config_revision` 重新加载。
-- B1/B2 GET 预览使用当前运行时配置。
-- B1/B2/B3 当前运行时预览提供手动“刷新预览”入口；刷新时重新请求后端，不依赖 `runtime_config_revision` 变化。
+- reload 成功后刷新 `status`，当前运行时预览使用新的 `runtime_config_revision` 重新加载。
+- B1/B2 GET 预览使用当前运行时配置，B3 自动加载 Clash / Surge 双格式运行时生成预览。
+- B1 节点预览提供手动“重新拉取”入口；B2/B3 依赖进入页面、query key 变化或错误重试重新请求。
 - 当前运行时预览不做后台轮询；远程订阅或模板在 TTL 过期后的变化由用户手动刷新或重新进入页面触发观测。
 - A2/A3 POST 预览使用草稿配置。
-- B3 当前预览与草稿预览能明确区分。
+- B3 当前页面不提供草稿生成预览入口；如需草稿生成能力，调用后端 `POST /api/generate/preview`。
 - A1 保存并回读后 `sources.fetch_order` 不变，A6 拖拽后 `rules` 顺序不变。
 
 ## 安全验收
