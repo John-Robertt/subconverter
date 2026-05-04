@@ -43,8 +43,9 @@ const (
 	//nolint:gosec // This is an environment variable name, not an embedded credential.
 	accessTokenEnvVar = "SUBCONVERTER_TOKEN"
 	authStateEnvVar   = "SUBCONVERTER_AUTH_STATE"
-	setupTokenEnvVar  = "SUBCONVERTER_SETUP_TOKEN"
-	corsEnvVar        = "SUBCONVERTER_CORS"
+	//nolint:gosec // This is an environment variable name, not an embedded credential.
+	setupTokenEnvVar = "SUBCONVERTER_SETUP_TOKEN"
+	corsEnvVar       = "SUBCONVERTER_CORS"
 
 	serverReadHeaderTimeout = 10 * time.Second
 	serverIdleTimeout       = 120 * time.Second

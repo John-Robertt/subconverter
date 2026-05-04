@@ -32,7 +32,7 @@ func TestSetupStoresPasswordAndSessionHashes(t *testing.T) {
 		t.Fatalf("Setup: %v", err)
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is created under t.TempDir by the test.
 	if err != nil {
 		t.Fatal(err)
 	}

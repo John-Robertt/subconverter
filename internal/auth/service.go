@@ -23,7 +23,7 @@ import (
 const (
 	SessionCookieName = "session_id"
 
-	passwordAlgorithm  = "pbkdf2-sha256"
+	passwordAlgorithm  = "pbkdf2-sha256" // #nosec G101 -- algorithm identifier, not a hardcoded credential.
 	passwordIterations = 600000
 	passwordSaltBytes  = 32
 	passwordKeyBytes   = 32
@@ -475,7 +475,7 @@ func writeStateAtomically(path string, data []byte) error {
 }
 
 func syncDirBestEffort(dir string) {
-	d, err := os.Open(dir)
+	d, err := os.Open(dir) // #nosec G304 -- dir is the cleaned parent of the configured auth state path.
 	if err != nil {
 		return
 	}

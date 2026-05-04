@@ -348,7 +348,7 @@ func writeFileAtomically(path string, data []byte) error {
 	clean := filepath.Clean(path)
 	dir := filepath.Dir(clean)
 	base := filepath.Base(clean)
-	tmp, err := os.OpenFile(filepath.Join(dir, "."+base+".tmp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	tmp, err := os.OpenFile(filepath.Join(dir, "."+base+".tmp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304 -- path is derived from the configured local config file location.
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			tmp, err = os.CreateTemp(dir, "."+base+".tmp-*")
@@ -398,7 +398,7 @@ func ensureLocalConfigWritable(path string) error {
 }
 
 func syncDirBestEffort(dir string) {
-	d, err := os.Open(dir)
+	d, err := os.Open(dir) // #nosec G304 -- dir is the cleaned parent of the configured local config path.
 	if err != nil {
 		return
 	}

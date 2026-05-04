@@ -41,3 +41,4 @@ Thumbs.db
 test-results
 
 ss*.txt
+node_modules/

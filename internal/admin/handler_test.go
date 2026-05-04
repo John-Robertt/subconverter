@@ -61,7 +61,7 @@ func TestAuthSetupAndProtectedConfig(t *testing.T) {
 	if len(cookies) == 0 || cookies[0].Name != auth.SessionCookieName || !cookies[0].HttpOnly {
 		t.Fatalf("setup cookies = %+v", cookies)
 	}
-	stateBytes, err := os.ReadFile(filepath.Join(dir, "auth.json"))
+	stateBytes, err := os.ReadFile(filepath.Join(dir, "auth.json")) // #nosec G304 -- dir is created by t.TempDir in this test.
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -60,10 +60,6 @@ func valuePath(section, valuePath string) diagnosticPath {
 	return diagnosticPath{section: section, valuePath: valuePath}
 }
 
-func keyedPath(section, key, valuePath string) diagnosticPath {
-	return diagnosticPath{section: section, key: key, valuePath: valuePath}
-}
-
 func keyedIndexedPath(section string, index int, key, valuePath string) diagnosticPath {
 	idx := index
 	return diagnosticPath{section: section, key: key, index: &idx, valuePath: valuePath}

@@ -284,7 +284,7 @@ func (h *Handler) handleGeneratePreview(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", result.ContentType)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(result.Body)
+	_, _ = w.Write(result.Body) // #nosec G705 -- preview returns generated config bytes with an explicit non-HTML content type.
 }
 
 func (h *Handler) handleGenerateLink(w http.ResponseWriter, r *http.Request) {
