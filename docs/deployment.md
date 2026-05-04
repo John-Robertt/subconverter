@@ -79,8 +79,8 @@ ghcr.io/john-robertt/subconverter
 
 发布 tag：
 
-- `vX.Y.Z`
-- `vX.Y`
+- `X.Y.Z`
+- `X.Y`
 - `latest`
 
 容器内约定：
@@ -265,7 +265,7 @@ git push origin v0.1.0
 3. 等待 GitHub Actions 完成：
 
 - GitHub Release 二进制上传完成
-- GHCR 后端镜像与 Web 镜像推送完成
+- GHCR 单镜像推送完成
 
 4. 在目标环境手动拉取并部署对应版本
 
@@ -276,8 +276,7 @@ git push origin v0.1.0
 Release workflow 会为镜像写入 OCI 元数据：
 
 - `org.opencontainers.image.source=https://github.com/John-Robertt/subconverter`
-- 后端镜像：`org.opencontainers.image.description=Single-user HTTP service that converts SS subscriptions into Clash Meta and Surge configs.`
-- Web 镜像：`org.opencontainers.image.description=Web admin UI for subconverter.`
+- 镜像：`org.opencontainers.image.description=Single-user HTTP service that converts SS subscriptions into Clash Meta and Surge configs.`
 
 对多架构镜像，workflow 还会把描述写入 manifest index annotation，确保 GHCR 包页面可以显示描述信息。
 

@@ -42,35 +42,36 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+          run_install: false
+
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install web dependencies
-        working-directory: web
-        run: npm ci
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Run web tests
-        working-directory: web
-        run: npm test
+        run: pnpm --filter subconverter-web test
 
       - name: Build web SPA
-        working-directory: web
-        run: npm run build
+        run: pnpm --filter subconverter-web build
 
       - name: Install Playwright Chromium
-        working-directory: web
-        run: npx playwright install --with-deps chromium
+        run: pnpm --filter subconverter-web exec playwright install --with-deps chromium
 
       - name: Run web E2E tests
-        working-directory: web
-        run: npm run test:e2e
+        run: pnpm --filter subconverter-web test:e2e
 
-      - name: Build web image
-        run: docker build -f web/Dockerfile web
+      - name: Build release image
+        run: docker build -f Dockerfile .
 
   binaries:
     runs-on: ubuntu-latest
@@ -122,7 +123,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract backend Docker metadata
+      - name: Extract Docker metadata
         id: api_meta
         uses: docker/metadata-action@v6
         with:
@@ -142,7 +143,11 @@ jobs:
         id: build_date
         run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push backend Docker image
+      - name: Set release version
+        id: release_version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -153,33 +158,6 @@ jobs:
           labels: ${{ steps.api_meta.outputs.labels }}
           annotations: ${{ steps.api_meta.outputs.annotations }}
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ steps.release_version.outputs.value }}
             COMMIT=${{ github.sha }}
             DATE=${{ steps.build_date.outputs.value }}
-
-      - name: Extract web Docker metadata
-        id: web_meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ github.repository }}-web
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-          labels: |
-            org.opencontainers.image.title=subconverter-web
-            org.opencontainers.image.description=Web admin UI for subconverter.
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
-
-      - name: Build and push web Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./web
-          file: ./web/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.web_meta.outputs.tags }}
-          labels: ${{ steps.web_meta.outputs.labels }}
-          annotations: ${{ steps.web_meta.outputs.annotations }}
