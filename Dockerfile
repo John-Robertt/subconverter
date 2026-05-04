@@ -44,6 +44,7 @@ COPY configs /app/configs
 WORKDIR /app
 
 ENV SUBCONVERTER_LISTEN=:8080
+ENV SUBCONVERTER_AUTH_STATE=/auth/auth.json
 
 EXPOSE 8080
 

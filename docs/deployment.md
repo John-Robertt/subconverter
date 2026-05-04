@@ -202,7 +202,9 @@ healthcheck:
   retries: 20
 ```
 
-镜像默认设置了 `SUBCONVERTER_LISTEN=:8080`。若服务监听非默认端口，推荐只改环境变量，让主服务和内置 `HEALTHCHECK` 自动保持一致：
+镜像默认设置了 `SUBCONVERTER_LISTEN=:8080` 与 `SUBCONVERTER_AUTH_STATE=/auth/auth.json`。后者意味着只要把 `/auth` 挂出到持久卷（如 demo Compose 的 `./auth:/auth`），管理员凭据和 session token 哈希就能跨容器重建保留；如需自定义路径，再在 `environment` 段显式覆盖即可。
+
+若服务监听非默认端口，推荐只改环境变量，让主服务和内置 `HEALTHCHECK` 自动保持一致：
 
 ```yaml
 environment:
