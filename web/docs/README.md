@@ -10,7 +10,7 @@
 | 用户 YAML 与 JSON API 结构 | [`../../docs/design/config-schema.md`](../../docs/design/config-schema.md) |
 | Web 页面总览与集成模型 | [`../../docs/design/web-ui.md`](../../docs/design/web-ui.md) |
 | 配置校验边界与错误类型 | [`../../docs/design/validation.md`](../../docs/design/validation.md) |
-| 部署与 nginx 反向代理 | [`../../docs/deployment.md`](../../docs/deployment.md) |
+| 构建与部署 | [`../../docs/deployment.md`](../../docs/deployment.md) |
 
 `web/docs/` 不重复定义完整后端 schema。当前端文档与顶层 `docs/design/*` 冲突时，以顶层设计文档为准。
 
@@ -31,8 +31,9 @@
 
 ## 当前状态
 
-- `web/` 当前是 Vite + React + TypeScript + React Query 工程骨架。
+- `web/` 当前是 Vite + React + TypeScript + React Query 正式 SPA 工程。
 - `web/prototype/` 保留旧高保真原型，不参与正式构建。
+- 生产主路径由根 Dockerfile 构建 `web/dist` 并嵌入 Go 二进制；不再维护独立 Web 静态镜像。
 - 正式管理接口统一使用 `/api/*`；生成接口继续使用 `/generate`。
 - Web 管理后台使用管理员登录态和 `session_id` Cookie；`SUBCONVERTER_TOKEN` 只用于 `/generate` 订阅链接。
 - v2.0 当前不承诺内建配置版本恢复、多用户权限系统或服务端节点测速图表。

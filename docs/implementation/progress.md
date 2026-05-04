@@ -34,7 +34,7 @@
 |--------|------|----------|----------|----------|--------|
 | M6 Admin API 基线 | 已验收 | `REQ-14` - `REQ-17`, `REQ-27` | `T-ADM-*`, `T-RLD-*`, `T-CCH-*` | 配置 CRUD、静态校验、热重载、Admin auth/session 已实现并通过验证 | 启动 M7 预览与状态 API |
 | M7 预览与状态 API | 已验收 | `REQ-18` - `REQ-21` | `T-PRV-*` | 预览、生成预览、订阅链接与状态 API 已实现并通过验证 | 启动 M8 Web 镜像与 Compose 集成；M9 可依赖 M7 API |
-| M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SPA-*` | 正式 Vite SPA 工程、nginx 配置、Compose 示例和 CI Web 校验已实现，并通过 Docker build 与 Compose 反向代理验证 | 已启动并完成 M9 前端核心页面 |
+| M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SPA-*` | 正式 Vite SPA 工程、嵌入式 Web 发布链路、单服务 Compose 示例和 CI Web 校验已实现，并通过 Docker build 与 Compose smoke test 验证 | 已启动并完成 M9 前端核心页面 |
 | M9 前端工程与核心页面 | 已验收 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | Shell、API client、登录/setup、A1-A4、B1、C、主题、保存-reload 工作流已实现并通过验证 | 启动 M10 前端完善与端到端验收 |
 | M10 前端完善与端到端验收 | 已验收 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-016`, `T-E2E-010`, `T-E2E-014`, `T-E2E-015` | A5-A8、B2/B3、正式 E2E 与桌面浏览器验收已通过 | M10 已完成；可进入发布前整理 |
 
@@ -104,12 +104,12 @@
 
 ## M8 Web 镜像与 Compose 集成
 
-目标：建立正式 SPA 工程、Web 镜像、nginx fallback 和同源反向代理路径。
+目标：建立正式 SPA 工程、嵌入式 Web 发布链路、Go SPA fallback 和单服务同源 Compose 路径。
 
 | 工作包 | 状态 | 范围 | 依赖文档 | 交付物 | 验收证据 | 阻塞项 |
 |--------|------|------|----------|--------|----------|--------|
-| M8-WP1 正式前端工程骨架 | 已验收 | Vite + React + TypeScript、最小 SPA、脚本、旧原型迁移 | `web/docs/frontend-architecture.md` | `web/src` 工程骨架、`web/prototype` 原型归档 | `npm test`、`npm run build` | 无 |
-| M8-WP2 nginx 与 Compose 代理 | 已验收 | `web/Dockerfile`、`web/nginx.conf`、Compose 示例、fallback | `docs/deployment.md`, `docs/design/web-ui.md` | Web 镜像与反代路径 | `docker build -f web/Dockerfile web`、Compose 反代 smoke test | 无 |
+| M8-WP1 正式前端工程骨架 | 已验收 | Vite + React + TypeScript、最小 SPA、脚本、旧原型迁移 | `web/docs/frontend-architecture.md` | `web/src` 工程骨架、`web/prototype` 原型归档 | `pnpm --filter subconverter-web test`、`pnpm --filter subconverter-web build` | 无 |
+| M8-WP2 嵌入式 Web 与 Compose 路径 | 已验收 | 根 `Dockerfile`、`internal/webui`、Compose 示例、Go fallback | `docs/deployment.md`, `docs/design/web-ui.md` | 单服务 Web 镜像与同源路径 | `docker build -t subconverter:local .`、Compose smoke test | 无 |
 | M8-WP3 M8 收口验收 | 已验收 | Web 镜像构建、代理验证、文档同步 | `implementation/implementation-plan.md` | M8 验收记录 | 本文件更新，前端/Go/Docker 测试结果记录 | 无 |
 
 ### M8 验收记录（2026-05-03）
@@ -121,42 +121,40 @@
 - 新增或通过的测试：
   - `web/src/App.test.tsx`：最小 SPA shell、`/download` 前端路由、`/login` 路由烟测。
   - Web build：Vite production build 输出 `dist/index.html` 和 hashed assets。
-  - Docker build：Node 22 阶段执行 `npm ci` 与 `npm run build`，nginx 阶段只复制 `dist/`。
-  - Compose smoke test：`web` 是唯一浏览器入口，验证 SPA fallback、`/healthz`、`/api/status` 与 `/generate` 反向代理。
+  - Docker build：Node 22 阶段执行 pnpm Web build，Go 阶段使用 `-tags webui` 嵌入 `web/dist`，runtime 只包含 Go 二进制和底版模板。
+  - Compose smoke test：`subconverter` 是唯一浏览器入口，验证 SPA fallback、`/healthz`、`/api/status` 与 `/generate` 均由同一服务处理。
   - 后端回归：`go test ./...`、`go vet ./...`。
 - 测试命令与结果：
-  - `cd web && npm ci`：通过。
-  - `cd web && npm test`：通过，1 个测试文件 / 3 个测试。
-  - `cd web && npm run build`：通过。
-  - `cd web && npm run dev -- --host 127.0.0.1`：通过，Vite dev server 监听 `http://127.0.0.1:5173/`。
+  - `pnpm install`：通过。
+  - `pnpm --filter subconverter-web test`：通过，1 个测试文件 / 3 个测试。
+  - `pnpm --filter subconverter-web build`：通过。
+  - `pnpm --filter subconverter-web dev -- --host 127.0.0.1`：通过，Vite dev server 监听 `http://127.0.0.1:5173/`。
   - `curl http://127.0.0.1:5173/`、`/sources`、`/download`：均返回 `200`。
   - `docker --version`：通过，Docker `29.4.1`。
   - `docker compose version`：通过，Docker Compose `v5.1.3`。
-  - `docker build -f web/Dockerfile web`：通过。
-  - `docker compose -f deploy/compose.readonly.yaml config --quiet`：通过。
-  - `docker compose -f deploy/compose.writable.yaml config --quiet`：通过。
-  - `docker compose -p subconverter-m8 -f deploy/compose.readonly.yaml -f /private/tmp/subconverter-m8/compose.override.yaml up -d --build`：通过，`api` 与 `web` 均启动，`api` healthcheck healthy。
+  - `docker build -t subconverter:local .`：通过。
+  - `docker compose -f docker-compose.demo.yaml config --quiet`：通过。
+  - `SUBCONVERTER_IMAGE=subconverter:local docker compose -p subconverter-m8 -f docker-compose.demo.yaml -f /private/tmp/subconverter-m8/compose.override.yaml up -d`：通过，单个 `subconverter` 服务启动且 healthcheck healthy。
   - Compose 入口 `curl http://127.0.0.1:18080/`、`/sources`、`/download`：均返回 `200 text/html`，内容为 Vite SPA `index.html`。
   - Compose 入口 `curl http://127.0.0.1:18080/healthz`：返回 `200 OK`，响应头 `Cache-Control: no-store`。
   - Compose 入口 `curl http://127.0.0.1:18080/api/status`：未登录返回 `401 auth_required` JSON，响应头 `Cache-Control: no-store`，证明 `/api/*` 已命中后端而非 SPA fallback。
   - Compose 入口 `curl http://127.0.0.1:18080/generate?format=clash`：返回 `200 text/yaml`，带 `Content-Disposition: attachment; filename="clash.yaml"`。
   - Compose 入口 `curl http://127.0.0.1:18080/generate?format=surge`：返回 `200 text/plain`，带 `Content-Disposition: attachment; filename="surge.conf"`。
-  - Compose 入口 `curl http://127.0.0.1:18080/generate/path`：返回 `200 text/html` SPA `index.html`，证明仅精确 `/generate` 被反代。
+  - Compose 入口 `curl http://127.0.0.1:18080/generate/path`：返回 `200 text/html` SPA `index.html`，证明仅精确 `/generate` 命中生成端点。
   - `GOCACHE=/private/tmp/subconverter-gocache go test ./...`：通过。
   - `GOCACHE=/private/tmp/subconverter-gocache go vet ./...`：通过。
-  - `git diff --check -- web deploy docs .github README.md .gitignore`：通过。
+  - `git diff --check -- web docs .github README.md .gitignore Dockerfile docker-compose.demo.yaml internal/webui internal/server`：通过。
 - 关键证据：
-  - `web/package.json` / `web/package-lock.json`：正式 npm 工程与锁文件。
-  - `web/Dockerfile`：Node 22 `npm ci` + `npm run build`，nginx 仅托管 `dist/`。
-  - `web/nginx.conf`：`/api/*`、精确 `/generate`、精确 `/healthz` 优先反代；其他路径 fallback 到 `index.html`。
-  - `deploy/compose.readonly.yaml`、`deploy/compose.writable.yaml`：`api` 仅 expose，`web` 映射 `8080:80`。
+  - `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml`：pnpm workspace 工程与锁文件。
+  - 根 `Dockerfile`：Node 22 + pnpm 构建 `web/dist`，Go `webui` build tag 嵌入静态资源。
+  - `internal/server/webui.go`：`/api/*`、精确 `/generate`、`/healthz` 优先交给后端；其他路径 fallback 到 `index.html`。
+  - `web/nginx.conf`：保留为路径配置测试夹具；独立 Web 静态镜像入口已移除。
+  - `docker-compose.demo.yaml`：只引用已构建镜像，单个 `subconverter` 服务映射 `8080:8080`。
 - 示例输入或 fixture：Compose 验证使用临时只读配置 `/private/tmp/subconverter-m8/config/config.yaml`，订阅源由本地临时 HTTP 服务提供，包含 1 个 `HK-01` 节点。
 - 关键响应：`/download` 不触发下载、返回 SPA；`/generate?format=clash|surge` 触发后端下载响应；`/api/status` 未登录时返回 `auth_required`；`/healthz` 返回 `OK`。
 - 已知错误案例：未登录访问 `/api/*` 返回 `401 auth_required`；`/generate/path` 非精确生成端点，按 SPA fallback 处理。
-- 已知限制：M8 只交付工程、容器和部署入口；登录、配置编辑、API client、主题切换、保存/预览工作流归属 M9/M10。
-- 下一步：启动 M9 前端工程与核心页面，基于 M7 API 和 M8 SPA/Compose 基础实现正式后台交互。
-
-已知限制：正式 Web 工程当前仍是 M8 占位 SPA，不代表完整管理后台；旧高保真原型位于 `web/prototype/`，仅作参考。
+- 已知限制：M8 只交付工程、嵌入式发布链路和部署入口；登录、配置编辑、API client、主题切换、保存/预览工作流归属 M9/M10。
+- 下一步：启动 M9 前端工程与核心页面，基于 M7 API 和 M8 单服务 SPA/Compose 基础实现正式后台交互。
 
 ## M9 前端工程与核心页面
 
@@ -166,16 +164,16 @@
 |--------|------|------|----------|--------|----------|--------|
 | M9-WP1 Shell、API client 与草稿状态 | 已验收 | 布局、导航、登录态、React Query、草稿管理、错误归一化 | `web/docs/frontend-architecture.md`, `web/docs/auth-and-security.md`, `web/docs/workflows.md` | 前端应用基础 | `T-WEB-001` - `T-WEB-003`, `T-WEB-007`, `T-WEB-010`, `T-WEB-021` | 无 |
 | M9-WP2 A1-A4 核心编辑页 | 已验收 | 来源、过滤器、节点分组、路由策略、拖拽保序、草稿预览 | `web/docs/page-specs.md`, `web/docs/data-contract.md` | A1-A4 可用 | `T-WEB-004`, `T-WEB-006`, `T-WEB-008` | 无 |
-| M9-WP3 B1/C 与保存-reload 工作流 | 已验收 | 节点预览、系统状态、validate-save-reload、dirty 提示、主题 | `web/docs/workflows.md`, `web/docs/acceptance.md` | B1、C 与核心工作流 | `T-WEB-009`, `npm test` | 无 |
+| M9-WP3 B1/C 与保存-reload 工作流 | 已验收 | 节点预览、系统状态、validate-save-reload、dirty 提示、主题 | `web/docs/workflows.md`, `web/docs/acceptance.md` | B1、C 与核心工作流 | `T-WEB-009`, `pnpm --filter subconverter-web test` | 无 |
 | M9-WP4 M9 收口验收 | 已验收 | 核心页面验收、视觉状态、文档同步 | `web/docs/page-specs.md` | M9 验收记录 | 本文件更新，前端测试结果 | 无 |
 
 测试命令结果：
 
-- `cd web && npm test`：通过，2 个测试文件 / 17 个测试。
-- `cd web && npm run build`：通过，Vite 生产构建成功。
-- `docker build -f web/Dockerfile web`：通过，Web 镜像构建阶段执行 `npm ci` 与 `npm run build` 成功。
+- `pnpm --filter subconverter-web test`：通过，2 个测试文件 / 17 个测试。
+- `pnpm --filter subconverter-web build`：通过，Vite 生产构建成功。
+- `docker build -t subconverter:local .`：通过，根 Dockerfile 执行 pnpm Web build 并嵌入 Go 二进制成功。
 - `go test ./...`：通过，15 个 Go package 均通过。
-- `cd web && npm run dev -- --host 127.0.0.1` + 本地 mock API：通过，Chrome 冒烟验证 `/sources`、`/filters` 草稿节点预览、`/nodes` 运行时节点预览可渲染且无明显首屏溢出。
+- `pnpm --filter subconverter-web dev -- --host 127.0.0.1` + 本地 mock API：通过，Chrome 冒烟验证 `/sources`、`/filters` 草稿节点预览、`/nodes` 运行时节点预览可渲染且无明显首屏溢出。
 
 关键产出：
 
@@ -210,7 +208,7 @@
 
 - 状态：已验收；实现、自动化验证和桌面浏览器验收已完成，`docs/README.md` 能力状态矩阵已更新。
 - 实现的 REQ：`REQ-24` 剩余 Web 后台页面能力、`REQ-25` 剩余预览/生成/订阅链接能力。
-- 完成的工作包：`M10-WP1`、`M10-WP2`、`M10-WP3`、`M10-WP4` 均已进入待验收。
+- 完成的工作包：`M10-WP1`、`M10-WP2`、`M10-WP3`、`M10-WP4` 均已验收。
 - 依赖的设计文档：`docs/design/api.md`、`docs/design/web-ui.md`、`web/docs/frontend-architecture.md`、`web/docs/page-specs.md`、`web/docs/interaction.md`、`web/docs/auth-and-security.md`、`web/docs/acceptance.md`。
 - 新增或通过的测试：
   - `T-WEB-011`：规则集 policy 与多 URL 编辑、顺序保持。
@@ -225,10 +223,10 @@
 - 测试命令与结果：
   - `go test ./...`：通过。
   - `cd web && node node_modules/typescript/bin/tsc -b`：通过。
-  - `cd web && node node_modules/vitest/vitest.mjs run --environment jsdom --exclude='e2e/**'`：通过，2 个测试文件 / 23 个测试；等价覆盖 `npm test` 脚本，当前执行环境未提供全局 `npm`。
-  - `cd web && node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build`：通过；等价覆盖 `npm run build`。
-  - `cd web && node scripts/e2e-stack.mjs`：通过，Chromium 3 个 E2E 场景全部通过；等价覆盖 `npm run test:e2e`。
-  - `docker build -f web/Dockerfile web`：通过；Docker 内 `npm ci` 与 `npm run build` 均通过。
+  - `pnpm --filter subconverter-web test`：通过，2 个测试文件 / 23 个测试。
+  - `pnpm --filter subconverter-web build`：通过。
+  - `pnpm --filter subconverter-web test:e2e`：通过，Chromium 3 个 E2E 场景全部通过。
+  - `docker build -t subconverter:local .`：通过；Docker 内 pnpm Web build 与 Go `webui` 构建均通过。
   - `git diff --check -- .github web docs`：通过。
   - `Computer Use` + Chrome `127.0.0.1:15174` 桌面验收：通过；覆盖 setup 后登录态、A5 新增 URL 保存 reload、A6 policy selector、A7 fallback/base_url/templates、A8 通过态与错误 Drawer 跳转、B2 分组预览、B3 Clash/Surge 预览、下载和含 token 链接复制确认。
 - 示例输入或 fixture：E2E stack 使用临时 config/auth 目录、本地 fake 订阅源和模板源、Go 后端 `127.0.0.1:18080`、Vite 前端 `127.0.0.1:15173`、fake upstream `127.0.0.1:18081`；订阅源包含 `HK-01`，服务端订阅访问 token 为 `server-token`。

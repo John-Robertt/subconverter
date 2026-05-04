@@ -404,7 +404,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG`，使用服务端订阅访问 token（若启用）和最终 `filename` | 用户显式控制，无需依赖反向代理头；token 来源不依赖当前请求鉴权方式，见 `T-PRV-014` |
 | 访问控制边界       | `/api/*` 使用管理员登录态和 `session_id` Cookie；`/generate` 保留 query token 兼容订阅链接；订阅 token 不进入 YAML，也不作为后台登录凭据 | 将公网后台权限与客户端订阅更新密钥解耦 |
 | 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf` | 客户端订阅与浏览器下载都需要稳定文件名 |
-| Web 管理后台       | React SPA 通过 Docker Compose 中的 `web` 静态容器托管，并同源反代到 `api` | 避免 Go 嵌入目录边界，生产部署路径清晰 |
+| Web 管理后台       | React SPA 由生产镜像嵌入 Go 二进制，单个 `subconverter` 服务同源托管 SPA、`/api/*`、`/generate` 和 `/healthz` | 单镜像单服务，部署路径更简单 |
 | 配置热重载         | RWMutex 保护 RuntimeConfig，写回 YAML + re-Prepare | 编辑后无需重启服务               |
 | YAML 真相源        | UI 是 YAML 的可视化外壳，无前端独有状态   | 数据一致性，任何修改可追溯到 YAML |
 | Admin API 前缀     | `/api/*` 与 `/generate` 平行              | 不影响现有生成接口               |

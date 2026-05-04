@@ -21,6 +21,7 @@ go.work.sum
 web/node_modules/
 web/dist/
 web/coverage/
+internal/webui/dist/
 
 # IDE / editor
 .idea/

@@ -162,18 +162,18 @@
 
 ---
 
-## Web 容器与 Compose 测试（v2.0）
+## Web 与 Compose 测试（v2.0）
 
 建议覆盖：
 
-- `T-SPA-001`：`web/Dockerfile` 可成功构建 nginx 静态发布镜像
+- `T-SPA-001`：根 `Dockerfile` 可成功构建内嵌 Web SPA 的单服务镜像
 - `T-SPA-002`：访问 `/` 返回 SPA `index.html`
-- `T-SPA-003`：刷新任意前端路由时由 nginx fallback 到 `index.html`
-- `T-SPA-004`：`/generate?format=clash` 与 `/generate?format=surge` 经 `web` 容器反向代理到 `api` 成功
-- `T-SPA-005`：`/healthz` 经 `web` 容器反向代理到 `api` 成功
+- `T-SPA-003`：刷新任意前端路由时由 Go 服务 fallback 到 `index.html`
+- `T-SPA-004`：`/generate?format=clash` 与 `/generate?format=surge` 由同一 Go 服务处理成功，且不被 SPA fallback 接管
+- `T-SPA-005`：`/healthz` 由同一 Go 服务处理成功
 - `T-SPA-006`：生产 Compose 路径不依赖 CORS；浏览器访问的 Web 页面与 API 为同源
-- `T-SPA-007`：M7 完成后补充验证 `/api/status` 经 `web` 容器反向代理到 `api` 成功
-- `T-SPA-008`：刷新 B3 前端路由 `/download` 时由 nginx fallback 到 `index.html`，且不会命中后端 `/generate`
+- `T-SPA-007`：`/api/status` 由同一 Go 服务处理成功
+- `T-SPA-008`：刷新 B3 前端路由 `/download` 时由 Go 服务 fallback 到 `index.html`，且不会命中后端 `/generate`
 
 ---
 

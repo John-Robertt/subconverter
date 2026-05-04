@@ -232,7 +232,7 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 未显式传入 `filename` 时，最终文件名默认使用 `surge.conf`；若请求带了自定义 `filename`，managed URL 中也使用该值。当 `base_url` 为空时不输出此行。Clash Meta 输出不受影响。
 
-**Docker Compose 部署的 `base_url`**：当使用 `web` + `api` Docker Compose 部署时，`base_url` 应填写 `web` 容器的外部可访问地址（如 `https://myserver.com`），其 nginx 会将 `/generate` 反向代理到 `api:8080`。若 `base_url` 误填 `api` 容器内部地址，Surge 客户端将无法完成对 managed URL 的更新请求。
+**Docker Compose 部署的 `base_url`**：单服务 Compose 部署时，`base_url` 应填写 `subconverter` 服务的外部可访问地址（如 `https://myserver.com`）。若 `base_url` 误填容器内部地址，Surge 客户端将无法完成对 managed URL 的更新请求。
 
 ---
 

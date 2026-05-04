@@ -2,7 +2,7 @@
 
 > v1.0 API 文档已归档至 docs/v1.0/design/api.md
 >
-> 状态提示：本文描述 v2.0 Admin API 目标契约；除 `/generate` 与 `/healthz` 外，当前 `/api/*` 仍为规划能力，状态见 docs/README.md。
+> 状态提示：本文描述 v2.0 Admin API 当前契约；`/generate`、`/healthz` 与 `/api/*` 均已实现。能力状态以 docs/README.md 状态矩阵和 docs/implementation/progress.md 验收记录为准。
 
 ## 目标
 
@@ -671,7 +671,7 @@ revision 冲突响应示例：
 - `/api/*` 管理响应默认设置 `Cache-Control: no-store`，包括认证状态、配置读取、校验、预览、订阅链接和系统状态接口
 - `/api/generate/preview` 返回完整配置文本，必须设置 `Cache-Control: no-store`
 - `/generate` 返回可下载配置文本，必须设置 `Cache-Control: no-store`
-- Web 静态资源由 nginx 分路径控制缓存：`index.html` 使用 `Cache-Control: no-cache` 或等价重验证策略；带 hash 的 Vite 静态资源可使用长期缓存（如 `public, max-age=31536000, immutable`）
+- Web 静态资源由 Go 服务分路径控制缓存：`index.html` 使用 `Cache-Control: no-cache` 或等价重验证策略；带 hash 的 Vite 静态资源可使用长期缓存（如 `public, max-age=31536000, immutable`）
 
 ---
 
@@ -709,13 +709,13 @@ revision 冲突响应示例：
 | `setup_token_required` | 首次 setup 缺少 bootstrap setup token |
 | `setup_token_invalid` | 首次 setup 的 bootstrap setup token 不匹配 |
 
-Cookie session 下，所有会修改状态的管理请求必须校验同源 `Origin` 或 `Referer`；生产模式通过 nginx 同源反向代理，开发模式优先使用 Vite proxy。
+Cookie session 下，所有会修改状态的管理请求必须校验同源 `Origin` 或 `Referer`；生产模式由同一个 Go 服务同源托管 SPA 与 API，开发模式优先使用 Vite proxy。
 
 ---
 
 ## CORS
 
-- v2.0 正式生产 Docker Compose 模式不启用 CORS：浏览器访问 `web` 容器，nginx 同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api` 容器
+- v2.0 正式生产 Docker Compose 模式不启用 CORS：浏览器访问单个 `subconverter` 服务，同源访问 SPA、`/api/*`、`/generate` 和 `/healthz`
 - 开发模式优先使用 Vite proxy，以便 Cookie session 保持同源语义；仅在不使用 proxy、需要浏览器跨域直连 Go 后端调试非 Cookie 路径时，通过 `-cors` 标志或 `SUBCONVERTER_CORS=true` 启用
 - 启用后仅允许本机开发来源：`http://localhost:*`、`http://127.0.0.1:*`、`http://[::1]:*`
 - CORS middleware 必须处理 preflight：允许 `GET`、`POST`、`PUT`、`OPTIONS`；允许 `Content-Type`

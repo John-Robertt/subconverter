@@ -70,5 +70,5 @@ API client 统一负责：
 ## 构建与部署
 
 - 开发模式使用 Vite dev server，推荐 proxy `/api/*`、`/generate`、`/healthz` 到 Go 后端；后台登录依赖 Cookie session，应优先保持同源调试。
-- 生产模式由 nginx 托管 `dist/`，并同源反向代理到 `api:8080`。
+- 生产主路径由仓库根 Dockerfile 使用 pnpm 构建 `dist/`，再嵌入 Go 二进制；同一个 `subconverter` 进程提供 SPA、`/api/*`、`/generate` 和 `/healthz`。
 - 生产模式不依赖 CORS。

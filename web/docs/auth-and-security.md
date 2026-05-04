@@ -71,7 +71,7 @@ Cookie：`session_id`，HttpOnly、SameSite=Lax、Path=/；HTTPS 下必须 Secur
 
 ## CSRF 边界
 
-管理接口使用 Cookie session，因此所有会修改状态的请求必须保持同源。正式部署通过 nginx 同源反向代理实现；本地开发优先使用 Vite proxy。
+管理接口使用 Cookie session，因此所有会修改状态的请求必须保持同源。正式部署由同一个 Go 服务托管 SPA 与 API；本地开发优先使用 Vite proxy。
 
 后端应对非安全方法校验同源 `Origin` 或 `Referer`。前端不依赖跨域 Cookie 调试作为正式工作流。
 

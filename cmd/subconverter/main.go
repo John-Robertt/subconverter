@@ -28,6 +28,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/fetch"
 	"github.com/John-Robertt/subconverter/internal/generate"
 	"github.com/John-Robertt/subconverter/internal/server"
+	"github.com/John-Robertt/subconverter/internal/webui"
 )
 
 var (
@@ -123,6 +124,7 @@ func main() {
 			return err == nil && authSvc.IsSessionValid(cookie.Value)
 		},
 		EnableCORS:     resolvedCORS,
+		WebFS:          webui.FS(),
 		RequestCounter: appSvc.IncrementRequestCount,
 	})
 	httpServer := newHTTPServer(listenAddr, srv.Handler())

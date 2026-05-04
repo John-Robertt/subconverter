@@ -18,15 +18,85 @@ SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源、Snell 来源和
 - **远程规则集** — 将规则集 URL 绑定到路由组（URL 透传，由客户端运行时拉取）
 - **内联规则** — 直接编写路由规则，与远程规则集并用
 - **双格式输出** — 同一份配置生成 Clash Meta YAML 和 Surge conf；格式不支持的协议按能力差异处理
+- **Web 管理后台** — 通过同源 SPA 管理配置、预览节点/分组、生成订阅链接
+- **单镜像部署** — Docker 构建时嵌入 `web/dist`，由 Go 二进制直接托管 Web、`/api/*`、`/generate` 和 `/healthz`
 - **模板合并** — 将生成内容注入底版模板，保留 DNS/TUN 等通用设置
 - **缓存** — 基于 TTL 的内存缓存，加速订阅和模板拉取
 - **优雅关闭** — 正确处理 SIGINT/SIGTERM 信号
 
-## 快速开始
+## 安装
 
-运行前需准备一份 YAML 配置文件，格式参见下方[配置](#配置)章节或 [`configs/base_config.yaml`](configs/base_config.yaml)。`-config` 同时支持本地路径和 HTTP(S) URL。
+SubConverter 可以通过 Docker 镜像、预编译二进制或源码构建安装。运行前需准备一份 YAML 配置文件，格式参见下方[配置](#配置)章节或 [`configs/base_config.yaml`](configs/base_config.yaml)。`-config` 同时支持本地路径和 HTTP(S) URL。
 
-### Docker
+### Docker 镜像
+
+使用已发布镜像：
+
+```bash
+docker pull ghcr.io/john-robertt/subconverter:latest
+```
+
+从源码构建完整 Web 发布镜像：
+
+```bash
+pnpm docker:build
+```
+
+根 Dockerfile 会在 Docker 内使用 pnpm 构建 `web/dist`，再用 `webui` build tag 将静态资源嵌入 Go 二进制。构建产物默认命名为 `subconverter:local`。
+
+### 预编译二进制
+
+从 [GitHub Releases](https://github.com/John-Robertt/subconverter/releases) 下载（支持 linux/amd64、linux/arm64）：
+
+```bash
+tar xzf subconverter_*.tar.gz
+./subconverter -config ./config.yaml -listen :8080
+```
+
+发布包中包含 `configs/` 目录下的底版模板。
+
+### 源码构建
+
+Go-only 二进制只需要 Go 1.24+，不会嵌入 Web 管理后台，适合本地开发、测试和命令行服务验证：
+
+```bash
+git clone https://github.com/John-Robertt/subconverter.git
+cd subconverter
+make build
+./subconverter -config ./configs/base_config.yaml
+```
+
+前端开发、测试和生产镜像构建脚本由 pnpm workspace 管理：
+
+```bash
+pnpm install
+pnpm web:dev
+pnpm web:test
+pnpm docker:build
+```
+
+## 部署
+
+### Docker Compose（推荐）
+
+v2.0 Web 部署使用单服务单镜像。浏览器、Admin API、`/generate` 和 `/healthz` 都访问同一个 `:8080`，生产路径不需要 CORS。
+
+Demo Compose 使用可写配置目录，适合 Web 后台保存完整配置：
+
+```bash
+pnpm docker:build
+mkdir -p config auth
+cp configs/base_config.yaml config/config.yaml
+pnpm compose:up
+```
+
+`docker-compose.demo.yaml` 只引用已构建好的镜像，默认镜像名与 `pnpm docker:build` 产物一致：`subconverter:local`。需要演示发布镜像时，可用 `SUBCONVERTER_IMAGE=ghcr.io/john-robertt/subconverter:latest docker compose -f docker-compose.demo.yaml up -d` 覆盖。
+
+`SUBCONVERTER_TOKEN` 只保护 `/generate` 客户端订阅访问；Web 管理后台使用管理员账号和 `session_id` Cookie。首次 setup 需要 `SUBCONVERTER_SETUP_TOKEN`，生产环境应改掉示例中的默认值。
+
+### Docker Run
+
+单容器运行适合只提供 `/generate` 和 `/healthz`，或使用远程配置的只读部署：
 
 ```bash
 docker run -d \
@@ -46,57 +116,34 @@ docker run -d \
   -config https://example.com/config.yaml
 ```
 
-验证服务：
+## 使用
+
+### Web 管理后台
+
+部署后访问 `http://localhost:8080/login`。首次进入时使用 `SUBCONVERTER_SETUP_TOKEN` 完成管理员 setup，然后用管理员账号登录。
+
+登录后可以在 Web 管理后台编辑配置、保存到挂载的 `./config/config.yaml`、预览节点和分组，并复制 Clash / Surge 订阅链接。
+
+### 订阅生成接口
+
+直接生成 Clash Meta 或 Surge 配置：
 
 ```bash
 curl "http://localhost:8080/generate?format=clash"
 curl "http://localhost:8080/generate?format=surge"
 curl "http://localhost:8080/generate?format=surge&filename=my-profile"
+```
+
+如果配置了 `SUBCONVERTER_TOKEN` 或 `-access-token`，客户端请求 `/generate` 时必须带上 `token` query：
+
+```bash
+curl "http://localhost:8080/generate?format=clash&token=your-token"
+```
+
+### 健康检查
+
+```bash
 curl "http://localhost:8080/healthz"
-```
-
-### Docker Compose
-
-v2.0 Web 部署使用 `api` + `web` 双服务。浏览器只访问 `web` 服务端口，nginx 同源反向代理 `/api/*`、`/generate`、`/healthz` 到 `api:8080`，生产路径不需要 CORS。
-
-只读配置适合 GitOps 或外部系统管理 YAML：
-
-```bash
-cp configs/base_config.yaml config.yaml
-mkdir -p auth
-docker compose -f deploy/compose.readonly.yaml up -d --build
-```
-
-可写配置适合后续 Web 后台保存完整配置：
-
-```bash
-mkdir -p config auth
-cp configs/base_config.yaml config/config.yaml
-docker compose -f deploy/compose.writable.yaml up -d --build
-```
-
-`SUBCONVERTER_TOKEN` 只保护 `/generate` 客户端订阅访问；Web 管理后台使用管理员账号和 `session_id` Cookie。首次 setup 需要 `SUBCONVERTER_SETUP_TOKEN`，生产环境应改掉示例中的默认值。
-
-### 预编译二进制
-
-从 [GitHub Releases](https://github.com/John-Robertt/subconverter/releases) 下载（支持 linux/amd64、linux/arm64）：
-
-```bash
-tar xzf subconverter_*.tar.gz
-./subconverter -config ./config.yaml -listen :8080
-```
-
-发布包中包含 `configs/` 目录下的底版模板。
-
-### 从源码构建
-
-需要 Go 1.24+。
-
-```bash
-git clone https://github.com/John-Robertt/subconverter.git
-cd subconverter
-make build
-./subconverter -config ./configs/base_config.yaml
 ```
 
 ## 命令行参数
@@ -110,7 +157,7 @@ make build
 | `-access-token` | _空_       | `/generate` 访问 token；未显式传入时可由 `SUBCONVERTER_TOKEN` 提供                          |
 | `-auth-state`   | 系统配置目录 | 管理员密码哈希与 session 状态文件；未显式传入时可由 `SUBCONVERTER_AUTH_STATE` 提供          |
 | `-setup-token`  | 自动生成   | 首次 setup bootstrap token；未显式传入时可由 `SUBCONVERTER_SETUP_TOKEN` 提供                |
-| `-cors`         | `false`    | 仅本地开发调试使用；生产 Compose 通过 `web` 同源反代，不需要 CORS                           |
+| `-cors`         | `false`    | 仅本地开发调试使用；生产 Compose 由同一个 Go 服务同源托管 SPA 和 API，不需要 CORS           |
 | `-healthcheck`  |            | 按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 探活并退出 |
 | `-version`      |            | 打印版本信息并退出                                                                          |
 
@@ -209,9 +256,18 @@ fallback: 🐟 FINAL # 未匹配任何规则的流量走这里
 
 ## 架构
 
-SubConverter 分为启动期和请求期两阶段处理配置：
+SubConverter 的发布镜像、HTTP 路由和配置生成管道保持单向依赖：
 
 ```
+发布期:
+pnpm --filter subconverter-web build --> web/dist --> go build -tags webui --> single binary
+
+HTTP:
+Go server --> /, /login, /sources, /assets/*
+          --> /api/*
+          --> /generate
+          --> /healthz
+
 启动期:
 LoadConfig --> Prepare (produces RuntimeConfig)
 
@@ -220,7 +276,7 @@ Build(Source --> Filter --> Group --> Route --> ValidateGraph)
   --> Target --> Render --> Clash Meta / Surge conf
 ```
 
-启动期通过 `Prepare` 完成静态校验、正则编译、URL 解析和 `@auto` 展开，产出不可变的 `RuntimeConfig`。请求期管道在此基础上拉取订阅、构建格式无关的中间表示（`model.Pipeline`），再由 Target/Render 投影为目标格式输出。
+生产镜像在构建期嵌入 Web 静态资源，运行时由同一个 Go 进程托管 SPA、Admin API、订阅生成和健康检查。启动期通过 `Prepare` 完成静态校验、正则编译、URL 解析和 `@auto` 展开，产出不可变的 `RuntimeConfig`。请求期管道在此基础上拉取订阅、构建格式无关的中间表示（`model.Pipeline`），再由 Target/Render 投影为目标格式输出。
 
 详细架构说明参见 [`docs/architecture.md`](docs/architecture.md)。
 
@@ -228,15 +284,26 @@ Build(Source --> Filter --> Group --> Route --> ValidateGraph)
 
 ```
 subconverter/
+  Dockerfile             单镜像发布构建：pnpm 构建 Web，再用 Go 嵌入并输出 distroless runtime
+  docker-compose.demo.yaml
+                         运行已构建镜像的单服务 Demo Compose
+  package.json           pnpm workspace 脚本入口
+  pnpm-workspace.yaml    pnpm workspace 定义
   cmd/subconverter/      入口、命令行参数、优雅关闭
   internal/
+    admin/               Web 管理后台 API handler
+    app/                 配置读写、状态、预览和生成应用服务
+    auth/                管理员 setup、登录、session 状态
     config/              YAML 解析、有序 Map、静态校验、启动期预计算（Prepare → RuntimeConfig）
     errtype/             类型化错误（Config、Fetch、Resource、Build、Render）
     fetch/               HTTP 拉取器、TTL 缓存、资源加载
+    generate/            生成订阅配置的应用用例
     model/               格式无关的中间表示
     pipeline/            处理阶段：source、filter、group、route、validate
     render/              Clash Meta YAML 和 Surge conf 渲染器
     server/              HTTP 处理器和错误映射
+    webui/               可选嵌入 Web 静态资源；默认 Go 构建为空，Docker 发布用 `webui` tag
+  web/                   Vite + React + TypeScript 管理后台
   configs/               示例配置和底版模板
   testdata/              测试夹具（配置、订阅、期望输出）
   docs/                  架构和设计文档

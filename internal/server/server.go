@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io/fs"
 	"net/http"
 
 	"github.com/John-Robertt/subconverter/internal/generate"
@@ -24,6 +25,7 @@ type Options struct {
 	AdminHandler          http.Handler
 	AdminSessionValidator func(*http.Request) bool
 	EnableCORS            bool
+	WebFS                 fs.FS
 	// RequestCounter, if set, is invoked once per inbound request and feeds
 	// the runtime environment surface on /api/status.
 	RequestCounter func()
@@ -43,6 +45,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /generate", s.handleGenerate)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	var handler http.Handler = mux
+	if s.opts.WebFS != nil {
+		handler = s.webUIFallback(handler)
+	}
 	if s.opts.RequestCounter != nil {
 		handler = requestCounterMiddleware(handler, s.opts.RequestCounter)
 	}

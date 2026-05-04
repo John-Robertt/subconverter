@@ -214,15 +214,15 @@ ssparse
 subconverter/
 ├── web/                          # 前端 SPA 源码
 │   ├── src/                      # React 组件与页面
-│   ├── dist/                     # 构建产物（由 web 镜像中的 nginx 托管）
+│   ├── dist/                     # 构建产物（生产镜像嵌入 Go 二进制）
 │   ├── package.json
 │   ├── vite.config.ts
-│   ├── Dockerfile                # 前端构建 + nginx 静态发布镜像
-│   └── nginx.conf                # SPA fallback + API 反向代理
+│   └── nginx.conf                # nginx 路径配置测试夹具
 └── internal/
     ├── app/                      # v2.0 应用服务层
     ├── admin/                    # Admin API 处理器
-    └── auth/                     # 管理后台认证服务
+    ├── auth/                     # 管理后台认证服务
+    └── webui/                    # 可选嵌入式 Web SPA 资产
 ```
 
 文档目标包名统一为 `internal/auth`。若当前实现仍存在旧命名认证包，包名归一属于实现阶段的独立迁移工作，不改变本文的目标边界。

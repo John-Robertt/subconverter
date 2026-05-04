@@ -1,6 +1,6 @@
 # app.Service 接口契约
 
-> 状态提示：本文定义 v2.0 `internal/app` 包的接口契约。所属能力当前处于设计中（M6-M7）。
+> 状态提示：本文定义 v2.0 `internal/app` 包的当前接口契约。所属能力已随 M6-M7 验收落地，状态见 docs/README.md 与 docs/implementation/progress.md。
 
 ## 目标
 

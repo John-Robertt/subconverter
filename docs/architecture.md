@@ -10,7 +10,7 @@
 
 v2.0 在 v1.0 核心管道基础上新增：
 
-- **Web 管理后台**：React SPA，通过 Docker Compose 中的 `web` 容器托管静态资源，并反向代理到 `api` 容器
+- **Web 管理后台**：React SPA，生产镜像将构建产物嵌入 Go 二进制，由同一服务托管静态资源和 API
 - **配置热重载**：运行时重新加载配置，无需重启服务
 - **Admin API**：配置 CRUD、校验、预览和系统状态接口
 
@@ -18,7 +18,7 @@ v2.0 在 v1.0 核心管道基础上新增：
 
 - 将用户关注点拆分为来源、节点组、服务组、规则集和兜底策略
 - 用统一中间表示支撑 Clash Meta 与 Surge 两种输出
-- 保持后端单二进制、低依赖部署；Web 前端通过独立静态容器发布
+- 保持单二进制、低依赖部署；Web 前端在生产镜像中作为嵌入式静态资源发布
 - 让配置书写顺序稳定映射到客户端面板顺序
 - 提供 Web 管理后台，降低配置编辑门槛
 
@@ -41,7 +41,7 @@ v2.0 在 v1.0 核心管道基础上新增：
 - auth state 只保存 PBKDF2 密码哈希和 session token 的 SHA-256 哈希，不保存明文密码或明文 session id；文件权限必须收紧到 `0600`
 - `SUBCONVERTER_TOKEN` / `-access-token` 只表示 `/generate` 订阅访问 token，用于 Clash / Surge 等客户端自动更新订阅；它不作为 `/api/*` 或后台页面的权限凭据
 - `POST /api/preview/*` 接受草稿配置中的任意订阅 URL 并实际拉取——这是设计意图（允许用户预览新增来源的效果），而非安全疏忽
-- `/generate?token=...` 的 token 会出现在 URL 中（nginx access log、浏览器历史记录等），使用者应知悉此泄漏路径；同理，若 `-config` 参数是含 token 的私有远程 URL（如 GitHub Raw `?token=...`），该 URL 同样可能出现在 nginx access log 或进程日志中
+- `/generate?token=...` 的 token 会出现在 URL 中（访问日志、浏览器历史记录等），使用者应知悉此泄漏路径；同理，若 `-config` 参数是含 token 的私有远程 URL（如 GitHub Raw `?token=...`），该 URL 同样可能出现在前置代理或进程日志中
 - 本系统不提供多用户、RBAC、审计系统、IP 白名单或公网 WAF 能力——若需要这些能力，由前置反向代理（nginx、Cloudflare Tunnel 等）承担
 
 ---
@@ -81,17 +81,17 @@ config.yaml + remote sources
         └─► /healthz                        （健康检查）
 ```
 
-v2.0 正式 Web 部署时，浏览器不直接访问 `subconverter` 后端端口，而是访问 Docker Compose 中的 `web` 容器：
+v2.0 正式 Web 部署时，浏览器直接访问 `subconverter` 服务端口。生产镜像在构建期将 `web/dist` 嵌入 Go 二进制，由同一个进程同时提供 SPA、Admin API、订阅生成和健康检查：
 
 ```text
 browser
   │
   ▼
-web container (nginx)
-  ├─► /                 SPA 静态资源 + 前端路由 fallback
-  ├─► /api/*      ───┐
-  ├─► /generate   ───┼─► api container (subconverter:8080)
-  └─► /healthz    ───┘
+subconverter (Go)
+  ├─► /                 embedded SPA + 前端路由 fallback
+  ├─► /api/*            Admin API
+  ├─► /generate         订阅生成
+  └─► /healthz          健康检查
 ```
 
 ---
@@ -187,10 +187,9 @@ RUnlock()
 ### 生产部署方式（v2.0 目标）
 
 - 前端构建产物输出到 `web/dist/`
-- `web/Dockerfile` 使用 Node 构建前端，并用 nginx 托管静态资源
-- nginx 对 `/` 执行 SPA fallback，未命中静态文件时返回 `index.html`
-- nginx 将 `/api/*`、`/generate`、`/healthz` 反向代理到 Compose 内的 `api:8080`
-- 后端 `api` 容器只负责接口和配置生成，不托管 Web 静态资源
+- 根 `Dockerfile` 使用 pnpm 构建前端，并在 Go 构建阶段用 `webui` build tag 将 `web/dist` 嵌入二进制
+- Go HTTP server 对 `/` 执行 SPA fallback，未命中静态文件时返回 `index.html`
+- `/api/*`、`/generate`、`/healthz` 仍由同一 Go 服务处理，不经过反向代理
 - 生产模式下 SPA 与 API 对浏览器同源，不需要启用 CORS
 
 ### 开发模式
@@ -312,7 +311,7 @@ Web 管理后台
 | 资源加载模型 | 配置文件和模板均支持本地路径或 HTTP(S) URL | 统一 `LoadResource` |
 | 渲染器合并策略 | Clash 用 yaml.Node 替换；Surge 用 section 切分替换 | 保留底版用户设置 |
 | **热重载并发模型** | `sync.RWMutex` 保护 `RuntimeConfig` | 单进程无需分布式锁，读多写少场景最优 |
-| **前端部署方式** | Docker Compose：`web` nginx 静态站点 + 反向代理到 `api` | 避免 Go 嵌入目录边界问题，生产同源访问 |
+| **前端部署方式** | Go 二进制嵌入 `web/dist`，单服务同源托管 SPA 与 API | 单镜像、单进程，生产同源访问 |
 | **开发模式** | Vite proxy 优先；`-cors` 仅作本地调试兜底 | 前后端分离开发 |
 | **Admin API 前缀** | `/api/*` | 与 `/generate` 平行，不冲突 |
 | **YAML 真相源** | UI 是 YAML 的可视化外壳 | 数据一致性，修改可追溯 |

@@ -1,8 +1,13 @@
 package server
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func TestResolveFilename(t *testing.T) {
@@ -91,5 +96,88 @@ func TestContentDispositionValue(t *testing.T) {
 	want := `attachment; filename="my-profile.yaml"; filename*=UTF-8''my-profile.yaml`
 	if got != want {
 		t.Fatalf("contentDispositionValue() = %q, want %q", got, want)
+	}
+}
+
+func TestWebUIServesSPAFallbackAndAssets(t *testing.T) {
+	srv := New(nil, Options{
+		WebFS: fstest.MapFS{
+			"index.html":          {Data: []byte("<!doctype html><div id=\"root\"></div>")},
+			"assets/app-1234.js":  {Data: []byte("console.log('ok')")},
+			"favicon.ico":         {Data: []byte("ico")},
+			"assets/style.css":    {Data: []byte("body{}")},
+			"assets/nested/skip":  {Data: []byte("nested")},
+			"assets/nested/index": {Data: []byte("nested-index")},
+		},
+	})
+	handler := srv.Handler()
+
+	cases := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantBody   string
+		wantCache  string
+	}{
+		{
+			name:       "root serves index",
+			path:       "/",
+			wantStatus: http.StatusOK,
+			wantBody:   "root",
+			wantCache:  webUICacheControlHTML,
+		},
+		{
+			name:       "spa route falls back to index",
+			path:       "/sources",
+			wantStatus: http.StatusOK,
+			wantBody:   "root",
+			wantCache:  webUICacheControlHTML,
+		},
+		{
+			name:       "index explicit",
+			path:       "/index.html",
+			wantStatus: http.StatusOK,
+			wantBody:   "root",
+			wantCache:  webUICacheControlHTML,
+		},
+		{
+			name:       "asset uses immutable cache",
+			path:       "/assets/app-1234.js",
+			wantStatus: http.StatusOK,
+			wantBody:   "console.log",
+			wantCache:  webUICacheControlAsset,
+		},
+		{
+			name:       "missing asset does not fall back",
+			path:       "/assets/missing.js",
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "api path does not fall back",
+			path:       "/api/unknown",
+			wantStatus: http.StatusNotFound,
+			wantBody:   "404 page not found",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			handler.ServeHTTP(rec, req)
+			resp := rec.Result()
+			defer func() { _ = resp.Body.Close() }()
+			body, _ := io.ReadAll(resp.Body)
+
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body: %s", resp.StatusCode, tc.wantStatus, body)
+			}
+			if tc.wantBody != "" && !strings.Contains(string(body), tc.wantBody) {
+				t.Fatalf("body = %q, want containing %q", body, tc.wantBody)
+			}
+			if tc.wantCache != "" && resp.Header.Get("Cache-Control") != tc.wantCache {
+				t.Fatalf("Cache-Control = %q, want %q", resp.Header.Get("Cache-Control"), tc.wantCache)
+			}
+		})
 	}
 }

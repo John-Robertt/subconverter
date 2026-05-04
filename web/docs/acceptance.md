@@ -7,12 +7,12 @@
 - A1-A8、B1-B3、C 全部路由可访问。
 - `/login` 可访问，未登录访问受保护路由会跳转 `/login?next=<原路径>`。
 - B3 页面路由为 `/download`，刷新 `/download` 由 SPA fallback 返回页面。
-- `/generate?format=clash|surge` 继续作为后端生成接口经 nginx 反向代理，不被 SPA 路由接管。
+- `/generate?format=clash|surge` 继续作为后端生成接口，不被 SPA 路由接管。
 - 1280x800 下无文本重叠、按钮溢出或关键内容不可见。
 - 所有页面具备 loading、empty、error、readonly 状态。
 - 长 URL、长正则、长节点名和 emoji key 显示稳定。
 - 浅色与深色主题均可用，1280x800 下都无文本重叠、按钮溢出或关键内容不可见。
-- Web 容器中 `index.html` 使用可重验证缓存策略，带 hash 的静态资源可长期缓存且不会影响新版本发布。
+- 生产服务中 `index.html` 使用可重验证缓存策略，带 hash 的静态资源可长期缓存且不会影响新版本发布。
 
 ## API 行为验收
 
