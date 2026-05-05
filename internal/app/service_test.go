@@ -426,10 +426,10 @@ func TestStatusConfigWriteCapabilityReflectsLocalPermissions(t *testing.T) {
 	if err := os.Chmod(path, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dir, 0o500); err != nil {
+	if err := os.Chmod(dir, 0o500); err != nil { //nolint:gosec // test needs execute bit while removing write permission.
 		t.Fatal(err)
 	}
-	defer func() { _ = os.Chmod(dir, 0o700) }()
+	defer func() { _ = os.Chmod(dir, 0o700) }() //nolint:gosec // restore temp directory permissions for cleanup.
 	status, err = svc.Status(context.Background())
 	if err != nil {
 		t.Fatalf("Status readonly dir: %v", err)
