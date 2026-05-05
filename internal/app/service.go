@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/John-Robertt/subconverter/internal/config"
@@ -379,6 +380,8 @@ func writeFileAtomically(path string, data []byte) error {
 }
 
 func ensureLocalConfigWritable(path string) error {
+	const writableAccessMode = 0x2
+
 	clean := filepath.Clean(path)
 	info, err := os.Stat(clean)
 	if err != nil {
@@ -387,12 +390,18 @@ func ensureLocalConfigWritable(path string) error {
 	if info.IsDir() || info.Mode().Perm()&0o200 == 0 {
 		return errtype.ErrConfigFileNotWritable
 	}
+	if err := syscall.Access(clean, writableAccessMode); err != nil {
+		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
+	}
 	dirInfo, err := os.Stat(filepath.Dir(clean))
 	if err != nil {
 		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
 	}
 	if !dirInfo.IsDir() || dirInfo.Mode().Perm()&0o200 == 0 {
 		return errtype.ErrConfigFileNotWritable
+	}
+	if err := syscall.Access(filepath.Dir(clean), writableAccessMode); err != nil {
+		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
 	}
 	return nil
 }

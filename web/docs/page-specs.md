@@ -212,7 +212,7 @@
 | 数据来源 | `GET /api/status` 与 `GET /healthz` |
 | 主要动作 | 查看健康、版本、配置源、可写性、revision、dirty、最近 reload；通过全局“热重载”按钮触发 reload |
 | 调用 API | `GET /api/status`、`GET /healthz`、`POST /api/reload` |
-| 只读行为 | 只读配置源仍允许 reload；展示 `capabilities.config_write=false` |
+| 只读行为 | 远程配置源或本地不可写配置仍允许 reload；展示 `capabilities.config_write=false` |
 | dirty 行为 | dirty 时提供 reload 入口；reload 成功后刷新 status |
 | loading / empty / error | status 加载显示骨架；healthz 失败显示连接错误；429 reload 展示短间隔退避或可重试提示 |
 | 远程配置边界 | 不把 `GET /api/status` 解释为远程配置源实时探测；HTTP(S) 配置源 revision 基于最近观测结果 |

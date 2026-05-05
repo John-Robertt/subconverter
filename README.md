@@ -19,7 +19,7 @@ SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源、Snell 来源和
 - **内联规则** — 直接编写路由规则，与远程规则集并用
 - **双格式输出** — 同一份配置生成 Clash Meta YAML 和 Surge conf；格式不支持的协议按能力差异处理
 - **Web 管理后台** — 通过同源 SPA 管理配置、预览节点/分组、生成订阅链接
-- **单镜像部署** — Docker 构建时嵌入 `web/dist`，由 Go 二进制直接托管 Web、`/api/*`、`/generate` 和 `/healthz`
+- **单镜像部署** — `pnpm web:embed` 生成并同步 Web 嵌入产物后，Docker 构建 Go 二进制并直接托管 Web、`/api/*`、`/generate` 和 `/healthz`
 - **模板合并** — 将生成内容注入底版模板，保留 DNS/TUN 等通用设置
 - **缓存** — 基于 TTL 的内存缓存，加速订阅和模板拉取
 - **优雅关闭** — 正确处理 SIGINT/SIGTERM 信号

@@ -113,10 +113,11 @@ func (s *Service) runtimeEnvironment() RuntimeEnvironment {
 
 func (s *Service) configSource() ConfigSource {
 	sourceType := "local"
-	writable := s.configLocation != ""
+	writable := false
 	if isRemoteConfig(s.configLocation) {
 		sourceType = "remote"
-		writable = false
+	} else if s.configLocation != "" {
+		writable = ensureLocalConfigWritable(s.configLocation) == nil
 	}
 	return ConfigSource{
 		Location: s.configLocation,

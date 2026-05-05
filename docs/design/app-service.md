@@ -285,7 +285,7 @@ type StatusResult struct {
 type ConfigSource struct {
     Location string `json:"location"`
     Type     string `json:"type"`     // "local" | "remote"
-    Writable bool   `json:"writable"`
+    Writable bool   `json:"writable"` // supports save and current local permissions allow writing
 }
 
 type Capabilities struct {

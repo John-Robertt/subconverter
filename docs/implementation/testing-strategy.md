@@ -148,7 +148,7 @@
 - `T-PRV-001`：Preview nodes 返回正确的节点列表（含 Kind 和 filtered 标记，并覆盖 Included / Excluded）
 - `T-PRV-002`：Preview groups 成功时返回节点组、链式组、服务组和 `@all` / `@auto` 展开结果
 - `T-PRV-003`：Generate preview 与 generate 输出一致（仅 Content-Disposition 不同）
-- `T-PRV-004`：Status 返回进程信息（版本、配置源位置与可写性、热重载状态），HTTP(S) 配置源下标记 `capabilities.config_write=false`
+- `T-PRV-004`：Status 返回进程信息（版本、配置源位置与可写性、热重载状态），HTTP(S) 配置源或本地配置文件/目录不可写时标记 `capabilities.config_write=false`
 - `T-PRV-005`：POST 草稿 nodes 预览使用请求体配置，GET nodes 预览仍使用当前 RuntimeConfig
 - `T-PRV-006`：POST 草稿 groups 预览返回草稿服务组展开结果，不改变运行时状态
 - `T-PRV-007`：POST 草稿 generate preview 输出草稿配置结果，不改变 `config_dirty`、`last_reload` 或 RuntimeConfig
@@ -166,7 +166,7 @@
 
 建议覆盖：
 
-- `T-SPA-001`：根 `Dockerfile` 可成功构建内嵌 Web SPA 的单服务镜像
+- `T-SPA-001`：`pnpm web:embed` 已同步 Web 静态资源后，根 `Dockerfile` 可成功构建内嵌 Web SPA 的单服务镜像
 - `T-SPA-002`：访问 `/` 返回 SPA `index.html`
 - `T-SPA-003`：刷新任意前端路由时由 Go 服务 fallback 到 `index.html`
 - `T-SPA-004`：`/generate?format=clash` 与 `/generate?format=surge` 由同一 Go 服务处理成功，且不被 SPA fallback 接管

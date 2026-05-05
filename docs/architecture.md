@@ -81,7 +81,7 @@ config.yaml + remote sources
         └─► /healthz                        （健康检查）
 ```
 
-v2.0 正式 Web 部署时，浏览器直接访问 `subconverter` 服务端口。生产镜像在构建期将 `web/dist` 嵌入 Go 二进制，由同一个进程同时提供 SPA、Admin API、订阅生成和健康检查：
+v2.0 正式 Web 部署时，浏览器直接访问 `subconverter` 服务端口。生产发布先通过 `pnpm web:embed` 将前端产物同步到 `internal/webui/dist`，再由 Go `webui` 构建嵌入二进制；运行时由同一个进程同时提供 SPA、Admin API、订阅生成和健康检查：
 
 ```text
 browser
@@ -187,7 +187,8 @@ RUnlock()
 ### 生产部署方式
 
 - 前端构建产物输出到 `web/dist/`
-- 根 `Dockerfile` 使用 pnpm 构建前端，并在 Go 构建阶段用 `webui` build tag 将 `web/dist` 嵌入二进制
+- `pnpm web:embed` 将 `web/dist` 同步到 `internal/webui/dist`
+- 根 `Dockerfile` 不运行 pnpm；它使用已同步产物，并在 Go 构建阶段用 `webui` build tag 将 Web 静态资源嵌入二进制
 - Go HTTP server 对 `/` 执行 SPA fallback，未命中静态文件时返回 `index.html`
 - `/api/*`、`/generate`、`/healthz` 仍由同一 Go 服务处理，不经过反向代理
 - 生产模式下 SPA 与 API 对浏览器同源，不需要启用 CORS

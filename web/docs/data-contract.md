@@ -132,4 +132,4 @@ API client 归一化错误对象至少包含：
 - `invalid_credentials`：登录页展示用户名或密码错误，并显示剩余尝试次数。
 - `auth_locked`：登录页展示锁定截止时间并禁用提交。
 - `setup_token_required` / `setup_token_invalid`：setup 模式展示 bootstrap token 错误，不创建管理员凭据。
-- `/generate` 的 `token_required` / `token_invalid`：只表示客户端订阅访问 token 问题，不触发额外的后台凭据输入。
+- `/generate` 不返回 JSON `error.code`；缺少或错误订阅 token 时返回 `401 text/plain`，只表示客户端订阅访问 token 问题，不触发额外的后台凭据输入。

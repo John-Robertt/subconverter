@@ -184,10 +184,10 @@
 
 | 配置源 | `GET /api/config` | `PUT /api/config` | `POST /api/reload` | 说明 |
 |--------|-------------------|-------------------|--------------------|------|
-| 本地文件 | 支持 | 支持 | 支持 | Web 后台可编辑并写回 YAML 文件 |
+| 本地文件 | 支持 | 支持；文件或目录不可写时返回 `409 config_file_not_writable` | 支持 | Web 后台可编辑并写回 YAML 文件 |
 | HTTP(S) URL | 支持 | 不支持，返回 `409` | 支持 | 远程配置视为只读，只能重新拉取并热重载 |
 
-状态接口会暴露 `config_source.type`、`config_source.writable` 和 `capabilities.config_write`，前端据此隐藏或禁用保存入口。
+状态接口会暴露 `config_source.type`、`config_source.writable` 和 `capabilities.config_write`，前端据此隐藏或禁用保存入口。本地配置文件或所在目录不可写时，`config_source.writable=false` 且 `capabilities.config_write=false`。
 
 ### `GET /api/config`
 
@@ -642,13 +642,13 @@ revision 冲突响应示例：
 字段说明：
 
 - `config_source.type`：`local` 或 `remote`
-- `config_source.writable`：当前配置源是否支持 `PUT /api/config`
+- `config_source.writable`：当前配置源是否支持 `PUT /api/config` 且当前本地文件/目录权限允许保存；HTTP(S) 配置源和本地不可写配置均为 `false`
 - `config_revision`：配置源当前已保存内容的 revision
 - `runtime_config_revision`：当前 `RuntimeConfig` 对应的配置 revision
 - `config_dirty`：`config_revision != runtime_config_revision` 时为 `true`
 - 本地配置源检测策略：每次 `GET /api/status` 都重新读取配置文件并计算 `sha256:<hex>`，不以 `(mtime, size)` 作为跳过 hash 的强判断；因此同大小改写或保留 mtime 的外部修改也能被下一次 status 请求发现
 - HTTP(S) 配置源检测策略：status 不主动拉取远程配置；`config_revision` 与 dirty 状态基于最近一次 `GET /api/config` 或 `POST /api/reload` 观测到的内容
-- `capabilities.config_write`：前端是否应启用保存入口
+- `capabilities.config_write`：前端是否应启用保存入口；与当前后端实际写回能力保持一致
 - `last_reload`：可选字段。仅在进程曾经触发过 `POST /api/reload`（无论成功或失败）时存在；从未发生过 reload 时该字段被省略（`omitempty`）。这避免用 zero value 同时表达"未发生"与"失败"两种语义——前端据此区分"运行中（未重载）"与"上次重载失败"
 - `last_reload.error`：仅在 `success=false` 时填充，记录最近一次 reload 失败的错误消息（用于 UI 直接展示原因）；`success=true` 时省略
 - `runtime_environment`：当前进程运行环境。`request_count_24h` 当前为进程内请求计数；进程启动未满 24 小时时，前端可按“自启动以来”展示

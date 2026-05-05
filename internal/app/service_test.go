@@ -392,6 +392,53 @@ func TestStatusLocalRehashesAndRemoteDoesNotFetch(t *testing.T) {
 	}
 }
 
+// T-PRV-004: status reflects local config file and directory writability
+func TestStatusConfigWriteCapabilityReflectsLocalPermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(validConfigYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(context.Background(), Options{ConfigLocation: path})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status writable: %v", err)
+	}
+	if !status.ConfigSource.Writable || !status.Capabilities.ConfigWrite {
+		t.Fatalf("writable local config reported readonly: %+v", status)
+	}
+
+	if err := os.Chmod(path, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	status, err = svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status readonly file: %v", err)
+	}
+	if status.ConfigSource.Writable || status.Capabilities.ConfigWrite {
+		t.Fatalf("readonly local file reported writable: %+v", status)
+	}
+
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(dir, 0o700) }()
+	status, err = svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status readonly dir: %v", err)
+	}
+	if status.ConfigSource.Writable || status.Capabilities.ConfigWrite {
+		t.Fatalf("readonly config dir reported writable: %+v", status)
+	}
+}
+
 // T-APP-010: generate link uses server token and base_url
 func TestGenerateLinkUsesServerTokenAndBaseURL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")

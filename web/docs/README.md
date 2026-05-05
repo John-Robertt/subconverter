@@ -32,7 +32,7 @@
 ## 当前状态
 
 - `web/` 当前是 Vite + React + TypeScript + React Query 正式 SPA 工程。
-- 生产主路径由根 Dockerfile 构建 `web/dist` 并嵌入 Go 二进制；不再维护独立 Web 静态镜像。
+- 生产主路径由根 `pnpm web:embed` 构建 `web/dist` 并同步到 `internal/webui/dist`，再由根 Dockerfile 嵌入 Go 二进制；不再维护独立 Web 静态镜像。
 - 正式管理接口统一使用 `/api/*`；生成接口继续使用 `/generate`。
 - Web 管理后台使用管理员登录态和 `session_id` Cookie；`SUBCONVERTER_TOKEN` 只用于 `/generate` 订阅链接。
 - v2.0 当前不承诺内建配置版本恢复、多用户权限系统或服务端节点测速图表。

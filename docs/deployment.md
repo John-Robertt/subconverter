@@ -1,6 +1,6 @@
 # 构建与部署
 
-> 状态提示：当前源码已包含 `/generate`、`/healthz`、`/api/*` 后端接口和正式 Web 管理后台。生产主路径是单镜像单服务：Docker 构建时将 `web/dist` 嵌入 Go 二进制，由同一个进程托管 SPA 与 API。
+> 状态提示：当前源码已包含 `/generate`、`/healthz`、`/api/*` 后端接口和正式 Web 管理后台。生产主路径是单镜像单服务：先运行 `pnpm web:embed` 生成并同步 Web 嵌入产物，再由 Dockerfile 使用 Go 工具链构建托管 SPA 与 API 的单个二进制。
 
 ## 目标
 
@@ -41,8 +41,8 @@ Docker 镜像平台矩阵：
 
 - 运行 lint（golangci-lint）、格式检查（gofmt）、测试（go test）和 vet（go vet）
 - 用 GoReleaser 发布二进制和 `checksums.txt` 到 GitHub Release
-- 运行 Web 前端依赖安装、测试和构建
-- 构建并推送内嵌 Web SPA 的 GHCR 多架构镜像
+- 校验已同步的 Web 嵌入产物存在
+- 构建并推送内嵌 Web SPA 的 GHCR 多架构镜像；Dockerfile 本身不安装 Node/pnpm
 
 ---
 
@@ -125,7 +125,7 @@ docker run -d \
   ghcr.io/john-robertt/subconverter:latest
 ```
 
-这种模式适合 GitOps / 外部系统管理配置文件的部署方式。`api` 服务会把只读挂载识别为不可写配置源，`PUT /api/config` 返回 `409 config_source_readonly`；正式 Web 页面应据此禁用保存入口。
+这种模式适合 GitOps / 外部系统管理配置文件的部署方式。`api` 服务会把只读挂载识别为本地配置文件不可写，`GET /api/status` 返回 `config_source.writable=false` 与 `capabilities.config_write=false`；正式 Web 页面据此禁用保存入口。若绕过前端直接调用 `PUT /api/config`，会返回 `409 config_file_not_writable`。
 
 ### Docker 部署（可写目录挂载，为 v2.0 写回预留）
 
@@ -286,21 +286,21 @@ Release workflow 会为镜像写入 OCI 元数据：
 
 ## Web 构建
 
-Web 管理后台前端源码位于 `web/` 目录。生产路径不发布独立 Web 服务；根 Dockerfile 会先构建 `web/dist`，再把产物嵌入 Go 二进制。
+Web 管理后台前端源码位于 `web/` 目录。生产路径不发布独立 Web 服务；`pnpm web:embed` 会构建 `web/dist` 并同步到 `internal/webui/dist`，根 Dockerfile 只使用该已同步产物和 Go 工具链构建镜像。
 
 ### 构建流程
 
 ```bash
 pnpm install
-pnpm --filter subconverter-web test
-pnpm --filter subconverter-web build
+pnpm web:test
+pnpm web:embed
 docker build -t subconverter:local .
 ```
 
 根 `Dockerfile` 的目标职责为：
 
-- Node 22 + pnpm 构建 `web/dist`
-- Go 构建阶段使用 `-tags webui` 将 `web/dist` 嵌入二进制
+- 使用已提交或已同步的 `internal/webui/dist`
+- Go 构建阶段使用 `-tags webui` 将 Web 静态资源嵌入二进制
 - distroless runtime 仅包含 `/app/subconverter` 和底版模板
 
 缓存头策略应与 API 契约保持一致：
@@ -314,8 +314,8 @@ docker build -t subconverter:local .
 Release workflow 发布内嵌 Web SPA 的单镜像：
 
 1. Go lint / format / test / vet
-2. `pnpm install --frozen-lockfile && pnpm --filter subconverter-web test && pnpm --filter subconverter-web build`
-3. Docker build（根 `Dockerfile`，内部重复执行可复现的 pnpm Web 构建与 Go 构建）
+2. `test -s internal/webui/dist/index.html` 校验 Web 嵌入产物已随仓库同步
+3. Docker build（根 `Dockerfile`，只执行 Go `webui` 构建，不在 Docker 内重复执行 pnpm）
 
 Docker Compose 只启动一个 `subconverter` 服务。默认 Go 二进制构建不要求 Web 静态资源；生产 Docker 构建使用 `webui` build tag 嵌入资源。
 
