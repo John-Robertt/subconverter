@@ -218,8 +218,7 @@ subconverter/
 │   ├── src/                      # React 组件与页面
 │   ├── dist/                     # 构建产物（生产镜像嵌入 Go 二进制）
 │   ├── package.json
-│   ├── vite.config.ts
-│   └── nginx.conf                # nginx 路径配置测试夹具
+│   └── vite.config.ts
 └── internal/
     ├── app/                      # v2.0 应用服务层
     ├── admin/                    # Admin API 处理器

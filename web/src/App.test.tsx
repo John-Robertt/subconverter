@@ -525,6 +525,7 @@ describe("high fidelity interactions", () => {
     renderApp("/routing");
 
     await screen.findByRole("heading", { level: 1, name: "路由策略" });
+    expect(screen.getAllByRole("button", { name: "拖拽成员排序" })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: /@all/ }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));

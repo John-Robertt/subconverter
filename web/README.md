@@ -40,10 +40,6 @@ pnpm docker:build
 pnpm compose:up
 ```
 
-## 原型
-
-旧高保真原型已迁移到 `web/prototype/`，仅作为视觉和交互参考，不参与正式 Vite 构建，也不会被 Web 镜像复制。
-
 ## 文档
 
 | 文件 | 说明 |

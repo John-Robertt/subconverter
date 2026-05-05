@@ -1,5 +1,25 @@
-import { Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Plus, Trash2, X } from "lucide-react";
+import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { OrderedEntry } from "../api/types";
 import { SortableList } from "../components/SortableList";
 import { Chip, EmptyState, Field, IconButton, RailPanel, SplitWorkbench, TextInput } from "../components/ui";
@@ -68,6 +88,11 @@ export function RoutingPage() {
     patchEntry(activeIndex, { value: activeRoute.value.filter((_, index) => index !== memberIndex) });
   }
 
+  function reorderMembers(nextMembers: string[]) {
+    if (activeIndex === null || !activeRoute || isReadonly) return;
+    patchEntry(activeIndex, { value: nextMembers });
+  }
+
   function toggleMember(member: string) {
     if (activeIndex === null || !activeRoute || isReadonly) return;
     const index = activeRoute.value.indexOf(member);
@@ -111,19 +136,13 @@ export function RoutingPage() {
 
               <div className="palette-section">
                 <span>当前成员（{activeRoute.value.length}）</span>
-                <div className="member-chip-list">
-                  {activeRoute.value.length === 0 ? <p className="muted">暂无成员</p> : null}
-                  {activeRoute.value.map((member, memberIndex) => (
-                    <Chip
-                      key={`${member}-${memberIndex}`}
-                      tone={memberTone(member, chainNames)}
-                      removable={!isReadonly}
-                      onRemove={() => removeMember(memberIndex)}
-                    >
-                      {member}
-                    </Chip>
-                  ))}
-                </div>
+                <SortableMemberChips
+                  members={activeRoute.value}
+                  chainNames={chainNames}
+                  disabled={isReadonly}
+                  onReorder={reorderMembers}
+                  onRemove={removeMember}
+                />
               </div>
 
               <div className="palette-section">
@@ -311,6 +330,156 @@ export function RoutingPage() {
 }
 
 type MemberTone = "neutral" | "accent" | "success" | "error" | "info" | "chain";
+
+interface SortableMemberChipsProps {
+  members: string[];
+  chainNames: Set<string>;
+  disabled: boolean;
+  onReorder: (members: string[]) => void;
+  onRemove: (index: number) => void;
+}
+
+function SortableMemberChips({ members, chainNames, disabled, onReorder, onRemove }: SortableMemberChipsProps) {
+  const ids = members.map(memberId);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [overlayWidth, setOverlayWidth] = useState<number | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const activeIndex = activeId ? ids.indexOf(activeId) : -1;
+  const activeMember = activeIndex >= 0 ? members[activeIndex] : undefined;
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+    setOverlayWidth(listRef.current?.getBoundingClientRect().width ?? event.active.rect.current.initial?.width ?? null);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setActiveId(null);
+    setOverlayWidth(null);
+    if (!over || active.id === over.id) return;
+    const oldIndex = ids.indexOf(String(active.id));
+    const newIndex = ids.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    onReorder(arrayMove(members, oldIndex, newIndex));
+  }
+
+  function handleDragCancel() {
+    setActiveId(null);
+    setOverlayWidth(null);
+  }
+
+  if (members.length === 0) {
+    return <p className="muted">暂无成员</p>;
+  }
+
+  if (disabled) {
+    return (
+      <div className="member-chip-list readonly">
+        {members.map((member, index) => (
+          <MemberChip key={memberId(member, index)} member={member} tone={memberTone(member, chainNames)} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <div ref={listRef} className="member-chip-list member-chip-sortable">
+          {members.map((member, index) => (
+            <SortableMemberChip key={memberId(member, index)} id={memberId(member, index)}>
+              {(handle) => (
+                <MemberChip
+                  member={member}
+                  tone={memberTone(member, chainNames)}
+                  dragHandle={handle}
+                  onRemove={() => onRemove(index)}
+                />
+              )}
+            </SortableMemberChip>
+          ))}
+        </div>
+      </SortableContext>
+      <DragOverlay>
+        {activeMember ? (
+          <span className="member-chip-overlay-frame" style={overlayWidth ? { width: overlayWidth } : undefined}>
+            <MemberChip
+              member={activeMember}
+              tone={memberTone(activeMember, chainNames)}
+              className="member-chip-overlay"
+              dragHandle={
+                <span className="member-drag-handle member-drag-handle-overlay" aria-hidden="true">
+                  <GripVertical size={13} aria-hidden="true" />
+                </span>
+              }
+            />
+          </span>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function SortableMemberChip({ id, children }: { id: string; children: (handle: ReactNode) => ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition
+  };
+  const handle = (
+    <button className="member-drag-handle" type="button" aria-label="拖拽成员排序" {...attributes} {...listeners}>
+      <GripVertical size={13} aria-hidden="true" />
+    </button>
+  );
+
+  return (
+    <span ref={setNodeRef} style={style} className={isDragging ? "member-chip-row dragging" : "member-chip-row"}>
+      {children(handle)}
+    </span>
+  );
+}
+
+function MemberChip({
+  member,
+  tone,
+  dragHandle,
+  onRemove,
+  className,
+  style
+}: {
+  member: string;
+  tone: MemberTone;
+  dragHandle?: ReactNode;
+  onRemove?: () => void;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <span className={`chip chip-${tone} member-chip${className ? ` ${className}` : ""}`} style={style}>
+      {dragHandle}
+      <span className="member-chip-label">{member}</span>
+      {onRemove ? (
+        <button className="member-remove-button" type="button" aria-label="移除" title={`移除 ${member}`} onClick={onRemove}>
+          <X size={12} aria-hidden="true" />
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+function memberId(member: string, index: number) {
+  return `${index}:${member}`;
+}
 
 function memberTone(member: string, chainNames?: Set<string>): MemberTone {
   if (chainNames?.has(member)) return "chain";

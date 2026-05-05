@@ -618,6 +618,8 @@ code {
 .button:focus-visible,
 .icon-button:focus-visible,
 .drag-handle:focus-visible,
+.member-drag-handle:focus-visible,
+.member-remove-button:focus-visible,
 .category-pill:focus-visible,
 .strategy-card:focus-visible,
 .add-dashed:focus-visible,
@@ -1630,6 +1632,107 @@ tr:last-child td {
 
 .member-chip-list.readonly .chip {
   cursor: default;
+}
+
+.member-chip-sortable {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  width: 100%;
+}
+
+.member-chip-row {
+  display: inline-flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.member-chip-row.dragging {
+  z-index: 2;
+}
+
+.member-chip-row.dragging .member-chip {
+  opacity: 0;
+}
+
+.member-chip {
+  gap: 4px;
+  padding-left: 5px;
+}
+
+.member-chip-sortable .member-chip,
+.member-chip-overlay {
+  width: 100%;
+  min-height: 32px;
+  gap: 8px;
+  padding: 5px 12px;
+}
+
+.member-chip-overlay-frame {
+  display: inline-flex;
+  max-width: calc(100vw - 32px);
+}
+
+.member-chip-overlay {
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+  cursor: grabbing;
+}
+
+.member-chip-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-drag-handle,
+.member-remove-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+}
+
+.member-drag-handle {
+  margin-left: -2px;
+  cursor: grab;
+  opacity: 0.72;
+  touch-action: none;
+}
+
+.member-chip-sortable .member-drag-handle,
+.member-chip-overlay .member-drag-handle {
+  margin: 0;
+}
+
+.member-drag-handle:active {
+  cursor: grabbing;
+}
+
+.member-remove-button {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.member-chip-sortable .member-remove-button,
+.member-chip-overlay .member-remove-button {
+  margin: 0 0 0 auto;
+}
+
+.member-drag-handle-overlay {
+  cursor: grabbing;
+}
+
+.member-drag-handle:hover,
+.member-remove-button:hover {
+  background: rgba(255, 255, 255, 0.46);
 }
 
 .add-chip {

@@ -1,6 +1,6 @@
 # Web 管理后台设计
 
-> 状态提示：本文描述 v2.0 Web 管理后台当前契约；`web/` 是正式 Vite SPA 工程，生产镜像将构建产物嵌入 Go 二进制。旧设计原型位于 `web/prototype/`，能力状态见 docs/README.md。
+> 状态提示：本文描述 v2.0 Web 管理后台当前契约；`web/` 是正式 Vite SPA 工程，生产镜像将构建产物嵌入 Go 二进制。能力状态见 docs/README.md。
 
 ## 目标
 

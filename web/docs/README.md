@@ -1,6 +1,6 @@
 # Web 管理后台文档契约
 
-本目录定义正式 v2.0 Web 管理后台的前端产品、交互、数据和验收契约。当前 `web/` 是正式 Vite SPA 工程；旧高保真原型位于 `web/prototype/`，只作为参考。
+本目录定义正式 v2.0 Web 管理后台的前端产品、交互、数据和验收契约。当前 `web/` 是正式 Vite SPA 工程。
 
 ## 权威来源
 
@@ -32,7 +32,6 @@
 ## 当前状态
 
 - `web/` 当前是 Vite + React + TypeScript + React Query 正式 SPA 工程。
-- `web/prototype/` 保留旧高保真原型，不参与正式构建。
 - 生产主路径由根 Dockerfile 构建 `web/dist` 并嵌入 Go 二进制；不再维护独立 Web 静态镜像。
 - 正式管理接口统一使用 `/api/*`；生成接口继续使用 `/generate`。
 - Web 管理后台使用管理员登录态和 `session_id` Cookie；`SUBCONVERTER_TOKEN` 只用于 `/generate` 订阅链接。

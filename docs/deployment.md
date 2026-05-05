@@ -286,7 +286,7 @@ Release workflow 会为镜像写入 OCI 元数据：
 
 ## Web 构建
 
-Web 管理后台前端源码位于 `web/` 目录。生产路径不发布独立 Web 服务；根 Dockerfile 会先构建 `web/dist`，再把产物嵌入 Go 二进制。旧高保真原型位于 `web/prototype/`，不参与正式镜像构建。
+Web 管理后台前端源码位于 `web/` 目录。生产路径不发布独立 Web 服务；根 Dockerfile 会先构建 `web/dist`，再把产物嵌入 Go 二进制。
 
 ### 构建流程
 

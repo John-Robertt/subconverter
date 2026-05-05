@@ -10,7 +10,7 @@
 - React Query
 - 原生 CSS（当前实现为 `web/src/styles.css`）
 
-当前正式工程位于 `web/src/`；旧高保真原型保留在 `web/prototype/`，不参与生产构建。
+当前正式工程位于 `web/src/`；历史高保真原型已从仓库中移除，不参与生产构建。
 
 ## 目录建议
 

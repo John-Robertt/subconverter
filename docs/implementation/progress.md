@@ -108,7 +108,7 @@
 
 | 工作包 | 状态 | 范围 | 依赖文档 | 交付物 | 验收证据 | 阻塞项 |
 |--------|------|------|----------|--------|----------|--------|
-| M8-WP1 正式前端工程骨架 | 已验收 | Vite + React + TypeScript、最小 SPA、脚本、旧原型迁移 | `web/docs/frontend-architecture.md` | `web/src` 工程骨架、`web/prototype` 原型归档 | `pnpm --filter subconverter-web test`、`pnpm --filter subconverter-web build` | 无 |
+| M8-WP1 正式前端工程骨架 | 已验收 | Vite + React + TypeScript、最小 SPA、脚本 | `web/docs/frontend-architecture.md` | `web/src` 工程骨架 | `pnpm --filter subconverter-web test`、`pnpm --filter subconverter-web build` | 无 |
 | M8-WP2 嵌入式 Web 与 Compose 路径 | 已验收 | 根 `Dockerfile`、`internal/webui`、Compose 示例、Go fallback | `docs/deployment.md`, `docs/design/web-ui.md` | 单服务 Web 镜像与同源路径 | `docker build -t subconverter:local .`、Compose smoke test | 无 |
 | M8-WP3 M8 收口验收 | 已验收 | Web 镜像构建、代理验证、文档同步 | `implementation/implementation-plan.md` | M8 验收记录 | 本文件更新，前端/Go/Docker 测试结果记录 | 无 |
 
@@ -148,7 +148,6 @@
   - `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml`：pnpm workspace 工程与锁文件。
   - 根 `Dockerfile`：Node 22 + pnpm 构建 `web/dist`，Go `webui` build tag 嵌入静态资源。
   - `internal/server/webui.go`：`/api/*`、精确 `/generate`、`/healthz` 优先交给后端；其他路径 fallback 到 `index.html`。
-  - `web/nginx.conf`：保留为路径配置测试夹具；独立 Web 静态镜像入口已移除。
   - `docker-compose.demo.yaml`：只引用已构建镜像，单个 `subconverter` 服务映射 `8080:8080`。
 - 示例输入或 fixture：Compose 验证使用临时只读配置 `/private/tmp/subconverter-m8/config/config.yaml`，订阅源由本地临时 HTTP 服务提供，包含 1 个 `HK-01` 节点。
 - 关键响应：`/download` 不触发下载、返回 SPA；`/generate?format=clash|surge` 触发后端下载响应；`/api/status` 未登录时返回 `auth_required`；`/healthz` 返回响应体 `ok`。
