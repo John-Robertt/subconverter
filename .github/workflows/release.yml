@@ -39,36 +39,14 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Run embedded web tests
+        run: go test -tags webui ./...
+
       - name: Run vet
         run: go vet ./...
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.2
-          run_install: false
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run web tests
-        run: pnpm --filter subconverter-web test
-
-      - name: Build web SPA
-        run: pnpm --filter subconverter-web build
-
-      - name: Install Playwright Chromium
-        run: pnpm --filter subconverter-web exec playwright install --with-deps chromium
-
-      - name: Run web E2E tests
-        run: pnpm --filter subconverter-web test:e2e
+      - name: Verify embedded web assets
+        run: test -s internal/webui/dist/index.html
 
       - name: Build release image
         run: docker build -f Dockerfile .

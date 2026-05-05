@@ -8,6 +8,8 @@ builds:
     binary: subconverter
     env:
       - CGO_ENABLED=0
+    tags:
+      - webui
     goos:
       - linux
     goarch:

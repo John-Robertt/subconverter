@@ -2,8 +2,11 @@
 .github
 coverage.out
 coverage.html
-dist
+/dist
 docs
+node_modules
 output
 subconverter
 testdata
+web/dist
+web/node_modules

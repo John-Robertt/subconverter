@@ -1,6 +1,6 @@
 # subconverter Admin
 
-本目录是 v2.0 Web 管理后台的正式前端工程。前端使用 Vite + React + TypeScript；生产主路径由根 Dockerfile 使用 pnpm 构建 `web/dist`，再嵌入 Go 二进制，由同一个 `subconverter` 服务托管 SPA 与 API。
+本目录是 v2.0 Web 管理后台的正式前端工程。前端使用 Vite + React + TypeScript；生产主路径由本地 `pnpm web:embed` 生成 `internal/webui/dist`，再由 Go 二进制嵌入并托管 SPA 与 API。
 
 ## 开发
 
@@ -16,6 +16,7 @@ Vite dev server 默认监听 `localhost:5173`，并把 `/api/*`、`/generate`、
 ```bash
 pnpm --filter subconverter-web test
 pnpm --filter subconverter-web build
+pnpm web:embed
 pnpm --filter subconverter-web test:e2e:int   # Playwright 集成测试（route-mock + Vite dev server）
 pnpm --filter subconverter-web test:e2e       # Playwright 端到端测试（带真后端，需要 Go 工具链）
 docker build -t subconverter:local ..
@@ -29,13 +30,14 @@ docker build -t subconverter:local ..
 
 生产主路径使用仓库根目录 `Dockerfile`：
 
-- Node 22 + pnpm 构建 `web/dist`
-- Go build 阶段将 `web/dist` 嵌入二进制
+- 本地 `pnpm web:embed` 构建并同步 `internal/webui/dist`
+- Docker/Release 只用已提交的 `internal/webui/dist` 和 Go 工具链
 - runtime 镜像中只有 `/app/subconverter` 和底版模板，不需要 nginx
 
 生产 Demo Compose 示例位于仓库根目录，使用单个 `subconverter` 服务：
 
 ```bash
+pnpm web:embed
 pnpm docker:build
 pnpm compose:up
 ```

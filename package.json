@@ -5,6 +5,7 @@
   "scripts": {
     "web:dev": "pnpm --filter subconverter-web dev",
     "web:build": "pnpm --filter subconverter-web build",
+    "web:embed": "pnpm web:build && node scripts/sync-webui-dist.mjs",
     "web:test": "pnpm --filter subconverter-web test",
     "web:typecheck": "pnpm --filter subconverter-web typecheck",
     "go:test": "go test ./...",

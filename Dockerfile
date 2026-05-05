@@ -1,17 +1,3 @@
-FROM node:22-alpine AS web-builder
-
-WORKDIR /src
-
-RUN corepack enable
-
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY web/package.json ./web/package.json
-RUN pnpm install --frozen-lockfile
-
-COPY web/index.html web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
-COPY web/src ./web/src
-RUN pnpm --filter subconverter-web build
-
 FROM golang:1.24-bookworm AS builder
 
 WORKDIR /src
@@ -22,7 +8,6 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY configs ./configs
-COPY --from=web-builder /src/web/dist ./internal/webui/dist
 
 ARG TARGETOS
 ARG TARGETARCH
