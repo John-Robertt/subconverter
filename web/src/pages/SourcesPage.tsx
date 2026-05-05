@@ -1,6 +1,6 @@
 import { Link2, Pencil, Plus, Radio, Shield, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import type { Config, CustomProxy, FetchSourceKind, RelayThrough } from "../api/types";
+import type { Config, CustomProxy, FetchSource, FetchSourceKind, RelayThrough } from "../api/types";
 import { SortableList } from "../components/SortableList";
 import { Button, Chip, EmptyState, Field, IconButton, Modal, SelectInput, StatCard, TextInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
@@ -90,6 +90,14 @@ export function SourcesPage() {
     patchSources((current) => ({ ...current, custom_proxies: current.custom_proxies.filter((_, itemIndex) => itemIndex !== index) }));
   }
 
+  function reorderFetchSources(kind: FetchSourceKind, items: FetchSource[]) {
+    patchSources((current) => ({ ...current, [kind]: items }));
+  }
+
+  function reorderCustomProxies(items: CustomProxy[]) {
+    patchSources((current) => ({ ...current, custom_proxies: items }));
+  }
+
   return (
     <div className="page-stack">
       <div className="stats-grid">
@@ -134,18 +142,24 @@ export function SourcesPage() {
           className={focusClassName(activePointer, [`/config/sources/${kind}`], "source-section")}
           onAdd={() => setEditor({ type: "fetch", kind, index: null, url: "" })}
         >
-          {sources[kind].map((source, index) => (
-            <SourceCard
-              key={`${kind}-${index}`}
-              title={`${sourceLabels[kind]} #${index + 1}`}
-              subtitle={maskUrl(source.url) || "未设置 URL"}
-              meta={kind}
-              tag={source.url ? "已配置" : "待补齐"}
-              readonly={isReadonly}
-              onEdit={() => setEditor({ type: "fetch", kind, index, url: source.url })}
-              onDelete={() => void deleteFetchSource(kind, index)}
-            />
-          ))}
+          <SortableList
+            items={sources[kind]}
+            getId={(source, index) => `${kind}:${index}:${source.url || "empty"}`}
+            disabled={isReadonly}
+            onReorder={(items) => reorderFetchSources(kind, items)}
+            renderItem={(source, index, handle) => (
+              <SourceCard
+                title={`${sourceLabels[kind]} #${index + 1}`}
+                subtitle={maskUrl(source.url) || "未设置 URL"}
+                meta={kind}
+                tag={source.url ? "已配置" : "待补齐"}
+                readonly={isReadonly}
+                dragHandle={handle}
+                onEdit={() => setEditor({ type: "fetch", kind, index, url: source.url })}
+                onDelete={() => void deleteFetchSource(kind, index)}
+              />
+            )}
+          />
         </SourceSection>
       ))}
 
@@ -158,18 +172,24 @@ export function SourcesPage() {
         className={focusClassName(activePointer, ["/config/sources/custom_proxies"], "source-section")}
         onAdd={() => setEditor({ type: "custom", index: null, proxy: { name: "", url: "" } })}
       >
-        {sources.custom_proxies.map((proxy, index) => (
-          <SourceCard
-            key={`${proxy.name}-${index}`}
-            title={proxy.name || `自定义代理 #${index + 1}`}
-            subtitle={proxy.url ? maskUrl(proxy.url) : "ss://、socks5:// 或 http://"}
-            meta={proxy.url.split("://")[0] || "custom"}
-            tag={proxy.relay_through ? `中转 · ${proxy.relay_through.strategy}` : "直连"}
-            readonly={isReadonly}
-            onEdit={() => setEditor({ type: "custom", index, proxy })}
-            onDelete={() => void deleteCustomProxy(index)}
-          />
-        ))}
+        <SortableList
+          items={sources.custom_proxies}
+          getId={(proxy, index) => `custom:${index}:${proxy.name || "unnamed"}:${proxy.url || "empty"}`}
+          disabled={isReadonly}
+          onReorder={reorderCustomProxies}
+          renderItem={(proxy, index, handle) => (
+            <SourceCard
+              title={proxy.name || `自定义代理 #${index + 1}`}
+              subtitle={proxy.url ? maskUrl(proxy.url) : "ss://、socks5:// 或 http://"}
+              meta={proxy.url.split("://")[0] || "custom"}
+              tag={proxy.relay_through ? `中转 · ${proxy.relay_through.strategy}` : "直连"}
+              readonly={isReadonly}
+              dragHandle={handle}
+              onEdit={() => setEditor({ type: "custom", index, proxy })}
+              onDelete={() => void deleteCustomProxy(index)}
+            />
+          )}
+        />
       </SourceSection>
 
       {totalSources === 0 ? <EmptyState title="配置中没有任何来源" message="A1 可先添加订阅或自定义代理；保存前仍可切换其他编辑页继续补齐配置。" /> : null}
@@ -232,6 +252,7 @@ function SourceCard({
   meta,
   tag,
   readonly,
+  dragHandle,
   onEdit,
   onDelete
 }: {
@@ -240,6 +261,7 @@ function SourceCard({
   meta: string;
   tag: string;
   readonly: boolean;
+  dragHandle: ReactNode;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -247,7 +269,7 @@ function SourceCard({
   const status = ready ? meta : "待补齐";
   return (
     <article className="source-card" title={title}>
-      <span className="drag-handle static" aria-hidden="true">⠿</span>
+      {dragHandle}
       <code className="source-card-url">{subtitle}</code>
       <span className={ready ? "source-card-meta" : "source-card-meta warning"}>{status}</span>
       <div className="source-card-actions">

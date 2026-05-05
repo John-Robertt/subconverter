@@ -1,6 +1,7 @@
 // T-INT-SRC — A1 订阅来源 page interactions.
 
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+import { configSnapshot } from "./helpers/fixtures";
 import { createMockState, installMocks } from "./helpers/mock";
 
 test.describe("sources page", () => {
@@ -95,4 +96,65 @@ test.describe("sources page", () => {
     await modal.getByRole("button", { name: "保存来源" }).click();
     await expect(page.locator('.source-card[title="Office Relay"]')).toBeVisible();
   });
+
+  test("T-INT-SRC-006 reorders all source pools with drag handles", async ({ page }) => {
+    const baseState = createMockState();
+    const state = createMockState({
+      config: configSnapshot({
+        ...baseState.config.config,
+        sources: {
+          ...baseState.config.config.sources,
+          subscriptions: [
+            { url: "https://provider-a.example.com/sub?token=alpha" },
+            { url: "https://provider-b.example.com/sub?token=beta" }
+          ],
+          snell: [
+            { url: "https://snell-a.example.com/list.txt" },
+            { url: "https://snell-b.example.com/list.txt" }
+          ],
+          vless: [
+            { url: "https://vless-a.example.com/sub" },
+            { url: "https://vless-b.example.com/sub" }
+          ],
+          custom_proxies: [
+            { name: "Proxy A", url: "ss://alpha@example.com:8388" },
+            { name: "Proxy B", url: "socks5://beta@example.com:1080" }
+          ]
+        }
+      })
+    });
+    await installMocks(page, state);
+
+    await page.goto("/sources");
+    await dragFirstCardAfterSecond(page, sourceSection(page, /SS 订阅/));
+    await dragFirstCardAfterSecond(page, sourceSection(page, /Snell 节点池/));
+    await dragFirstCardAfterSecond(page, sourceSection(page, /VLESS 节点池/));
+    await dragFirstCardAfterSecond(page, sourceSection(page, /自定义代理/));
+
+    await expect(sourceSection(page, /SS 订阅/).locator(".source-card").first()).toContainText("provider-b.example.com");
+    await expect(sourceSection(page, /Snell 节点池/).locator(".source-card").first()).toContainText("snell-b.example.com");
+    await expect(sourceSection(page, /VLESS 节点池/).locator(".source-card").first()).toContainText("vless-b.example.com");
+    await expect(sourceSection(page, /自定义代理/).locator(".source-card").first()).toHaveAttribute("title", "Proxy B");
+  });
 });
+
+function sourceSection(page: Page, heading: RegExp) {
+  return page.locator(".source-section", { has: page.getByRole("heading", { name: heading }) });
+}
+
+async function dragFirstCardAfterSecond(page: Page, section: Locator) {
+  const cards = section.locator(".source-card");
+  await cards.nth(1).scrollIntoViewIfNeeded();
+  const firstHandle = cards.first().getByRole("button", { name: "拖拽排序" });
+  const handleBox = await firstHandle.boundingBox();
+  const secondBox = await cards.nth(1).boundingBox();
+  expect(handleBox).not.toBeNull();
+  expect(secondBox).not.toBeNull();
+  if (!handleBox || !secondBox) return;
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height - 2, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+}
