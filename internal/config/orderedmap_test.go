@@ -8,6 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// T-CFG-005: ordered map preserves insertion order
 func TestOrderedMap_PreservesOrder(t *testing.T) {
 	input := `
 c: 3
@@ -25,6 +26,7 @@ b: 2
 	}
 }
 
+// T-CFG-006: ordered map with struct values
 func TestOrderedMap_StructValue(t *testing.T) {
 	type item struct {
 		Match    string `yaml:"match"`
@@ -52,6 +54,7 @@ SG: { match: "(SG)", strategy: url-test }
 	}
 }
 
+// T-CFG-007: ordered map with slice values
 func TestOrderedMap_SliceValue(t *testing.T) {
 	input := `
 fast: [HK, SG, DIRECT]
@@ -73,6 +76,7 @@ manual: ["@all"]
 	}
 }
 
+// T-CFG-008: ordered map get returns zero for missing key
 func TestOrderedMap_Get_Missing(t *testing.T) {
 	input := `a: 1`
 	var m OrderedMap[int]
@@ -86,6 +90,7 @@ func TestOrderedMap_Get_Missing(t *testing.T) {
 	}
 }
 
+// T-CFG-009: ordered map handles empty YAML
 func TestOrderedMap_Empty(t *testing.T) {
 	input := `{}`
 	var m OrderedMap[int]
@@ -98,6 +103,7 @@ func TestOrderedMap_Empty(t *testing.T) {
 	}
 }
 
+// T-CFG-010: ordered map returns error for non-mapping YAML
 func TestOrderedMap_NonMapping_Error(t *testing.T) {
 	input := `[1, 2, 3]`
 	var m OrderedMap[int]
@@ -106,6 +112,7 @@ func TestOrderedMap_NonMapping_Error(t *testing.T) {
 	}
 }
 
+// T-CFG-011: ordered map returns error for duplicate key
 func TestOrderedMap_DuplicateKey_Error(t *testing.T) {
 	input := `
 a: 1
@@ -118,6 +125,7 @@ a: 3
 	}
 }
 
+// T-CFG-012: ordered map zero value is safe to use
 func TestOrderedMap_ZeroValue_Safe(t *testing.T) {
 	var m OrderedMap[int]
 
@@ -142,6 +150,7 @@ func TestOrderedMap_ZeroValue_Safe(t *testing.T) {
 	}
 }
 
+// T-CFG-013: ordered map entries returns key-value pairs in order
 func TestOrderedMap_Entries(t *testing.T) {
 	input := `
 z: 26
@@ -168,6 +177,7 @@ m: 13
 	}
 }
 
+// T-CFG-014: ordered map JSON round-trip preserves order
 func TestOrderedMap_JSONRoundTripPreservesOrder(t *testing.T) {
 	input := []byte(`[
 		{"key":"HK","value":{"match":"(HK)","strategy":"select"}},
@@ -189,6 +199,7 @@ func TestOrderedMap_JSONRoundTripPreservesOrder(t *testing.T) {
 	}
 }
 
+// T-CFG-015: ordered map YAML marshal preserves order
 func TestOrderedMap_MarshalYAMLPreservesOrder(t *testing.T) {
 	var m OrderedMap[int]
 	if err := json.Unmarshal([]byte(`[{"key":"b","value":2},{"key":"a","value":1}]`), &m); err != nil {

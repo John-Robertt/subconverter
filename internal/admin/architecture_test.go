@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+// T-ADM-013: admin package does not directly import pipeline or model
 func TestAdminDoesNotImportPipelineOrModel(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {

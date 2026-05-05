@@ -48,6 +48,7 @@ func (f *mapFetcher) Fetch(_ context.Context, rawURL string) ([]byte, error) {
 	return append([]byte(nil), body...), nil
 }
 
+// T-APP-001: config snapshot and save round-trip preserves content and updates revision
 func TestConfigSnapshotAndSaveRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(validConfigYAML), 0o600); err != nil {
@@ -92,6 +93,7 @@ func TestConfigSnapshotAndSaveRoundTrip(t *testing.T) {
 	}
 }
 
+// T-APP-002: save config with stale revision returns 409 conflict
 func TestSaveConfigRevisionConflict(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(validConfigYAML), 0o600); err != nil {
@@ -121,6 +123,7 @@ func TestSaveConfigRevisionConflict(t *testing.T) {
 	}
 }
 
+// T-APP-003: save config returns 409 for readonly source and not-writable file
 func TestSaveConfigReadonlySourceAndFileNotWritable(t *testing.T) {
 	remoteSvc := NewWithRuntime("https://config.example.com/config.yaml", nil, nil, generateOptions())
 	_, err := remoteSvc.SaveConfig(context.Background(), &SaveConfigInput{ConfigRevision: "sha256:x", Config: json.RawMessage(`{}`)})
@@ -150,6 +153,7 @@ func generateOptions() generate.Options {
 	return generate.Options{}
 }
 
+// T-APP-004: validate draft returns structured diagnostics with code and locator
 func TestValidateDraftStructuredDiagnostics(t *testing.T) {
 	svc := &Service{}
 	result, err := svc.ValidateDraft(context.Background(), json.RawMessage(`{
@@ -177,6 +181,7 @@ func TestValidateDraftStructuredDiagnostics(t *testing.T) {
 	}
 }
 
+// T-APP-005: reload invalidates remote config cache and fetches fresh content
 func TestReloadInvalidatesRemoteConfigCache(t *testing.T) {
 	rawURL := "https://config.example.com/config.yaml"
 	inner := &mapFetcher{responses: map[string][]byte{rawURL: []byte(validConfigYAML)}}
@@ -209,6 +214,7 @@ func TestReloadInvalidatesRemoteConfigCache(t *testing.T) {
 	}
 }
 
+// T-APP-006: preview nodes runtime vs draft are isolated
 func TestPreviewNodesRuntimeAndDraftAreIsolated(t *testing.T) {
 	runtimeURL := "https://sub.example.com/runtime"
 	draftURL := "https://sub.example.com/draft"
@@ -257,6 +263,7 @@ func TestPreviewNodesRuntimeAndDraftAreIsolated(t *testing.T) {
 	}
 }
 
+// T-APP-007: preview groups returns separated groups with expanded_members origin
 func TestPreviewGroupsReturnsSeparatedGroupsAndExpandedMembers(t *testing.T) {
 	subURL := "https://sub.example.com/runtime"
 	path := filepath.Join(t.TempDir(), "config.yaml")
@@ -298,6 +305,7 @@ func TestPreviewGroupsReturnsSeparatedGroupsAndExpandedMembers(t *testing.T) {
 	}
 }
 
+// T-APP-008: generate from draft does not mutate runtime status or config_dirty
 func TestGenerateFromDraftDoesNotMutateRuntimeStatus(t *testing.T) {
 	runtimeURL := "https://sub.example.com/runtime"
 	draftURL := "https://sub.example.com/draft"
@@ -335,6 +343,7 @@ func TestGenerateFromDraftDoesNotMutateRuntimeStatus(t *testing.T) {
 	}
 }
 
+// T-APP-009: status rehashes local config file; remote source does not trigger fetch
 func TestStatusLocalRehashesAndRemoteDoesNotFetch(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -383,6 +392,7 @@ func TestStatusLocalRehashesAndRemoteDoesNotFetch(t *testing.T) {
 	}
 }
 
+// T-APP-010: generate link uses server token and base_url
 func TestGenerateLinkUsesServerTokenAndBaseURL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("base_url: https://example.com\n"+validConfigYAML), 0o600); err != nil {

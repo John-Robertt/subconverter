@@ -175,9 +175,12 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 1. **`golangci-lint`**（含 `unused` linter）：检测**包括 `_test.go` 在内**的未使用函数/变量——Go 编译器不报错，但 CI 会拒绝
 2. **`gofmt -l .`**：严格格式检查，文件末尾多余空行即失败
-3. **`go test ./...`** + **`go vet ./...`**
+3. **`go test ./...`**：标准测试
+4. **`go test -tags webui ./...`**：含 Web UI 嵌入资产的构建标签测试
+5. **`go vet ./...`**
+6. **嵌入资产验证**：`test -s internal/webui/dist/index.html`——确认 Web 前端产物已正确嵌入
 
-**本地预检命令**：`gofmt -l . && go vet ./...`——在 `git commit` 前跑一次可避免大部分 CI 格式类失败。
+**本地预检命令**：`gofmt -l . && go vet ./... && go test ./...`——在 `git commit` 前跑一次可避免大部分 CI 失败。
 
 ### 文档术语一致性
 

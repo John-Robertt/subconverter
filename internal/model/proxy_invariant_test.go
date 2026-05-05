@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// T-MDL-004: valid proxy invariant cases pass validation
 func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -76,6 +77,7 @@ func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 	}
 }
 
+// T-MDL-005: invalid proxy invariant cases return errors
 func TestValidateProxyInvariant_InvalidCases(t *testing.T) {
 	tests := []struct {
 		name       string

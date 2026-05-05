@@ -82,6 +82,7 @@ func validFetcher() *fakeFetcher {
 	}
 }
 
+// T-GEN-001: service generates Clash output with correct content
 func TestServiceGenerateClash(t *testing.T) {
 	rt := mustRuntimeConfig(t, validConfig(t))
 	svc := New(validFetcher(), Options{})
@@ -107,6 +108,7 @@ func TestServiceGenerateClash(t *testing.T) {
 	}
 }
 
+// T-GEN-002: service generates Surge output with managed URL header
 func TestServiceGenerateSurgeManagedURL(t *testing.T) {
 	rt := mustRuntimeConfig(t, validConfig(t))
 	svc := New(validFetcher(), Options{AccessToken: "secret-token"})
@@ -130,6 +132,7 @@ func TestServiceGenerateSurgeManagedURL(t *testing.T) {
 	}
 }
 
+// T-GEN-003: service returns error for unsupported format
 func TestServiceGenerateUnsupportedFormat(t *testing.T) {
 	rt := mustRuntimeConfig(t, validConfig(t))
 	svc := New(validFetcher(), Options{})

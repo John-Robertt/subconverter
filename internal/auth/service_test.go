@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// T-AUTH-001: setup stores PBKDF2 password hash and SHA-256 session hash (no plaintext)
 func TestSetupStoresPasswordAndSessionHashes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	svc, err := New(Options{
@@ -69,6 +70,7 @@ func TestSetupStoresPasswordAndSessionHashes(t *testing.T) {
 	}
 }
 
+// T-AUTH-002: login locks after 5 failed attempts per IP+username
 func TestLoginFailureLocksAfterFiveAttempts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	svc, err := New(Options{
@@ -104,6 +106,7 @@ func TestLoginFailureLocksAfterFiveAttempts(t *testing.T) {
 	}
 }
 
+// T-AUTH-003: record failure returns auth_state_not_writable when file is readonly
 func TestRecordFailureReturnsAuthStateNotWritable(t *testing.T) {
 	dir := t.TempDir()
 	blockingFile := filepath.Join(dir, "not-a-directory")

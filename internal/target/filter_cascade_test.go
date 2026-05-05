@@ -99,6 +99,7 @@ func rulePolicySet(rules []model.Rule) map[string]bool {
 	return out
 }
 
+// T-TGT-001: Clash drops snell proxies and cascades to groups
 func TestForClash_DropsSnellCascade(t *testing.T) {
 	p := buildSnellFilterPipeline()
 
@@ -154,6 +155,7 @@ func TestForClash_DropsSnellCascade(t *testing.T) {
 	}
 }
 
+// T-TGT-002: Clash drops chained proxy when its dialer is dropped
 func TestForClash_DropsChainedOnDroppedUpstream(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -187,6 +189,7 @@ func TestForClash_DropsChainedOnDroppedUpstream(t *testing.T) {
 	}
 }
 
+// T-TGT-003: Clash returns TargetError when fallback group cleared by cascade
 func TestForClash_FallbackCleared(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -220,6 +223,7 @@ func TestForClash_FallbackCleared(t *testing.T) {
 	}
 }
 
+// T-TGT-004: Clash fallback error path labels chained proxies in cascade trace
 func TestForClash_FallbackPathLabelsChainedProxy(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -251,6 +255,7 @@ func TestForClash_FallbackPathLabelsChainedProxy(t *testing.T) {
 	}
 }
 
+// T-TGT-005: Clash shared subgraph does not misreport as cycle
 func TestForClash_SharedSubgraphDoesNotReportCycle(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -280,6 +285,7 @@ func TestForClash_SharedSubgraphDoesNotReportCycle(t *testing.T) {
 // 单次遍历会漏掉父组——必须通过不动点循环在第 2 轮捕获 "SVC_PARENT 成员仅剩 SVC_CHILD，
 // 而 SVC_CHILD 刚被清空"。若未来有人把 buildGroupCascade 的 for 循环改成单 pass
 // （误以为 "一次遍历所有组足够"），此测试会立即失败。
+// T-TGT-006: Clash cascade handles non-topological group declaration order
 func TestForClash_CascadeHandlesNonTopologicalDeclaration(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -317,6 +323,7 @@ func TestForClash_CascadeHandlesNonTopologicalDeclaration(t *testing.T) {
 	}
 }
 
+// T-TGT-007: Clash drops route group when all members are snell
 func TestForClash_DropsAllSnellRouteGroup(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -344,6 +351,7 @@ func TestForClash_DropsAllSnellRouteGroup(t *testing.T) {
 	}
 }
 
+// T-TGT-008: Clash is no-op when pipeline contains no snell
 func TestForClash_NoOpWhenNoSnell(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -367,6 +375,7 @@ func TestForClash_NoOpWhenNoSnell(t *testing.T) {
 	}
 }
 
+// T-TGT-009: Surge drops vless proxies and cascades to groups
 func TestForSurge_DropsVLessCascade(t *testing.T) {
 	p := buildVLessFilterPipeline()
 
@@ -416,6 +425,7 @@ func TestForSurge_DropsVLessCascade(t *testing.T) {
 	}
 }
 
+// T-TGT-010: Surge drops chained proxy when its dialer is dropped
 func TestForSurge_DropsChainedOnDroppedUpstream(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -448,6 +458,7 @@ func TestForSurge_DropsChainedOnDroppedUpstream(t *testing.T) {
 	}
 }
 
+// T-TGT-011: Surge returns TargetError when fallback group cleared by cascade
 func TestForSurge_FallbackCleared(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -484,6 +495,7 @@ func TestForSurge_FallbackCleared(t *testing.T) {
 	}
 }
 
+// T-TGT-012: Surge shared subgraph does not misreport as cycle
 func TestForSurge_SharedSubgraphNoCycleMisreport(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -510,6 +522,7 @@ func TestForSurge_SharedSubgraphNoCycleMisreport(t *testing.T) {
 	}
 }
 
+// T-TGT-013: Surge is no-op when pipeline contains no vless
 func TestForSurge_NoOpWhenNoVLess(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -534,6 +547,7 @@ func TestForSurge_NoOpWhenNoVLess(t *testing.T) {
 	}
 }
 
+// T-TGT-014: internal filter error uses CodeTargetClashProjectionInvalid
 func TestInternalFilterError_UsesDedicatedProjectionCode(t *testing.T) {
 	tests := []struct {
 		name string

@@ -10,6 +10,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
+// T-SRV-004: presentError formats multiple fetch errors as 502
 func TestPresentError_MultipleFetchErrors(t *testing.T) {
 	err := errors.Join(
 		&errtype.FetchError{
@@ -43,6 +44,7 @@ func TestPresentError_MultipleFetchErrors(t *testing.T) {
 	}
 }
 
+// T-SRV-005: presentError formats resource error as 500
 func TestPresentError_ResourceError(t *testing.T) {
 	err := &errtype.ResourceError{
 		Code:     errtype.CodeResourceLocalReadFailed,
@@ -66,6 +68,7 @@ func TestPresentError_ResourceError(t *testing.T) {
 	}
 }
 
+// T-SRV-006: presentError formats target error as 400/500 based on code
 func TestPresentError_TargetError(t *testing.T) {
 	err := &errtype.TargetError{
 		Code:    errtype.CodeTargetClashFallbackEmpty,
@@ -86,6 +89,8 @@ func TestPresentError_TargetError(t *testing.T) {
 	}
 }
 
+// T-SRV-007: presentError unwraps TargetError from errors.Join
+//
 // TargetError 可能被 generate.Service 包进 errors.Join 与其他非 errtype 错误一起返回。
 // 锁定：flattenErrors 会拆分 Join，collect* 对非 errtype 叶子不匹配，最终 errors.As 能找到
 // TargetError，并按错误码映射为用户可修复的 400。这条测试防止未来移动 targetErr
@@ -111,6 +116,8 @@ func TestPresentError_TargetErrorWrappedInErrorsJoin(t *testing.T) {
 	}
 }
 
+// T-SRV-008: presentError unwraps TargetError from fmt.Errorf wrap
+//
 // 锁定：errors.As 穿透 fmt.Errorf 单层 %w 包装仍能提取 TargetError。
 // 管道任何一层用 fmt.Errorf("...: %w", targetErr) 再返回，HTTP 层映射不退化。
 func TestPresentError_TargetErrorThroughFmtErrorfWrap(t *testing.T) {

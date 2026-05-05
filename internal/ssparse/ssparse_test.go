@@ -4,6 +4,7 @@ import (
 	"testing"
 )
 
+// T-SS-001: ParseBody decodes valid base64 SS URIs
 func TestParseBody_Valid(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -185,6 +186,7 @@ func TestParseBody_Valid(t *testing.T) {
 	}
 }
 
+// T-SS-002: ParseBody returns errors for invalid input
 func TestParseBody_Invalid(t *testing.T) {
 	tests := []struct {
 		name string

@@ -2,6 +2,7 @@ package model
 
 import "testing"
 
+// T-MDL-001: ProxyKind constants have expected string values
 func TestProxyKindValues(t *testing.T) {
 	tests := []struct {
 		kind ProxyKind
@@ -18,6 +19,7 @@ func TestProxyKindValues(t *testing.T) {
 	}
 }
 
+// T-MDL-002: GroupScope constants have expected string values
 func TestGroupScopeValues(t *testing.T) {
 	tests := []struct {
 		scope GroupScope
@@ -33,6 +35,7 @@ func TestGroupScopeValues(t *testing.T) {
 	}
 }
 
+// T-MDL-003: Pipeline struct construction with all fields
 func TestPipelineConstruction(t *testing.T) {
 	p := Pipeline{
 		Proxies: []Proxy{

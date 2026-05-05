@@ -1,10 +1,11 @@
-package render
+package generate_test
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/John-Robertt/subconverter/internal/model"
+	"github.com/John-Robertt/subconverter/internal/render"
 	"github.com/John-Robertt/subconverter/internal/target"
 )
 
@@ -14,7 +15,7 @@ func mustRenderClashProjected(t *testing.T, p *model.Pipeline) []byte {
 	if err != nil {
 		t.Fatalf("target.ForClash() error: %v", err)
 	}
-	out, err := Clash(projected, nil)
+	out, err := render.Clash(projected, nil)
 	if err != nil {
 		t.Fatalf("Clash() error: %v", err)
 	}
@@ -27,7 +28,7 @@ func mustRenderSurgeProjected(t *testing.T, p *model.Pipeline) []byte {
 	if err != nil {
 		t.Fatalf("target.ForSurge() error: %v", err)
 	}
-	out, err := Surge(projected, "", nil)
+	out, err := render.Surge(projected, "", nil)
 	if err != nil {
 		t.Fatalf("Surge() error: %v", err)
 	}
@@ -63,6 +64,7 @@ func buildSnellFilterPipeline() *model.Pipeline {
 	}
 }
 
+// T-TGT-RND-001: Snell-upstream chained node visible in Surge but filtered from Clash
 func TestRender_SnellUpstreamChainVisibility(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -99,6 +101,7 @@ func TestRender_SnellUpstreamChainVisibility(t *testing.T) {
 	}
 }
 
+// T-TGT-RND-002: Snell nodes and groups visible in Surge, cascade-filtered from Clash
 func TestRender_SnellVisibilityDiffersBetweenFormats(t *testing.T) {
 	p := buildSnellFilterPipeline()
 
@@ -126,6 +129,7 @@ func TestRender_SnellVisibilityDiffersBetweenFormats(t *testing.T) {
 	}
 }
 
+// T-TGT-RND-003: VLESS nodes visible in Clash, cascade-filtered from Surge
 func TestRender_VLessVisibilityDiffersBetweenFormats(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{

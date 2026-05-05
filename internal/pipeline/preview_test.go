@@ -9,6 +9,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
+// T-PRV-001: SourceAndFilter returns included/excluded with ordered view
 func TestSourceAndFilterReturnsIncludedExcludedAndOrderedView(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	cfg := previewRuntimeConfig(t, subURL, "(过期)")
@@ -43,6 +44,7 @@ func TestSourceAndFilterReturnsIncludedExcludedAndOrderedView(t *testing.T) {
 	}
 }
 
+// T-PRV-002: full preview pipeline returns separated groups and expanded members
 func TestSourceFilterGroupRouteValidateReturnsPreviewStages(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	cfg := previewRuntimeConfig(t, subURL, "")
@@ -79,6 +81,7 @@ func TestSourceFilterGroupRouteValidateReturnsPreviewStages(t *testing.T) {
 	}
 }
 
+// T-PRV-009: preview pipeline stops on ValidateGraph error
 func TestSourceFilterGroupRouteValidateStopsOnGraphError(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	cfg := previewRuntimeConfig(t, subURL, "")

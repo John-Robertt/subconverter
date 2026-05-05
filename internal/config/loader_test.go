@@ -8,6 +8,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
+// T-CFG-001: loads example config file successfully
 func TestLoad_ExampleConfig(t *testing.T) {
 	cfg, err := Load(context.Background(), "../../configs/base_config.yaml", nil)
 	if err != nil {
@@ -42,6 +43,7 @@ func TestLoad_ExampleConfig(t *testing.T) {
 	}
 }
 
+// T-CFG-002: loads minimal valid config
 func TestLoad_MinimalValid(t *testing.T) {
 	cfg, err := Load(context.Background(), "../../testdata/config/minimal_valid.yaml", nil)
 	if err != nil {
@@ -64,6 +66,7 @@ func TestLoad_MinimalValid(t *testing.T) {
 	}
 }
 
+// T-CFG-003: load returns error for missing file
 func TestLoad_FileNotFound(t *testing.T) {
 	_, err := Load(context.Background(), "nonexistent.yaml", nil)
 	if err == nil {
@@ -75,6 +78,7 @@ func TestLoad_FileNotFound(t *testing.T) {
 	}
 }
 
+// T-CFG-004: load returns error for malformed YAML
 func TestLoad_MalformedYAML(t *testing.T) {
 	_, err := Load(context.Background(), "../../testdata/config/malformed.yaml", nil)
 	if err == nil {

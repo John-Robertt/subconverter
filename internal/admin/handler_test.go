@@ -18,6 +18,12 @@ import (
 	"github.com/John-Robertt/subconverter/internal/generate"
 )
 
+// T-ADM-017: setup token validation (missing/wrong/correct)
+// T-ADM-018: auth state does not store plaintext password or raw session token
+// T-ADM-019: setup sets HttpOnly session cookie
+// T-ADM-012: protected endpoints require valid session; bearer token does not grant admin access
+// T-ADM-009: GET /api/config returns config_revision
+// T-PRV-013: missing base_url returns 400 base_url_required
 func TestAuthSetupAndProtectedConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
@@ -88,6 +94,11 @@ func TestAuthSetupAndProtectedConfig(t *testing.T) {
 	}
 }
 
+// T-ADM-012: status/preview/link require session
+// T-PRV-004: status returns version and config_write capability
+// T-PRV-001: preview nodes returns node list with name and active_count
+// T-PRV-013: generate link returns URL with token_included
+// T-PRV-003: generate preview output matches generate output (no Content-Disposition)
 func TestM7EndpointsRequireSessionAndReturnExpectedShapes(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
@@ -162,6 +173,7 @@ func TestM7EndpointsRequireSessionAndReturnExpectedShapes(t *testing.T) {
 	}
 }
 
+// T-ADM-022: CSRF same-origin check covers scheme, host, and port matching
 func TestSameOriginChecksSchemeAndHost(t *testing.T) {
 	tests := []struct {
 		name    string

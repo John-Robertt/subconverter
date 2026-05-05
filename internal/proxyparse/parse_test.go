@@ -2,6 +2,7 @@ package proxyparse
 
 import "testing"
 
+// T-PXP-001: socks5 URL with auth
 func TestParseURL_Socks5(t *testing.T) {
 	r, err := ParseURL("socks5://user:pass@1.2.3.4:1080")
 	if err != nil {
@@ -21,6 +22,7 @@ func TestParseURL_Socks5(t *testing.T) {
 	}
 }
 
+// T-PXP-002: socks5 URL without auth
 func TestParseURL_Socks5NoAuth(t *testing.T) {
 	r, err := ParseURL("socks5://1.2.3.4:1080")
 	if err != nil {
@@ -31,6 +33,7 @@ func TestParseURL_Socks5NoAuth(t *testing.T) {
 	}
 }
 
+// T-PXP-003: http URL with auth
 func TestParseURL_HTTP(t *testing.T) {
 	r, err := ParseURL("http://admin:secret@10.0.0.1:8080")
 	if err != nil {
@@ -47,6 +50,7 @@ func TestParseURL_HTTP(t *testing.T) {
 	}
 }
 
+// T-PXP-004: SS URL with base64 userinfo
 func TestParseURL_SSBase64(t *testing.T) {
 	r, err := ParseURL("ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388")
 	if err != nil {
@@ -69,6 +73,7 @@ func TestParseURL_SSBase64(t *testing.T) {
 	}
 }
 
+// T-PXP-005: SS URL with plain userinfo (SIP002)
 func TestParseURL_SSPlainUserinfo(t *testing.T) {
 	r, err := ParseURL("ss://aes-256-gcm:mypass@1.2.3.4:8388")
 	if err != nil {
@@ -79,6 +84,7 @@ func TestParseURL_SSPlainUserinfo(t *testing.T) {
 	}
 }
 
+// T-PXP-006: SS URL with plugin query params
 func TestParseURL_SSWithPlugin(t *testing.T) {
 	r, err := ParseURL("ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp%3Bobfs-host%3Dexample.com")
 	if err != nil {
@@ -98,6 +104,7 @@ func TestParseURL_SSWithPlugin(t *testing.T) {
 	}
 }
 
+// T-PXP-007: SS fragment is ignored
 func TestParseURL_SSFragmentIgnored(t *testing.T) {
 	r, err := ParseURL("ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388#SomeNodeName")
 	if err != nil {
@@ -108,6 +115,7 @@ func TestParseURL_SSFragmentIgnored(t *testing.T) {
 	}
 }
 
+// T-PXP-008: IPv6 host parsing
 func TestParseURL_IPv6(t *testing.T) {
 	r, err := ParseURL("socks5://[::1]:1080")
 	if err != nil {
@@ -118,6 +126,7 @@ func TestParseURL_IPv6(t *testing.T) {
 	}
 }
 
+// T-PXP-009: unsupported scheme returns error
 func TestParseURL_UnsupportedScheme(t *testing.T) {
 	_, err := ParseURL("vmess://1.2.3.4:1080")
 	if err == nil {
@@ -125,6 +134,7 @@ func TestParseURL_UnsupportedScheme(t *testing.T) {
 	}
 }
 
+// T-PXP-010: missing port returns error
 func TestParseURL_MissingPort(t *testing.T) {
 	_, err := ParseURL("socks5://1.2.3.4")
 	if err == nil {
@@ -132,6 +142,7 @@ func TestParseURL_MissingPort(t *testing.T) {
 	}
 }
 
+// T-PXP-011: port out of range returns error
 func TestParseURL_PortOutOfRange(t *testing.T) {
 	_, err := ParseURL("socks5://1.2.3.4:70000")
 	if err == nil {
@@ -139,6 +150,7 @@ func TestParseURL_PortOutOfRange(t *testing.T) {
 	}
 }
 
+// T-PXP-012: socks5 rejects non-empty path
 func TestParseURL_Socks5RejectsPath(t *testing.T) {
 	_, err := ParseURL("socks5://1.2.3.4:1080/typo")
 	if err == nil {
@@ -146,6 +158,7 @@ func TestParseURL_Socks5RejectsPath(t *testing.T) {
 	}
 }
 
+// T-PXP-013: socks5 rejects trailing slash
 func TestParseURL_Socks5RejectsTrailingSlash(t *testing.T) {
 	_, err := ParseURL("socks5://1.2.3.4:1080/")
 	if err == nil {
@@ -153,6 +166,7 @@ func TestParseURL_Socks5RejectsTrailingSlash(t *testing.T) {
 	}
 }
 
+// T-PXP-014: http rejects query params
 func TestParseURL_HTTPRejectsQuery(t *testing.T) {
 	_, err := ParseURL("http://1.2.3.4:8080?foo=bar")
 	if err == nil {
@@ -160,6 +174,7 @@ func TestParseURL_HTTPRejectsQuery(t *testing.T) {
 	}
 }
 
+// T-PXP-015: socks5 rejects fragment
 func TestParseURL_Socks5RejectsFragment(t *testing.T) {
 	_, err := ParseURL("socks5://1.2.3.4:1080#frag")
 	if err == nil {
@@ -167,6 +182,7 @@ func TestParseURL_Socks5RejectsFragment(t *testing.T) {
 	}
 }
 
+// T-PXP-016: SS missing @ returns error
 func TestParseURL_SSMissingAt(t *testing.T) {
 	_, err := ParseURL("ss://YWVzLTI1Ni1nY206bXlwYXNz")
 	if err == nil {
@@ -174,6 +190,7 @@ func TestParseURL_SSMissingAt(t *testing.T) {
 	}
 }
 
+// T-PXP-017: SS empty host returns error
 func TestParseURL_SSEmptyHost(t *testing.T) {
 	_, err := ParseURL("ss://YWVzLTI1Ni1nY206bXlwYXNz@:8388")
 	if err == nil {
@@ -181,6 +198,7 @@ func TestParseURL_SSEmptyHost(t *testing.T) {
 	}
 }
 
+// T-PXP-018: SS port boundary values
 func TestParseURL_SSPortBoundary(t *testing.T) {
 	r, err := ParseURL("ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:65535")
 	if err != nil {

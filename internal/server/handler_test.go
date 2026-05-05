@@ -10,6 +10,7 @@ import (
 	"testing/fstest"
 )
 
+// T-SRV-001: resolveFilename sanitizes filenames and uses format defaults
 func TestResolveFilename(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -91,6 +92,7 @@ func TestResolveFilename(t *testing.T) {
 	}
 }
 
+// T-SRV-002: Content-Disposition value formatting
 func TestContentDispositionValue(t *testing.T) {
 	got := contentDispositionValue("my-profile.yaml")
 	want := `attachment; filename="my-profile.yaml"; filename*=UTF-8''my-profile.yaml`
@@ -99,6 +101,7 @@ func TestContentDispositionValue(t *testing.T) {
 	}
 }
 
+// T-SRV-003: Web UI serves SPA fallback and hashed assets
 func TestWebUIServesSPAFallbackAndAssets(t *testing.T) {
 	srv := New(nil, Options{
 		WebFS: fstest.MapFS{

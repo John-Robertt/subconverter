@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+// T-RND-001: Clash renders with real base template merge
+//
 // TestClash_RealBaseTemplate validates that configs/base_clash.yaml
 // can be parsed and merged without errors.
 func TestClash_RealBaseTemplate(t *testing.T) {
@@ -37,6 +39,8 @@ func TestClash_RealBaseTemplate(t *testing.T) {
 	}
 }
 
+// T-RND-002: Surge renders with real base template merge
+//
 // TestSurge_RealBaseTemplate validates that configs/base_surge.conf
 // can be parsed and merged without errors.
 func TestSurge_RealBaseTemplate(t *testing.T) {

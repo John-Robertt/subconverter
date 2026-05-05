@@ -2,6 +2,7 @@ package config
 
 import "testing"
 
+// T-CFG-016: prepare preserves route member declared and expanded origins
 func TestPrepare_RouteInputPreservesDeclaredAndExpandedOrigins(t *testing.T) {
 	cfg := validBase()
 	cfg.Groups = mustOrderedMap[Group](`
@@ -57,6 +58,7 @@ func TestPrepare_RouteInputPreservesDeclaredAndExpandedOrigins(t *testing.T) {
 	}
 }
 
+// T-CFG-017: runtime config accessors expose startup values
 func TestRuntimeConfig_AccessorsExposeStartupValues(t *testing.T) {
 	cfg := validBase()
 	cfg.Filters.Exclude = "(HK)"
