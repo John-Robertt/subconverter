@@ -37,6 +37,11 @@ var surgeSnellKeyOrder = []string{
 	"shadow-tls-version",
 }
 
+var surgeSSKeyOrder = []string{
+	"udp-relay",
+	"tfo",
+}
+
 // sectionHeaderRe matches INI-style section headers like [Proxy].
 var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
 
@@ -99,16 +104,21 @@ func renderSurgeProxy(px model.Proxy) (string, error) {
 	case "ss":
 		parts = append(parts, px.Name+" = ss", px.Server, fmt.Sprintf("%d", px.Port))
 		if v := px.Params["cipher"]; v != "" {
-			parts = append(parts, "encrypt-method="+v)
+			parts = append(parts, renderSurgeKeyValue("encrypt-method", v))
 		}
 		if v := px.Params["password"]; v != "" {
-			parts = append(parts, "password="+v)
+			parts = append(parts, renderSurgeKeyValue("password", v))
 		}
 		pluginParams, err := renderSurgeSSPlugin(px.Plugin)
 		if err != nil {
 			return "", err
 		}
 		parts = append(parts, pluginParams...)
+		for _, k := range surgeSSKeyOrder {
+			if v := px.Params[k]; v != "" {
+				parts = append(parts, renderSurgeKeyValue(k, v))
+			}
+		}
 	case "socks5", "http":
 		parts = append(parts, px.Name+" = "+px.Type, px.Server, fmt.Sprintf("%d", px.Port))
 		username := px.Params["username"]
@@ -120,7 +130,7 @@ func renderSurgeProxy(px model.Proxy) (string, error) {
 		parts = append(parts, px.Name+" = snell", px.Server, fmt.Sprintf("%d", px.Port))
 		for _, k := range surgeSnellKeyOrder {
 			if v := px.Params[k]; v != "" {
-				parts = append(parts, k+"="+v)
+				parts = append(parts, renderSurgeKeyValue(k, v))
 			}
 		}
 	default:
@@ -128,10 +138,27 @@ func renderSurgeProxy(px model.Proxy) (string, error) {
 	}
 
 	if px.Dialer != "" {
-		parts = append(parts, "underlying-proxy="+px.Dialer)
+		parts = append(parts, renderSurgeKeyValue("underlying-proxy", px.Dialer))
 	}
 
 	return strings.Join(parts, ", "), nil
+}
+
+func renderSurgeKeyValue(key, value string) string {
+	return key + "=" + quoteSurgeValueIfNeeded(value)
+}
+
+func quoteSurgeValueIfNeeded(value string) string {
+	if !surgeValueNeedsQuote(value) {
+		return value
+	}
+	escaped := strings.ReplaceAll(value, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return `"` + escaped + `"`
+}
+
+func surgeValueNeedsQuote(value string) bool {
+	return strings.TrimSpace(value) != value || strings.ContainsAny(value, `,"\`)
 }
 
 func renderSurgeSSPlugin(plugin *model.Plugin) ([]string, error) {
@@ -166,10 +193,10 @@ func renderSurgeSSPlugin(plugin *model.Plugin) ([]string, error) {
 
 	parts := []string{"obfs=" + mode}
 	if host := plugin.Opts["obfs-host"]; host != "" {
-		parts = append(parts, "obfs-host="+host)
+		parts = append(parts, renderSurgeKeyValue("obfs-host", host))
 	}
 	if uri := plugin.Opts["obfs-uri"]; uri != "" {
-		parts = append(parts, "obfs-uri="+uri)
+		parts = append(parts, renderSurgeKeyValue("obfs-uri", uri))
 	}
 
 	return parts, nil

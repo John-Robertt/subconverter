@@ -39,5 +39,6 @@ Thumbs.db
 
 test-results
 
-ss*.txt
+*ss.txt
+*anytls.txt
 node_modules/

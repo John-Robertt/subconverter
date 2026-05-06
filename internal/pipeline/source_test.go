@@ -375,9 +375,12 @@ func TestSource_InvalidBase64Response(t *testing.T) {
 	if !strings.Contains(fetchErr.Message, "Base64") {
 		t.Errorf("error should mention Base64, got: %s", fetchErr.Message)
 	}
+	if !strings.Contains(fetchErr.Message, "SS 订阅列表") {
+		t.Errorf("error should mention SS subscription list, got: %s", fetchErr.Message)
+	}
 }
 
-// T-SRC-SS-TXT-001: subscriptions may be plain text ss.txt lists.
+// T-SRC-SS-TXT-001: subscriptions may be plain text SIP002 ss.txt lists.
 func TestSource_PlainTextSSSubscription(t *testing.T) {
 	body := []byte(strings.Join([]string{
 		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01",
@@ -409,6 +412,83 @@ func TestSource_PlainTextSSSubscription(t *testing.T) {
 		if proxies[i].Kind != model.KindSubscription {
 			t.Errorf("proxy[%d].Kind = %q, want %q", i, proxies[i].Kind, model.KindSubscription)
 		}
+	}
+}
+
+// T-SRC-SS-TXT-004: subscriptions may be plain text Quantumult X shadowsocks
+// lists where tag carries the node name.
+func TestSource_PlainTextQuanXSSSubscription(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"shadowsocks = demo.com:11127, method=2022-blake3-aes-128-gcm, password=qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==, fast-open=false, udp-relay=true, tag=🇭🇰 Hong Kong 01",
+		"shadowsocks = demo.com:11558, method=2022-blake3-aes-128-gcm, password=qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==, fast-open=false, udp-relay=true, tag=🇭🇰 Hong Kong 02",
+	}, "\n"))
+
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{
+		{URL: "https://sub.example.com/quanx-ss.txt"},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://sub.example.com/quanx-ss.txt": body,
+	}}
+
+	source, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	proxies := source.Proxies
+	if len(proxies) != 2 {
+		t.Fatalf("got %d proxies, want 2", len(proxies))
+	}
+	if proxies[0].Name != "🇭🇰 Hong Kong 01" || proxies[1].Name != "🇭🇰 Hong Kong 02" {
+		t.Errorf("proxy names = [%q, %q], want Hong Kong nodes", proxies[0].Name, proxies[1].Name)
+	}
+	if proxies[0].Params["cipher"] != "2022-blake3-aes-128-gcm" {
+		t.Errorf("cipher = %q", proxies[0].Params["cipher"])
+	}
+	if proxies[0].Params["password"] != "qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==" {
+		t.Errorf("password = %q", proxies[0].Params["password"])
+	}
+	if proxies[0].Params["udp-relay"] != "true" || proxies[0].Params["tfo"] != "false" {
+		t.Errorf("udp-relay/tfo = %q/%q, want true/false", proxies[0].Params["udp-relay"], proxies[0].Params["tfo"])
+	}
+}
+
+// T-SRC-SS-TXT-005: subscriptions may be plain text Surge SS proxy lists.
+// Syntactically valid informational entries are preserved; users can filter
+// them with filters.exclude if desired.
+func TestSource_PlainTextSurgeSSSubscription(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"Traffic Reset：29 Days Left= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, password=\"qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==\", udp-relay=true, tfo=false",
+		"Expire Date：2026/06/05= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, password=\"qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==\", udp-relay=true, tfo=false",
+		"🇭🇰 Hong Kong 01= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, password=\"qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==\", udp-relay=true, tfo=false",
+	}, "\n"))
+
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{
+		{URL: "https://sub.example.com/surge-ss.txt"},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://sub.example.com/surge-ss.txt": body,
+	}}
+
+	source, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	proxies := source.Proxies
+	if len(proxies) != 3 {
+		t.Fatalf("got %d proxies, want 3", len(proxies))
+	}
+	if proxies[0].Name != "Traffic Reset：29 Days Left" {
+		t.Errorf("proxy[0].Name = %q, want info line preserved", proxies[0].Name)
+	}
+	if proxies[2].Name != "🇭🇰 Hong Kong 01" {
+		t.Errorf("proxy[2].Name = %q, want Hong Kong node", proxies[2].Name)
+	}
+	if proxies[2].Params["udp-relay"] != "true" || proxies[2].Params["tfo"] != "false" {
+		t.Errorf("udp-relay/tfo = %q/%q, want true/false", proxies[2].Params["udp-relay"], proxies[2].Params["tfo"])
 	}
 }
 

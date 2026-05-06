@@ -61,7 +61,7 @@
 重点规则：
 
 - 订阅拉取结果不得为空（0 个有效节点视为上游订阅内容错误）
-- 订阅响应体可为 Base64 编码的 SS URI 列表，或明文 `ss.txt` 风格 SS URI 列表；非 Base64 且不像明文 SS 列表的内容视为订阅内容格式错误
+- 订阅响应体可为 Base64 编码的 SS URI 列表，或明文 `ss.txt` 风格 SS 列表（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`）；非 Base64 且不像明文 SS 列表的内容视为订阅内容格式错误
 - Snell 来源拉取结果不得为空（0 个有效节点报同类错误）
 - VLESS 来源拉取结果不得为空（0 个有效节点报同类错误）
 - Snell 来源中单行解析失败整源报错（与 SS 订阅的静默跳过不同，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号

@@ -196,6 +196,38 @@ func TestClash_SSProxyWithGenericPluginOptions(t *testing.T) {
 	}
 }
 
+func TestClash_SSProxyUDPAndTFO(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-SS",
+			Type:   "ss",
+			Server: "hk.example.com",
+			Port:   8388,
+			Params: map[string]string{
+				"cipher":    "2022-blake3-aes-128-gcm",
+				"password":  "secret",
+				"udp-relay": "true",
+				"tfo":       "true",
+			},
+			Kind: model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Clash(p, nil)
+	if err != nil {
+		t.Fatalf("Clash() error: %v", err)
+	}
+
+	output := string(got)
+	if !strings.Contains(output, "udp: true") {
+		t.Errorf("ss proxy should render udp: true when udp-relay=true:\n%s", output)
+	}
+	if !strings.Contains(output, "tfo: true") {
+		t.Errorf("ss proxy should render tfo: true when tfo=true:\n%s", output)
+	}
+}
+
 func TestClash_RuleOrder(t *testing.T) {
 	p := goldenPipeline()
 	got, err := Clash(p, nil)

@@ -136,6 +136,62 @@ func TestSurge_SSProxyWithUnsupportedPlugin(t *testing.T) {
 	}
 }
 
+func TestSurge_SSProxyUDPAndTFO(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-SS",
+			Type:   "ss",
+			Server: "hk.example.com",
+			Port:   8388,
+			Params: map[string]string{
+				"cipher":    "2022-blake3-aes-128-gcm",
+				"password":  "secret",
+				"udp-relay": "true",
+				"tfo":       "false",
+			},
+			Kind: model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+
+	want := "HK-SS = ss, hk.example.com, 8388, encrypt-method=2022-blake3-aes-128-gcm, password=secret, udp-relay=true, tfo=false"
+	if !strings.Contains(string(got), want) {
+		t.Errorf("missing SS udp/tfo fields; want %q in:\n%s", want, string(got))
+	}
+}
+
+func TestSurge_SSProxyQuotesCommaSeparatedParams(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-SS",
+			Type:   "ss",
+			Server: "hk.example.com",
+			Port:   8388,
+			Params: map[string]string{
+				"cipher":   "aes-256-gcm",
+				"password": `sec,ret"\tail`,
+			},
+			Kind: model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+
+	want := `password="sec,ret\"\\tail"`
+	if !strings.Contains(string(got), want) {
+		t.Errorf("SS password with separators should be quoted; want %q in:\n%s", want, string(got))
+	}
+}
+
 func TestSurge_RuleOrder(t *testing.T) {
 	p := goldenPipeline()
 	got, err := Surge(p, "", nil)

@@ -120,7 +120,7 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, staticN
 }
 
 // fetchSubscription fetches a single subscription URL, normalizes the response
-// body into text, and parses each line as an SS URI.
+// body into text, and parses each line as a supported SS subscription format.
 func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string) ([]model.Proxy, error) {
 	body, err := fetcher.Fetch(ctx, rawURL)
 	if err != nil {
@@ -132,7 +132,7 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 		return nil, &errtype.FetchError{
 			Code:    errtype.CodeFetchSubscriptionBase64Invalid,
 			URL:     fetch.SanitizeURL(rawURL),
-			Message: "订阅内容不是合法的 Base64，也不是明文 SS URI 列表",
+			Message: "订阅内容不是合法的 Base64，也不是明文 SS 订阅列表",
 			Cause:   err,
 		}
 	}
@@ -140,9 +140,9 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 	lines := splitSubscriptionLines(text)
 	var proxies []model.Proxy
 	for _, line := range lines {
-		proxy, err := ParseSSURI(line)
+		proxy, err := ParseSSSubscriptionLine(line)
 		if err != nil {
-			// Skip individual malformed URIs.
+			// Skip individual malformed SS subscription lines.
 			continue
 		}
 		proxies = append(proxies, proxy)
@@ -274,7 +274,7 @@ func wrapVLessSourceParseError(sanitizedURL string, lineNo int, parseErr error) 
 }
 
 // subscriptionBodyText accepts both conventional base64 subscriptions and
-// plain-text ss.txt-style lists where each useful line starts with ss://.
+// plain-text ss.txt-style lists in the supported SS line formats.
 func subscriptionBodyText(body []byte) (string, error) {
 	s := strings.TrimSpace(string(body))
 	if s == "" {
@@ -296,7 +296,7 @@ func looksLikePlainSSSubscription(text string) bool {
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
 			continue
 		}
-		if strings.HasPrefix(line, "ss://") {
+		if isPlainSSSubscriptionLine(line) {
 			return true
 		}
 	}

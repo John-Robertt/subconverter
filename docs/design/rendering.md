@@ -108,6 +108,8 @@ SS（Shadowsocks）节点同时支持 Clash Meta 和 Surge 输出。字段按固
 
 ```
 name / type:ss / server / port / cipher / password
+  → udp:true（若 udp-relay=true）
+  → tfo:true（若 tfo=true）
   → plugin（若有）
   → plugin-opts（若有）
   → dialer-proxy（链式节点）
@@ -121,7 +123,7 @@ Plugin 透传规则：
 **Surge**：
 
 ```
-<name> = ss, <server>, <port>, encrypt-method=<cipher>, password=<password>[, obfs=..., obfs-host=..., obfs-uri=...][, underlying-proxy=...]
+<name> = ss, <server>, <port>, encrypt-method=<cipher>, password=<password>[, obfs=..., obfs-host=..., obfs-uri=...][, udp-relay=..., tfo=...][, underlying-proxy=...]
 ```
 
 Plugin 限制：

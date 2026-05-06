@@ -47,7 +47,8 @@ templates:
 
 sources:
   # ---------- 订阅源 ----------
-  # 每个订阅返回 SS 节点列表（base64 编码或明文 URI 列表均可）。
+  # 每个订阅返回 SS 节点列表（base64 编码、ss:// 明文列表、QuanX shadowsocks
+  # 行或 Surge ss 行均可）。
   # 支持多个订阅，节点按顺序合并，跨订阅重名自动追加后缀（②③...）。
   # url 必填，必须为 http:// 或 https:// 开头。
   # 这里的 token 是上游订阅服务自己的 token，和本服务 `/generate`

@@ -137,6 +137,12 @@ func buildClashProxy(px model.Proxy) *yaml.Node {
 		if v := px.Params["password"]; v != "" {
 			addPair(m, "password", scalarNode(v))
 		}
+		if paramBoolTrue(px.Params["udp-relay"]) {
+			addPair(m, "udp", trueNode())
+		}
+		if paramBoolTrue(px.Params["tfo"]) {
+			addPair(m, "tfo", trueNode())
+		}
 		if px.Plugin != nil {
 			addPair(m, "plugin", scalarNode(normalizeClashSSPluginName(px.Plugin.Name)))
 			if pluginOpts := buildClashPluginOpts(px.Plugin); len(pluginOpts.Content) > 0 {
@@ -159,6 +165,15 @@ func buildClashProxy(px model.Proxy) *yaml.Node {
 	}
 
 	return m
+}
+
+func paramBoolTrue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "1", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // emitClashVLessFields writes VLESS-specific fields onto the proxy mapping
