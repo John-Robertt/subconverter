@@ -119,25 +119,25 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, staticN
 	return &SourceResult{Proxies: proxies, ChainTemplates: chainTemplates}, nil
 }
 
-// fetchSubscription fetches a single subscription URL, decodes the base64
-// response, and parses each line as an SS URI.
+// fetchSubscription fetches a single subscription URL, normalizes the response
+// body into text, and parses each line as an SS URI.
 func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string) ([]model.Proxy, error) {
 	body, err := fetcher.Fetch(ctx, rawURL)
 	if err != nil {
 		return nil, err
 	}
 
-	decoded, err := decodeSubscriptionBody(body)
+	text, err := subscriptionBodyText(body)
 	if err != nil {
 		return nil, &errtype.FetchError{
 			Code:    errtype.CodeFetchSubscriptionBase64Invalid,
 			URL:     fetch.SanitizeURL(rawURL),
-			Message: "订阅内容不是合法的 Base64",
+			Message: "订阅内容不是合法的 Base64，也不是明文 SS URI 列表",
 			Cause:   err,
 		}
 	}
 
-	lines := splitLines(decoded)
+	lines := splitSubscriptionLines(text)
 	var proxies []model.Proxy
 	for _, line := range lines {
 		proxy, err := ParseSSURI(line)
@@ -273,24 +273,46 @@ func wrapVLessSourceParseError(sanitizedURL string, lineNo int, parseErr error) 
 	}
 }
 
-// decodeSubscriptionBody decodes a base64-encoded subscription response body.
-func decodeSubscriptionBody(body []byte) (string, error) {
+// subscriptionBodyText accepts both conventional base64 subscriptions and
+// plain-text ss.txt-style lists where each useful line starts with ss://.
+func subscriptionBodyText(body []byte) (string, error) {
 	s := strings.TrimSpace(string(body))
 	if s == "" {
 		return "", nil
 	}
-	return decodeBase64(s)
+	decoded, err := decodeBase64(s)
+	if err == nil {
+		return decoded, nil
+	}
+	if looksLikePlainSSSubscription(s) {
+		return s, nil
+	}
+	return "", err
 }
 
-// splitLines splits text on newlines, trims whitespace, and skips empty lines.
-func splitLines(text string) []string {
+func looksLikePlainSSSubscription(text string) bool {
+	for _, rawLine := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+			continue
+		}
+		if strings.HasPrefix(line, "ss://") {
+			return true
+		}
+	}
+	return false
+}
+
+// splitSubscriptionLines trims whitespace and skips empty/comment lines.
+func splitSubscriptionLines(text string) []string {
 	raw := strings.Split(text, "\n")
 	lines := make([]string, 0, len(raw))
 	for _, line := range raw {
 		line = strings.TrimSpace(line)
-		if line != "" {
-			lines = append(lines, line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+			continue
 		}
+		lines = append(lines, line)
 	}
 	return lines
 }

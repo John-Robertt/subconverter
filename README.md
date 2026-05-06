@@ -6,7 +6,7 @@ SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源、Snell 来源和
 
 ## 功能特性
 
-- **多订阅源** — 支持多个 SS 订阅源合并，跨订阅自动去重
+- **多订阅源** — 支持 Base64 或明文 `ss.txt` SS 订阅源合并，跨订阅自动去重
 - **Snell 来源** — 支持拉取纯文本 Snell 节点清单；Snell 节点仅进入 Surge 输出，Clash 会做级联过滤
 - **VLESS 来源** — 支持拉取纯文本 VLESS URI 清单；VLESS 节点仅进入 Clash 输出，Surge 会做级联过滤；`type` 缺失或未知值回落到 `tcp`，`encryption` 非空时透传
 - **SIP002 兼容** — 支持常见 SS URI 变体，包括 base64/plain userinfo、query 参数和 plugin 声明
@@ -253,7 +253,7 @@ templates:
 
 sources:
   subscriptions:
-    - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx" # 订阅体应为 base64 编码的 SS URI 列表（SIP002 兼容）
+    - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx" # 订阅体可为 Base64 编码或明文 ss.txt SS URI 列表（SIP002 兼容）
   snell:
     - url: "https://my-server.com/snell-nodes.txt" # 纯文本 Snell 节点清单；单行失败会报脱敏 URL + 物理行号
   vless:

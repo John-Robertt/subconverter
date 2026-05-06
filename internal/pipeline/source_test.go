@@ -369,8 +369,106 @@ func TestSource_InvalidBase64Response(t *testing.T) {
 	if !errors.As(err, &fetchErr) {
 		t.Fatalf("error type = %T, want *errtype.FetchError", err)
 	}
+	if fetchErr.Code != errtype.CodeFetchSubscriptionBase64Invalid {
+		t.Errorf("Code = %q, want %q", fetchErr.Code, errtype.CodeFetchSubscriptionBase64Invalid)
+	}
 	if !strings.Contains(fetchErr.Message, "Base64") {
 		t.Errorf("error should mention Base64, got: %s", fetchErr.Message)
+	}
+}
+
+// T-SRC-SS-TXT-001: subscriptions may be plain text ss.txt lists.
+func TestSource_PlainTextSSSubscription(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01",
+		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@sg.example.com:8388#SG-01",
+	}, "\n"))
+
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{
+		{URL: "https://sub.example.com/ss.txt"},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://sub.example.com/ss.txt": body,
+	}}
+
+	source, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	proxies := source.Proxies
+	if len(proxies) != 2 {
+		t.Fatalf("got %d proxies, want 2", len(proxies))
+	}
+	wantNames := []string{"HK-01", "SG-01"}
+	for i, want := range wantNames {
+		if proxies[i].Name != want {
+			t.Errorf("proxy[%d].Name = %q, want %q", i, proxies[i].Name, want)
+		}
+		if proxies[i].Kind != model.KindSubscription {
+			t.Errorf("proxy[%d].Kind = %q, want %q", i, proxies[i].Kind, model.KindSubscription)
+		}
+	}
+}
+
+// T-SRC-SS-TXT-002: plain text subscriptions skip comments, blank lines and
+// malformed entries while preserving valid SS nodes.
+func TestSource_PlainTextSSSubscriptionSkipsInvalidLines(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"# comment",
+		"",
+		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01",
+		"not-a-valid-ss-uri",
+		"// another comment",
+		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@sg.example.com:8388#SG-01",
+	}, "\n"))
+
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{
+		{URL: "https://sub.example.com/ss.txt"},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://sub.example.com/ss.txt": body,
+	}}
+
+	source, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	proxies := source.Proxies
+	if len(proxies) != 2 {
+		t.Fatalf("got %d proxies, want 2", len(proxies))
+	}
+	if proxies[0].Name != "HK-01" || proxies[1].Name != "SG-01" {
+		t.Errorf("proxy names = [%q, %q], want [HK-01, SG-01]", proxies[0].Name, proxies[1].Name)
+	}
+}
+
+// T-SRC-SS-TXT-003: plain text subscriptions with no valid SS node report
+// the same empty-subscription error as base64 subscriptions.
+func TestSource_PlainTextSSSubscriptionOnlyInvalidLinesIsEmpty(t *testing.T) {
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{
+		{URL: "https://sub.example.com/ss.txt"},
+	}
+
+	f := &fakeFetcher{responses: map[string][]byte{
+		"https://sub.example.com/ss.txt": []byte("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:0#BAD"),
+	}}
+
+	_, err := Source(context.Background(), cfg, f)
+	if err == nil {
+		t.Fatal("expected error for empty plain text subscription")
+	}
+
+	var fetchErr *errtype.FetchError
+	if !errors.As(err, &fetchErr) {
+		t.Fatalf("error type = %T, want *errtype.FetchError", err)
+	}
+	if fetchErr.Code != errtype.CodeFetchSubscriptionEmpty {
+		t.Errorf("Code = %q, want %q", fetchErr.Code, errtype.CodeFetchSubscriptionEmpty)
 	}
 }
 
