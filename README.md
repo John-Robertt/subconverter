@@ -170,6 +170,8 @@ docker run -d \
   -config https://example.com/config.yaml
 ```
 
+上述 Docker Run 示例未挂载 `/auth`，更适合只提供 `/generate` 和 `/healthz`。若要使用 Web 管理后台完成首次 setup，请额外挂载可写 auth state（如 `-v $(pwd)/auth:/auth`）并设置 `SUBCONVERTER_SETUP_TOKEN`；需要在后台保存配置时，还应使用可写配置挂载或参考 Compose 示例。
+
 ## 使用
 
 ### Web 管理后台

@@ -305,7 +305,7 @@ revision 冲突响应示例：
 
 边界：
 
-- 本接口只执行 JSON 反序列化与 `Prepare` 阶段校验
+- 本接口只执行 JSON 反序列化、Admin API JSON 层校验（如 `sources.fetch_order`）与 `Prepare` 阶段校验
 - 本接口不拉取订阅、不执行 Source / Filter / Group / Route / Target / Render
 - 因此它能提前发现字段、正则、URL 基本格式、命名冲突、跨段引用和环路等静态问题
 - 它不能发现订阅/Snell/VLESS 来源不可用、远程来源为空、过滤后组为空、目标格式级联过滤后 fallback 清空等生成期问题
@@ -402,7 +402,7 @@ revision 冲突响应示例：
 处理流程：
 
 1. 读取配置源（`LoadConfig`；本地文件或 HTTP(S) URL）
-2. 执行 `Prepare` 校验
+2. 执行 `Prepare` 校验（不消费 `sources.fetch_order` 等 Admin API JSON-only 字段）
 3. 校验通过 → `WLock` 替换 `RuntimeConfig` 指针，同时将重读主配置源得到的 `config_revision`（`sha256:<hex>`）写入 `runtime_config_revision`，此后 `GET /api/status` 的 `config_dirty` 变为 `false` → 返回 `200`
 4. 校验失败 → 不替换，返回 `400` + `ValidateResult` 结构的静态诊断（与 `POST /api/config/validate` 的 Body 结构一致，但 HTTP 状态不同）
 

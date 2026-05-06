@@ -128,7 +128,6 @@ subconverter/
 ```text
 cmd/subconverter
   -> admin
-  -> config
   -> fetch
   -> app
   -> auth

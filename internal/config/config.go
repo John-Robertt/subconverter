@@ -190,7 +190,7 @@ func (s Sources) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON accepts the API object shape. fetch_order validation is done
-// in Prepare so callers can receive structured diagnostics.
+// by the app-layer API wrapper so callers can receive structured diagnostics.
 func (s *Sources) UnmarshalJSON(data []byte) error {
 	type sourcesJSON struct {
 		Subscriptions []Subscription `json:"subscriptions"`

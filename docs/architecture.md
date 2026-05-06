@@ -164,8 +164,8 @@ RUnlock()
 - `generate`：单一"生成配置"服务，承接 `Build -> Target -> Render`。v2.0 起改为无状态设计：`Generate` 方法接收 `*RuntimeConfig` 参数，不再通过结构体字段持有配置指针；`app.Service` 在每次请求时取快照后传入
 - `app`：v2.0 应用服务层，统一承接配置快照、条件写回、热重载、运行时预览、草稿预览、订阅链接生成、状态查询；用 `RWMutex` 保护 `*RuntimeConfig` 指针快照与替换。包内按文件拆分职责（`service.go` / `preview.go` / `generate_link.go` / `diagnostic.go` / `validation.go` / `status.go` / `errors.go` / `generate_input.go`），保持包级别统一入口而非引入不必要的子包抽象
 - `auth`：v2.0 管理后台认证层，承接 bootstrap setup token、管理员 PBKDF2 密码哈希、auth state 文件、session 创建/校验/注销和登录失败锁定；不依赖配置生成管道
-- `admin`：Admin API 处理器，只做 JSON 解析、调用 `app.Service` 或 `auth`、错误映射；不直接编排管道或渲染逻辑
-- `server`：HTTP 接口、路由注册、session middleware、同源校验、参数校验和错误映射
+- `admin`：Admin API 处理器，只做 JSON 解析、同源校验、调用 `app.Service` 或 `auth`、错误映射；不直接编排管道或渲染逻辑
+- `server`：HTTP 路由注册、`/generate`、`/healthz`、SPA fallback、响应缓存和文本错误映射
 
 依赖原则：
 

@@ -32,7 +32,7 @@ RLock(RuntimeConfig)
 **包边界**（依赖单向）：
 
 ```
-cmd/subconverter → internal/{admin,app,auth,config,fetch,generate,server,webui}
+cmd/subconverter → internal/{admin,app,auth,fetch,generate,server,webui}
 internal/server → internal/{generate,errtype}
 internal/admin → internal/{app,auth,errtype}
 internal/app → internal/{config,fetch,generate,pipeline,model,errtype}

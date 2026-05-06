@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clipboard, FileDown } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
+import { queryKeys } from "../app/queryKeys";
 import { api, buildGeneratePath } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import type { GenerateFormat } from "../api/types";
@@ -16,19 +17,19 @@ export function DownloadPage() {
   const runtimeRevision = status?.runtime_config_revision;
 
   const nodesQuery = useQuery({
-    queryKey: ["previewNodes", runtimeRevision],
+    queryKey: queryKeys.previewNodes(runtimeRevision),
     queryFn: api.previewNodes,
     enabled: Boolean(runtimeRevision)
   });
 
   const clashPreviewQuery = useQuery({
-    queryKey: ["generatePreview", "clash", runtimeRevision],
+    queryKey: queryKeys.generatePreview(runtimeRevision, "clash"),
     queryFn: () => api.generatePreview("clash"),
     enabled: Boolean(runtimeRevision)
   });
 
   const surgePreviewQuery = useQuery({
-    queryKey: ["generatePreview", "surge", runtimeRevision],
+    queryKey: queryKeys.generatePreview(runtimeRevision, "surge"),
     queryFn: () => api.generatePreview("surge"),
     enabled: Boolean(runtimeRevision)
   });

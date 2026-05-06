@@ -127,6 +127,8 @@ docker run -d \
 
 这种模式适合 GitOps / 外部系统管理配置文件的部署方式。`api` 服务会把只读挂载识别为本地配置文件不可写，`GET /api/status` 返回 `config_source.writable=false` 与 `capabilities.config_write=false`；正式 Web 页面据此禁用保存入口。若绕过前端直接调用 `PUT /api/config`，会返回 `409 config_file_not_writable`。
 
+注意：该示例未挂载 `/auth`，不适合作为首次 Web setup 的完整配置。需要 Web 管理后台时，请额外挂载可写 auth state（如 `-v $(pwd)/auth:/auth`）并设置 `SUBCONVERTER_SETUP_TOKEN`，或直接使用下方 Compose 示例。
+
 ### Docker 部署（可写目录挂载，为 v2.0 写回预留）
 
 若要允许 Web 后台写回配置，可挂载整个配置目录，并确保容器内运行用户对该目录有写权限：

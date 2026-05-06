@@ -41,7 +41,7 @@
 - `fallback` 必填
 - `groups` 不得为空（至少声明一个地区节点组）
 - `base_url` 可选；若非空，必须以 `http://` 或 `https://` 开头
-- `sources.fetch_order` 缺失或为空时使用默认顺序；非空时只能包含 `subscriptions`、`snell`、`vless` 且三项各出现一次，否则返回 `invalid_fetch_order`
+- Admin API JSON 输入中的 `sources.fetch_order` 缺失或为空时使用默认顺序；非空时只能包含 `subscriptions`、`snell`、`vless` 且三项各出现一次，否则返回 `invalid_fetch_order`。该规则由 app 层 wrapper 在调用 `config.Prepare()` 前校验，不属于 YAML reload 的通用 Prepare 规则
 - `routing` 中同一 entry 内 `@auto` 最多出现一次
 - `routing` 中同一 entry 内 `@all` 与 `@auto` 不能同时出现
 
@@ -209,7 +209,7 @@ HTTP 语义：
 
 校验与热重载的关系：
 
-- `POST /api/reload` 内部先执行与 `validate` 相同的校验流程
+- `POST /api/reload` 内部执行同一组 `Prepare` 静态校验，但输入来自 YAML 源，不执行 Admin API JSON-only 校验（如 `sources.fetch_order`）
 - 校验失败则拒绝重载，返回 `400` + `ValidateResult` 结构的错误
 - 前端可在保存前调用 `validate` 预检，避免保存后因静态配置错误导致重载失败
 
