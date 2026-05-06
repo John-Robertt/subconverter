@@ -75,8 +75,8 @@ func filterCompiledDetailed(proxies []model.Proxy, excludePattern *regexp.Regexp
 
 // isFetchedKind reports whether a proxy Kind was sourced via remote fetch
 // (subscription, Snell, or VLESS source). These kinds participate in name
-// filtering, region-group regex matching, chain upstream candidacy, and
-// @all expansion.
+// filtering, region-group regex matching, and chain upstream candidacy.
+// @all is computed separately from the non-chained original proxy set.
 func isFetchedKind(k model.ProxyKind) bool {
 	return k == model.KindSubscription || k == model.KindSnell || k == model.KindVLess
 }

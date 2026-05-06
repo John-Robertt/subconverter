@@ -39,7 +39,7 @@ JP-Snell = snell, 9.10.11.12, 443, psk=zzz, version=4, shadow-tls-password=sss, 
 
 关键特性：
 
-- **只进入 Surge 输出**：Clash Meta 主线不支持 Snell v4/v5（jinqians 默认版本），Clash 渲染会自动过滤 Snell 节点并级联清理空组
+- **只进入 Surge 输出**：Clash Meta 主线不支持 Snell v4/v5（jinqians 默认版本），Clash 目标格式投影阶段会过滤 Snell 节点并级联清理空组/规则
 - **全字段支持**：包括 ShadowTLS（Surge 独有）、reuse、tfo、obfs、udp-relay 等
 - 节点参与与 SS 订阅共享的去重池、`filters.exclude` 过滤、区域组 regex 匹配
 - 可作为 `relay_through` 的链式上游
@@ -64,7 +64,7 @@ vless://11111111-2222-3333-4444-555555555555@sg.example.com:443?security=reality
 
 关键特性：
 
-- **只进入 Clash 输出**：Surge 不原生支持 VLESS，Surge 渲染会自动过滤 VLESS 节点并级联清理空组
+- **只进入 Clash 输出**：Surge 不原生支持 VLESS，Surge 目标格式投影阶段会过滤 VLESS 节点并级联清理空组/规则
 - `type` 缺失或未知值回落到 `tcp`；`encryption` 非空时透传
 - 节点参与与 SS / Snell 共享的去重池、`filters.exclude` 过滤、区域组 regex 匹配
 - 可作为 `relay_through` 的链式上游
@@ -215,7 +215,7 @@ HK-03 → HK-ISP
 - Clash Meta 配置文件（.yaml）
 - Surge 配置文件（.conf）
 
-两者的面板结构、路由行为在目标格式都支持的协议范围内保持一致，只是语法不同。已知格式例外有两类：Snell 只进入 Surge 输出，Clash 会在渲染入口做级联过滤；VLESS 只进入 Clash 输出，Surge 会在渲染入口做级联过滤。输出格式不在配置文件中指定，由请求参数决定。
+两者的面板结构、路由行为在目标格式都支持的协议范围内保持一致，只是语法不同。已知格式例外有两类：Snell 只进入 Surge 输出，Clash 会在 Target 目标格式投影阶段做级联过滤；VLESS 只进入 Clash 输出，Surge 会在 Target 目标格式投影阶段做级联过滤。输出格式不在配置文件中指定，由请求参数决定。
 
 请求参数语义：
 
@@ -392,7 +392,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 决策               | 结论                                      | 原因                             |
 | ------------------ | ----------------------------------------- | -------------------------------- |
 | 配置风格（用户侧） | 声明式分层 YAML                           | 关注点分离，可读性强             |
-| 代码架构（开发侧） | 管道模型 Source→Filter→Group→Route→Render | 灵活、可调试                     |
+| 代码架构（开发侧） | 管道模型 Source→Filter→Group→Route→ValidateGraph→Target→Render | 灵活、可调试                     |
 | 内置规则库         | 不做                                      | 统一用 ruleset URL，不维护规则库 |
 | Overlay 多设备支持 | 不做                                      | 当前不需要                       |
 | 代理链             | 支持，作为 source 上的可选声明            | 不常用但重要                     |
