@@ -284,7 +284,6 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - [ ] **用户可见错误消息含 URL**：已用 `fetch.SanitizeURL` 脱敏（订阅/链路 URL 常含 token）
 - [ ] **新增来源类型** → 见 §新增来源类型：`configs/base_config.yaml` 已加注释示例块；docs 已同步
 - [ ] **函数行为语义变化** → 见 §语义变更优先 rename：已 rename 函数/变量名而非仅改注释（锚点一致性）
-- [ ] **Plan 文件含"可选/推荐"条目** → 见 §Plan 文件闭环：已收敛为"已做"或"不做 + 理由"，不留模糊词汇
 - [ ] **格式专属协议改动** → 见 §已知架构局限 #3：已测级联效应
 - [ ] **包间依赖变更** → 见 §新增来源类型 · 文档与示例同步：`docs/architecture.md` 模块边界图和 `docs/implementation/project-structure.md` 依赖方向图已同步更新
 - [ ] **测试跨边界导入** → 见 §测试：测试文件未导入同层或上层业务包（如 render 测试不导入 pipeline）
