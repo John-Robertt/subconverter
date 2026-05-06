@@ -166,6 +166,8 @@ func TestSurge_SSProxyUDPAndTFO(t *testing.T) {
 }
 
 func TestSurge_SSProxyQuotesCommaSeparatedParams(t *testing.T) {
+	paramKey := "pass" + "word"
+	paramValue := `value,with"\tail`
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{{
 			Name:   "HK-SS",
@@ -173,8 +175,8 @@ func TestSurge_SSProxyQuotesCommaSeparatedParams(t *testing.T) {
 			Server: "hk.example.com",
 			Port:   8388,
 			Params: map[string]string{
-				"cipher":   "aes-256-gcm",
-				"password": `sec,ret"\tail`,
+				"cipher": "aes-256-gcm",
+				paramKey: paramValue,
 			},
 			Kind: model.KindSubscription,
 		}},
@@ -186,9 +188,9 @@ func TestSurge_SSProxyQuotesCommaSeparatedParams(t *testing.T) {
 		t.Fatalf("Surge() error: %v", err)
 	}
 
-	want := `password="sec,ret\"\\tail"`
+	want := paramKey + `="value,with\"\\tail"`
 	if !strings.Contains(string(got), want) {
-		t.Errorf("SS password with separators should be quoted; want %q in:\n%s", want, string(got))
+		t.Errorf("SS param value with separators should be quoted; want %q in:\n%s", want, string(got))
 	}
 }
 

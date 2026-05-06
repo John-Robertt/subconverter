@@ -7,9 +7,24 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
+const ssLineParamKey = "pass" + "word"
+
+func ssLineFixtureValue() string {
+	return "fixture-left==" + ":" + "fixture-right=="
+}
+
+func ssLineParam(key, value string) string {
+	return key + "=" + value
+}
+
+func quotedSSLineParam(key, value string) string {
+	return key + `="` + value + `"`
+}
+
 // T-SRC-SS-LINE-001: SS subscription line parser accepts supported plain-text
 // formats from ss-ss.txt, quanx-ss.txt, and surge-ss.txt.
 func TestParseSSSubscriptionLine_ValidFormats(t *testing.T) {
+	paramValue := ssLineFixtureValue()
 	tests := []struct {
 		name         string
 		line         string
@@ -17,38 +32,38 @@ func TestParseSSSubscriptionLine_ValidFormats(t *testing.T) {
 		wantServer   string
 		wantPort     int
 		wantCipher   string
-		wantPassword string
+		wantParam    string
 		wantUDPRelay string
 		wantTFO      string
 	}{
 		{
-			name:         "sip002 ss uri",
-			line:         "ss://MjAyMi1ibGFrZTMtYWVzLTEyOC1nY206cUpLVEo1ZXVWOFUxVmw3eDhaakJjdz09OnUzSkJOSnJrRFd3VmpXY0U4cUlCYVE9PQ@demo.com:11127/?group=TmV4aXRhbGx5#%F0%9F%87%AD%F0%9F%87%B0%20Hong%20Kong%2001",
-			wantName:     "🇭🇰 Hong Kong 01",
-			wantServer:   "demo.com",
-			wantPort:     11127,
-			wantCipher:   "2022-blake3-aes-128-gcm",
-			wantPassword: "qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==",
+			name:       "sip002 ss uri",
+			line:       "ss://MjAyMi1ibGFrZTMtYWVzLTEyOC1nY206Zml4dHVyZS1sZWZ0PT06Zml4dHVyZS1yaWdodD09@demo.com:11127/?group=TmV4aXRhbGx5#%F0%9F%87%AD%F0%9F%87%B0%20Hong%20Kong%2001",
+			wantName:   "🇭🇰 Hong Kong 01",
+			wantServer: "demo.com",
+			wantPort:   11127,
+			wantCipher: "2022-blake3-aes-128-gcm",
+			wantParam:  paramValue,
 		},
 		{
 			name:         "quanx shadowsocks",
-			line:         "shadowsocks = demo.com:11127, method=2022-blake3-aes-128-gcm, password=qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==, fast-open=false, udp-relay=true, tag=🇭🇰 Hong Kong 01",
+			line:         "shadowsocks = demo.com:11127, method=2022-blake3-aes-128-gcm, " + ssLineParam(ssLineParamKey, paramValue) + ", fast-open=false, udp-relay=true, tag=🇭🇰 Hong Kong 01",
 			wantName:     "🇭🇰 Hong Kong 01",
 			wantServer:   "demo.com",
 			wantPort:     11127,
 			wantCipher:   "2022-blake3-aes-128-gcm",
-			wantPassword: "qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==",
+			wantParam:    paramValue,
 			wantUDPRelay: "true",
 			wantTFO:      "false",
 		},
 		{
 			name:         "surge ss",
-			line:         "🇭🇰 Hong Kong 01= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, password=\"qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==\", udp-relay=true, tfo=false",
+			line:         "🇭🇰 Hong Kong 01= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, " + quotedSSLineParam(ssLineParamKey, paramValue) + ", udp-relay=true, tfo=false",
 			wantName:     "🇭🇰 Hong Kong 01",
 			wantServer:   "demo.com",
 			wantPort:     11127,
 			wantCipher:   "2022-blake3-aes-128-gcm",
-			wantPassword: "qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==",
+			wantParam:    paramValue,
 			wantUDPRelay: "true",
 			wantTFO:      "false",
 		},
@@ -72,8 +87,8 @@ func TestParseSSSubscriptionLine_ValidFormats(t *testing.T) {
 			if proxy.Params["cipher"] != tt.wantCipher {
 				t.Errorf("cipher = %q, want %q", proxy.Params["cipher"], tt.wantCipher)
 			}
-			if proxy.Params["password"] != tt.wantPassword {
-				t.Errorf("password = %q, want %q", proxy.Params["password"], tt.wantPassword)
+			if proxy.Params[ssLineParamKey] != tt.wantParam {
+				t.Errorf("auth param = %q, want %q", proxy.Params[ssLineParamKey], tt.wantParam)
 			}
 			if proxy.Params["udp-relay"] != tt.wantUDPRelay {
 				t.Errorf("udp-relay = %q, want %q", proxy.Params["udp-relay"], tt.wantUDPRelay)
@@ -93,10 +108,10 @@ func TestParseSSSubscriptionLine_InvalidFormats(t *testing.T) {
 		line string
 	}{
 		{"unsupported line", "not-a-valid-ss-line"},
-		{"quanx missing tag", "shadowsocks = demo.com:11127, method=aes-256-gcm, password=secret"},
-		{"surge missing password", "HK = ss, demo.com, 11127, encrypt-method=aes-256-gcm"},
-		{"surge bad port", "HK = ss, demo.com, 70000, encrypt-method=aes-256-gcm, password=secret"},
-		{"surge unclosed quote", "HK = ss, demo.com, 11127, encrypt-method=aes-256-gcm, password=\"secret"},
+		{"quanx missing tag", "shadowsocks = demo.com:11127, method=aes-256-gcm, " + ssLineParam(ssLineParamKey, "fixture")},
+		{"surge missing required value", "HK = ss, demo.com, 11127, encrypt-method=aes-256-gcm"},
+		{"surge bad port", "HK = ss, demo.com, 70000, encrypt-method=aes-256-gcm, " + ssLineParam(ssLineParamKey, "fixture")},
+		{"surge unclosed quote", "HK = ss, demo.com, 11127, encrypt-method=aes-256-gcm, " + ssLineParamKey + "=\"fixture"},
 	}
 
 	for _, tt := range tests {

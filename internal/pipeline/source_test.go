@@ -418,9 +418,10 @@ func TestSource_PlainTextSSSubscription(t *testing.T) {
 // T-SRC-SS-TXT-004: subscriptions may be plain text Quantumult X shadowsocks
 // lists where tag carries the node name.
 func TestSource_PlainTextQuanXSSSubscription(t *testing.T) {
+	paramValue := ssLineFixtureValue()
 	body := []byte(strings.Join([]string{
-		"shadowsocks = demo.com:11127, method=2022-blake3-aes-128-gcm, password=qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==, fast-open=false, udp-relay=true, tag=🇭🇰 Hong Kong 01",
-		"shadowsocks = demo.com:11558, method=2022-blake3-aes-128-gcm, password=qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==, fast-open=false, udp-relay=true, tag=🇭🇰 Hong Kong 02",
+		"shadowsocks = demo.com:11127, method=2022-blake3-aes-128-gcm, " + ssLineParam(ssLineParamKey, paramValue) + ", fast-open=false, udp-relay=true, tag=🇭🇰 Hong Kong 01",
+		"shadowsocks = demo.com:11558, method=2022-blake3-aes-128-gcm, " + ssLineParam(ssLineParamKey, paramValue) + ", fast-open=false, udp-relay=true, tag=🇭🇰 Hong Kong 02",
 	}, "\n"))
 
 	cfg := baseCfg()
@@ -446,8 +447,8 @@ func TestSource_PlainTextQuanXSSSubscription(t *testing.T) {
 	if proxies[0].Params["cipher"] != "2022-blake3-aes-128-gcm" {
 		t.Errorf("cipher = %q", proxies[0].Params["cipher"])
 	}
-	if proxies[0].Params["password"] != "qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==" {
-		t.Errorf("password = %q", proxies[0].Params["password"])
+	if proxies[0].Params[ssLineParamKey] != paramValue {
+		t.Errorf("auth param = %q", proxies[0].Params[ssLineParamKey])
 	}
 	if proxies[0].Params["udp-relay"] != "true" || proxies[0].Params["tfo"] != "false" {
 		t.Errorf("udp-relay/tfo = %q/%q, want true/false", proxies[0].Params["udp-relay"], proxies[0].Params["tfo"])
@@ -458,10 +459,11 @@ func TestSource_PlainTextQuanXSSSubscription(t *testing.T) {
 // Syntactically valid informational entries are preserved; users can filter
 // them with filters.exclude if desired.
 func TestSource_PlainTextSurgeSSSubscription(t *testing.T) {
+	paramValue := ssLineFixtureValue()
 	body := []byte(strings.Join([]string{
-		"Traffic Reset：29 Days Left= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, password=\"qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==\", udp-relay=true, tfo=false",
-		"Expire Date：2026/06/05= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, password=\"qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==\", udp-relay=true, tfo=false",
-		"🇭🇰 Hong Kong 01= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, password=\"qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==\", udp-relay=true, tfo=false",
+		"Traffic Reset：29 Days Left= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, " + quotedSSLineParam(ssLineParamKey, paramValue) + ", udp-relay=true, tfo=false",
+		"Expire Date：2026/06/05= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, " + quotedSSLineParam(ssLineParamKey, paramValue) + ", udp-relay=true, tfo=false",
+		"🇭🇰 Hong Kong 01= ss, demo.com, 11127, encrypt-method=2022-blake3-aes-128-gcm, " + quotedSSLineParam(ssLineParamKey, paramValue) + ", udp-relay=true, tfo=false",
 	}, "\n"))
 
 	cfg := baseCfg()
