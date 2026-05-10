@@ -112,7 +112,7 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
           labels: |
             org.opencontainers.image.title=subconverter
-            org.opencontainers.image.description=Single-user HTTP service that converts SS subscriptions into Clash Meta and Surge configs.
+            org.opencontainers.image.description=Single-user HTTP service that converts SS/AnyTLS subscriptions into Clash Meta and Surge configs.
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index

@@ -89,6 +89,55 @@ func TestSource_SingleSubscription(t *testing.T) {
 	}
 }
 
+// T-SRC-ANYTLS-005: subscriptions may contain base64 encoded AnyTLS URI lists.
+func TestSource_SubscriptionAnyTLSBase64(t *testing.T) {
+	body := makeSubResponse(
+		"anytls://1b3614e427e3451b@demo.com:3383/?sni=cache-proxy.example.com&insecure=1#HK-AnyTLS-01",
+		"anytls://1b3614e427e3451b@demo.com:3814/?sni=cache-proxy.example.com&insecure=1#HK-AnyTLS-02",
+	)
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/anytls"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{"https://sub.example.com/anytls": body}}
+
+	source, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(source.Proxies) != 2 {
+		t.Fatalf("got %d proxies, want 2", len(source.Proxies))
+	}
+	for _, proxy := range source.Proxies {
+		if proxy.Kind != model.KindSubscription || proxy.Type != "anytls" {
+			t.Errorf("proxy %q kind/type = %q/%q, want subscription/anytls", proxy.Name, proxy.Kind, proxy.Type)
+		}
+		if proxy.Params["password"] != "1b3614e427e3451b" {
+			t.Errorf("proxy %q password = %q, want fixture password", proxy.Name, proxy.Params["password"])
+		}
+	}
+}
+
+// T-SRC-ANYTLS-006: subscriptions may be plain-text AnyTLS lists.
+func TestSource_SubscriptionAnyTLSPlainText(t *testing.T) {
+	body := []byte("anytls=demo.com:3383, password=secret, tls-host=edge.example.com, tls-verification=false, tag=HK-AnyTLS\n")
+	cfg := baseCfg()
+	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/plain-anytls"}}
+
+	f := &fakeFetcher{responses: map[string][]byte{"https://sub.example.com/plain-anytls": body}}
+
+	source, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(source.Proxies) != 1 {
+		t.Fatalf("got %d proxies, want 1", len(source.Proxies))
+	}
+	proxy := source.Proxies[0]
+	if proxy.Name != "HK-AnyTLS" || proxy.Type != "anytls" || proxy.Params["sni"] != "edge.example.com" {
+		t.Fatalf("proxy = %+v, want AnyTLS proxy with QuanX tls-host mapped to sni", proxy)
+	}
+}
+
 // T-SRC-003: Multi-subscription merge
 func TestSource_MultiSubscriptionMerge(t *testing.T) {
 	body1 := mustReadFile(t, "../../testdata/subscriptions/sample.txt")
@@ -375,8 +424,8 @@ func TestSource_InvalidBase64Response(t *testing.T) {
 	if !strings.Contains(fetchErr.Message, "Base64") {
 		t.Errorf("error should mention Base64, got: %s", fetchErr.Message)
 	}
-	if !strings.Contains(fetchErr.Message, "SS 订阅列表") {
-		t.Errorf("error should mention SS subscription list, got: %s", fetchErr.Message)
+	if !strings.Contains(fetchErr.Message, "SS/AnyTLS 订阅列表") {
+		t.Errorf("error should mention SS/AnyTLS subscription list, got: %s", fetchErr.Message)
 	}
 }
 

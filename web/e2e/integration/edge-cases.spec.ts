@@ -93,7 +93,7 @@ test.describe("edge cases", () => {
     await page.goto("/sources");
     // Save button in the topbar should be disabled in readonly mode.
     await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
-    // The dashed "添加 SS 订阅" button should also be disabled.
-    await expect(page.getByRole("button", { name: "添加 SS 订阅" })).toBeDisabled();
+    // The dashed "添加 SS / AnyTLS 订阅" button should also be disabled.
+    await expect(page.getByRole("button", { name: "添加 SS / AnyTLS 订阅" })).toBeDisabled();
   });
 });

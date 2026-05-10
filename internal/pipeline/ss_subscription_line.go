@@ -9,6 +9,23 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
+// ParseSubscriptionLine parses one subscription line in any supported
+// plain-text format: SIP002 ss:// URI, AnyTLS URI, Quantumult X lines, or
+// Surge proxy lines.
+func ParseSubscriptionLine(line string) (model.Proxy, error) {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "anytls://") {
+		return ParseAnyTLSURI(trimmed)
+	}
+	if isQuanXAnyTLSLine(trimmed) {
+		return parseQuanXAnyTLSLine(trimmed)
+	}
+	if isSurgeAnyTLSLine(trimmed) {
+		return parseSurgeAnyTLSLine(trimmed)
+	}
+	return ParseSSSubscriptionLine(trimmed)
+}
+
 // ParseSSSubscriptionLine parses one SS subscription line in any supported
 // plain-text format: SIP002 ss:// URI, Quantumult X shadowsocks line, or Surge
 // proxy line.
@@ -26,9 +43,18 @@ func ParseSSSubscriptionLine(line string) (model.Proxy, error) {
 	return model.Proxy{}, ssSubscriptionLineError(line, "不支持的 SS 订阅行格式")
 }
 
+func isPlainSubscriptionLine(line string) bool {
+	return isPlainSSSubscriptionLine(line) || isPlainAnyTLSSubscriptionLine(line)
+}
+
 func isPlainSSSubscriptionLine(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	return strings.HasPrefix(trimmed, "ss://") || isQuanXShadowsocksLine(trimmed) || isSurgeSSLine(trimmed)
+}
+
+func isPlainAnyTLSSubscriptionLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "anytls://") || isQuanXAnyTLSLine(trimmed) || isSurgeAnyTLSLine(trimmed)
 }
 
 func isQuanXShadowsocksLine(line string) bool {

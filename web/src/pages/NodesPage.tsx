@@ -111,6 +111,7 @@ export function NodesPage() {
                     <td>
                       {node.kind === "snell" ? <Chip tone="warning">Surge</Chip> : null}
                       {node.kind === "vless" ? <Chip tone="info">Clash</Chip> : null}
+                      {node.type === "anytls" ? <Chip tone="success">AnyTLS</Chip> : null}
                       {node.filtered ? <Chip tone="error">filtered</Chip> : <Chip tone="success">active</Chip>}
                     </td>
                   </tr>

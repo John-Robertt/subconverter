@@ -25,21 +25,21 @@ test.describe("sources page", () => {
     await expect(page.getByRole("heading", { name: /自定义代理/ })).toBeVisible();
   });
 
-  test("T-INT-SRC-002 add SS subscription appends a card and updates stats", async ({ page }) => {
+  test("T-INT-SRC-002 add SS / AnyTLS subscription appends a card and updates stats", async ({ page }) => {
     const state = createMockState();
     await installMocks(page, state);
 
     await page.goto("/sources");
-    await page.getByRole("button", { name: "添加 SS 订阅" }).click();
+    await page.getByRole("button", { name: "添加 SS / AnyTLS 订阅" }).click();
 
     const modal = page.getByRole("dialog");
-    await expect(modal.getByRole("heading", { name: "添加 SS 订阅" })).toBeVisible();
+    await expect(modal.getByRole("heading", { name: "添加 SS / AnyTLS 订阅" })).toBeVisible();
     await modal.locator(".text-input").fill("https://provider-c.example.com/sub?token=new-token");
     await modal.getByRole("button", { name: "保存来源" }).click();
 
     await expect(page.getByText(/provider-c\.example\.com/)).toBeVisible();
-    // SS 订阅 section heading carries chip with the count.
-    await expect(page.getByRole("heading", { name: /SS 订阅 3/ })).toBeVisible();
+    // SS / AnyTLS 订阅 section heading carries chip with the count.
+    await expect(page.getByRole("heading", { name: /SS \/ AnyTLS 订阅 3/ })).toBeVisible();
   });
 
   test("T-INT-SRC-003 deleting a custom proxy requires confirmation", async ({ page }) => {
@@ -126,12 +126,12 @@ test.describe("sources page", () => {
     await installMocks(page, state);
 
     await page.goto("/sources");
-    await dragFirstCardAfterSecond(page, sourceSection(page, /SS 订阅/));
+    await dragFirstCardAfterSecond(page, sourceSection(page, /SS \/ AnyTLS 订阅/));
     await dragFirstCardAfterSecond(page, sourceSection(page, /Snell 节点池/));
     await dragFirstCardAfterSecond(page, sourceSection(page, /VLESS 节点池/));
     await dragFirstCardAfterSecond(page, sourceSection(page, /自定义代理/));
 
-    await expect(sourceSection(page, /SS 订阅/).locator(".source-card").first()).toContainText("provider-b.example.com");
+    await expect(sourceSection(page, /SS \/ AnyTLS 订阅/).locator(".source-card").first()).toContainText("provider-b.example.com");
     await expect(sourceSection(page, /Snell 节点池/).locator(".source-card").first()).toContainText("snell-b.example.com");
     await expect(sourceSection(page, /VLESS 节点池/).locator(".source-card").first()).toContainText("vless-b.example.com");
     await expect(sourceSection(page, /自定义代理/).locator(".source-card").first()).toHaveAttribute("title", "Proxy B");

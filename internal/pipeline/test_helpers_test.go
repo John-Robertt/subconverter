@@ -20,6 +20,15 @@ func Execute(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*m
 	return Build(ctx, rt, fetcher)
 }
 
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
 // Source is kept as a test-only helper so stage tests can still start from raw
 // Config while production code always goes through config.Prepare first.
 func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*SourceResult, error) {

@@ -2,7 +2,7 @@
 # subconverter 用户配置文件
 # ============================================================
 #
-# 本文件声明系统的全部输入：订阅源、Snell/VLESS 来源、
+# 本文件声明系统的全部输入：SS/AnyTLS 订阅源、Snell/VLESS 来源、
 # 自定义代理、节点分组、服务路由、远程规则集、内联规则和兜底策略。
 #
 # 工具读取此文件后，结合底版模板（templates），
@@ -46,9 +46,11 @@ templates:
 # ==================== 节点来源 ====================
 
 sources:
-  # ---------- 订阅源 ----------
-  # 每个订阅返回 SS 节点列表（base64 编码、ss:// 明文列表、QuanX shadowsocks
-  # 行或 Surge ss 行均可）。
+  # ---------- SS / AnyTLS 订阅源 ----------
+  # 每个订阅返回 SS / AnyTLS 节点列表（base64 编码、明文 URI 列表、
+  # QuanX 行或 Surge 行均可）。
+  # SS 支持：ss://、QuanX shadowsocks 行、Surge ss 行。
+  # AnyTLS 支持：anytls://、QuanX anytls 行、Surge anytls 行。
   # 支持多个订阅，节点按顺序合并，跨订阅重名自动追加后缀（②③...）。
   # url 必填，必须为 http:// 或 https:// 开头。
   # 这里的 token 是上游订阅服务自己的 token，和本服务 `/generate`
@@ -64,7 +66,7 @@ sources:
   #   NAME = snell, SERVER, PORT, psk=..., version=..., [其他可选键]
   # 可选键：version / obfs / obfs-host / obfs-uri / reuse / tfo / udp-relay /
   #        udp-port / shadow-tls-password / shadow-tls-sni / shadow-tls-version
-  # 空行与 # / // 注释行跳过；单行解析失败整源报错（与 SS 订阅静默跳过策略不同，
+  # 空行与 # / // 注释行跳过；单行解析失败整源报错（与 subscriptions 静默跳过策略不同，
   # 原因：Snell 清单通常是小规模手工维护，严格报错更利于发现拼写问题）。
   # 节点名与订阅 / VLESS 共享同一跨源去重池；可作为 relay_through 的链式上游。
   # Snell 节点仅进入 Surge 输出；Clash 输出会级联过滤掉这些节点及依赖它们的组/规则。
@@ -78,7 +80,7 @@ sources:
   # 支持的 query：security（none/tls/reality）/ encryption / flow / type /
   #              sni / fp / alpn / pbk / sid / spx
   # 空行与 # / // 注释行跳过；单行解析失败整源报错（策略与 Snell 一致）。
-  # 节点名与订阅 / Snell 共享同一跨源去重池；可作为 relay_through 的链式上游。
+  # 节点名与订阅（SS/AnyTLS）/ Snell 共享同一跨源去重池；可作为 relay_through 的链式上游。
   # VLESS 节点仅进入 Clash Meta 输出；Surge 输出会级联过滤掉这些节点及依赖它们的组/规则。
   #
   vless:
@@ -88,7 +90,7 @@ sources:
   # 不来自订阅、手动定义的节点（如机房专线、ISP 代理）。
   #
   # 字段说明：
-  #   name:  节点名称（不能与拉取类节点（订阅 / Snell / VLESS）或其他自定义代理重名）
+  #   name:  节点名称（不能与拉取类节点（订阅（SS/AnyTLS）/ Snell / VLESS）或其他自定义代理重名）
   #   url:   代理协议链接，支持 ss://、socks5://、http://
   #          - ss:      SIP002 格式 ss://base64(method:password)@server:port[?plugin=...][#ignored]
   #          - socks5:  socks5://[user:pass@]server:port
@@ -103,8 +105,8 @@ sources:
   #
   #   type: 筛选上游节点的方式
   #     group  — 引用已定义的节点组（需填 name）
-  #     select — 用正则从拉取类节点（订阅 / Snell / VLESS）中筛选（需填 match）
-  #     all    — 使用全部拉取类节点（订阅 / Snell / VLESS）
+  #     select — 用正则从拉取类节点（订阅（SS/AnyTLS）/ Snell / VLESS）中筛选（需填 match）
+  #     all    — 使用全部拉取类节点（订阅（SS/AnyTLS）/ Snell / VLESS）
   #
   #   strategy: 链式组的策略，必填
   #     select   — 用户手动选节点
@@ -124,15 +126,15 @@ sources:
 # ==================== 节点过滤（可选）====================
 #
 # exclude: 正则表达式，匹配的拉取类节点会被排除。
-# 仅作用于拉取类节点（订阅 / Snell / VLESS），不影响自定义代理和链式节点。
+# 仅作用于拉取类节点（订阅（SS/AnyTLS）/ Snell / VLESS），不影响自定义代理和链式节点。
 # 常用于过滤订阅中的信息性节点（到期提醒、流量统计等）。
 
 filters:
-  exclude: "过期|剩余流量|到期"
+  exclude: "过期|剩余流量|到期|Traffic|Expire|Reset|Date|\\|.*G"
 
 # ==================== 节点组 ====================
 #
-# 定义地区节点组。每个组按正则匹配过滤后的拉取类节点（订阅 / Snell / VLESS）。
+# 定义地区节点组。每个组按正则匹配过滤后的拉取类节点（订阅（SS/AnyTLS）/ Snell / VLESS）。
 # 书写顺序 = 客户端面板显示顺序。
 #
 # 字段说明：

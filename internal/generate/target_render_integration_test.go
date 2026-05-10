@@ -165,3 +165,54 @@ func TestRender_VLessVisibilityDiffersBetweenFormats(t *testing.T) {
 		t.Error("SS node must still render in Surge")
 	}
 }
+
+// T-TGT-RND-004: AnyTLS is supported by both target projections, but each
+// renderer emits only its target-client field contract.
+func TestRender_AnyTLSVisibleInBothFormats(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-AnyTLS",
+			Type:   "anytls",
+			Server: "hk.example.com",
+			Port:   443,
+			Params: map[string]string{
+				"password":                       "pw",
+				"sni":                            "edge.example.com",
+				"skip-cert-verify":               "true",
+				"udp-relay":                      "true",
+				"tfo":                            "true",
+				"client-fingerprint":             "chrome",
+				"alpn":                           "h2,http/1.1",
+				"server-cert-fingerprint-sha256": "abc123",
+			},
+			Kind: model.KindSubscription,
+		}},
+		NodeGroups: []model.ProxyGroup{
+			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-AnyTLS"}},
+		},
+		RouteGroups: []model.ProxyGroup{
+			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "DIRECT"}},
+		},
+		Fallback:   "SVC_FINAL",
+		AllProxies: []string{"HK-AnyTLS"},
+	}
+
+	clashOut := string(mustRenderClashProjected(t, p))
+	for _, want := range []string{"name: HK-AnyTLS", "type: anytls", "udp: true", "client-fingerprint: chrome"} {
+		if !strings.Contains(clashOut, want) {
+			t.Errorf("Clash output missing %q:\n%s", want, clashOut)
+		}
+	}
+
+	surgeOut := string(mustRenderSurgeProjected(t, p))
+	for _, want := range []string{"HK-AnyTLS = anytls", "password=pw", "sni=edge.example.com", "skip-cert-verify=true", "server-cert-fingerprint-sha256=abc123"} {
+		if !strings.Contains(surgeOut, want) {
+			t.Errorf("Surge output missing %q:\n%s", want, surgeOut)
+		}
+	}
+	for _, unwanted := range []string{"udp-relay=true", "tfo=true", "client-fingerprint=chrome", "tls=true"} {
+		if strings.Contains(surgeOut, unwanted) {
+			t.Errorf("Surge output should not contain %q:\n%s", unwanted, surgeOut)
+		}
+	}
+}

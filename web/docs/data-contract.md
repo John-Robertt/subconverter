@@ -57,7 +57,7 @@
 前端必须保留三类顺序语义：
 
 - `groups`、`routing`、`rulesets` 在 JSON API 中使用 `[{key,value}]` 数组表示。
-- `sources.fetch_order` 保存 `subscriptions` / `snell` / `vless` 的拉取顺序，写回时必须保留。
+- `sources.fetch_order` 保存 `subscriptions` / `snell` / `vless` 的拉取顺序，写回时必须保留；AnyTLS 与 SS 共用 `subscriptions`。
 - `sources.fetch_order` 缺失或为空时服务端使用默认顺序；非空时必须完整包含 `subscriptions`、`snell`、`vless` 且三项各出现一次，否则返回 `invalid_fetch_order` 诊断。
 - `rules` 是普通数组，A6 拖拽排序直接改变数组顺序。
 

@@ -62,6 +62,52 @@ func TestExecute_HappyPath(t *testing.T) {
 	}
 }
 
+// T-EXEC-ANYTLS-001: AnyTLS subscription nodes flow through filter, grouping,
+// routing, and @all like other original subscription nodes.
+func TestExecute_AnyTLSEndToEnd(t *testing.T) {
+	subURL := "https://sub.example.com/anytls"
+	body := makeSubResponse(
+		"anytls://secret@hk.example.com:443/?sni=edge.example.com&insecure=1#HK-AnyTLS",
+		"anytls://secret@sg.example.com:443/?sni=edge.example.com&insecure=1#SG-AnyTLS",
+		"anytls://secret@info.example.com:443/?sni=edge.example.com&insecure=1#Traffic Reset",
+	)
+
+	f := &fakeFetcher{responses: map[string][]byte{subURL: body}}
+
+	cfg := &config.Config{
+		Sources: config.Sources{
+			Subscriptions: []config.Subscription{{URL: subURL}},
+		},
+		Filters:  config.Filters{Exclude: "Traffic"},
+		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
+		Routing:  mustRoutingMap(t, `"proxy": ["HK", "@all", "DIRECT"]`),
+		Fallback: "proxy",
+	}
+
+	p, err := Execute(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(p.Proxies) != 2 {
+		t.Fatalf("got %d active proxies, want 2: %+v", len(p.Proxies), p.Proxies)
+	}
+	for _, proxy := range p.Proxies {
+		if proxy.Kind != model.KindSubscription || proxy.Type != "anytls" {
+			t.Errorf("proxy %q Kind/Type = %q/%q, want subscription/anytls", proxy.Name, proxy.Kind, proxy.Type)
+		}
+	}
+	if len(p.NodeGroups) != 1 || !containsString(p.NodeGroups[0].Members, "HK-AnyTLS") {
+		t.Fatalf("HK group members = %+v, want HK-AnyTLS", p.NodeGroups)
+	}
+	if !containsString(p.AllProxies, "HK-AnyTLS") || !containsString(p.AllProxies, "SG-AnyTLS") {
+		t.Fatalf("@all = %+v, want active AnyTLS nodes", p.AllProxies)
+	}
+	if containsString(p.AllProxies, "Traffic Reset") {
+		t.Fatalf("@all leaked filtered info node: %+v", p.AllProxies)
+	}
+}
+
 // TestExecute_FetchError verifies that a subscription fetch error propagates.
 func TestExecute_FetchError(t *testing.T) {
 	f := &fakeFetcher{err: errors.New("connection refused")}

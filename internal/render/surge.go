@@ -42,6 +42,13 @@ var surgeSSKeyOrder = []string{
 	"tfo",
 }
 
+var surgeAnyTLSKeyOrder = []string{
+	"sni",
+	"skip-cert-verify",
+	"reuse",
+	"server-cert-fingerprint-sha256",
+}
+
 // sectionHeaderRe matches INI-style section headers like [Proxy].
 var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
 
@@ -129,6 +136,16 @@ func renderSurgeProxy(px model.Proxy) (string, error) {
 	case "snell":
 		parts = append(parts, px.Name+" = snell", px.Server, fmt.Sprintf("%d", px.Port))
 		for _, k := range surgeSnellKeyOrder {
+			if v := px.Params[k]; v != "" {
+				parts = append(parts, renderSurgeKeyValue(k, v))
+			}
+		}
+	case "anytls":
+		parts = append(parts, px.Name+" = anytls", px.Server, fmt.Sprintf("%d", px.Port))
+		if v := px.Params["password"]; v != "" {
+			parts = append(parts, renderSurgeKeyValue("password", v))
+		}
+		for _, k := range surgeAnyTLSKeyOrder {
 			if v := px.Params[k]; v != "" {
 				parts = append(parts, renderSurgeKeyValue(k, v))
 			}

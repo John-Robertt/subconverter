@@ -65,7 +65,7 @@ subconverter/
 
 `internal/pipeline`
 
-- SS / Snell / VLESS 来源解析、各阶段转换
+- SS/AnyTLS / Snell / VLESS 来源解析、各阶段转换
 - 图级校验
 - `Build` 编排（格式无关 IR）
 
@@ -119,7 +119,7 @@ subconverter/
 `internal/ssparse`
 
 - Shadowsocks URI 解析（SIP002 body 解析、plugin query 解析）
-- 被 `proxyparse`（自定义代理 URL 解析）和 `pipeline`（SS 订阅 URI 解析）共享
+- 被 `proxyparse`（自定义代理 URL 解析）和 `pipeline`（SS 订阅 URI 解析）共享；AnyTLS URI 由 `pipeline` 内部解析
 
 ---
 

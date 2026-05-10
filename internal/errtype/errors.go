@@ -40,6 +40,8 @@ const (
 	CodeBuildCustomNameConflict     Code = "build_custom_name_conflict"
 	CodeBuildRuleFormatInvalid      Code = "build_rule_format_invalid"
 	CodeBuildSSURIInvalid           Code = "build_ss_uri_invalid"
+	CodeBuildAnyTLSURIInvalid       Code = "build_anytls_uri_invalid"
+	CodeBuildAnyTLSLineInvalid      Code = "build_anytls_line_invalid"
 	CodeBuildSnellLineInvalid       Code = "build_snell_line_invalid"
 	CodeBuildVLessURIInvalid        Code = "build_vless_uri_invalid"
 	CodeBuildVLessSourceLineInvalid Code = "build_vless_source_line_invalid"

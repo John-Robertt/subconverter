@@ -438,8 +438,8 @@ describe("save workflow", () => {
     renderApp("/sources");
 
     await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getByRole("button", { name: "添加 SS 订阅" }));
-    expect(await screen.findByRole("dialog", { name: "添加 SS 订阅" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "添加 SS / AnyTLS 订阅" }));
+    expect(await screen.findByRole("dialog", { name: "添加 SS / AnyTLS 订阅" })).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://sub.example.com/new?token=secret" } });
     fireEvent.click(screen.getByRole("button", { name: "保存来源" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
@@ -581,8 +581,8 @@ describe("API client", () => {
 
 async function addSubscriptionDraft() {
   await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-  fireEvent.click(screen.getByRole("button", { name: "添加 SS 订阅" }));
-  expect(await screen.findByRole("dialog", { name: "添加 SS 订阅" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "添加 SS / AnyTLS 订阅" }));
+  expect(await screen.findByRole("dialog", { name: "添加 SS / AnyTLS 订阅" })).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://sub.example.com/new?token=secret" } });
   fireEvent.click(screen.getByRole("button", { name: "保存来源" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));

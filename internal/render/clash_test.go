@@ -228,6 +228,54 @@ func TestClash_SSProxyUDPAndTFO(t *testing.T) {
 	}
 }
 
+func TestClash_AnyTLSProxy(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-AnyTLS",
+			Type:   "anytls",
+			Server: "demo.com",
+			Port:   3383,
+			Params: map[string]string{
+				"password":                    "secret",
+				"sni":                         "cache-proxy.example.com",
+				"skip-cert-verify":            "true",
+				"alpn":                        "h2,http/1.1",
+				"client-fingerprint":          "chrome",
+				"idle-session-check-interval": "30",
+				"idle-session-timeout":        "30",
+				"min-idle-session":            "0",
+				"udp-relay":                   "false",
+			},
+			Kind: model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Clash(p, nil)
+	if err != nil {
+		t.Fatalf("Clash() error: %v", err)
+	}
+
+	output := string(got)
+	for _, want := range []string{
+		"type: anytls",
+		"password: secret",
+		"udp: true",
+		"sni: cache-proxy.example.com",
+		"skip-cert-verify: true",
+		"client-fingerprint: chrome",
+		"- h2",
+		"- http/1.1",
+		"idle-session-check-interval: \"30\"",
+		"idle-session-timeout: \"30\"",
+		"min-idle-session: \"0\"",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("Clash AnyTLS output missing %q:\n%s", want, output)
+		}
+	}
+}
+
 func TestClash_RuleOrder(t *testing.T) {
 	p := goldenPipeline()
 	got, err := Clash(p, nil)

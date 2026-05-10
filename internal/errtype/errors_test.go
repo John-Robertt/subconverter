@@ -102,6 +102,29 @@ func TestBuildErrorWithVLessSourceLineInvalid(t *testing.T) {
 	}
 }
 
+// T-ERR-010b: BuildError with AnyTLS invalid codes
+func TestBuildErrorWithAnyTLSInvalidCodes(t *testing.T) {
+	tests := []struct {
+		name string
+		code Code
+		msg  string
+	}{
+		{name: "uri", code: CodeBuildAnyTLSURIInvalid, msg: `AnyTLS URI "anytls://..." 无效：缺少 password`},
+		{name: "line", code: CodeBuildAnyTLSLineInvalid, msg: `AnyTLS 订阅行 "HK = anytls, ..." 无效：缺少 password`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &BuildError{Code: tt.code, Phase: "source", Message: tt.msg}
+			if got := e.Error(); got != "build error [source]: "+tt.msg {
+				t.Errorf("got %q, want %q", got, "build error [source]: "+tt.msg)
+			}
+			if e.Code != tt.code {
+				t.Errorf("code = %q, want %q", e.Code, tt.code)
+			}
+		})
+	}
+}
+
 // T-ERR-011: RenderError formats with format and message
 func TestRenderError(t *testing.T) {
 	e := &RenderError{Code: CodeRenderTemplateParseFailed, Format: "clash", Message: "底版模板解析失败", Cause: io.EOF}

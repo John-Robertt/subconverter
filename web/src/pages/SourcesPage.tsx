@@ -9,13 +9,13 @@ import { useConfigState } from "../state/config";
 import { useConfirm } from "../state/confirm";
 
 const sourceLabels: Record<FetchSourceKind, string> = {
-  subscriptions: "SS 订阅",
+  subscriptions: "SS / AnyTLS 订阅",
   snell: "Snell 节点池",
   vless: "VLESS 节点池"
 };
 
 const sourceDescriptions: Record<FetchSourceKind, string> = {
-  subscriptions: "Shadowsocks · 同时输出到 Clash 和 Surge",
+  subscriptions: "Shadowsocks / AnyTLS · 同时输出到 Clash 和 Surge",
   snell: "Surge 专属代理协议",
   vless: "Reality / Vision 等高级特性"
 };
@@ -102,7 +102,7 @@ export function SourcesPage() {
     <div className="page-stack">
       <div className="stats-grid">
         <StatCard label="订阅总数" value={totalSources} sub={`${sources.fetch_order.length} 类拉取顺序`} />
-        <StatCard label="订阅来源" value={totalFetch} sub="subscriptions / snell / vless" />
+        <StatCard label="订阅来源" value={totalFetch} sub="SS/AnyTLS / snell / vless" />
         <StatCard label="Surge-only" value={sources.snell.length} sub="Snell" />
         <StatCard label="Clash-only" value={sources.vless.length} sub="VLESS" />
       </div>

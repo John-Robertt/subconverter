@@ -23,6 +23,17 @@ func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 			},
 		},
 		{
+			name: "subscription anytls",
+			proxy: Proxy{
+				Name:   "HK-AnyTLS",
+				Type:   "anytls",
+				Server: "hk.example.com",
+				Port:   443,
+				Params: map[string]string{"password": "secret"},
+				Kind:   KindSubscription,
+			},
+		},
+		{
 			name: "snell source",
 			proxy: Proxy{
 				Name:   "HK-Snell",
@@ -129,6 +140,17 @@ func TestValidateProxyInvariant_InvalidCases(t *testing.T) {
 				Kind:   KindSubscription,
 			},
 			wantSubstr: "type=ss 缺少必填参数 password",
+		},
+		{
+			name: "anytls missing password",
+			proxy: Proxy{
+				Name:   "HK-AnyTLS",
+				Type:   "anytls",
+				Server: "hk.example.com",
+				Port:   443,
+				Kind:   KindSubscription,
+			},
+			wantSubstr: "type=anytls 缺少必填参数 password",
 		},
 		{
 			name: "vless missing network",

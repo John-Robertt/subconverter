@@ -329,7 +329,7 @@ type RuntimeEnvironment struct {
 
 设计原则：
 - DTO 是 `model` 的**子集视图**：只暴露前端需要的字段，不暴露内部实现细节
-- `Kind` 枚举在 DTO 层用字符串表示（`"subscription"` / `"snell"` / `"vless"` / `"custom"`），避免 `model.ProxyKind` 泄漏到 HTTP 契约
+- `Kind` 枚举在 DTO 层用字符串表示（`"subscription"` / `"snell"` / `"vless"` / `"custom"`），避免 `model.ProxyKind` 泄漏到 HTTP 契约；AnyTLS 节点使用 `kind="subscription"`、`type="anytls"`
 - `GroupPreviewResult` 中的 `ExpandedMembers` 携带 `origin` 字段，区分用户显式声明 / `@auto` 展开 / `@all` 展开
 
 ### ConfigError → DiagnosticItem 翻译

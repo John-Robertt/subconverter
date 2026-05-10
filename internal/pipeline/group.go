@@ -229,7 +229,7 @@ func computeAllProxies(proxies []model.Proxy) []string {
 }
 
 // fetchedProxies returns proxies sourced via remote fetch:
-// KindSubscription (SS subscriptions), KindSnell (Snell sources), and
+// KindSubscription (SS/AnyTLS subscriptions), KindSnell (Snell sources), and
 // KindVLess (VLESS sources). These are the original proxies that
 // participate in region-group regex matching and serve as valid chain
 // upstreams.

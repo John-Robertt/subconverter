@@ -22,7 +22,7 @@ const (
 // Proxy represents a single proxy node in the intermediate representation.
 type Proxy struct {
 	Name   string
-	Type   string // e.g. "ss", "socks5", "http", "snell", "vless"
+	Type   string // e.g. "ss", "anytls", "socks5", "http", "snell", "vless"
 	Server string
 	Port   int
 	Params map[string]string // type-specific parameters (cipher, password, etc.)

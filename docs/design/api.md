@@ -308,7 +308,7 @@ revision 冲突响应示例：
 - 本接口只执行 JSON 反序列化、Admin API JSON 层校验（如 `sources.fetch_order`）与 `Prepare` 阶段校验
 - 本接口不拉取订阅、不执行 Source / Filter / Group / Route / Target / Render
 - 因此它能提前发现字段、正则、URL 基本格式、命名冲突、跨段引用和环路等静态问题
-- 它不能发现订阅/Snell/VLESS 来源不可用、远程来源为空、过滤后组为空、目标格式级联过滤后 fallback 清空等生成期问题
+- 它不能发现订阅（SS/AnyTLS）/Snell/VLESS 来源不可用、远程来源为空、过滤后组为空、目标格式级联过滤后 fallback 清空等生成期问题
 - 生成可用性由 `POST /api/preview/nodes`、`POST /api/preview/groups` 和 `POST /api/generate/preview?format=...` 覆盖
 
 请求体：
@@ -415,7 +415,7 @@ revision 冲突响应示例：
 }
 ```
 
-边界：reload 只执行 `LoadConfig + Prepare`，不拉取订阅/Snell/VLESS 来源，不执行 Source / Filter / Group / Target / Render，因此不证明生成一定可用。订阅源不可用、过滤后空组、目标格式级联过滤和渲染错误由预览或生成路径发现。
+边界：reload 只执行 `LoadConfig + Prepare`，不拉取订阅（SS/AnyTLS）/Snell/VLESS 来源，不执行 Source / Filter / Group / Target / Render，因此不证明生成一定可用。订阅源不可用、过滤后空组、目标格式级联过滤和渲染错误由预览或生成路径发现。
 
 并发行为：同一时刻只允许一次 reload 操作。若 reload 正在执行时收到第二个 `POST /api/reload` 请求，立即返回 `429 Too Many Requests`，不排队等待。429 响应不携带 `Retry-After` header；客户端应短间隔退避后重试，避免循环重放请求。
 
@@ -804,6 +804,8 @@ Cookie session 下，所有会修改状态的管理请求必须校验同源 `Ori
 1. `RLock` 读取当前 `RuntimeConfig` 指针快照并立即释放锁
 2. 使用快照执行管道部分阶段（nodes: Source+Filter；groups: Source+Filter+Group+Route+ValidateGraph）
 3. 返回 JSON
+
+AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscription`，`type` 为 `anytls`。
 
 ### `POST /api/preview/*` 流程
 

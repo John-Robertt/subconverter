@@ -4,7 +4,8 @@ import "fmt"
 
 var allowedProxyTypesByKind = map[ProxyKind]map[string]bool{
 	KindSubscription: {
-		"ss": true,
+		"ss":     true,
+		"anytls": true,
 	},
 	KindSnell: {
 		"snell": true,
@@ -73,6 +74,8 @@ func requiredProxyParams(proxyType string) []string {
 	switch proxyType {
 	case "ss":
 		return []string{"cipher", "password"}
+	case "anytls":
+		return []string{"password"}
 	case "snell":
 		return []string{"psk"}
 	case "vless":

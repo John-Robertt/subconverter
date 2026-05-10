@@ -45,7 +45,7 @@
 
 | Kind | 来源 | 示例 `Type` | 参与 region regex 匹配 | 可作为链式上游 | 进入 `@all` |
 |------|------|-----------|---------------------|----------------|-------------|
-| `KindSubscription` | SS 订阅拉取 | `ss` | ✓ | ✓ | ✓ |
+| `KindSubscription` | SS / AnyTLS 订阅拉取 | `ss`, `anytls` | ✓ | ✓ | ✓ |
 | `KindSnell` | Snell 来源拉取（Surge 专属） | `snell` | ✓ | ✓ | ✓ |
 | `KindVLess` | VLESS 来源拉取（Clash 专属） | `vless` | ✓ | ✓ | ✓ |
 | `KindCustom` | 用户手工声明，且**未**设 `relay_through` | `ss`, `socks5`, `http` | ✗（名字已显式） | ✗ | ✓ |
@@ -68,7 +68,7 @@
 
 - 用 `Kind` 区分节点来源与行为，而不是只用一个布尔值标记是否链式
 - `Dialer` 仅在链式节点上生效，用于标识其上游节点
-- `Params` 为 `map[string]string`，承载代理类型的核心参数（如 SS 的 `cipher/password`、socks5/http 的 `username/password`）
+- `Params` 为 `map[string]string`，承载代理类型的核心参数（如 SS 的 `cipher/password`、AnyTLS 的 `password/sni`、socks5/http 的 `username/password`）
 - `Plugin` 为可选结构，承载 SS plugin 的名称与参数，避免把 plugin 语义混入 `Params` 的字符串 key 约定中
 - 渲染器按目标客户端能力解释 `Plugin`：Clash Meta 可通用透传，Surge 仅支持可映射的子集
 
@@ -95,7 +95,7 @@
 | 节点组名 | `🇭🇰 Hong Kong` | `groups` 段定义 |
 | 服务组名 | `🚀 快速选择` | `routing` 段互引用 |
 | 链式组名 | `HK-ISP`（或 `🔗 HK-ISP` 等用户自选命名） | `relay_through` 派生，组名 = `custom_proxy.name` 原样 |
-| 原始节点名 | `HK-01` / `HK-Snell` / `HK-VL` | `@all` 展开后的具体原始节点（订阅 / Snell / VLESS / 不带 `relay_through` 的自定义） |
+| 原始节点名 | `HK-01` / `HK-AnyTLS` / `HK-Snell` / `HK-VL` | `@all` 展开后的具体原始节点（订阅（SS/AnyTLS）/ Snell / VLESS / 不带 `relay_through` 的自定义） |
 | 保留策略 | `DIRECT`、`REJECT` | 内置 |
 
 说明：
@@ -173,8 +173,8 @@
 - 每个节点名称唯一
 - 每个组名称唯一
 - 节点组名和服务组名共享同一命名空间，不允许重名
-- 链式节点只能引用拉取类节点（订阅 / Snell / VLESS）作为上游
-- `@all` 只包含原始节点（订阅 / Snell / VLESS / 不带 `relay_through` 的自定义）
+- 链式节点只能引用拉取类节点（订阅（SS/AnyTLS）/ Snell / VLESS）作为上游
+- `@all` 只包含原始节点（订阅（SS/AnyTLS）/ Snell / VLESS / 不带 `relay_through` 的自定义）
 - 节点组和服务组的名称都可被服务组引用
 - fallback 必须引用已存在服务组
 
@@ -185,7 +185,7 @@
 | 冲突场景 | 策略 | 原因 |
 |---------|------|------|
 | 拉取类节点跨源重名（订阅、Snell、VLESS 来源共享同一去重池） | 两轮去重：第一轮按出现顺序追加递增后缀（如 `HK-01`、`HK-01②`、`HK-01③`），第二轮检测并解决生成名与原始名的碰撞 | 用户无法控制订阅商/Snell/VLESS 清单命名，需覆盖后缀与原始名碰撞的极端场景 |
-| 自定义代理与拉取类节点（订阅 / Snell / VLESS）重名 | 报错，错误消息指明冲突源 kind | 用户可修改自定义代理名称 |
+| 自定义代理与拉取类节点（订阅（SS/AnyTLS）/ Snell / VLESS）重名 | 报错，错误消息指明冲突源 kind | 用户可修改自定义代理名称 |
 | 自定义代理之间重名 | 报错 | 用户可修改 |
 
 ### 链式节点命名格式

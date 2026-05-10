@@ -56,20 +56,21 @@
 - 订阅拉取后是否得到至少一个有效节点
 - 运行期名称冲突是否出现
 - `relay_through.type=group` 的局部引用是否存在
-- SS URI 与 plugin query 是否能按 SIP002 基本结构解析
+- SS URI、AnyTLS URI 与 plugin query 是否能按基本结构解析
 
 重点规则：
 
 - 订阅拉取结果不得为空（0 个有效节点视为上游订阅内容错误）
-- 订阅响应体可为 Base64 编码的 SS URI 列表，或明文 `ss.txt` 风格 SS 列表（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`）；非 Base64 且不像明文 SS 列表的内容视为订阅内容格式错误
+- 订阅响应体可为 Base64 编码的 SS / AnyTLS URI 列表，或明文 SS / AnyTLS 列表（SS: SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`；AnyTLS: `anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）；非 Base64 且不像明文订阅列表的内容视为订阅内容格式错误
 - Snell 来源拉取结果不得为空（0 个有效节点报同类错误）
 - VLESS 来源拉取结果不得为空（0 个有效节点报同类错误）
-- Snell 来源中单行解析失败整源报错（与 SS 订阅的静默跳过不同，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
+- Snell 来源中单行解析失败整源报错（与 `subscriptions` 的静默跳过不同，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
 - VLESS 来源中单行解析失败整源报错（与 Snell 一致，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
 - 自定义代理名称不得与订阅、Snell 或 VLESS 节点名称冲突（错误消息会指明冲突源的 kind）
 - `relay_through.type=group` 引用的节点组必须存在
-- SS URI 中端口值必须在 1-65535 范围内；Snell / VLESS 节点的 port 字段同理
-- 非法 SS URI、非法 fragment 编码、非法 query 编码、损坏的 plugin 参数都属于 Source 阶段构建期错误
+- SS / AnyTLS URI 中端口值必须在 1-65535 范围内；Snell / VLESS 节点的 port 字段同理
+- 非法 SS URI、非法 AnyTLS URI、非法 fragment 编码、非法 query 编码、损坏的 plugin 参数都属于 Source 阶段构建期错误
+- AnyTLS 的 Surge / Quantumult X 方言字段在 Source 阶段做归一化；`tls=true` / `over-tls=true` 只作为输入兼容字段，不参与渲染输出
 - Snell 行格式错误（缺 `=`、type 非 snell、缺必填 psk 等）属于 Source 阶段构建期错误
 - VLESS URI 中非法 UUID、非法 `security`、非法端口等属于 Source 阶段构建期错误；未知 `type` 不报错，而是按 Mihomo 兼容语义回落到 `tcp`
 

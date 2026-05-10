@@ -48,8 +48,8 @@ type SourceResult struct {
 // default is used.
 //
 // Sources are processed sequentially to guarantee deterministic dedup
-// suffixes. Fetch errors are fail-fast; individual malformed SS URIs within
-// a subscription are skipped, but a subscription yielding zero valid nodes
+// suffixes. Fetch errors are fail-fast; individual malformed SS/AnyTLS lines
+// within a subscription are skipped, but a subscription yielding zero valid nodes
 // is an error. VLESS and Snell sources abort on any single-line parse
 // failure (small hand-curated lists — strict failure surfaces typos early).
 func sourcePrepared(ctx context.Context, sources config.PreparedSources, staticNamespace config.StaticNamespace, fetcher fetch.Fetcher) (*SourceResult, error) {
@@ -120,7 +120,7 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, staticN
 }
 
 // fetchSubscription fetches a single subscription URL, normalizes the response
-// body into text, and parses each line as a supported SS subscription format.
+// body into text, and parses each line as a supported subscription format.
 func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string) ([]model.Proxy, error) {
 	body, err := fetcher.Fetch(ctx, rawURL)
 	if err != nil {
@@ -132,7 +132,7 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 		return nil, &errtype.FetchError{
 			Code:    errtype.CodeFetchSubscriptionBase64Invalid,
 			URL:     fetch.SanitizeURL(rawURL),
-			Message: "订阅内容不是合法的 Base64，也不是明文 SS 订阅列表",
+			Message: "订阅内容不是合法的 Base64，也不是明文 SS/AnyTLS 订阅列表",
 			Cause:   err,
 		}
 	}
@@ -140,9 +140,9 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 	lines := splitSubscriptionLines(text)
 	var proxies []model.Proxy
 	for _, line := range lines {
-		proxy, err := ParseSSSubscriptionLine(line)
+		proxy, err := ParseSubscriptionLine(line)
 		if err != nil {
-			// Skip individual malformed SS subscription lines.
+			// Skip individual malformed subscription lines.
 			continue
 		}
 		proxies = append(proxies, proxy)
@@ -274,7 +274,7 @@ func wrapVLessSourceParseError(sanitizedURL string, lineNo int, parseErr error) 
 }
 
 // subscriptionBodyText accepts both conventional base64 subscriptions and
-// plain-text ss.txt-style lists in the supported SS line formats.
+// plain-text lists in the supported SS/AnyTLS line formats.
 func subscriptionBodyText(body []byte) (string, error) {
 	s := strings.TrimSpace(string(body))
 	if s == "" {
@@ -284,19 +284,19 @@ func subscriptionBodyText(body []byte) (string, error) {
 	if err == nil {
 		return decoded, nil
 	}
-	if looksLikePlainSSSubscription(s) {
+	if looksLikePlainSubscription(s) {
 		return s, nil
 	}
 	return "", err
 }
 
-func looksLikePlainSSSubscription(text string) bool {
+func looksLikePlainSubscription(text string) bool {
 	for _, rawLine := range strings.Split(text, "\n") {
 		line := strings.TrimSpace(rawLine)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
 			continue
 		}
-		if isPlainSSSubscriptionLine(line) {
+		if isPlainSubscriptionLine(line) {
 			return true
 		}
 	}

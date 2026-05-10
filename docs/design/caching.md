@@ -12,7 +12,7 @@
 
 系统缓存以下远程资源的拉取结果：
 
-- 订阅 URL（SS 节点列表）
+- 订阅 URL（SS / AnyTLS 节点列表）
 - 模板 URL（底版配置文件，当 `templates.clash` / `templates.surge` 为 HTTP(S) URL 时）
 - 配置文件 URL（主配置文件，当 `-config` 为 HTTP(S) URL 时）
 

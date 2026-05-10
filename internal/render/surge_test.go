@@ -108,6 +108,57 @@ func TestSurge_SSProxyWithSimpleObfsPlugin(t *testing.T) {
 	}
 }
 
+func TestSurge_AnyTLSProxy(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name:   "HK-AnyTLS",
+			Type:   "anytls",
+			Server: "demo.com",
+			Port:   3383,
+			Params: map[string]string{
+				"password":                       "secret",
+				"sni":                            "cache-proxy.example.com",
+				"skip-cert-verify":               "true",
+				"reuse":                          "true",
+				"server-cert-fingerprint-sha256": "abc123",
+				"udp-relay":                      "true",
+				"tfo":                            "true",
+				"client-fingerprint":             "chrome",
+				"alpn":                           "h2,http/1.1",
+				"idle-session-check-interval":    "30",
+				"idle-session-timeout":           "30",
+				"min-idle-session":               "0",
+			},
+			Kind: model.KindSubscription,
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+
+	want := "HK-AnyTLS = anytls, demo.com, 3383, password=secret, sni=cache-proxy.example.com, skip-cert-verify=true, reuse=true, server-cert-fingerprint-sha256=abc123"
+	if !strings.Contains(string(got), want) {
+		t.Errorf("Surge AnyTLS output missing %q:\n%s", want, string(got))
+	}
+	for _, unwanted := range []string{
+		"tls=true",
+		"udp-relay=true",
+		"tfo=true",
+		"client-fingerprint=chrome",
+		"alpn=",
+		"idle-session-check-interval",
+		"idle-session-timeout",
+		"min-idle-session",
+	} {
+		if strings.Contains(string(got), unwanted) {
+			t.Errorf("Surge AnyTLS output should not contain %q:\n%s", unwanted, string(got))
+		}
+	}
+}
+
 func TestSurge_SSProxyWithUnsupportedPlugin(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{{

@@ -280,7 +280,7 @@ git push origin v0.1.0
 Release workflow 会为镜像写入 OCI 元数据：
 
 - `org.opencontainers.image.source=https://github.com/John-Robertt/subconverter`
-- 镜像：`org.opencontainers.image.description=Single-user HTTP service that converts SS subscriptions into Clash Meta and Surge configs.`
+- 镜像：`org.opencontainers.image.description=Single-user HTTP service that converts SS/AnyTLS subscriptions into Clash Meta and Surge configs.`
 
 对多架构镜像，workflow 还会把描述写入 manifest index annotation，确保 GHCR 包页面可以显示描述信息。
 

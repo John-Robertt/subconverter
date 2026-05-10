@@ -2,7 +2,7 @@
 // Source -> Filter -> Group -> Route -> ValidateGraph.
 //
 // Stages:
-//   - Source: subscription/Snell/VLESS fetching, SS/Snell/VLESS URI parsing,
+//   - Source: subscription/Snell/VLESS fetching, SS/AnyTLS/Snell/VLESS parsing,
 //     cross-source dedup, custom proxy conversion
 //   - Filter: exclude regex filtering on fetched nodes
 //   - Group: region groups, chained nodes/groups, @all computation

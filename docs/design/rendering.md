@@ -132,6 +132,48 @@ Plugin 限制：
 - 不支持的插件名称或包含未知选项的 obfs 插件返回 `RenderError`（而非静默降级）
 - 无 plugin 时不输出 obfs 相关字段
 
+### AnyTLS 渲染
+
+AnyTLS 节点来自 `sources.subscriptions`，同时支持 Clash Meta 和 Surge 输出，不做目标格式过滤。
+
+**Clash Meta**：
+
+```
+name / type:anytls / server / port / password / udp:true
+  → sni（非空才输出）
+  → skip-cert-verify:true（仅 true 时输出）
+  → client-fingerprint（非空才输出）
+  → alpn（逗号分隔串展开为 YAML 列表）
+  → idle-session-check-interval / idle-session-timeout / min-idle-session（非空才输出）
+  → dialer-proxy（链式节点）
+```
+
+**Surge**：
+
+```
+<name> = anytls, <server>, <port>, password=..., sni=..., skip-cert-verify=..., reuse=..., server-cert-fingerprint-sha256=...
+```
+
+约束：
+- `password` 必填；输出阶段采用“宽进严出”：parser 接受订阅商 / Surge / Quantumult X 方言，renderer 只输出目标客户端官方支持字段
+- `sources.subscriptions` 的 URI parser 将 `insecure=1` 归一化为 `skip-cert-verify=true`
+- Quantumult X 的 `tls-host` 归一化为 `sni`，`tls-verification=false` 归一化为 `skip-cert-verify=true`，`fast-open` 归一化为 `tfo`
+- Surge 输入中的 `tls=true` 与 Quantumult X 输入中的 `over-tls=true` 是 input-only 兼容字段；Surge 输出不固定回写 `tls=true`
+- Quantumult X 输入中的 `udp-relay` 会保存在 IR，Clash 输出固定为 `udp:true`；Surge 官方 AnyTLS 参数未列 `udp-relay`，因此 Surge 输出不透传
+
+| 输入字段 | IR key | Clash Meta 输出 | Surge 输出 |
+|----------|--------|-----------------|------------|
+| URI auth / `password` | `password` | `password` | `password` |
+| `sni` / `tls-host` | `sni` | `sni` | `sni` |
+| `insecure=1` / `skip-cert-verify` / `tls-verification=false` | `skip-cert-verify` | `skip-cert-verify` | `skip-cert-verify` |
+| `fp` / `client-fingerprint` | `client-fingerprint` | `client-fingerprint` | 不输出 |
+| `alpn` | `alpn` | `alpn` 列表 | 不输出 |
+| `reuse` | `reuse` | 不输出 | `reuse` |
+| `udp-relay` | `udp-relay` | `udp:true`（固定输出） | 不输出 |
+| `fast-open` / `tfo` | `tfo` | 不输出 | 不输出 |
+| `idle-session-*` | 同名 key | 同名字段 | 不输出 |
+| `server-cert-fingerprint-sha256` | 同名 key | 不输出 | 同名字段 |
+
 ### Snell 过滤
 
 Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。`Target` 阶段会先做级联过滤：

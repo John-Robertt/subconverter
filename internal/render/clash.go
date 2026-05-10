@@ -156,6 +156,8 @@ func buildClashProxy(px model.Proxy) *yaml.Node {
 		if v := px.Params["password"]; v != "" {
 			addPair(m, "password", scalarNode(v))
 		}
+	case "anytls":
+		emitClashAnyTLSFields(m, px)
 	case "vless":
 		emitClashVLessFields(m, px)
 	}
@@ -173,6 +175,38 @@ func paramBoolTrue(v string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// emitClashAnyTLSFields writes AnyTLS-specific fields in a fixed order.
+func emitClashAnyTLSFields(m *yaml.Node, px model.Proxy) {
+	if v := px.Params["password"]; v != "" {
+		addPair(m, "password", scalarNode(v))
+	}
+	// AnyTLS supports UDP; emit it by default to match subscription clients.
+	addPair(m, "udp", trueNode())
+	if v := px.Params["sni"]; v != "" {
+		addPair(m, "sni", scalarNode(v))
+	}
+	if paramBoolTrue(px.Params["skip-cert-verify"]) {
+		addPair(m, "skip-cert-verify", trueNode())
+	}
+	if v := px.Params["client-fingerprint"]; v != "" {
+		addPair(m, "client-fingerprint", scalarNode(v))
+	}
+	if v := px.Params["alpn"]; v != "" {
+		if parts := splitClashALPN(v); len(parts) > 0 {
+			addPair(m, "alpn", sequenceOfStrings(parts))
+		}
+	}
+	if v := px.Params["idle-session-check-interval"]; v != "" {
+		addPair(m, "idle-session-check-interval", scalarNode(v))
+	}
+	if v := px.Params["idle-session-timeout"]; v != "" {
+		addPair(m, "idle-session-timeout", scalarNode(v))
+	}
+	if v := px.Params["min-idle-session"]; v != "" {
+		addPair(m, "min-idle-session", scalarNode(v))
 	}
 }
 
