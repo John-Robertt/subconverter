@@ -45,7 +45,7 @@
 |------|---------|---------|
 | B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅（SS/AnyTLS）/ Snell / VLESS / 自定义）；显示名称、类型、服务器、端口、Kind；标注格式限定（Snell = 仅 Surge / VLESS = 仅 Clash） |
 | B2 分组预览 | `GET /api/preview/groups` | 当前运行时节点组、链式组和服务组结果；展示 `@all` / `@auto` 展开后的成员 |
-| B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` + `GET /api/config/effective.yaml` + `POST /api/config/import` | 自动展示 Clash Meta / Surge 双格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；导出当前生效源 YAML；导入 YAML 到前端草稿 |
+| B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` + `GET /api/config/effective.zip` + `POST /api/config/import` | 自动展示 Clash Meta / Surge 双格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；导出当前生效配置与模板 ZIP；导入 ZIP 或 YAML 到前端草稿 |
 
 ### C 区：系统状态
 
@@ -68,8 +68,8 @@
 | 进行中状态 | 顶栏按钮 Spinner + 禁用 | 防止重复提交 |
 | 不可撤销操作 | 居中红色确认弹窗 | 删除、重置等需二次确认 |
 | 首次保存本地 YAML | 居中确认弹窗 | 提示注释、引号和格式风格可能丢失，用户确认后才发起 `PUT /api/config` |
-| 导入 YAML 配置 | 文件选择 + 确认弹窗 | B3 中选择 `.yaml/.yml` 后调用 `POST /api/config/import` 替换前端草稿；若当前草稿有未保存修改，导入前先确认；导入不保存、不 reload |
-| 导出生效 YAML | 下载链接 | B3 中调用 `GET /api/config/effective.yaml` 下载当前 RuntimeConfig 对应的源 YAML；保存但未 reload 时仍导出旧生效配置 |
+| 导入配置包 | 文件选择 + 确认弹窗 | B3 中选择 `.zip/.yaml/.yml` 后调用 `POST /api/config/import` 替换前端草稿；ZIP 导入会写入包内模板副本并更新草稿模板路径，导入前需确认；导入不保存配置、不 reload |
+| 导出生效配置包 | 下载链接 | B3 中调用 `GET /api/config/effective.zip` 下载当前 RuntimeConfig 对应的源 YAML 与模板；保存但未 reload 时仍导出旧生效配置包 |
 | 校验修复 | 右侧 Drawer | 展示静态诊断列表，点击后通过 `locator.json_pointer` 跳转到对应页面/字段 |
 
 ---

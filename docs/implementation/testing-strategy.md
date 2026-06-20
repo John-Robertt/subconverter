@@ -105,6 +105,7 @@
 - `T-ADM-021`：auth state 自动创建目录权限为 `0700`、文件权限为 `0600`；写入使用同目录临时文件、fsync、rename；auth state 不可写时 setup 返回 `409 auth_state_not_writable`
 - `T-ADM-022`：Cookie session 下非安全 `/api/*` 请求校验同源 `Origin` 或 `Referer`；覆盖受保护管理接口，以及未登录可访问但会修改状态的 `/api/auth/login`、`/api/auth/setup`、`/api/auth/logout`，缺失或跨站来源均被拒绝
 - `T-ADM-023`：`GET /api/config/effective.yaml` 返回当前 RuntimeConfig 对应的源 YAML；保存但未 reload 时仍返回旧生效 YAML；`POST /api/config/import` 将 YAML 转为 Config JSON；两个端点均要求管理员 session
+- `T-ADM-024`：`GET /api/config/effective.zip` 返回当前 RuntimeConfig 对应的源 YAML 与模板 ZIP；`POST /api/config/import` 以 `application/zip` 导入配置包并写入本地模板副本；两个端点均要求管理员 session
 
 ---
 
@@ -199,8 +200,9 @@
 - `T-WEB-014`：A8 静态校验 Drawer 展示 errors/warnings/infos 三级，通过 `locator.json_pointer` 跳转到对应页面字段（归属 M10）
 - `T-WEB-015`：B2 分组预览页面树形展示，ValidateGraph 失败时显示诊断且不展示部分成功结果（归属 M10）
 - `T-WEB-016`：B3 生成下载页面自动双格式运行时预览 → 下载 → 复制订阅链接全流程（归属 M10）
-- `T-WEB-022`：B3 导入 YAML 到前端草稿后保存使用导入后的配置；导出生效配置链接指向 `/api/config/effective.yaml`
-- `T-WEB-023`：HTTP(S) 或本地只读配置源下 B3 禁用导入配置，仍允许导出生效配置
+- `T-WEB-022`：B3 导入 YAML 到前端草稿后保存使用导入后的配置；导出生效配置链接指向 `/api/config/effective.zip`
+- `T-WEB-023`：HTTP(S) 或本地只读配置源下 B3 禁用导入配置，仍允许导出生效配置包
+- `T-WEB-024`：B3 导入 ZIP 配置包前确认写入模板副本，并以 `application/zip` 调用 `POST /api/config/import`
 - `T-WEB-017`：端到端测试：本地可写配置全流程（归属 M10）
   - 测试入口：正式前端 E2E runner；后端使用临时本地配置文件、fake 订阅源和 fake 模板资源
   - fixture：最小可启动 YAML、至少一个 SS/AnyTLS 订阅节点、一个规则集 URL、Clash / Surge 模板

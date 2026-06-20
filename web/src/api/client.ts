@@ -51,6 +51,25 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return parsed as T;
 }
 
+async function apiBinaryRequest<T>(path: string, body: BodyInit, contentType: string): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": contentType },
+    body
+  });
+
+  const parsed = await parseResponse(response);
+  if (!response.ok) {
+    const error = normalizeError(response.status, parsed);
+    if (error.code === "auth_required" || error.code === "session_expired") {
+      window.dispatchEvent(new CustomEvent("subconverter:auth-required", { detail: error }));
+    }
+    throw error;
+  }
+  return parsed as T;
+}
+
 async function parseResponse(response: Response): Promise<unknown> {
   const contentType = response.headers.get("Content-Type") ?? "";
   if (response.status === 204) {
@@ -118,6 +137,7 @@ export const api = {
   logout: () => apiRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", skipAuthRedirect: true }),
   config: () => apiRequest<ConfigSnapshot>("/api/config"),
   importConfigYAML: (yaml: string) => apiRequest<ConfigImportResponse>("/api/config/import", { method: "POST", body: { yaml } }),
+  importConfigArchive: (archive: Blob) => apiBinaryRequest<ConfigImportResponse>("/api/config/import", archive, "application/zip"),
   saveConfig: (config_revision: string, config: Config) =>
     apiRequest<{ config_revision: string }>("/api/config", { method: "PUT", body: { config_revision, config } }),
   validateConfig: (config: Config) => apiRequest<ValidateResult>("/api/config/validate", { method: "POST", body: { config } }),
@@ -136,6 +156,7 @@ export const api = {
 };
 
 export const effectiveConfigYAMLPath = "/api/config/effective.yaml";
+export const effectiveConfigArchivePath = "/api/config/effective.zip";
 
 export function buildGeneratePath(format: GenerateFormat, filename: string): string {
   return `/generate?${buildGenerateQuery(format, filename)}`;

@@ -125,6 +125,7 @@ function mockBackend(options: MockBackendOptions = {}) {
       return json(configSnapshot);
     }
     if (path === "/api/config/effective.yaml") return text("sources: {}\nfallback: Proxy\n");
+    if (path === "/api/config/effective.zip") return text("zip");
     if (path === "/api/config/import") {
       return json({
         config: {
@@ -405,15 +406,15 @@ describe("M10 frontend workflows", () => {
     expect(backend.calls.some((item) => item.path === "/api/generate/preview?format=clash")).toBe(true);
   });
 
-  it("T-WEB-022 imports YAML into the draft and exports the effective config", async () => {
+  it("T-WEB-022 imports YAML into the draft and exports the effective config package", async () => {
     localStorage.setItem("subconverter.firstSaveConfirmed", "true");
     const backend = mockBackend();
     const { container } = renderApp("/download");
 
     expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
     const exportLink = await screen.findByRole("link", { name: "导出生效配置" });
-    expect(exportLink.getAttribute("href")).toBe("/api/config/effective.yaml");
-    expect(exportLink.getAttribute("download")).toBe("config.yaml");
+    expect(exportLink.getAttribute("href")).toBe("/api/config/effective.zip");
+    expect(exportLink.getAttribute("download")).toBe("subconverter-config.zip");
 
     const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
     expect(input).toBeTruthy();
@@ -430,13 +431,34 @@ describe("M10 frontend workflows", () => {
     });
   });
 
+  it("T-WEB-024 imports a config package as ZIP and confirms template copy", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    const { container } = renderApp("/download");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    const file = new File(["zip-bytes"], "subconverter-config.zip", { type: "application/zip" });
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
+
+    expect(await screen.findByRole("dialog", { name: "导入配置包并写入模板副本？" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认导入" }));
+
+    await waitFor(() => {
+      const importCall = backend.calls.find((item) => item.path === "/api/config/import" && item.init?.method === "POST");
+      expect(importCall?.init?.headers).toEqual({ "Content-Type": "application/zip" });
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
+  });
+
   it("T-WEB-023 disables import for readonly config sources but keeps effective export", async () => {
     mockBackend({ readonly: true });
     renderApp("/download");
 
     expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "导入配置" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("link", { name: "导出生效配置" }).getAttribute("href")).toBe("/api/config/effective.yaml");
+    expect(screen.getByRole("link", { name: "导出生效配置" }).getAttribute("href")).toBe("/api/config/effective.zip");
   });
 });
 

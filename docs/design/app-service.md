@@ -48,10 +48,20 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 // 用于 GET /api/config/effective.yaml。
 func (s *Service) EffectiveConfigYAML(ctx context.Context) ([]byte, error)
 
+// EffectiveConfigArchive 返回当前 RuntimeConfig 对应的源 YAML 与模板 ZIP 包。
+// 启动成功与 Reload 成功时更新配置快照；模板按当前生效 templates 位置读取。
+// 用于 GET /api/config/effective.zip。
+func (s *Service) EffectiveConfigArchive(ctx context.Context) (*ConfigArchiveResult, error)
+
 // ImportConfigYAML 将上传 YAML 解析为 Config JSON。
 // 不写文件、不替换 RuntimeConfig、不执行 Prepare。
 // 用于 POST /api/config/import。
 func (s *Service) ImportConfigYAML(ctx context.Context, raw []byte) (*ImportConfigYAMLResult, error)
+
+// ImportConfigArchive 将上传 ZIP 包解析为 Config JSON，并写入包内模板副本。
+// 仅本地可写配置源支持；不写配置文件、不替换 RuntimeConfig、不执行 Prepare。
+// 用于 POST /api/config/import application/zip。
+func (s *Service) ImportConfigArchive(ctx context.Context, raw []byte) (*ImportConfigYAMLResult, error)
 
 // ValidateDraft 对草稿配置执行 Prepare 阶段静态校验。
 // 不写文件、不替换 RuntimeConfig、不拉取远程源。
@@ -164,6 +174,16 @@ type SaveConfigResult struct {
 ```go
 type ImportConfigYAMLResult struct {
     Config json.RawMessage `json:"config"`
+}
+```
+
+### ConfigArchiveResult
+
+```go
+type ConfigArchiveResult struct {
+    Filename    string
+    ContentType string
+    Body        []byte
 }
 ```
 
@@ -414,6 +434,7 @@ var (
 - 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
 - `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 由响应中的 `config_revision != runtime_config_revision` 计算
 - `EffectiveConfigYAML`：只在 `RLock` 内复制当前生效 YAML 字节；该快照只在启动成功和 `Reload` 成功时更新
+- `EffectiveConfigArchive`：只在 `RLock` 内复制当前生效 YAML 字节和模板位置；模板内容读取与 ZIP 编码在释放锁后执行
 - 写路径（`Reload`）：`WLock` 只保护指针替换，不包含 `LoadConfig` / `Prepare` / I/O
 - 慢速订阅拉取、模板加载和渲染不持有配置锁
 - `SaveConfig` 的原子写回使用临时文件 + `os.Rename`，与配置锁独立

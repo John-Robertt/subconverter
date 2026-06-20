@@ -23,7 +23,8 @@
 | GET | `/api/config` | 读取当前配置与 revision | v2.0 |
 | PUT | `/api/config` | 条件保存配置（JSON → YAML 写回） | v2.0 |
 | GET | `/api/config/effective.yaml` | 下载当前生效的源 YAML 配置 | v2.0 |
-| POST | `/api/config/import` | 解析上传 YAML 为草稿配置 JSON | v2.0 |
+| GET | `/api/config/effective.zip` | 下载当前生效的源 YAML 配置与模板包 | v2.0 |
+| POST | `/api/config/import` | 导入 YAML 或配置模板 ZIP 包为草稿配置 JSON | v2.0 |
 | POST | `/api/config/validate` | 静态校验配置（Prepare 阶段） | v2.0 |
 | POST | `/api/reload` | 触发配置热重载 | v2.0 |
 | GET | `/api/preview/nodes` | 预览当前运行时节点列表 | v2.0 |
@@ -318,14 +319,42 @@ revision 冲突响应示例：
 - HTTP(S) 远程配置源同样导出上一次成功加载到运行时的远程 YAML 内容
 - 本接口不读取当前配置源、不写文件、不改变 `config_dirty`
 
+### `GET /api/config/effective.zip`
+
+用途：下载当前正在生效的源 YAML 配置与全部已配置底版模板。
+
+成功响应：
+
+- `200`，`Content-Type: application/zip`
+- `Content-Disposition: attachment; filename="subconverter-config.zip"; filename*=UTF-8''subconverter-config.zip`
+- ZIP 内容：
+  - `config.yaml`：上一次成功启动或 `POST /api/reload` 时进入 `RuntimeConfig` 的原始 YAML 字节
+  - `templates/clash.yaml`：当前生效 `templates.clash` 指向的模板内容（仅配置该字段时存在）
+  - `templates/surge.conf`：当前生效 `templates.surge` 指向的模板内容（仅配置该字段时存在）
+
+说明：
+
+- 本接口返回“正在生效”的配置包，而不是当前前端草稿
+- 若 `PUT /api/config` 已保存但尚未 reload，ZIP 中 `config.yaml` 仍是旧的生效 YAML
+- 模板内容按当前生效模板位置读取；远程模板走现有 fetch/cache，本地模板走本地资源读取
+- 任一已配置模板读取失败时，整个导出失败，不返回不完整 ZIP
+- 本接口不写文件、不改变 `config_dirty`
+
 ### `POST /api/config/import`
 
-用途：解析上传 YAML 为前端草稿 JSON，不保存、不热重载。
+用途：导入 YAML 或配置模板 ZIP 包为前端草稿 JSON。
 
-请求体：
+YAML 请求体：
 
 - `Content-Type: application/json`
 - Body：`{ "yaml": "sources: ...\n" }`
+
+ZIP 请求体：
+
+- `Content-Type: application/zip`
+- Body：ZIP 字节，大小不超过 10 MiB
+- ZIP 必须包含非空 `config.yaml`
+- 可选包含 `templates/clash.yaml` 与 `templates/surge.conf`
 
 成功响应：
 
@@ -343,7 +372,11 @@ revision 冲突响应示例：
 说明：
 
 - `config` 的 JSON 形状与 `GET /api/config` 相同，保序字段仍以 `[{key, value}]` 数组表示
-- 本接口只做 YAML 解析与结构转换；配置语义校验由现有 `POST /api/config/validate` 和保存流程负责
+- YAML 导入只做 YAML 解析与结构转换；不写文件、不替换运行时配置
+- ZIP 导入会将包内模板写入本地配置文件旁的 `.imports/import-*/templates/` 独立目录，并把返回草稿中的 `templates.clash/surge` 改为写入后的绝对路径
+- ZIP 导入不会覆盖既有模板文件；若模板副本写入失败，已存在的模板文件与当前 RuntimeConfig 不受影响
+- ZIP 导入只读取固定条目，不按 ZIP 内路径直接解压；缺少 `config.yaml` 或 ZIP 无效时返回 `400 invalid_archive`
+- HTTP(S) 远程配置源导入 ZIP 返回 `409 config_source_readonly`；模板文件不可写返回 `409 template_file_not_writable`
 - 导入成功后，前端应只替换草稿；用户仍需显式保存和热重载才会生效
 
 ### `POST /api/config/validate`

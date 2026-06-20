@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clipboard, FileDown, Upload } from "lucide-react";
 import { useMemo, useRef, type ChangeEvent, type ReactNode } from "react";
 import { queryKeys } from "../app/queryKeys";
-import { api, buildGeneratePath, effectiveConfigYAMLPath } from "../api/client";
+import { api, buildGeneratePath, effectiveConfigArchivePath } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import type { GenerateFormat } from "../api/types";
 import { Button, Chip, ErrorState, LoadingState, StatCard } from "../components/ui";
@@ -71,13 +71,13 @@ export function DownloadPage() {
   });
 
   const importMutation = useMutation({
-    mutationFn: api.importConfigYAML,
-    onSuccess: (result) => {
+    mutationFn: (input: ConfigImportInput) => (input.kind === "archive" ? api.importConfigArchive(input.file) : api.importConfigYAML(input.yaml)),
+    onSuccess: (result, input) => {
       updateDraft(() => result.config);
       pushToast({
         kind: "success",
-        title: "配置已导入草稿",
-        message: "请检查后保存；保存后需要热重载才会生效。"
+        title: input.kind === "archive" ? "配置包已导入草稿" : "配置已导入草稿",
+        message: input.kind === "archive" ? "模板副本已写入本地；请检查后保存并热重载。" : "请检查后保存；保存后需要热重载才会生效。"
       });
     },
     onError: (error) => {
@@ -91,22 +91,46 @@ export function DownloadPage() {
   const previewLoading = clashPreviewQuery.isLoading || surgePreviewQuery.isLoading;
 
   async function openImportPicker() {
-    if (isDraftDirty) {
+    if (isReadonly) return;
+    importInputRef.current?.click();
+  }
+
+  async function confirmImport(archive: boolean): Promise<boolean> {
+    if (archive) {
       const accepted = await confirm({
-        title: "导入配置并替换当前草稿？",
-        message: "当前草稿包含未保存修改。导入后会替换这些草稿内容，但不会立即写入 YAML 文件。",
-        confirmLabel: "选择文件",
+        title: "导入配置包并写入模板副本？",
+        message: isDraftDirty
+          ? "当前草稿包含未保存修改。导入后会替换草稿，并将配置包内模板写入新的本地副本。"
+          : "导入后会替换当前草稿，并将配置包内模板写入新的本地副本。",
+        confirmLabel: "确认导入",
         danger: true
       });
-      if (!accepted) return;
+      return accepted;
     }
-    importInputRef.current?.click();
+    if (!isDraftDirty) return true;
+    return confirm({
+      title: "导入配置并替换当前草稿？",
+      message: "当前草稿包含未保存修改。导入后会替换这些草稿内容，但不会立即写入 YAML 文件。",
+      confirmLabel: "确认导入",
+      danger: true
+    });
   }
 
   async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+
+    const archive = isArchiveFile(file);
+    if (!(await confirmImport(archive))) return;
+    if (archive) {
+      try {
+        await importMutation.mutateAsync({ kind: "archive", file });
+      } catch {
+        // useMutation handles request errors.
+      }
+      return;
+    }
 
     let content: string;
     try {
@@ -122,7 +146,7 @@ export function DownloadPage() {
     }
 
     try {
-      await importMutation.mutateAsync(content);
+      await importMutation.mutateAsync({ kind: "yaml", yaml: content });
     } catch {
       // useMutation handles request errors.
     }
@@ -131,7 +155,7 @@ export function DownloadPage() {
   return (
     <div className="page-stack download-page">
       <div className="download-config-actions page-actions">
-        <input ref={importInputRef} type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" className="sr-only" onChange={(event) => void handleImportFile(event)} />
+        <input ref={importInputRef} type="file" accept=".zip,application/zip,.yaml,.yml,text/yaml,application/x-yaml" className="sr-only" onChange={(event) => void handleImportFile(event)} />
         <Button
           variant="secondary"
           icon={<Upload size={15} aria-hidden="true" />}
@@ -142,7 +166,7 @@ export function DownloadPage() {
           导入配置
         </Button>
         {runtimeRevision ? (
-          <a className="button button-secondary" href={effectiveConfigYAMLPath} download="config.yaml">
+          <a className="button button-secondary" href={effectiveConfigArchivePath} download="subconverter-config.zip">
             <FileDown size={15} aria-hidden="true" />
             <span>导出生效配置</span>
           </a>
@@ -201,6 +225,8 @@ export function DownloadPage() {
     </div>
   );
 }
+
+type ConfigImportInput = { kind: "yaml"; yaml: string } | { kind: "archive"; file: File };
 
 interface PreviewCardProps {
   title: string;
@@ -375,4 +401,8 @@ function readTextFile(file: File): Promise<string> {
     reader.onerror = () => reject(new Error("读取文件失败"));
     reader.readAsText(file);
   });
+}
+
+function isArchiveFile(file: File): boolean {
+  return file.type === "application/zip" || file.type === "application/x-zip-compressed" || file.name.toLowerCase().endsWith(".zip");
 }

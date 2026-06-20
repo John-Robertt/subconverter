@@ -1,11 +1,13 @@
 package app
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -226,6 +228,205 @@ fallback: HK
 
 	if _, err := svc.ImportConfigYAML(context.Background(), []byte("sources: [")); err == nil {
 		t.Fatal("expected invalid YAML error")
+	}
+}
+
+// T-APP-014: effective config archive exports the active config and configured templates
+func TestEffectiveConfigArchiveIncludesTemplates(t *testing.T) {
+	dir := t.TempDir()
+	clashPath := filepath.Join(dir, "base_clash.yaml")
+	surgePath := filepath.Join(dir, "base_surge.conf")
+	if err := os.WriteFile(clashPath, []byte("mixed-port: 7890\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(surgePath, []byte("[General]\nloglevel = notify\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte("templates:\n  clash: " + clashPath + "\n  surge: " + surgePath + "\n" + validConfigYAML)
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(context.Background(), Options{ConfigLocation: configPath})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	result, err := svc.EffectiveConfigArchive(context.Background())
+	if err != nil {
+		t.Fatalf("EffectiveConfigArchive: %v", err)
+	}
+	if result.Filename != ConfigArchiveFilename || result.ContentType != "application/zip" {
+		t.Fatalf("archive metadata = %+v", result)
+	}
+	entries := readArchiveEntriesForTest(t, result.Body)
+	if !bytes.Equal(entries[archiveConfigEntry], raw) {
+		t.Fatalf("config archive entry differs\ngot:\n%s\nwant:\n%s", entries[archiveConfigEntry], raw)
+	}
+	if got := string(entries[archiveClashTemplateEntry]); got != "mixed-port: 7890\n" {
+		t.Fatalf("clash template = %q", got)
+	}
+	if got := string(entries[archiveSurgeTemplateEntry]); got != "[General]\nloglevel = notify\n" {
+		t.Fatalf("surge template = %q", got)
+	}
+}
+
+// T-APP-015: config archive import writes local template copies and returns a draft config JSON
+func TestImportConfigArchiveWritesTemplates(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(validConfigYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	existingTemplateDir := filepath.Join(dir, "templates")
+	if err := os.Mkdir(existingTemplateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	existingClashPath := filepath.Join(existingTemplateDir, "clash.yaml")
+	if err := os.WriteFile(existingClashPath, []byte("old clash\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	existingSurgePath := filepath.Join(existingTemplateDir, "surge.conf")
+	if err := os.WriteFile(existingSurgePath, []byte("old surge\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(context.Background(), Options{ConfigLocation: configPath})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	archiveBody, err := buildConfigArchive([]archiveEntry{
+		{Name: archiveConfigEntry, Body: []byte(validConfigYAML)},
+		{Name: archiveClashTemplateEntry, Body: []byte("mixed-port: 7890\n")},
+		{Name: archiveSurgeTemplateEntry, Body: []byte("[General]\nloglevel = notify\n")},
+	})
+	if err != nil {
+		t.Fatalf("build archive: %v", err)
+	}
+
+	result, err := svc.ImportConfigArchive(context.Background(), archiveBody)
+	if err != nil {
+		t.Fatalf("ImportConfigArchive: %v", err)
+	}
+	var body struct {
+		Templates struct {
+			Clash string `json:"clash"`
+			Surge string `json:"surge"`
+		} `json:"templates"`
+	}
+	if err := json.Unmarshal(result.Config, &body); err != nil {
+		t.Fatalf("unmarshal imported config: %v", err)
+	}
+	if !isImportedTemplatePath(body.Templates.Clash, dir, "clash.yaml") {
+		t.Fatalf("clash template path = %q", body.Templates.Clash)
+	}
+	if !isImportedTemplatePath(body.Templates.Surge, dir, "surge.conf") {
+		t.Fatalf("surge template path = %q", body.Templates.Surge)
+	}
+	clash, err := os.ReadFile(body.Templates.Clash) // #nosec G304 -- path returned by service under t.TempDir.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(clash) != "mixed-port: 7890\n" {
+		t.Fatalf("written clash template = %q", clash)
+	}
+	surge, err := os.ReadFile(body.Templates.Surge) // #nosec G304 -- path returned by service under t.TempDir.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(surge) != "[General]\nloglevel = notify\n" {
+		t.Fatalf("written surge template = %q", surge)
+	}
+	if oldClash, err := os.ReadFile(existingClashPath); err != nil || string(oldClash) != "old clash\n" { // #nosec G304 -- path is built under t.TempDir in this test.
+		t.Fatalf("existing clash template = %q err=%v", oldClash, err)
+	}
+	if oldSurge, err := os.ReadFile(existingSurgePath); err != nil || string(oldSurge) != "old surge\n" { // #nosec G304 -- path is built under t.TempDir in this test.
+		t.Fatalf("existing surge template = %q err=%v", oldSurge, err)
+	}
+}
+
+// T-APP-016: config archive import rejects readonly sources and malformed archives
+func TestImportConfigArchiveRejectsReadonlyAndInvalidArchive(t *testing.T) {
+	remoteSvc := NewWithRuntime("https://config.example.com/config.yaml", nil, nil, generateOptions())
+	_, err := remoteSvc.ImportConfigArchive(context.Background(), []byte("not zip"))
+	if !errors.Is(err, errtype.ErrConfigSourceReadonly) {
+		t.Fatalf("remote ImportConfigArchive error = %T %[1]v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(validConfigYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(context.Background(), Options{ConfigLocation: path})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = svc.ImportConfigArchive(context.Background(), []byte("not zip"))
+	var badReq *BadRequestError
+	if !errors.As(err, &badReq) || badReq.Code != "invalid_archive" {
+		t.Fatalf("invalid zip error = %T %[1]v, want invalid_archive", err)
+	}
+
+	archiveBody, err := buildConfigArchive([]archiveEntry{{Name: archiveClashTemplateEntry, Body: []byte("x")}})
+	if err != nil {
+		t.Fatalf("build archive: %v", err)
+	}
+	_, err = svc.ImportConfigArchive(context.Background(), archiveBody)
+	if !errors.As(err, &badReq) || badReq.Code != "invalid_archive" {
+		t.Fatalf("missing config error = %T %[1]v, want invalid_archive", err)
+	}
+
+	emptyConfigArchive, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: []byte(" \n")}})
+	if err != nil {
+		t.Fatalf("build empty config archive: %v", err)
+	}
+	_, err = svc.ImportConfigArchive(context.Background(), emptyConfigArchive)
+	if !errors.As(err, &badReq) || badReq.Code != "invalid_archive" {
+		t.Fatalf("empty config error = %T %[1]v, want invalid_archive", err)
+	}
+
+	directoryConfigArchive := buildDirectoryArchiveForTest(t, archiveConfigEntry)
+	_, err = svc.ImportConfigArchive(context.Background(), directoryConfigArchive)
+	if !errors.As(err, &badReq) || badReq.Code != "invalid_archive" {
+		t.Fatalf("directory config error = %T %[1]v, want invalid_archive", err)
+	}
+}
+
+// T-APP-017: config archive import does not overwrite existing templates on template write failures
+func TestImportConfigArchiveTemplateWriteFailureDoesNotOverwriteExistingTemplates(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(validConfigYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	existingTemplateDir := filepath.Join(dir, "templates")
+	if err := os.Mkdir(existingTemplateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	existingClashPath := filepath.Join(existingTemplateDir, "clash.yaml")
+	if err := os.WriteFile(existingClashPath, []byte("old clash\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, configImportsDirName), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(context.Background(), Options{ConfigLocation: configPath})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	archiveBody, err := buildConfigArchive([]archiveEntry{
+		{Name: archiveConfigEntry, Body: []byte(validConfigYAML)},
+		{Name: archiveClashTemplateEntry, Body: []byte("new clash\n")},
+	})
+	if err != nil {
+		t.Fatalf("build archive: %v", err)
+	}
+
+	_, err = svc.ImportConfigArchive(context.Background(), archiveBody)
+	if !errors.Is(err, errtype.ErrTemplateFileNotWritable) {
+		t.Fatalf("template write error = %T %[1]v, want ErrTemplateFileNotWritable", err)
+	}
+	if oldClash, err := os.ReadFile(existingClashPath); err != nil || string(oldClash) != "old clash\n" { // #nosec G304 -- path is built under t.TempDir in this test.
+		t.Fatalf("existing clash template = %q err=%v", oldClash, err)
 	}
 }
 
@@ -599,6 +800,52 @@ func TestGenerateLinkUsesServerTokenAndBaseURL(t *testing.T) {
 	if !errors.As(err, &badReq) || badReq.Code != "base_url_required" {
 		t.Fatalf("GenerateLink without base_url error = %T %[1]v, want base_url_required", err)
 	}
+}
+
+func readArchiveEntriesForTest(t *testing.T, body []byte) map[string][]byte {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	entries := make(map[string][]byte, len(zr.File))
+	for _, file := range zr.File {
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatalf("open archive entry %q: %v", file.Name, err)
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatalf("read archive entry %q: %v", file.Name, err)
+		}
+		entries[file.Name] = data
+	}
+	return entries
+}
+
+func isImportedTemplatePath(path, configDir, filename string) bool {
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	prefix := filepath.Join(configDir, configImportsDirName, "import-")
+	suffix := filepath.Join("templates", filename)
+	return strings.HasPrefix(path, prefix) && strings.HasSuffix(path, suffix)
+}
+
+func buildDirectoryArchiveForTest(t *testing.T, name string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	header := &zip.FileHeader{Name: name}
+	header.SetMode(os.ModeDir | 0o700)
+	if _, err := zw.CreateHeader(header); err != nil {
+		t.Fatalf("create directory archive entry %q: %v", name, err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close directory archive: %v", err)
+	}
+	return buf.Bytes()
 }
 
 func subResponse(uris ...string) []byte {

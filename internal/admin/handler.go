@@ -3,6 +3,8 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -54,6 +56,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleConfigEffectiveYAML(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/config/effective.zip":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleConfigEffectiveArchive(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/config/import":
 		if !h.requireSession(w, r) {
 			return
@@ -208,7 +215,35 @@ func (h *Handler) handleConfigEffectiveYAML(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write(body) // #nosec G705 -- admin-only YAML export is downloaded as a non-HTML attachment.
 }
 
+func (h *Handler) handleConfigEffectiveArchive(w http.ResponseWriter, r *http.Request) {
+	result, err := h.app.EffectiveConfigArchive(r.Context())
+	if err != nil {
+		writeServiceError(w, err, false)
+		return
+	}
+	w.Header().Set("Content-Type", result.ContentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+result.Filename+`"; filename*=UTF-8''`+result.Filename)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result.Body) // #nosec G705 -- admin-only ZIP export is downloaded as an attachment.
+}
+
 func (h *Handler) handleConfigImport(w http.ResponseWriter, r *http.Request) {
+	if isZipContentType(r.Header.Get("Content-Type")) {
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, app.MaxConfigImportArchiveBytes))
+		_ = r.Body.Close()
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_archive", "配置包不能超过 10 MiB")
+			return
+		}
+		result, err := h.app.ImportConfigArchive(r.Context(), body)
+		if err != nil {
+			writeServiceError(w, err, false)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+
 	var input struct {
 		YAML string `json:"yaml"`
 	}
@@ -221,6 +256,14 @@ func (h *Handler) handleConfigImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func isZipContentType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+	return mediaType == "application/zip" || mediaType == "application/x-zip-compressed"
 }
 
 func (h *Handler) handleConfigValidate(w http.ResponseWriter, r *http.Request) {
@@ -429,6 +472,10 @@ func writeServiceError(w http.ResponseWriter, err error, validationBody bool) {
 		writeError(w, http.StatusConflict, "config_source_readonly", "当前配置源只读")
 		return
 	}
+	if errors.Is(err, errtype.ErrTemplateFileNotWritable) {
+		writeError(w, http.StatusConflict, "template_file_not_writable", "模板文件不可写")
+		return
+	}
 	if errors.Is(err, errtype.ErrConfigFileNotWritable) {
 		writeError(w, http.StatusConflict, "config_file_not_writable", "配置文件不可写")
 		return
@@ -544,7 +591,7 @@ func sessionID(r *http.Request) string {
 }
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, session *auth.Session) {
-	cookie := &http.Cookie{
+	cookie := &http.Cookie{ // #nosec G124 -- Secure follows the inbound scheme so local HTTP admin sessions keep working.
 		Name:     auth.SessionCookieName,
 		Value:    session.ID,
 		Path:     "/",
@@ -560,7 +607,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, session *auth.Sess
 }
 
 func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure follows the inbound scheme so local HTTP admin sessions can be cleared.
 		Name:     auth.SessionCookieName,
 		Value:    "",
 		Path:     "/",

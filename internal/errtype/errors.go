@@ -60,9 +60,10 @@ const (
 )
 
 var (
-	ErrConfigSourceReadonly  = errors.New("config source is read-only")
-	ErrConfigFileNotWritable = errors.New("config file is not writable")
-	ErrReloadInProgress      = errors.New("reload already in progress")
+	ErrConfigSourceReadonly    = errors.New("config source is read-only")
+	ErrConfigFileNotWritable   = errors.New("config file is not writable")
+	ErrTemplateFileNotWritable = errors.New("template file is not writable")
+	ErrReloadInProgress        = errors.New("reload already in progress")
 )
 
 // ConfigError indicates invalid configuration: bad YAML syntax,
