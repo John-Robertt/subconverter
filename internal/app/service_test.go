@@ -247,7 +247,13 @@ func TestEffectiveConfigArchiveIncludesTemplates(t *testing.T) {
 	if err := os.WriteFile(configPath, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	svc, err := New(context.Background(), Options{ConfigLocation: configPath})
+	archiveModifiedAt := time.Date(2026, 6, 20, 20, 30, 0, 0, time.UTC)
+	svc, err := New(context.Background(), Options{
+		ConfigLocation: configPath,
+		Now: func() time.Time {
+			return archiveModifiedAt
+		},
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -260,13 +266,18 @@ func TestEffectiveConfigArchiveIncludesTemplates(t *testing.T) {
 		t.Fatalf("archive metadata = %+v", result)
 	}
 	entries := readArchiveEntriesForTest(t, result.Body)
-	if !bytes.Equal(entries[archiveConfigEntry], raw) {
-		t.Fatalf("config archive entry differs\ngot:\n%s\nwant:\n%s", entries[archiveConfigEntry], raw)
+	for name, entry := range entries {
+		if got := entry.Modified.UTC(); !got.Equal(archiveModifiedAt) {
+			t.Fatalf("archive entry %q modified time = %s, want %s", name, got, archiveModifiedAt)
+		}
 	}
-	if got := string(entries[archiveClashTemplateEntry]); got != "mixed-port: 7890\n" {
+	if !bytes.Equal(entries[archiveConfigEntry].Body, raw) {
+		t.Fatalf("config archive entry differs\ngot:\n%s\nwant:\n%s", entries[archiveConfigEntry].Body, raw)
+	}
+	if got := string(entries[archiveClashTemplateEntry].Body); got != "mixed-port: 7890\n" {
 		t.Fatalf("clash template = %q", got)
 	}
-	if got := string(entries[archiveSurgeTemplateEntry]); got != "[General]\nloglevel = notify\n" {
+	if got := string(entries[archiveSurgeTemplateEntry].Body); got != "[General]\nloglevel = notify\n" {
 		t.Fatalf("surge template = %q", got)
 	}
 }
@@ -298,7 +309,7 @@ func TestImportConfigArchiveWritesTemplates(t *testing.T) {
 		{Name: archiveConfigEntry, Body: []byte(validConfigYAML)},
 		{Name: archiveClashTemplateEntry, Body: []byte("mixed-port: 7890\n")},
 		{Name: archiveSurgeTemplateEntry, Body: []byte("[General]\nloglevel = notify\n")},
-	})
+	}, time.Now())
 	if err != nil {
 		t.Fatalf("build archive: %v", err)
 	}
@@ -366,7 +377,7 @@ func TestImportConfigArchiveRejectsReadonlyAndInvalidArchive(t *testing.T) {
 		t.Fatalf("invalid zip error = %T %[1]v, want invalid_archive", err)
 	}
 
-	archiveBody, err := buildConfigArchive([]archiveEntry{{Name: archiveClashTemplateEntry, Body: []byte("x")}})
+	archiveBody, err := buildConfigArchive([]archiveEntry{{Name: archiveClashTemplateEntry, Body: []byte("x")}}, time.Now())
 	if err != nil {
 		t.Fatalf("build archive: %v", err)
 	}
@@ -375,7 +386,7 @@ func TestImportConfigArchiveRejectsReadonlyAndInvalidArchive(t *testing.T) {
 		t.Fatalf("missing config error = %T %[1]v, want invalid_archive", err)
 	}
 
-	emptyConfigArchive, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: []byte(" \n")}})
+	emptyConfigArchive, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: []byte(" \n")}}, time.Now())
 	if err != nil {
 		t.Fatalf("build empty config archive: %v", err)
 	}
@@ -416,7 +427,7 @@ func TestImportConfigArchiveTemplateWriteFailureDoesNotOverwriteExistingTemplate
 	archiveBody, err := buildConfigArchive([]archiveEntry{
 		{Name: archiveConfigEntry, Body: []byte(validConfigYAML)},
 		{Name: archiveClashTemplateEntry, Body: []byte("new clash\n")},
-	})
+	}, time.Now())
 	if err != nil {
 		t.Fatalf("build archive: %v", err)
 	}
@@ -802,13 +813,18 @@ func TestGenerateLinkUsesServerTokenAndBaseURL(t *testing.T) {
 	}
 }
 
-func readArchiveEntriesForTest(t *testing.T, body []byte) map[string][]byte {
+type archiveEntryForTest struct {
+	Body     []byte
+	Modified time.Time
+}
+
+func readArchiveEntriesForTest(t *testing.T, body []byte) map[string]archiveEntryForTest {
 	t.Helper()
 	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		t.Fatalf("open archive: %v", err)
 	}
-	entries := make(map[string][]byte, len(zr.File))
+	entries := make(map[string]archiveEntryForTest, len(zr.File))
 	for _, file := range zr.File {
 		rc, err := file.Open()
 		if err != nil {
@@ -819,7 +835,10 @@ func readArchiveEntriesForTest(t *testing.T, body []byte) map[string][]byte {
 		if err != nil {
 			t.Fatalf("read archive entry %q: %v", file.Name, err)
 		}
-		entries[file.Name] = data
+		entries[file.Name] = archiveEntryForTest{
+			Body:     data,
+			Modified: file.Modified,
+		}
 	}
 	return entries
 }

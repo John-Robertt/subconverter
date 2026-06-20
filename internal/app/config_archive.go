@@ -58,7 +58,7 @@ func (s *Service) EffectiveConfigArchive(ctx context.Context) (*ConfigArchiveRes
 		entries = append(entries, archiveEntry{Name: archiveSurgeTemplateEntry, Body: body})
 	}
 
-	body, err := buildConfigArchive(entries)
+	body, err := buildConfigArchive(entries, s.now())
 	if err != nil {
 		return nil, err
 	}
@@ -203,11 +203,12 @@ type archiveEntry struct {
 	Body []byte
 }
 
-func buildConfigArchive(entries []archiveEntry) ([]byte, error) {
+func buildConfigArchive(entries []archiveEntry, modifiedAt time.Time) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
+	modifiedAt = modifiedAt.UTC()
 	for _, entry := range entries {
-		if err := writeArchiveEntry(zw, entry); err != nil {
+		if err := writeArchiveEntry(zw, entry, modifiedAt); err != nil {
 			_ = zw.Close()
 			return nil, err
 		}
@@ -218,11 +219,11 @@ func buildConfigArchive(entries []archiveEntry) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func writeArchiveEntry(zw *zip.Writer, entry archiveEntry) error {
+func writeArchiveEntry(zw *zip.Writer, entry archiveEntry, modifiedAt time.Time) error {
 	header := &zip.FileHeader{
 		Name:     entry.Name,
 		Method:   zip.Deflate,
-		Modified: time.Unix(0, 0).UTC(),
+		Modified: modifiedAt,
 	}
 	header.SetMode(0o600)
 	w, err := zw.CreateHeader(header)
