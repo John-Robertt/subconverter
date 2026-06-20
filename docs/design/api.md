@@ -22,6 +22,8 @@
 | POST | `/api/auth/logout` | 注销当前 session | v2.0 |
 | GET | `/api/config` | 读取当前配置与 revision | v2.0 |
 | PUT | `/api/config` | 条件保存配置（JSON → YAML 写回） | v2.0 |
+| GET | `/api/config/effective.yaml` | 下载当前生效的源 YAML 配置 | v2.0 |
+| POST | `/api/config/import` | 解析上传 YAML 为草稿配置 JSON | v2.0 |
 | POST | `/api/config/validate` | 静态校验配置（Prepare 阶段） | v2.0 |
 | POST | `/api/reload` | 触发配置热重载 | v2.0 |
 | GET | `/api/preview/nodes` | 预览当前运行时节点列表 | v2.0 |
@@ -298,6 +300,51 @@ revision 冲突响应示例：
 - 本地可写配置源首次保存前，Web UI 必须弹出确认，提示注释、引号和格式风格可能丢失；`PUT /api/config` 成功响应只返回新的 `config_revision`
 - `config_revision` 是乐观并发令牌，用于防止旧页面或旧 revision 静默覆盖已观测到的新配置；它不提供外部多写者的线性一致性保证
 - 多标签页、外部编辑器或 GitOps 进程在保存前已改写配置时，revision 校验会拒绝陈旧请求；若外部进程恰好在 revision 比对和 `rename` 之间改写文件，当前单用户设计不额外加文件锁或备份
+
+### `GET /api/config/effective.yaml`
+
+用途：下载当前正在生效的源 YAML 配置。
+
+成功响应：
+
+- `200`，`Content-Type: application/x-yaml; charset=utf-8`
+- `Content-Disposition: attachment; filename="config.yaml"; filename*=UTF-8''config.yaml`
+- Body：上一次成功启动或 `POST /api/reload` 时进入 `RuntimeConfig` 的原始 YAML 字节
+
+说明：
+
+- 本接口返回“正在生效”的配置，而不是当前前端草稿
+- 若 `PUT /api/config` 已保存但尚未 reload，导出的仍是旧的生效 YAML
+- HTTP(S) 远程配置源同样导出上一次成功加载到运行时的远程 YAML 内容
+- 本接口不读取当前配置源、不写文件、不改变 `config_dirty`
+
+### `POST /api/config/import`
+
+用途：解析上传 YAML 为前端草稿 JSON，不保存、不热重载。
+
+请求体：
+
+- `Content-Type: application/json`
+- Body：`{ "yaml": "sources: ...\n" }`
+
+成功响应：
+
+```json
+{
+  "config": {
+    "sources": {},
+    "groups": [],
+    "routing": [],
+    "rulesets": []
+  }
+}
+```
+
+说明：
+
+- `config` 的 JSON 形状与 `GET /api/config` 相同，保序字段仍以 `[{key, value}]` 数组表示
+- 本接口只做 YAML 解析与结构转换；配置语义校验由现有 `POST /api/config/validate` 和保存流程负责
+- 导入成功后，前端应只替换草稿；用户仍需显式保存和热重载才会生效
 
 ### `POST /api/config/validate`
 

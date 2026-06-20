@@ -671,6 +671,8 @@ code {
 
 .button {
   padding: 0 16px;
+  cursor: pointer;
+  text-decoration: none;
 }
 
 .icon-button,
@@ -2979,6 +2981,21 @@ tr:last-child td {
 .token-checkbox {
   align-self: end;
   min-height: 38px;
+}
+
+.download-config-actions {
+  justify-content: flex-end;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .code-preview-panel {

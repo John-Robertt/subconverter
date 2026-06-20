@@ -124,6 +124,16 @@ function mockBackend(options: MockBackendOptions = {}) {
       }
       return json(configSnapshot);
     }
+    if (path === "/api/config/effective.yaml") return text("sources: {}\nfallback: Proxy\n");
+    if (path === "/api/config/import") {
+      return json({
+        config: {
+          ...sampleConfig.config,
+          base_url: "https://import.example.com",
+          groups: [{ key: "IMPORTED", value: { match: "(IMPORTED)", strategy: "select" } }]
+        }
+      });
+    }
     if (path === "/api/config/validate") return json(options.validateResult ?? { valid: true, errors: [], warnings: [], infos: [] });
     if (path === "/api/reload") {
       const reloadError = reloadErrors.shift();
@@ -393,6 +403,40 @@ describe("M10 frontend workflows", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("token=server-token")));
     expect(backend.calls.some((item) => item.path.startsWith("/api/generate/link"))).toBe(true);
     expect(backend.calls.some((item) => item.path === "/api/generate/preview?format=clash")).toBe(true);
+  });
+
+  it("T-WEB-022 imports YAML into the draft and exports the effective config", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    const { container } = renderApp("/download");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
+    const exportLink = await screen.findByRole("link", { name: "导出生效配置" });
+    expect(exportLink.getAttribute("href")).toBe("/api/config/effective.yaml");
+    expect(exportLink.getAttribute("download")).toBe("config.yaml");
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    const file = new File(["base_url: https://import.example.com\n"], "config.yaml", { type: "application/x-yaml" });
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      const saved = lastSavedConfig(backend.calls);
+      expect(saved?.base_url).toBe("https://import.example.com");
+      expect(saved?.groups?.[0]?.key).toBe("IMPORTED");
+    });
+  });
+
+  it("T-WEB-023 disables import for readonly config sources but keeps effective export", async () => {
+    mockBackend({ readonly: true });
+    renderApp("/download");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "导入配置" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("link", { name: "导出生效配置" }).getAttribute("href")).toBe("/api/config/effective.yaml");
   });
 });
 

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -120,6 +121,111 @@ func TestSaveConfigRevisionConflict(t *testing.T) {
 	}
 	if conflict.CurrentConfigRevision == "" {
 		t.Fatal("CurrentConfigRevision should be populated")
+	}
+}
+
+// T-APP-012: effective config YAML tracks the last successfully loaded runtime config
+func TestEffectiveConfigYAMLTracksRuntimeConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	initial := []byte("# active config\n" + validConfigYAML)
+	if err := os.WriteFile(path, initial, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc, err := New(context.Background(), Options{ConfigLocation: path})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	got, err := svc.EffectiveConfigYAML(context.Background())
+	if err != nil {
+		t.Fatalf("EffectiveConfigYAML: %v", err)
+	}
+	if !bytes.Equal(got, initial) {
+		t.Fatalf("effective yaml after New differs\ngot:\n%s\nwant:\n%s", got, initial)
+	}
+
+	snapshot, err := svc.ConfigSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("ConfigSnapshot: %v", err)
+	}
+	if _, err := svc.SaveConfig(context.Background(), &SaveConfigInput{
+		ConfigRevision: snapshot.ConfigRevision,
+		Config:         snapshot.Config,
+	}); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	afterSave, err := svc.EffectiveConfigYAML(context.Background())
+	if err != nil {
+		t.Fatalf("EffectiveConfigYAML after save: %v", err)
+	}
+	if !bytes.Equal(afterSave, initial) {
+		t.Fatalf("save without reload should not change effective yaml\ngot:\n%s\nwant:\n%s", afterSave, initial)
+	}
+
+	savedRaw, err := os.ReadFile(path) // #nosec G304 -- test fixture path from t.TempDir.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(savedRaw, initial) {
+		t.Fatal("fixture expected SaveConfig to rewrite YAML bytes")
+	}
+	if _, err := svc.Reload(context.Background()); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+	afterReload, err := svc.EffectiveConfigYAML(context.Background())
+	if err != nil {
+		t.Fatalf("EffectiveConfigYAML after reload: %v", err)
+	}
+	if !bytes.Equal(afterReload, savedRaw) {
+		t.Fatalf("reload should update effective yaml\ngot:\n%s\nwant:\n%s", afterReload, savedRaw)
+	}
+}
+
+// T-APP-013: YAML import produces API Config JSON with ordered fields preserved
+func TestImportConfigYAML(t *testing.T) {
+	raw := []byte(`
+sources:
+  snell: []
+  subscriptions: []
+  vless: []
+groups:
+  HK:
+    match: "(HK)"
+    strategy: select
+  SG:
+    match: "(SG)"
+    strategy: url-test
+routing: {}
+rulesets: {}
+rules: []
+fallback: HK
+`)
+	svc := NewWithRuntime("", nil, nil, generateOptions())
+	result, err := svc.ImportConfigYAML(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("ImportConfigYAML: %v", err)
+	}
+	var body struct {
+		Sources struct {
+			FetchOrder []string `json:"fetch_order"`
+		} `json:"sources"`
+		Groups []struct {
+			Key string `json:"key"`
+		} `json:"groups"`
+	}
+	if err := json.Unmarshal(result.Config, &body); err != nil {
+		t.Fatalf("unmarshal imported config: %v", err)
+	}
+	if got := body.Sources.FetchOrder; len(got) != 3 || got[0] != "snell" || got[1] != "subscriptions" || got[2] != "vless" {
+		t.Fatalf("fetch_order = %v", got)
+	}
+	if len(body.Groups) != 2 || body.Groups[0].Key != "HK" || body.Groups[1].Key != "SG" {
+		t.Fatalf("groups = %+v", body.Groups)
+	}
+
+	if _, err := svc.ImportConfigYAML(context.Background(), []byte("sources: [")); err == nil {
+		t.Fatal("expected invalid YAML error")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 // T-ADM-019: setup sets HttpOnly session cookie
 // T-ADM-012: protected endpoints require valid session; bearer token does not grant admin access
 // T-ADM-009: GET /api/config returns config_revision
+// T-ADM-023: effective YAML export and YAML import require session and preserve config shape
 // T-PRV-013: missing base_url returns 400 base_url_required
 func TestAuthSetupAndProtectedConfig(t *testing.T) {
 	dir := t.TempDir()
@@ -79,6 +81,10 @@ func TestAuthSetupAndProtectedConfig(t *testing.T) {
 	if noCookie.Code != http.StatusUnauthorized || !strings.Contains(noCookie.Body.String(), "auth_required") {
 		t.Fatalf("no cookie status = %d body = %s", noCookie.Code, noCookie.Body.String())
 	}
+	noCookieExport := serve(handler, http.MethodGet, "/api/config/effective.yaml", "", nil)
+	if noCookieExport.Code != http.StatusUnauthorized || !strings.Contains(noCookieExport.Body.String(), "auth_required") {
+		t.Fatalf("no-cookie export status = %d body = %s", noCookieExport.Code, noCookieExport.Body.String())
+	}
 	bearerOnly := serve(handler, http.MethodGet, "/api/config", "", map[string]string{"Authorization": "Bearer subscription-token"})
 	if bearerOnly.Code != http.StatusUnauthorized {
 		t.Fatalf("bearer-only status = %d body = %s", bearerOnly.Code, bearerOnly.Body.String())
@@ -87,6 +93,24 @@ func TestAuthSetupAndProtectedConfig(t *testing.T) {
 	withCookie := serve(handler, http.MethodGet, "/api/config", "", map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value})
 	if withCookie.Code != http.StatusOK || !strings.Contains(withCookie.Body.String(), `"config_revision"`) {
 		t.Fatalf("with cookie status = %d body = %s", withCookie.Code, withCookie.Body.String())
+	}
+	effective := serve(handler, http.MethodGet, "/api/config/effective.yaml", "", map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value})
+	if effective.Code != http.StatusOK || !strings.Contains(effective.Body.String(), "fallback: proxy") {
+		t.Fatalf("effective config status = %d body = %s", effective.Code, effective.Body.String())
+	}
+	if got := effective.Header().Get("Content-Type"); got != "application/x-yaml; charset=utf-8" {
+		t.Fatalf("effective content type = %q", got)
+	}
+	if got := effective.Header().Get("Content-Disposition"); got != `attachment; filename="config.yaml"; filename*=UTF-8''config.yaml` {
+		t.Fatalf("effective content disposition = %q", got)
+	}
+	importBody, err := json.Marshal(map[string]string{"yaml": appTestConfigYAML})
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported := serve(handler, http.MethodPost, "/api/config/import", string(importBody), map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value})
+	if imported.Code != http.StatusOK || !strings.Contains(imported.Body.String(), `"groups":[{"key":"HK"`) {
+		t.Fatalf("import config status = %d body = %s", imported.Code, imported.Body.String())
 	}
 	missingBaseURL := serve(handler, http.MethodGet, "/api/generate/link?format=surge", "", map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value})
 	if missingBaseURL.Code != http.StatusBadRequest || !strings.Contains(missingBaseURL.Body.String(), "base_url_required") {

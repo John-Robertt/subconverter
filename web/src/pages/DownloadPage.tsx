@@ -1,8 +1,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Clipboard, FileDown } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { Clipboard, FileDown, Upload } from "lucide-react";
+import { useMemo, useRef, type ChangeEvent, type ReactNode } from "react";
 import { queryKeys } from "../app/queryKeys";
-import { api, buildGeneratePath } from "../api/client";
+import { api, buildGeneratePath, effectiveConfigYAMLPath } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import type { GenerateFormat } from "../api/types";
 import { Button, Chip, ErrorState, LoadingState, StatCard } from "../components/ui";
@@ -11,9 +11,10 @@ import { useConfirm } from "../state/confirm";
 import { useToast } from "../state/toast";
 
 export function DownloadPage() {
-  const { draft, status } = useConfigState();
+  const { draft, status, isDraftDirty, isReadonly, updateDraft } = useConfigState();
   const confirm = useConfirm();
   const { pushToast } = useToast();
+  const importInputRef = useRef<HTMLInputElement>(null);
   const runtimeRevision = status?.runtime_config_revision;
 
   const nodesQuery = useQuery({
@@ -69,13 +70,89 @@ export function DownloadPage() {
     }
   });
 
+  const importMutation = useMutation({
+    mutationFn: api.importConfigYAML,
+    onSuccess: (result) => {
+      updateDraft(() => result.config);
+      pushToast({
+        kind: "success",
+        title: "配置已导入草稿",
+        message: "请检查后保存；保存后需要热重载才会生效。"
+      });
+    },
+    onError: (error) => {
+      pushToast({ kind: "error", title: "配置导入失败", message: getErrorMessage(error), persistent: true });
+    }
+  });
+
   const stats = useMemo(() => deriveStats(draft, nodesQuery.data), [draft, nodesQuery.data]);
   const hasBaseURL = Boolean(draft?.base_url?.trim());
   const previewError = clashPreviewQuery.error ?? surgePreviewQuery.error;
   const previewLoading = clashPreviewQuery.isLoading || surgePreviewQuery.isLoading;
 
+  async function openImportPicker() {
+    if (isDraftDirty) {
+      const accepted = await confirm({
+        title: "导入配置并替换当前草稿？",
+        message: "当前草稿包含未保存修改。导入后会替换这些草稿内容，但不会立即写入 YAML 文件。",
+        confirmLabel: "选择文件",
+        danger: true
+      });
+      if (!accepted) return;
+    }
+    importInputRef.current?.click();
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    let content: string;
+    try {
+      content = await readTextFile(file);
+    } catch (error) {
+      pushToast({
+        kind: "error",
+        title: "配置导入失败",
+        message: error instanceof Error ? error.message : "读取文件失败",
+        persistent: true
+      });
+      return;
+    }
+
+    try {
+      await importMutation.mutateAsync(content);
+    } catch {
+      // useMutation handles request errors.
+    }
+  }
+
   return (
     <div className="page-stack download-page">
+      <div className="download-config-actions page-actions">
+        <input ref={importInputRef} type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" className="sr-only" onChange={(event) => void handleImportFile(event)} />
+        <Button
+          variant="secondary"
+          icon={<Upload size={15} aria-hidden="true" />}
+          loading={importMutation.isPending}
+          disabled={isReadonly}
+          onClick={() => void openImportPicker()}
+        >
+          导入配置
+        </Button>
+        {runtimeRevision ? (
+          <a className="button button-secondary" href={effectiveConfigYAMLPath} download="config.yaml">
+            <FileDown size={15} aria-hidden="true" />
+            <span>导出生效配置</span>
+          </a>
+        ) : (
+          <Button variant="secondary" icon={<FileDown size={15} aria-hidden="true" />} disabled>
+            导出生效配置
+          </Button>
+        )}
+      </div>
+
       {status?.config_dirty ? (
         <section className="content-panel info-panel">
           当前预览基于运行时配置，已保存草稿尚未 reload；如需查看草稿生成结果，请先点击"热重载"。
@@ -283,4 +360,19 @@ async function copyToClipboard(value: string) {
   textarea.select();
   document.execCommand("copy");
   textarea.remove();
+}
+
+function readTextFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("读取文件失败"));
+    };
+    reader.onerror = () => reject(new Error("读取文件失败"));
+    reader.readAsText(file);
+  });
 }

@@ -2,6 +2,7 @@ import { ApiError } from "./errors";
 import type {
   AuthStatus,
   Config,
+  ConfigImportResponse,
   ConfigSnapshot,
   GenerateFormat,
   GenerateLinkResponse,
@@ -116,6 +117,7 @@ export const api = {
   setup: (body: SetupRequest) => apiRequest<LoginResponse>("/api/auth/setup", { method: "POST", body, skipAuthRedirect: true }),
   logout: () => apiRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", skipAuthRedirect: true }),
   config: () => apiRequest<ConfigSnapshot>("/api/config"),
+  importConfigYAML: (yaml: string) => apiRequest<ConfigImportResponse>("/api/config/import", { method: "POST", body: { yaml } }),
   saveConfig: (config_revision: string, config: Config) =>
     apiRequest<{ config_revision: string }>("/api/config", { method: "PUT", body: { config_revision, config } }),
   validateConfig: (config: Config) => apiRequest<ValidateResult>("/api/config/validate", { method: "POST", body: { config } }),
@@ -132,6 +134,8 @@ export const api = {
   generateLink: (format: GenerateFormat, filename: string, includeToken = true) =>
     apiRequest<GenerateLinkResponse>(`/api/generate/link?${buildGenerateQuery(format, filename, includeToken)}`)
 };
+
+export const effectiveConfigYAMLPath = "/api/config/effective.yaml";
 
 export function buildGeneratePath(format: GenerateFormat, filename: string): string {
   return `/generate?${buildGenerateQuery(format, filename)}`;

@@ -63,6 +63,10 @@ export interface ConfigSnapshot {
   config: Config;
 }
 
+export interface ConfigImportResponse {
+  config: Config;
+}
+
 export interface AuthStatus {
   authed: boolean;
   setup_required: boolean;

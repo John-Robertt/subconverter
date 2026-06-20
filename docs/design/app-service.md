@@ -43,6 +43,16 @@ func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, er
 // 用于 PUT /api/config。
 func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*SaveConfigResult, error)
 
+// EffectiveConfigYAML 返回当前 RuntimeConfig 对应的源 YAML 字节。
+// 启动成功与 Reload 成功时更新；SaveConfig 不会更新该快照。
+// 用于 GET /api/config/effective.yaml。
+func (s *Service) EffectiveConfigYAML(ctx context.Context) ([]byte, error)
+
+// ImportConfigYAML 将上传 YAML 解析为 Config JSON。
+// 不写文件、不替换 RuntimeConfig、不执行 Prepare。
+// 用于 POST /api/config/import。
+func (s *Service) ImportConfigYAML(ctx context.Context, raw []byte) (*ImportConfigYAMLResult, error)
+
 // ValidateDraft 对草稿配置执行 Prepare 阶段静态校验。
 // 不写文件、不替换 RuntimeConfig、不拉取远程源。
 // 用于 POST /api/config/validate。
@@ -146,6 +156,14 @@ type SaveConfigInput struct {
 ```go
 type SaveConfigResult struct {
     ConfigRevision string `json:"config_revision"` // 写回后新的 sha256:<hex>
+}
+```
+
+### ImportConfigYAMLResult
+
+```go
+type ImportConfigYAMLResult struct {
+    Config json.RawMessage `json:"config"`
 }
 ```
 
@@ -395,6 +413,7 @@ var (
 
 - 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
 - `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 由响应中的 `config_revision != runtime_config_revision` 计算
+- `EffectiveConfigYAML`：只在 `RLock` 内复制当前生效 YAML 字节；该快照只在启动成功和 `Reload` 成功时更新
 - 写路径（`Reload`）：`WLock` 只保护指针替换，不包含 `LoadConfig` / `Prepare` / I/O
 - 慢速订阅拉取、模板加载和渲染不持有配置锁
 - `SaveConfig` 的原子写回使用临时文件 + `os.Rename`，与配置锁独立

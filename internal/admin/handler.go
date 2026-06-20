@@ -49,6 +49,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleConfigPut(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/config/effective.yaml":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleConfigEffectiveYAML(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/config/import":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleConfigImport(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/config/validate":
 		if !h.requireSession(w, r) {
 			return
@@ -181,6 +191,33 @@ func (h *Handler) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 	result, err := h.app.SaveConfig(r.Context(), &input)
 	if err != nil {
 		writeServiceError(w, err, true)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleConfigEffectiveYAML(w http.ResponseWriter, r *http.Request) {
+	body, err := h.app.EffectiveConfigYAML(r.Context())
+	if err != nil {
+		writeServiceError(w, err, false)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="config.yaml"; filename*=UTF-8''config.yaml`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body) // #nosec G705 -- admin-only YAML export is downloaded as a non-HTML attachment.
+}
+
+func (h *Handler) handleConfigImport(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		YAML string `json:"yaml"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	result, err := h.app.ImportConfigYAML(r.Context(), []byte(input.YAML))
+	if err != nil {
+		writeServiceError(w, err, false)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)

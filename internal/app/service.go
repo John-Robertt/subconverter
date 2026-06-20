@@ -36,6 +36,10 @@ type SaveConfigResult struct {
 	ConfigRevision string `json:"config_revision"`
 }
 
+type ImportConfigYAMLResult struct {
+	Config json.RawMessage `json:"config"`
+}
+
 type ReloadResult struct {
 	Success    bool  `json:"success"`
 	DurationMs int64 `json:"duration_ms"`
@@ -76,6 +80,7 @@ type Service struct {
 	mu                     sync.RWMutex
 	runtimeCfg             *config.RuntimeConfig
 	runtimeConfigRevision  string
+	effectiveConfigYAML    []byte
 	observedConfigRevision string
 	configLoadedAt         time.Time
 	lastReload             lastReloadState
@@ -121,6 +126,7 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 	}
 	s.runtimeCfg = runtimeCfg
 	s.runtimeConfigRevision = configRevision(raw)
+	s.effectiveConfigYAML = append([]byte(nil), raw...)
 	s.observedConfigRevision = s.runtimeConfigRevision
 	s.configLoadedAt = now()
 	return s, nil
@@ -136,6 +142,7 @@ func NewWithRuntime(location string, runtimeCfg *config.RuntimeConfig, fetcher f
 		accessToken:            genOpts.AccessToken,
 		runtimeCfg:             runtimeCfg,
 		runtimeConfigRevision:  "",
+		effectiveConfigYAML:    nil,
 		observedConfigRevision: "",
 		configLoadedAt:         time.Now(),
 	}
@@ -200,6 +207,31 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 	return &SaveConfigResult{ConfigRevision: configRevision(yamlBytes)}, nil
 }
 
+func (s *Service) ImportConfigYAML(_ context.Context, raw []byte) (*ImportConfigYAMLResult, error) {
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return nil, newBadRequestError("invalid_request", "缺少 yaml")
+	}
+	cfg, err := parseConfigYAML(raw)
+	if err != nil {
+		return nil, err
+	}
+	configJSON, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &ImportConfigYAMLResult{Config: configJSON}, nil
+}
+
+func (s *Service) EffectiveConfigYAML(_ context.Context) ([]byte, error) {
+	s.mu.RLock()
+	raw := append([]byte(nil), s.effectiveConfigYAML...)
+	s.mu.RUnlock()
+	if len(raw) == 0 {
+		return nil, newBadRequestError("effective_config_unavailable", "当前生效配置不可用")
+	}
+	return raw, nil
+}
+
 func (s *Service) ValidateDraft(_ context.Context, configJSON json.RawMessage) (*ValidateResult, error) {
 	cfg, err := parseConfigJSON(configJSON)
 	if err != nil {
@@ -247,6 +279,7 @@ func (s *Service) Reload(ctx context.Context) (*ReloadResult, error) {
 	s.mu.Lock()
 	s.runtimeCfg = runtimeCfg
 	s.runtimeConfigRevision = revision
+	s.effectiveConfigYAML = append([]byte(nil), raw...)
 	s.observedConfigRevision = revision
 	s.configLoadedAt = s.now()
 	s.lastReload = lastReloadState{
