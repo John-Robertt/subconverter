@@ -53,24 +53,40 @@ type Diagnostic struct {
 
 ```go
 type DiagnosticLocator struct {
-    JSONPointer  string
-    DocumentPath string
-    Section      string
-    Key          string
-    Index        *int
-    ValuePath    string
-    RuntimeName  string
+    JSONPointer string
+    DisplayPath string
+    Section     string
+    Key         string
+    Index       *int
+    ValuePath   string
+    RuntimeName string
 }
 ```
 
 定位原则：
 
 - 能定位到配置字段时，必须提供 `JSONPointer`。
-- `JSONPointer` 指向 API JSON DTO，例如 `/config/groups/0/value/match`。
-- `DocumentPath` 面向用户展示，例如 `groups.HK.match`。
+- `JSONPointer` 指向 API JSON DTO，统一以 `/config` 为根，例如 `/config/groups/0/value/match`。
+- `DisplayPath` 面向用户展示，例如 `groups.HK.match`。
 - `Section`、`Key`、`Index`、`ValuePath` 用于前端导航。
 - 运行时对象问题使用 `RuntimeName` 表达节点名、组名或策略名。
 - 无法精确定位时，至少提供 `Section` 或 `RuntimeName`。
+
+对外 JSON 字段固定为：
+
+```json
+{
+  "json_pointer": "/config/groups/0/value/match",
+  "display_path": "groups.HK.match",
+  "section": "groups",
+  "key": "HK",
+  "index": 0,
+  "value_path": "match",
+  "runtime_name": "HK"
+}
+```
+
+字段为空时可以省略。即使内部校验函数接收裸 `Config`，进入 API wire shape 前也必须映射到 `/config/...`。
 
 ## Cause Path
 
@@ -87,6 +103,8 @@ type DiagnosticCause struct {
 - 表达目标格式过滤造成的级联影响。
 - 表达 fallback 清空的上游链路。
 - 表达链式节点因上游被过滤而失效。
+
+对外 JSON 字段名固定为 `cause_path`。
 
 示例：
 

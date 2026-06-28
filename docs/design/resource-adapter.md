@@ -4,7 +4,7 @@
 
 ## 目标
 
-Resource Adapter 是远程网络和本地资源读取边界。它为 Build、Render、Config I/O 和导出能力提供资源内容，但不拥有配置语义、图规则或渲染规则。
+Resource Adapter 是远程网络和本地资源读取边界。它为 Build、Config I/O、ArtifactService、PreviewService 和导出能力提供资源内容，但不拥有配置语义、图规则或渲染规则。
 
 ## 资源类型
 
@@ -12,8 +12,8 @@ Resource Adapter 是远程网络和本地资源读取边界。它为 Build、Ren
 |------|------|--------|
 | 订阅 / Snell / VLESS 来源 | `sources.*[].url` | Build |
 | 远程配置输入 | `https://example.com/config.yaml` | Config I/O |
-| Clash / Surge 模板 | `templates.clash`、`templates.surge` | Render / Export |
-| 规则集 URL | `rulesets.*.urls[]` | Render |
+| Clash / Surge 模板 | `templates.clash`、`templates.surge` | ArtifactService / PreviewService / Export |
+| 规则集 URL | `rulesets.*.urls[]` | 当前作为配置数据渲染；未来需要内联内容时由服务层读取 |
 
 配置文件的保存、revision 和只读边界由 ConfigStore 负责；Resource Adapter 不直接写主配置。
 
@@ -22,7 +22,7 @@ Resource Adapter 是远程网络和本地资源读取边界。它为 Build、Ren
 - 订阅、Snell、VLESS 来源可以使用缓存，但运行时生成和预览必须走同一 Resource Adapter。
 - reload 读取远程配置输入时必须绕过陈旧缓存。
 - 远程模板读取失败时，生成和导出失败，不返回不完整产物。
-- Render Adapter 不管理缓存；它只接收模板内容或模板读取结果。
+- Render Adapter 不管理缓存，也不直接读取模板；它只接收调用方传入的模板内容或模板读取结果。
 
 ## URL 脱敏
 

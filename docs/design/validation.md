@@ -92,7 +92,7 @@ Render 只处理序列化和模板问题：
 - Clash 模板无法合并。
 - Surge 模板 section 无法处理。
 - 目标格式编码失败。
-- managed URL 构造失败。
+- managed URL 缺失或非法。
 
 如果 TargetView 含有目标格式不支持的协议，这是 Target Projection 的 bug。
 

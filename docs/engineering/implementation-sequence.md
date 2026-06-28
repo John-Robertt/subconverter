@@ -17,11 +17,25 @@
 - core 不依赖 engine、service、adapter。
 - 核心不变量有单测覆盖。
 
-## 阶段二：ConfigStore 与 WorkspaceService
+## 阶段二：Prepare 最小闭环
 
 交付：
 
-- `ConfigStore`、`ConfigCodec`。
+- `engine/prepare` 的静态校验和预计算。
+- Config DTO 到 PreparedConfig 的转换。
+- URL、正则、静态引用、命名空间和 `@auto` 展开。
+
+验收：
+
+- Prepare 不拉取远程来源。
+- Prepare 失败输出 DiagnosticBundle。
+- `WorkspaceService.Validate` 和 `RuntimeService.Reload` 可复用同一 Prepare 实现。
+
+## 阶段三：ConfigStore 与 WorkspaceService
+
+交付：
+
+- `port.ConfigStore`、`port.ConfigCodec` 与 adapter 实现。
 - `WorkspaceService.GetConfig / SaveConfig / Validate / Import / Export`。
 - revision 冲突、只读源、保存不生效语义。
 
@@ -29,13 +43,15 @@
 
 - 保存成功只改变 config revision。
 - 保存失败不写配置。
+- `Validate` 只执行 Prepare，不执行 Build / Target / Render。
 - 导入只返回草稿。
 
-## 阶段三：RuntimeService 与 RuntimeSnapshot
+## 阶段四：RuntimeService 与 RuntimeSnapshot
 
 交付：
 
 - 当前快照持有与原子替换。
+- `RuntimeSnapshot.ExportSource`。
 - reload 单飞互斥。
 - status、dirty、last reload diagnostics。
 
@@ -43,24 +59,26 @@
 
 - reload 成功替换快照。
 - reload 失败保留旧快照。
+- 保存后未 reload 时生效导出仍对应旧快照。
 - 请求期访问器不暴露可变内部结构。
 
-## 阶段四：Prepare / Build / Project / Render
+## 阶段五：Build / Project / Render
 
 交付：
 
-- Prepare 静态校验和预计算。
 - Build 格式无关图。
 - Target Projection 产出 TargetView 和 cause path。
-- Render 只序列化 TargetView。
+- RenderInput 组装边界。
+- Render 只序列化 RenderInput。
 
 验收：
 
 - Build 不判断目标格式协议差异。
 - Render 不执行协议过滤。
+- Render 不读取 ConfigStore 或 Resource Adapter。
 - Clash / Surge 产物 golden 稳定。
 
-## 阶段五：PreviewService 与 ArtifactService
+## 阶段六：PreviewService 与 ArtifactService
 
 交付：
 
@@ -75,8 +93,9 @@
 - 草稿预览不保存、不生效。
 - 预览和实际生成共用同一 Project 实现。
 - artifact 只从当前快照生成。
+- ArtifactService 负责模板读取、filename 规范化和 managed URL 构造。
 
-## 阶段六：HTTP API 与 Web UI
+## 阶段七：HTTP API 与 Web UI
 
 交付：
 
@@ -91,7 +110,7 @@
 - UI 不复刻后端投影和渲染规则。
 - capabilities 驱动来源、协议、格式提示。
 
-## 阶段七：部署与发布检查
+## 阶段八：部署与发布检查
 
 交付：
 

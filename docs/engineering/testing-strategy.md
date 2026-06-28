@@ -20,6 +20,7 @@ v3.0 测试重点是稳定产品语义和演化入口：
 - 链式上游只能是拉取类节点。
 - `@all` 不含链式节点。
 - `groups`、`routing`、`rulesets` 保序。
+- `Config` DTO 与核心模型字段一致，round-trip 不丢 `custom_proxies`、`rules`、`fallback`、`base_url`。
 - CapabilityRegistry 中来源、协议、目标格式关系一致。
 
 ## Config I/O 测试
@@ -29,6 +30,7 @@ v3.0 测试重点是稳定产品语义和演化入口：
 - 只读源拒绝保存。
 - 导入只返回草稿。
 - 导出工作配置和生效配置来源不同。
+- 保存后未 reload 时，生效配置导出仍使用 RuntimeSnapshot.ExportSource。
 
 ## RuntimeSnapshot 测试
 
@@ -64,7 +66,9 @@ Render：
 
 - Clash / Surge golden。
 - 模板合并。
+- RenderInput 中 managed URL 注入。
 - 输出顺序确定。
+- Render 不读取 ConfigStore 或 Resource Adapter。
 
 ## Service 测试
 
@@ -72,6 +76,7 @@ Render：
 - Validate 不执行 Build / Target / Render。
 - Preview 草稿不写配置。
 - Artifact 只从 RuntimeSnapshot 生成。
+- ArtifactService 负责模板读取、filename 规范化和 managed URL 构造。
 - Runtime reload 单飞互斥。
 
 ## API 测试
@@ -82,13 +87,15 @@ Render：
 - `POST /api/preview/pipeline` 与 `POST /api/preview/target`。
 - `GET /api/artifacts/{format}`。
 - DiagnosticBundle wire shape。
+- locator wire shape 使用 `json_pointer` / `display_path`，且 JSON Pointer 以 `/config` 为根。
+- artifact link 由服务端生成，覆盖 `include_token` 与 `token_included`。
 
 ## 依赖测试
 
 - `core` 不导入 service、engine、adapter。
 - HTTP adapter 不直接导入 engine 实现。
 - render 测试不导入 build 或 project。
-- service 测试通过 fake adapter 控制 I/O。
+- service 测试通过 port fake 控制 I/O。
 
 ## 本地预检
 

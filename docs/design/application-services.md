@@ -97,13 +97,25 @@ type TargetPreviewInput struct {
 
 ```go
 type ArtifactService interface {
-    Generate(ctx context.Context, format TargetFormat) (ArtifactResult, error)
-    Link(ctx context.Context, format TargetFormat) (ArtifactLink, error)
+    Generate(ctx context.Context, input ArtifactGenerateInput) (ArtifactResult, error)
+    Link(ctx context.Context, input ArtifactLinkInput) (ArtifactLink, error)
     ExportRuntime(ctx context.Context, input RuntimeExportInput) (ExportConfigResult, error)
+}
+
+type ArtifactGenerateInput struct {
+    Format   TargetFormat
+    Filename string
+}
+
+type ArtifactLinkInput struct {
+    Format       TargetFormat
+    Filename     string
+    IncludeToken bool
 }
 
 type ArtifactResult struct {
     Format      TargetFormat
+    Filename    string
     ContentType string
     Bytes       []byte
     Diagnostics DiagnosticBundle
@@ -113,8 +125,10 @@ type ArtifactResult struct {
 规则：
 
 - 目标格式产物只基于当前 RuntimeSnapshot。
-- 生成路径固定为 Build -> Target Projection -> Render。
-- `ExportRuntime` 导出当前快照对应的生效配置或配置包。
+- 生成路径固定为 Build -> Target Projection -> assemble RenderInput -> Render。
+- `Generate` 负责规范化 filename、读取当前格式模板、构造 managed URL，并把这些上下文放入 RenderInput。
+- `Link` 由服务端生成订阅链接；前端不得自行拼接 token。
+- `ExportRuntime` 导出当前快照 `ExportSource` 对应的生效配置或配置包。
 
 ## 错误边界
 

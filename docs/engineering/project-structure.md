@@ -6,16 +6,17 @@
 
 ```text
 internal/core/          产品核心模型、诊断、能力矩阵、不变量
+internal/port/          service/engine 依赖的 I/O 端口接口
 internal/service/       Workspace / Runtime / Preview / Artifact 用例
 internal/engine/
   prepare/              Config -> PreparedConfig
   build/                PreparedConfig -> Pipeline
   project/              Pipeline -> TargetView
-  render/               TargetView -> Artifact
+  render/               RenderInput -> Artifact
 internal/adapter/
   http/                 API handler、认证中间件、响应编码
-  configstore/          ConfigStore、ConfigCodec、revision、原子写入
-  resource/             远程资源读取、缓存、URL 脱敏
+  configstore/          ConfigStore、ConfigCodec 的实现、revision、原子写入
+  resource/             远程资源端口实现、缓存、URL 脱敏
   auth/                 管理后台会话和凭据
   webui/                SPA 静态资源
 cmd/subconverter/       进程入口、依赖装配、启动参数
@@ -30,15 +31,18 @@ cmd/subconverter
   -> engine
   -> core
 
-adapter/* -> service/core
-service   -> engine/core/adapter interfaces
-engine    -> core/adapter interfaces
+adapter/http -> service/core/port
+adapter/{configstore,resource,auth,webui} -> core/port
+service   -> engine/core/port
+engine    -> core/port
+port      -> core
 core      -> 标准库
 ```
 
 禁止方向：
 
 - `core` 不导入 `service`、`engine`、`adapter`。
+- `port` 不导入 `service`、`engine`、`adapter`。
 - `engine/render` 不读取 ConfigStore。
 - HTTP handler 不直接调用 Build、Project 或 Render。
 - UI DTO 不引用 engine 内部结构。
@@ -57,6 +61,16 @@ core      -> 标准库
 
 `core` 只表达产品语义，不处理 I/O。
 
+## port
+
+`internal/port` 包含服务层和引擎层需要依赖的边界接口：
+
+- `ConfigStore`、`ConfigCodec`。
+- `ResourceReader` / `ResourceAdapter`。
+- 模板读取、订阅访问 token、时钟等可替换端口。
+
+端口接口只描述调用方需要的能力，不包含 HTTP、文件路径展开、缓存实现或认证实现细节。`adapter/*` 负责实现这些接口。
+
 ## service
 
 `internal/service` 包含：
@@ -66,7 +80,7 @@ core      -> 标准库
 - `PreviewService`。
 - `ArtifactService`。
 
-服务层承接用户动作，组合 engine 和 adapter interface。服务层不定义协议支持矩阵，不写渲染规则。
+服务层承接用户动作，组合 engine 和 port interface。服务层不定义协议支持矩阵，不写渲染规则。
 
 ## engine
 
@@ -77,7 +91,7 @@ core      -> 标准库
 - `project`：目标格式能力过滤和 TargetView 构造。
 - `render`：目标格式序列化和模板合并。
 
-engine 可以依赖 core 和必要的 adapter interface；不能依赖 HTTP。
+engine 可以依赖 core 和必要的 port interface；不能依赖 HTTP 或 adapter 实现。
 
 ## adapter
 
@@ -93,6 +107,6 @@ engine 可以依赖 core 和必要的 adapter interface；不能依赖 HTTP。
 
 - core 测试不导入 engine 或 adapter。
 - engine 测试通过 core fixture 构造输入。
-- service 测试使用 adapter fake。
+- service 测试使用 port fake。
 - API 测试只断言 wire contract。
 - 依赖方向用 import 测试锁定。

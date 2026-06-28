@@ -10,6 +10,7 @@ Config
   -> RuntimeSnapshot
   -> Build
   -> Target Projection
+  -> assemble RenderInput
   -> Render
 ```
 
@@ -35,7 +36,7 @@ Prepare 不拉取订阅，不构建目标格式，不渲染。
 
 ## RuntimeSnapshot 构造
 
-输入：`PreparedConfig + config_revision`
+输入：`PreparedConfig + config_revision + RuntimeExportSource`
 
 输出：`RuntimeSnapshot`
 
@@ -82,7 +83,7 @@ Build 不判断目标格式是否支持某个协议。
 
 ## Render
 
-输入：`TargetView`
+输入：`RenderInput`
 
 输出：`Artifact bytes + DiagnosticBundle`
 
@@ -93,7 +94,7 @@ Build 不判断目标格式是否支持某个协议。
 - 注入 managed section。
 - 保持输出确定性。
 
-Render 不做协议过滤，不修正 TargetView。
+`RenderInput` 由 ArtifactService 或 PreviewService 组装，包含 TargetView、当前格式模板内容和 managed URL。Render 不做协议过滤，不修正 TargetView，不读取 ConfigStore 或 Resource Adapter。
 
 ## 调用矩阵
 
@@ -105,7 +106,7 @@ Render 不做协议过滤，不修正 TargetView。
 | 草稿目标预览 | Config | Prepare -> Build -> Target Projection |
 | 运行时图预览 | RuntimeSnapshot | Build |
 | 运行时目标预览 | RuntimeSnapshot | Build -> Target Projection |
-| 生成产物 | RuntimeSnapshot | Build -> Target Projection -> Render |
+| 生成产物 | RuntimeSnapshot | Build -> Target Projection -> assemble RenderInput -> Render |
 
 ## 失败语义
 

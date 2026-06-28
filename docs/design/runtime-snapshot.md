@@ -18,6 +18,12 @@ type RuntimeSnapshot struct {
     Capabilities     CapabilitySet
     ExportSource     RuntimeExportSource
 }
+
+type RuntimeExportSource struct {
+    Config         Config
+    TemplateRefs   Templates
+    ConfigRevision string
+}
 ```
 
 字段语义：
@@ -28,7 +34,7 @@ type RuntimeSnapshot struct {
 - `LoadedAt`：快照创建时间。
 - `Prepared`：请求期只读预计算配置。
 - `Capabilities`：来源、协议、目标格式能力集合或版本。
-- `ExportSource`：导出生效配置所需的配置与模板引用。
+- `ExportSource`：导出生效配置所需的 Config 副本、模板引用和创建快照时的配置 revision。
 
 ## 不可变性要求
 
@@ -43,6 +49,7 @@ type RuntimeSnapshot struct {
 ```text
 ConfigStore.Read
   -> Prepare
+  -> capture RuntimeExportSource
   -> construct RuntimeSnapshot
   -> atomically replace current snapshot
 ```
@@ -62,7 +69,8 @@ ConfigStore.Read
 - 保存配置只改变 `config_revision`。
 - reload 成功才改变 `snapshot_revision`。
 - reload 失败时 dirty 保持原状态或继续为 true。
-- 生效配置导出使用 RuntimeSnapshot，不读取草稿。
+- 生效配置导出使用 RuntimeSnapshot 的 `ExportSource`，不读取草稿，也不重新读取当前工作配置。
+- 保存后未 reload 时，工作配置导出返回新配置，生效配置导出仍返回旧快照对应配置。
 
 ## 并发模型
 

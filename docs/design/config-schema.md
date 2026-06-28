@@ -9,6 +9,7 @@
 - 保序集合统一表达为数组。
 - DTO 不暴露文件格式、存储路径、AST 或 Go 内部结构体名。
 - 新增来源、协议或目标格式时，schema 必须与 CapabilityRegistry 同步。
+- 本文 DTO 字段必须与 `core-model.md` 中的 `Config` 逐字段对应。
 
 ## 顶层形状
 
@@ -85,14 +86,16 @@
 | 字段 | 元素形状 | 顺序语义 |
 |------|----------|----------|
 | `groups` | `{ "name": string, "value": Group }` | 节点组构建顺序 |
+| `custom_proxies` | `CustomProxy` | 自定义节点和链式模板声明顺序 |
 | `routing` | `{ "name": string, "value": RouteGroup }` | 服务组解析顺序 |
 | `rulesets` | `{ "name": string, "value": Ruleset }` | 规则集渲染顺序 |
+| `rules` | `string` | inline rule 渲染顺序 |
 
 规则：
 
 - `name` 是用户定义名。
 - `value` 是该条目的配置对象。
-- JSON Pointer 使用数组索引定位，例如 `/groups/0/value/match`。
+- JSON Pointer 使用数组索引定位。对 API 请求和响应中的 Config，统一以 `/config` 为根，例如 `/config/groups/0/value/match`。
 - name 含点号、空格或 emoji 时不得被拆成路径段。
 
 ## sources
@@ -130,16 +133,23 @@
 - `base_url` 用于生成订阅链接和目标格式需要的 managed header。
 - RuntimeSnapshot 记录进入生效态的模板引用。
 
+## rulesets 与 rules
+
+- `rulesets[].value.policy` 必须引用节点组或服务组。
+- `rulesets[].value.urls` 按声明顺序渲染为目标格式的规则集资源。
+- `rules[]` 保存用户声明的原始 inline rule 字符串；Prepare / Build 负责解析其中的 policy 并生成核心 `Rule`。
+- Target Projection 可因 policy 被过滤而级联移除 ruleset 或 rule。
+
 ## Locator
 
 诊断定位以 Config DTO 为准：
 
 ```text
-/groups/0/value/match
-/routing/2/value/members/1
-/rulesets/0/value/urls/0
-/sources/subscriptions/0/url
-/sources/fetch_order/1
+/config/groups/0/value/match
+/config/routing/2/value/members/1
+/config/rulesets/0/value/urls/0
+/config/sources/subscriptions/0/url
+/config/sources/fetch_order/1
 ```
 
 `display_path` 只用于用户阅读，不作为程序定位依据。

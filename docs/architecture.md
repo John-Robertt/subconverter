@@ -46,7 +46,7 @@ Application Services 承接用户动作，只编排，不持有业务规则：
 - `PreviewService`：基于草稿或快照生成图预览和目标格式预览。
 - `ArtifactService`：基于快照生成目标格式产物和订阅链接。
 
-服务层可以调用 Product Core、Engines 和 Adapters，但不能定义协议能力、命名空间规则、图校验规则或渲染规则。
+服务层可以调用 Product Core、Engines 和 port interfaces；具体 Adapters 由进程入口装配注入。服务层不能定义协议能力、命名空间规则、图校验规则或渲染规则。
 
 ### Engines
 
@@ -55,7 +55,7 @@ Engines 执行纯转换：
 - `Prepare`：`Config -> PreparedConfig`，完成静态校验、正则编译、URL 解析和预计算。
 - `Build`：`PreparedConfig -> Pipeline`，生成格式无关图。
 - `Project`：`Pipeline + TargetFormat -> TargetView`，处理目标格式能力差异和级联诊断。
-- `Render`：`TargetView -> Artifact`，完成目标格式序列化和模板合并。
+- `Render`：`RenderInput -> Artifact`，完成目标格式序列化、模板合并和 managed section 注入。
 
 Engines 不读取 HTTP 请求，不保存配置，不管理当前快照。
 
@@ -113,7 +113,8 @@ Config DTO or RuntimeSnapshot
 RuntimeSnapshot
   -> Build
   -> Project(format)
-  -> Render(format)
+  -> assemble RenderInput(format)
+  -> Render
   -> Artifact bytes
 ```
 

@@ -10,6 +10,7 @@ Config
   -> RuntimeSnapshot
   -> Pipeline
   -> TargetView
+  -> RenderInput
   -> Artifact
 ```
 
@@ -21,26 +22,36 @@ Config
 
 ```go
 type Config struct {
-    Sources   Sources
-    Filters   Filters
-    Groups    []Named[Group]
-    Routing   []Named[RouteGroup]
-    Rulesets  []Named[Ruleset]
-    Templates Templates
-    Options   Options
+    Sources       Sources
+    Filters       Filters
+    Groups        []Named[Group]
+    CustomProxies []CustomProxy
+    Routing       []Named[RouteGroup]
+    Rulesets      []Named[RulesetConfig]
+    Rules         []string
+    Fallback      string
+    Templates     Templates
+    BaseURL       string
+    Options       Options
 }
 
 type Named[T any] struct {
     Name  string
     Value T
 }
+
+type RulesetConfig struct {
+    Policy string
+    URLs   []string
+}
 ```
 
 约束：
 
-- `Groups`、`Routing`、`Rulesets` 必须保序。
+- `Groups`、`CustomProxies`、`Routing`、`Rulesets`、`Rules` 必须保序。
 - 所有持久字段必须能通过稳定 JSON Pointer 定位。
-- `Config` 不包含注释、缩进、文件路径或渲染中间状态。
+- `Config` 不包含注释、缩进、主配置存储路径或渲染中间状态。
+- `Rules` 保存用户声明的原始 rule 字符串；Build 阶段再解析出可校验的 policy。
 
 ## PreparedConfig
 
@@ -69,6 +80,13 @@ type RuntimeSnapshot struct {
     LoadedAt         time.Time
     Prepared         PreparedConfig
     Capabilities     CapabilitySet
+    ExportSource     RuntimeExportSource
+}
+
+type RuntimeExportSource struct {
+    Config         Config
+    TemplateRefs   Templates
+    ConfigRevision string
 }
 ```
 
@@ -78,6 +96,7 @@ type RuntimeSnapshot struct {
 - reload 成功才替换快照。
 - reload 失败保留旧快照。
 - 请求期代码不得修改快照内部数据。
+- 生效配置导出只读取 `ExportSource`，不得重新读取工作配置。
 
 ## Pipeline
 
@@ -138,17 +157,18 @@ type ProxyGroup struct {
 
 ```go
 type Ruleset struct {
-    Name string
-    URLs []string
+    Name   string
+    URLs   []string
+    Policy string
 }
 
 type Rule struct {
-    Ruleset string
-    Policy  string
+    Raw    string
+    Policy string
 }
 ```
 
-`Policy` 必须引用节点组或服务组。Target Projection 可因 policy 被过滤而级联移除 rule。
+`Ruleset.Policy` 和 `Rule.Policy` 必须引用节点组或服务组。Target Projection 可因 policy 被过滤而级联移除 ruleset 或 rule。
 
 ## TargetView
 
@@ -166,6 +186,35 @@ type TargetView struct {
 ```
 
 TargetView 是某个目标格式下可渲染的视图。它不修改 Pipeline，只复制或过滤必要内容。
+
+## RenderInput
+
+`RenderInput` 是 TargetView 进入渲染器时的完整上下文。
+
+```go
+type RenderInput struct {
+    Target    TargetView
+    Template  RenderTemplate
+    Managed   ManagedConfig
+}
+
+type RenderTemplate struct {
+    Source  string
+    Content []byte
+}
+
+type ManagedConfig struct {
+    Enabled bool
+    URL     string
+}
+```
+
+规则：
+
+- `Target` 是 Render 的唯一业务图输入。
+- `Template` 由 ArtifactService 或 PreviewService 通过资源端口读取后传入，Render 不读取 ConfigStore 或 Resource Adapter。
+- `Managed.URL` 由 ArtifactService 基于快照中的 `BaseURL`、服务端订阅访问 token 和安全文件名构造；Render 只负责注入。
+- `Managed.URL` 可能包含敏感 token，除最终产物外不得进入 Diagnostic metadata 或日志。
 
 ## DiagnosticBundle
 

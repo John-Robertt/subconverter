@@ -35,7 +35,7 @@ type ConfigStoreCapabilities struct {
 }
 ```
 
-`ConfigStore` 负责 revision、只读边界和原子写入。调用方不能绕过它直接写配置文件。
+`ConfigStore` 负责 revision、只读边界和原子写入。调用方不能绕过它直接写配置文件。接口定义放在服务和引擎可依赖的端口边界中，`adapter/configstore` 只提供实现。
 
 ## ConfigCodec
 
@@ -86,13 +86,19 @@ bytes / archive / remote content
 | 类型 | 来源 | 用途 |
 |------|------|------|
 | 工作配置导出 | ConfigStore 当前 Config | 备份、迁移、分享当前编辑结果 |
-| 生效配置导出 | RuntimeSnapshot | 复现服务正在使用的状态 |
+| 生效配置导出 | RuntimeSnapshot.ExportSource | 复现服务正在使用的状态 |
 
 导出可以使用默认 codec 生成配置文件，也可以生成包含模板的配置包。
 
+规则：
+
+- 工作配置导出可以读取 ConfigStore 当前内容。
+- 生效配置导出不得重新读取 ConfigStore；保存后未 reload 时仍导出旧快照对应配置。
+- 配置包中的模板内容通过 Resource Adapter 按快照中的模板引用读取，读取失败时整个导出失败，不返回不完整包。
+
 ## 外部资源读取
 
-资源读取包括订阅、远程配置、远程模板和规则集 URL。资源读取由 Resource Adapter 负责：
+资源读取包括订阅、远程配置和远程模板。规则集 URL 当前作为配置数据写入目标格式，不由 Render 通过 Resource Adapter 拉取。资源读取由 Resource Adapter 负责：
 
 - 统一 URL 脱敏。
 - 统一缓存策略。

@@ -4,7 +4,27 @@
 
 ## 渲染边界
 
-Render Adapter 的唯一输入是 TargetView。它负责：
+Render Adapter 的输入是 `RenderInput`：
+
+```go
+type RenderInput struct {
+    Target   TargetView
+    Template RenderTemplate
+    Managed  ManagedConfig
+}
+
+type RenderTemplate struct {
+    Source  string
+    Content []byte
+}
+
+type ManagedConfig struct {
+    Enabled bool
+    URL     string
+}
+```
+
+Render 负责：
 
 - 字段排序。
 - 目标格式语法。
@@ -15,9 +35,13 @@ Render Adapter 的唯一输入是 TargetView。它负责：
 它不负责：
 
 - 拉取订阅。
+- 读取 ConfigStore 或 Resource Adapter。
+- 构造订阅链接或持有原始 token。
 - 过滤目标格式不支持的协议。
 - 级联清空组或 fallback。
 - 修改 RuntimeSnapshot、Pipeline 或 TargetView。
+
+`Target` 是 Render 的唯一业务图输入。模板内容和 managed URL 由 ArtifactService 或 PreviewService 在调用 Render 前准备。
 
 ## Clash Meta
 
@@ -88,18 +112,19 @@ TargetView 映射：
 
 ## Managed URL
 
-Surge managed URL 由 Artifact Service / Render 所需上下文共同确定：
+Surge managed URL 由 ArtifactService 构造后通过 `RenderInput.Managed.URL` 传入：
 
 - base URL 来自 RuntimeSnapshot 中的 Prepared Runtime Config。
-- token 来自服务端订阅访问 token。
-- filename 已由 HTTP 层规范化为安全 ASCII 文件名。
-- 不能依赖当前请求使用管理员 session 还是 query token。
+- 订阅访问 token 由服务端持有，只能在需要时嵌入最终 URL，不得作为独立字段传给 Render。
+- filename 已由 HTTP 层或 ArtifactService 规范化为安全 ASCII 文件名。
+- Render 不能依赖当前请求使用管理员 session 还是 query token。
+- `Managed.URL` 可能包含敏感 token，除最终产物外不得进入 Diagnostic metadata、日志或测试 golden。
 
 ## 错误语义
 
 Render 阶段错误分两类：
 
-- 用户可修复：模板内容不合法、不支持的 Surge SS plugin 参数等，返回 render diagnostic。
+- 用户可修复：模板内容不合法、不支持的 Surge SS plugin 参数、managed URL 缺失或非法等，返回 render diagnostic。
 - 内部不变量：TargetView 含不支持协议、缺少 required graph 字段等，返回 500 类错误。
 
 Render 失败不得修改快照或缓存半成品。
@@ -107,6 +132,6 @@ Render 失败不得修改快照或缓存半成品。
 ## 测试要求
 
 - Clash / Surge golden 输出保持稳定。
-- Render 测试手工构造 TargetView，不跨层调用 Build Engine。
+- Render 测试手工构造 RenderInput，不跨层调用 Build Engine。
 - 模板合并保留非托管段。
 - Snell 不进入 Clash TargetView，VLESS 不进入 Surge TargetView；若强行输入，Render 返回内部不变量错误。
