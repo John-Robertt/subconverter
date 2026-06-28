@@ -42,3 +42,6 @@ test-results
 *ss.txt
 *anytls.txt
 node_modules/
+# Added by code-review-graph
+.codegraph/
+.code-review-graph/

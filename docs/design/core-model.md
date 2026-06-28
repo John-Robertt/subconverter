@@ -1,0 +1,190 @@
+# 核心模型设计
+
+> 状态：v3.0 目标契约。本文定义 Product Core 中长期稳定的数据结构。
+
+## 模型主线
+
+```text
+Config
+  -> PreparedConfig
+  -> RuntimeSnapshot
+  -> Pipeline
+  -> TargetView
+  -> Artifact
+```
+
+核心模型只表达产品语义，不表达 HTTP、文件格式、存储路径或渲染实现。
+
+## Config
+
+`Config` 是用户配置的语义模型，也是 API DTO、Web 草稿和保存请求的共同结构。
+
+```go
+type Config struct {
+    Sources   Sources
+    Filters   Filters
+    Groups    []Named[Group]
+    Routing   []Named[RouteGroup]
+    Rulesets  []Named[Ruleset]
+    Templates Templates
+    Options   Options
+}
+
+type Named[T any] struct {
+    Name  string
+    Value T
+}
+```
+
+约束：
+
+- `Groups`、`Routing`、`Rulesets` 必须保序。
+- 所有持久字段必须能通过稳定 JSON Pointer 定位。
+- `Config` 不包含注释、缩进、文件路径或渲染中间状态。
+
+## PreparedConfig
+
+`PreparedConfig` 是 reload 或草稿预览时从 `Config` 派生出的只读预计算结构。
+
+内容包括：
+
+- 编译后的正则。
+- 解析后的自定义代理。
+- 展开的 `@auto`。
+- 静态命名空间。
+- 模板引用。
+- 运行时所需常量。
+
+`PreparedConfig` 不用于保存写回。
+
+## RuntimeSnapshot
+
+`RuntimeSnapshot` 表达一次成功生效的不可变运行态。
+
+```go
+type RuntimeSnapshot struct {
+    ID               string
+    ConfigRevision   string
+    SnapshotRevision string
+    LoadedAt         time.Time
+    Prepared         PreparedConfig
+    Capabilities     CapabilitySet
+}
+```
+
+规则：
+
+- 保存配置不改变快照。
+- reload 成功才替换快照。
+- reload 失败保留旧快照。
+- 请求期代码不得修改快照内部数据。
+
+## Pipeline
+
+`Pipeline` 是格式无关生成图。
+
+```go
+type Pipeline struct {
+    Proxies     []Proxy
+    NodeGroups  []ProxyGroup
+    RouteGroups []ProxyGroup
+    Rulesets    []Ruleset
+    Rules       []Rule
+    Fallback    string
+}
+```
+
+Build Engine 只产出格式无关图，不判断 Clash / Surge 协议差异。
+
+## Proxy
+
+```go
+type Proxy struct {
+    Name   string
+    Kind   ProxyKind
+    Type   Protocol
+    Server string
+    Port   int
+    Params map[string]string
+    Dialer string
+}
+```
+
+`Kind` 表达来源语义：`subscription`、`snell`、`vless`、`custom`、`chained`。
+
+`Type` 表达代理协议：`ss`、`anytls`、`snell`、`vless`、`socks5`、`http`。
+
+`Dialer` 仅对 chained proxy 有意义。
+
+## ProxyGroup
+
+```go
+type ProxyGroup struct {
+    Name    string
+    Kind    GroupKind
+    Members []string
+    Mode    string
+}
+```
+
+`Kind`：
+
+- `node_group`：节点组。
+- `route_group`：服务组。
+
+`Members` 引用 proxy name 或 group name。合法性由 Build 校验和 Target Projection 校验共同保证。
+
+## Ruleset / Rule
+
+```go
+type Ruleset struct {
+    Name string
+    URLs []string
+}
+
+type Rule struct {
+    Ruleset string
+    Policy  string
+}
+```
+
+`Policy` 必须引用节点组或服务组。Target Projection 可因 policy 被过滤而级联移除 rule。
+
+## TargetView
+
+```go
+type TargetView struct {
+    Format      TargetFormat
+    Proxies     []Proxy
+    NodeGroups  []ProxyGroup
+    RouteGroups []ProxyGroup
+    Rulesets    []Ruleset
+    Rules       []Rule
+    Fallback    string
+    Diagnostics []Diagnostic
+}
+```
+
+TargetView 是某个目标格式下可渲染的视图。它不修改 Pipeline，只复制或过滤必要内容。
+
+## DiagnosticBundle
+
+```go
+type DiagnosticBundle struct {
+    Valid       bool
+    Diagnostics []Diagnostic
+}
+```
+
+所有产品层失败都必须能转换为 Diagnostic。请求层错误可以使用普通 error 响应。
+
+## 共享不变量
+
+- 节点名全局唯一。
+- 节点组名与服务组名互斥。
+- 链式节点上游只能是拉取类节点。
+- `@all` 只含原始节点，不含链式节点。
+- 带 `relay_through` 的 custom proxy 不产出普通 custom proxy。
+- `groups`、`routing`、`rulesets` 保序。
+- TargetView 不得反向修改 Pipeline。
+- RuntimeSnapshot 创建后请求期只读。
