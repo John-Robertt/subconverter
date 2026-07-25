@@ -6,20 +6,21 @@
 
 ## 一、我们有什么（输入素材）
 
-### 1.1 SS / AnyTLS 订阅源
+### 1.1 订阅源
 
-一个或多个订阅链接，返回节点列表：
+一个或多个订阅链接，可返回三类节点列表：
 
-```
+```text
+# TXT / Base64 列表
 ss://...@hk.example.com:8388#HK-01
-ss://...@hk2.example.com:8388#HK-02
-ss://...@sg.example.com:8388#SG-01
-ss://...@us.example.com:8388#US-01
-ss://...@jp.example.com:8388#JP-东京-01
 anytls://password@hk.example.com:443/?sni=edge.example.com&insecure=1#HK-AnyTLS
 ```
 
-节点名称是后续分组的依据。AnyTLS 与 SS 共用 `sources.subscriptions`，可来自明文 URI、Base64 URI 列表、Surge 行或 Quantumult X 行。
+- **Clash YAML（`.yaml` / `.yml`）**：复制顶层 `proxies` 节点，只进入 Clash 输出
+- **Surge CONF（`.conf`）**：复制 `[Proxy]` 段节点，只进入 Surge 输出
+- **TXT / Base64**：支持 SS / AnyTLS 的 URI、Surge 行和 Quantumult X 行，同时进入两种输出
+
+结构化格式优先于 TXT；即使 URL 没有扩展名，也会先按顶层 `proxies` 和 `[Proxy]` 内容识别。节点名称是后续过滤、分组、去重与链式展开的依据，三类格式都共用 `sources.subscriptions` 和同一跨源去重池。
 
 ### 1.1b Snell 来源（Surge 专属）
 
@@ -67,7 +68,7 @@ vless://11111111-2222-3333-4444-555555555555@sg.example.com:443?security=reality
 
 - **只进入 Clash 输出**：Surge 不原生支持 VLESS，Surge 目标格式投影阶段会过滤 VLESS 节点并级联清理空组/规则
 - `type` 缺失或未知值回落到 `tcp`；`encryption` 非空时透传
-- 节点参与与订阅（SS/AnyTLS）/ Snell 共享的去重池、`filters.exclude` 过滤、区域组 regex 匹配
+- 节点参与与订阅 / Snell 共享的去重池、`filters.exclude` 过滤、区域组 regex 匹配
 - 可作为 `relay_through` 的链式上游
 - **失败可定位**：单行解析失败会报整源错误，消息附带脱敏后的来源 URL 和 1-based 物理行号；原始解析根因保留在错误链中
 
@@ -87,7 +88,7 @@ vless://11111111-2222-3333-4444-555555555555@sg.example.com:443?security=reality
 自定义代理无法直连，需声明"通过哪些节点中转"。三种筛选中转节点的方式：
 
 - **group** — 引用已定义的节点组（如 `🇭🇰 Hong Kong`）
-- **select** — 用正则从拉取类节点（订阅（SS/AnyTLS）+ Snell + VLESS）中直接筛选（如 `(港|HK)`）
+- **select** — 用正则从拉取类节点（订阅 + Snell + VLESS）中直接筛选（如 `(港|HK)`）
 - **all** — 使用全部拉取类节点
 
 工具自动将筛选到的每个节点展开为链式路径：
@@ -216,7 +217,7 @@ HK-03 → HK-ISP
 - Clash Meta 配置文件（.yaml）
 - Surge 配置文件（.conf）
 
-两者的面板结构、路由行为在目标格式都支持的协议范围内保持一致，只是语法不同。已知格式例外有两类：Snell 只进入 Surge 输出，Clash 会在 Target 目标格式投影阶段做级联过滤；VLESS 只进入 Clash 输出，Surge 会在 Target 目标格式投影阶段做级联过滤。输出格式不在配置文件中指定，由请求参数决定。
+两者的面板结构、路由行为在共同支持的节点范围内保持一致，只是语法不同。格式例外由 Target 阶段统一级联处理：Snell 和 Surge CONF 订阅节点只进入 Surge；VLESS 和 Clash YAML 订阅节点只进入 Clash。输出格式不在配置文件中指定，由请求参数决定。
 
 请求参数语义：
 
@@ -325,7 +326,7 @@ groups:
   # 链式组（上例 "🔗 HK-ISP"）由 relay_through 自动生成，组名 = custom_proxies.name 原样，无需在此定义
 
 # 服务组：key = 组名，value = 有序出口列表（第一个是默认推荐）
-# 可引用：节点组名、其他服务组名、链式组名（custom_proxies.name 原样，如 "🔗 HK-ISP"）、DIRECT、REJECT、@all（全部原始节点 = 订阅节点（SS/AnyTLS）+ Snell 节点 + VLESS 节点 + 无 relay_through 的自定义代理；不含链式节点）、@auto（自动补充剩余成员）
+# 可引用：节点组名、其他服务组名、链式组名（custom_proxies.name 原样，如 "🔗 HK-ISP"）、DIRECT、REJECT、@all（全部原始节点 = 订阅节点 + Snell 节点 + VLESS 节点 + 无 relay_through 的自定义代理；不含链式节点）、@auto（自动补充剩余成员）
 # @auto 展开为：全部节点组（声明序）→ 包含 @all 的服务组（声明序）→ DIRECT（去重、排除自身）
 # REJECT 不在 @auto 中；如需使用，必须显式写在成员列表里
 # 同一 entry 中 @auto 最多出现一次；@auto 与 @all 不能在同一 entry 中同时使用
@@ -380,7 +381,7 @@ fallback: 🐟 FINAL # 未匹配任何规则的流量走这里（Clash 生成 MA
 ```
 配置段落                         →    客户端面板
 ────────                             ────────
-sources                         →    节点池（订阅节点（SS/AnyTLS）+ Snell 节点 + VLESS 节点 + 自定义节点 + 链式节点）
+sources                         →    节点池（订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 自定义节点 + 链式节点）
 groups                          →    节点组层：🇭🇰 Hong Kong, 🔗 HK-ISP, ...
 routing                         →    服务组层：📺 Netflix, 📲 Telegram, ...
 rulesets + rules + fallback     →    自动路由（用户无感）

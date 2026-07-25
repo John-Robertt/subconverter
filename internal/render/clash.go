@@ -105,7 +105,16 @@ type clashSections struct {
 func buildClashSections(p *model.Pipeline) (*clashSections, []providerEntry, error) {
 	proxies := &yaml.Node{Kind: yaml.SequenceNode}
 	for _, px := range p.Proxies {
-		proxies.Content = append(proxies.Content, buildClashProxy(px))
+		node, err := buildClashProxy(px)
+		if err != nil {
+			return nil, nil, &errtype.RenderError{
+				Code:    errtype.CodeRenderClashProxyInvalid,
+				Format:  "clash",
+				Message: fmt.Sprintf("代理 %q 渲染失败：%v", px.Name, err),
+				Cause:   err,
+			}
+		}
+		proxies.Content = append(proxies.Content, node)
 	}
 
 	groups := &yaml.Node{Kind: yaml.SequenceNode}
@@ -122,7 +131,11 @@ func buildClashSections(p *model.Pipeline) (*clashSections, []providerEntry, err
 	}, providers, nil
 }
 
-func buildClashProxy(px model.Proxy) *yaml.Node {
+func buildClashProxy(px model.Proxy) (*yaml.Node, error) {
+	if px.Native != nil {
+		return buildNativeClashProxy(px)
+	}
+
 	m := &yaml.Node{Kind: yaml.MappingNode}
 	addPair(m, "name", scalarNode(px.Name))
 	addPair(m, "type", scalarNode(px.Type))
@@ -166,7 +179,25 @@ func buildClashProxy(px model.Proxy) *yaml.Node {
 		addPair(m, "dialer-proxy", scalarNode(px.Dialer))
 	}
 
-	return m
+	return m, nil
+}
+
+func buildNativeClashProxy(px model.Proxy) (*yaml.Node, error) {
+	if px.Native.Format != model.NativeProxyFormatClash {
+		return nil, fmt.Errorf("原生声明格式为 %q，不能写入 Clash", px.Native.Format)
+	}
+
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(px.Native.Payload), &root); err != nil {
+		return nil, fmt.Errorf("解析原生 Clash 节点失败：%w", err)
+	}
+	if len(root.Content) == 0 || root.Content[0].Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("原生 Clash 节点必须是 YAML 映射")
+	}
+
+	mapping := root.Content[0]
+	setMappingKey(mapping, "name", scalarNode(px.Name))
+	return mapping, nil
 }
 
 func paramBoolTrue(v string) bool {

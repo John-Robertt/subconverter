@@ -18,11 +18,13 @@ const (
 type proxyDropReason struct {
 	Kind   proxyDropReasonKind
 	Parent string
+	Label  string
 }
 
 type cascadeOptions struct {
 	formatName        string
 	formatDisplayName string
+	nativeFormat      model.NativeProxyFormat
 	rootLabel         string
 	emptyCode         errtype.Code
 	internalCode      errtype.Code
@@ -43,7 +45,7 @@ type groupCascade struct {
 	reasons     map[string][]string
 }
 
-func filterByDroppedTypes(p *model.Pipeline, droppedTypes []string, opts cascadeOptions) (*model.Pipeline, error) {
+func filterUnsupportedProxies(p *model.Pipeline, droppedTypes []string, opts cascadeOptions) (*model.Pipeline, error) {
 	proxyDrops, err := buildProxyCascade(p.Proxies, droppedTypes, opts)
 	if err != nil {
 		return nil, err
@@ -66,11 +68,19 @@ func filterByDroppedTypes(p *model.Pipeline, droppedTypes []string, opts cascade
 
 func buildProxyCascade(proxies []model.Proxy, droppedTypes []string, opts cascadeOptions) (*proxyCascade, error) {
 	result := &proxyCascade{
-		dropped: rootDroppedProxies(proxies, droppedTypes),
+		dropped: make(map[string]struct{}),
 		reasons: make(map[string]proxyDropReason),
 	}
-	for name := range result.dropped {
-		result.reasons[name] = proxyDropReason{Kind: proxyDropReasonProtoRoot}
+	for _, proxy := range proxies {
+		label, drop := rootProxyDropLabel(proxy, droppedTypes, opts)
+		if !drop {
+			continue
+		}
+		result.dropped[proxy.Name] = struct{}{}
+		result.reasons[proxy.Name] = proxyDropReason{
+			Kind:  proxyDropReasonProtoRoot,
+			Label: label,
+		}
 	}
 
 	if err := cascadeDroppedDialers(proxies, result, opts); err != nil {
@@ -79,19 +89,27 @@ func buildProxyCascade(proxies []model.Proxy, droppedTypes []string, opts cascad
 	return result, nil
 }
 
-func rootDroppedProxies(proxies []model.Proxy, droppedTypes []string) map[string]struct{} {
-	typeSet := make(map[string]struct{}, len(droppedTypes))
-	for _, t := range droppedTypes {
-		typeSet[t] = struct{}{}
+func rootProxyDropLabel(proxy model.Proxy, droppedTypes []string, opts cascadeOptions) (string, bool) {
+	if proxy.Native != nil && proxy.Native.Format != opts.nativeFormat {
+		return subscriptionFormatDropLabel(proxy.Native.Format), true
 	}
-
-	dropped := make(map[string]struct{})
-	for _, px := range proxies {
-		if _, hit := typeSet[px.Type]; hit {
-			dropped[px.Name] = struct{}{}
+	for _, droppedType := range droppedTypes {
+		if proxy.Type == droppedType {
+			return opts.rootLabel, true
 		}
 	}
-	return dropped
+	return "", false
+}
+
+func subscriptionFormatDropLabel(format model.NativeProxyFormat) string {
+	switch format {
+	case model.NativeProxyFormatClash:
+		return "Clash YAML 专属"
+	case model.NativeProxyFormatSurge:
+		return "Surge CONF 专属"
+	default:
+		return "目标格式不兼容"
+	}
 }
 
 func cascadeDroppedDialers(proxies []model.Proxy, drops *proxyCascade, opts cascadeOptions) error {
@@ -265,7 +283,11 @@ func buildDropPath(name string, groupReasons map[string][]string, proxyReasons m
 	if reason, isProxy := proxyReasons[name]; isProxy {
 		switch reason.Kind {
 		case proxyDropReasonProtoRoot:
-			return name + "(" + rootLabel + ")"
+			label := reason.Label
+			if label == "" {
+				label = rootLabel
+			}
+			return name + "(" + label + ")"
 		case proxyDropReasonDialerCascade:
 			visited[name] = true
 			parentPath := reason.Parent

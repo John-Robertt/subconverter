@@ -65,7 +65,7 @@ subconverter/
 
 `internal/pipeline`
 
-- SS/AnyTLS / Snell / VLESS 来源解析、各阶段转换
+- 订阅（TXT / Clash YAML / Surge CONF）/ Snell / VLESS 来源解析、各阶段转换
 - 图级校验
 - `Build` 编排（格式无关 IR）
 

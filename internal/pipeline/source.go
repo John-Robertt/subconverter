@@ -119,12 +119,33 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, staticN
 	return &SourceResult{Proxies: proxies, ChainTemplates: chainTemplates}, nil
 }
 
-// fetchSubscription fetches a single subscription URL, normalizes the response
-// body into text, and parses each line as a supported subscription format.
+// fetchSubscription fetches one subscription URL. Structured Clash YAML and
+// Surge CONF documents are recognized before the legacy Base64/plain-text
+// subscription list formats.
 func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string) ([]model.Proxy, error) {
 	body, err := fetcher.Fetch(ctx, rawURL)
 	if err != nil {
 		return nil, err
+	}
+
+	document, err := parseSubscriptionDocument(rawURL, body)
+	if document != nil {
+		if err != nil {
+			return nil, &errtype.FetchError{
+				Code:    errtype.CodeFetchSubscriptionFormatInvalid,
+				URL:     fetch.SanitizeURL(rawURL),
+				Message: subscriptionDocumentFormatLabel(document.Format) + " 订阅格式无效：" + err.Error(),
+				Cause:   err,
+			}
+		}
+		if len(document.Proxies) == 0 {
+			return nil, &errtype.FetchError{
+				Code:    errtype.CodeFetchSubscriptionEmpty,
+				URL:     fetch.SanitizeURL(rawURL),
+				Message: subscriptionDocumentFormatLabel(document.Format) + " 订阅未产生任何有效节点",
+			}
+		}
+		return document.Proxies, nil
 	}
 
 	text, err := subscriptionBodyText(body)
@@ -132,7 +153,7 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 		return nil, &errtype.FetchError{
 			Code:    errtype.CodeFetchSubscriptionBase64Invalid,
 			URL:     fetch.SanitizeURL(rawURL),
-			Message: "订阅内容不是合法的 Base64，也不是明文 SS/AnyTLS 订阅列表",
+			Message: "订阅内容不是合法的 Clash YAML、Surge CONF、Base64，也不是明文 SS/AnyTLS 订阅列表",
 			Cause:   err,
 		}
 	}
@@ -157,6 +178,17 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 	}
 
 	return proxies, nil
+}
+
+func subscriptionDocumentFormatLabel(format model.NativeProxyFormat) string {
+	switch format {
+	case model.NativeProxyFormatClash:
+		return "Clash YAML"
+	case model.NativeProxyFormatSurge:
+		return "Surge CONF"
+	default:
+		return "结构化"
+	}
 }
 
 // fetchSnellSource fetches a URL whose body is plain text with one Surge-style

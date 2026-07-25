@@ -494,3 +494,62 @@ func TestSurge_SnellProxy_UnknownKeyDropped(t *testing.T) {
 		t.Errorf("base fields missing:\n%s", output)
 	}
 }
+
+// T-RND-SURGE-NATIVE-001: copied [Proxy] declarations preserve their complete
+// right-hand side while the IR name remains authoritative after deduplication.
+func TestSurge_NativeProxyPreservesDeclarationAndUsesCurrentName(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name: "HK-CONF②",
+			Type: "trojan",
+			Kind: model.KindSubscription,
+			Native: &model.NativeProxy{
+				Format:  model.NativeProxyFormatSurge,
+				Payload: "trojan, hk.example.com, 443, password=secret, sni=edge.example.com, future-option=enabled",
+			},
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Surge(p, "", nil)
+	if err != nil {
+		t.Fatalf("Surge() error: %v", err)
+	}
+	output := string(got)
+	want := "HK-CONF② = trojan, hk.example.com, 443, password=secret, sni=edge.example.com, future-option=enabled"
+	if !strings.Contains(output, want) {
+		t.Errorf("native Surge declaration not preserved.\nwant substring:\n%s\ngot:\n%s", want, output)
+	}
+	if strings.Contains(output, "HK-CONF = trojan") {
+		t.Errorf("stale source name leaked after deduplication:\n%s", output)
+	}
+}
+
+// T-RND-SURGE-NATIVE-002: a Clash-native declaration reaching Surge is a
+// projection-contract violation.
+func TestSurge_RejectsClashNativeProxy(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name: "HK-YAML",
+			Type: "trojan",
+			Kind: model.KindSubscription,
+			Native: &model.NativeProxy{
+				Format:  model.NativeProxyFormatClash,
+				Payload: "name: HK-YAML\ntype: trojan\n",
+			},
+		}},
+		Fallback: "DIRECT",
+	}
+
+	_, err := Surge(p, "", nil)
+	if err == nil {
+		t.Fatal("expected RenderError, got nil")
+	}
+	var renderErr *errtype.RenderError
+	if !errors.As(err, &renderErr) {
+		t.Fatalf("error type = %T, want *errtype.RenderError", err)
+	}
+	if renderErr.Code != errtype.CodeRenderSurgeProxyInvalid {
+		t.Fatalf("Code = %q, want %q", renderErr.Code, errtype.CodeRenderSurgeProxyInvalid)
+	}
+}

@@ -28,6 +28,7 @@ const (
 	CodeFetchBodyReadFailed            Code = "fetch_body_read_failed"
 	CodeFetchFetcherRequired           Code = "fetch_fetcher_required"
 	CodeFetchSubscriptionBase64Invalid Code = "fetch_subscription_base64_invalid"
+	CodeFetchSubscriptionFormatInvalid Code = "fetch_subscription_format_invalid"
 	CodeFetchSubscriptionEmpty         Code = "fetch_subscription_empty"
 
 	CodeResourceLocalReadFailed Code = "resource_local_read_failed"
@@ -51,6 +52,7 @@ const (
 	CodeRenderTemplateInvalid     Code = "render_template_invalid"
 	CodeRenderYAMLEncodeFailed    Code = "render_yaml_encode_failed"
 	CodeRenderYAMLFinalizeFailed  Code = "render_yaml_finalize_failed"
+	CodeRenderClashProxyInvalid   Code = "render_clash_proxy_invalid"
 	CodeRenderSurgeProxyInvalid   Code = "render_surge_proxy_invalid"
 
 	CodeTargetClashFallbackEmpty     Code = "target_clash_fallback_empty"

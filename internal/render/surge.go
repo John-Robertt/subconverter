@@ -105,6 +105,13 @@ func buildSurgeProxies(proxies []model.Proxy) (string, error) {
 }
 
 func renderSurgeProxy(px model.Proxy) (string, error) {
+	if px.Native != nil {
+		if px.Native.Format != model.NativeProxyFormatSurge {
+			return "", fmt.Errorf("原生声明格式为 %q，不能写入 Surge", px.Native.Format)
+		}
+		return px.Name + " = " + px.Native.Payload, nil
+	}
+
 	var parts []string
 
 	switch px.Type {

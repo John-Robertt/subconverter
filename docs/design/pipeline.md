@@ -128,7 +128,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 职责：
 
 - 拉取所有远程来源
-- 解析 SS / AnyTLS 节点、Snell 节点、VLESS 节点
+- 解析订阅节点（TXT / Clash YAML / Surge CONF）、Snell 节点、VLESS 节点
 - 将自定义代理转换为原始节点对象或链式模板
 
 输入：
@@ -143,9 +143,11 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 - 本阶段不生成链式节点
 - 跨订阅重名通过两轮去重处理
-- 订阅响应体支持 Base64 编码列表和明文列表；明文列表兼容 SS（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`）和 AnyTLS（`anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）行格式
+- 订阅格式按 `Clash YAML → Surge CONF → TXT/Base64` 的优先级识别；`.yaml` / `.yml` / `.conf` URL 后缀会强制对应格式，其他 URL 再按顶层 `proxies` 或 `[Proxy]` 内容识别
+- Clash YAML 复制 `proxies` 中的完整节点映射；Surge CONF 复制 `[Proxy]` 中每条声明的完整右值。两类节点都保留为 `KindSubscription`，并用 `NativeProxy.Format` 记录其唯一目标格式
+- TXT 响应体支持 Base64 编码列表和明文列表；明文列表兼容 SS（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`）和 AnyTLS（`anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）行格式
 - AnyTLS 输入按“宽进严出”归一化：Surge / Quantumult X 方言字段可被接受，但只有目标客户端官方支持字段会在 Render 阶段输出
-- 订阅中的空行、整行注释和单行解析失败会被跳过，最终 0 个有效节点时报错
+- TXT 订阅中的空行、整行注释和单行解析失败会被跳过；结构化订阅声明错误整源报错；任一格式最终 0 个有效节点都报错
 - Snell 来源单行解析失败整源报错
 - VLESS 来源单行解析失败整源报错
 - 拉取失败时错误信息对 URL 做脱敏处理
@@ -175,7 +177,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 说明：
 
-- 过滤对象是拉取类节点（`KindSubscription` + `KindSnell` + `KindVLess`）
+- 过滤对象是拉取类节点（`KindSubscription`，含 TXT / Clash YAML / Surge CONF；加上 `KindSnell` + `KindVLess`）
 - 自定义代理和链式节点不参与过滤
 - 生成管道只消费 `FilterResult.Included`
 - `/api/preview/nodes` 同时返回 `Included` 与 `Excluded` 的合并视图，并用 `filtered` 字段标记节点是否被排除
@@ -208,7 +210,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 关键规则：
 
 - `@all` 只包含原始节点
-- 原始节点 = 订阅节点（SS / AnyTLS）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
+- 原始节点 = 订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
 - 链式展开的上游只来自拉取类节点
 
 ---
@@ -271,7 +273,9 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 - Clash 视图剔除 Snell 节点及级联影响（见 `rendering.md` §Snell 过滤）
 - Surge 视图剔除 VLESS 节点及级联影响（见 `rendering.md` §VLESS 过滤）
-- 级联过滤算法由共享引擎 `filterByDroppedTypes`（`internal/target/filter_cascade.go`）提供
+- Clash 视图剔除 Surge CONF 原生订阅节点；Surge 视图剔除 Clash YAML 原生订阅节点
+- 原生格式剔除与协议剔除共用同一级联：依赖被剔除上游的链式节点、空节点组/服务组、对应规则与 `@all` 成员同步清理
+- 级联过滤算法由共享引擎 `filterUnsupportedProxies`（`internal/target/filter_cascade.go`）提供
 - 若 `fallback` 在目标格式视图中被清空，本阶段返回 `TargetError`
 
 ---

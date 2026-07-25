@@ -3,6 +3,7 @@ package errtype
 import (
 	"errors"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -199,5 +200,36 @@ func TestBuildErrorNilCause(t *testing.T) {
 	e := &BuildError{Code: CodeBuildValidationFailed, Phase: "group", Message: "链式节点组为空"}
 	if e.Unwrap() != nil {
 		t.Error("BuildError with nil Cause should unwrap to nil")
+	}
+}
+
+// T-ERR-020: structured subscription format failures use a stable fetch code.
+func TestFetchErrorWithSubscriptionFormatInvalid(t *testing.T) {
+	e := &FetchError{
+		Code:    CodeFetchSubscriptionFormatInvalid,
+		URL:     "https://example.com/profile.yaml",
+		Message: "Clash YAML 订阅格式无效：缺少顶层 proxies 字段",
+	}
+	want := `fetch error [https://example.com/profile.yaml]: Clash YAML 订阅格式无效：缺少顶层 proxies 字段`
+	if got := e.Error(); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if e.Code != CodeFetchSubscriptionFormatInvalid {
+		t.Fatalf("code = %q, want %q", e.Code, CodeFetchSubscriptionFormatInvalid)
+	}
+}
+
+// T-ERR-021: malformed native Clash proxy rendering has a dedicated code.
+func TestRenderErrorWithClashProxyInvalid(t *testing.T) {
+	e := &RenderError{
+		Code:    CodeRenderClashProxyInvalid,
+		Format:  "clash",
+		Message: `代理 "HK" 渲染失败：原生节点无效`,
+	}
+	if e.Code != CodeRenderClashProxyInvalid {
+		t.Fatalf("code = %q, want %q", e.Code, CodeRenderClashProxyInvalid)
+	}
+	if !strings.Contains(e.Error(), "原生节点无效") {
+		t.Fatalf("unexpected error string: %s", e.Error())
 	}
 }

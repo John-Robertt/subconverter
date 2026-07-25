@@ -43,7 +43,7 @@
 
 | 页面 | 数据来源 | 核心功能 |
 |------|---------|---------|
-| B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅（SS/AnyTLS）/ Snell / VLESS / 自定义）；显示名称、类型、服务器、端口、Kind；标注格式限定（Snell = 仅 Surge / VLESS = 仅 Clash） |
+| B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅 / Snell / VLESS / 自定义）；显示名称、类型、服务器、端口、Kind；标注可由类型判断的格式限定（Snell = 仅 Surge / VLESS = 仅 Clash） |
 | B2 分组预览 | `GET /api/preview/groups` | 当前运行时节点组、链式组和服务组结果；展示 `@all` / `@auto` 展开后的成员 |
 | B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` + `GET /api/config/effective.zip` + `POST /api/config/import` | 自动展示 Clash Meta / Surge 双格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；导出当前生效配置与模板 ZIP；导入 ZIP 或 YAML 到前端草稿 |
 
@@ -164,7 +164,7 @@ SPA 使用以下路由结构（React Router），与 Go 服务的 SPA fallback �
 
 中间态处理：`PUT /api/config` 成功但 `POST /api/reload` 失败时（如远程主配置源读取失败，或新配置未通过 `Prepare` 静态校验），配置文件已更新但 RuntimeConfig 仍为旧版。此时 UI 应保留 `config_dirty = true` 提示，并允许用户重新触发 reload。若用户在保存后、reload 前离开页面（浏览器崩溃或关闭标签页），下次打开时 `GET /api/status` 会返回 `config_dirty = true`，UI 应提示用户执行 reload 使配置生效。
 
-其中 A8 和 reload 都只覆盖 `Prepare` 阶段的静态配置校验；生成可用性需要通过 B1/B2/B3 预览确认，尤其是订阅（SS/AnyTLS）/Snell/VLESS 来源拉取、过滤后空组、目标格式级联过滤和渲染错误。
+其中 A8 和 reload 都只覆盖 `Prepare` 阶段的静态配置校验；生成可用性需要通过 B1/B2/B3 预览确认，尤其是订阅（TXT / Clash YAML / Surge CONF）/Snell/VLESS 来源拉取、过滤后空组、目标格式级联过滤和渲染错误。
 
 B2 分组预览执行到 ValidateGraph：若后端返回图级错误，页面显示结构化诊断并保留草稿，不展示部分成功的分组结果。
 

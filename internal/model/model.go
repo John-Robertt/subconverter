@@ -11,6 +11,23 @@ const (
 	KindChained      ProxyKind = "chained"
 )
 
+// NativeProxyFormat identifies a target-native proxy declaration copied from
+// a structured subscription document.
+type NativeProxyFormat string
+
+const (
+	NativeProxyFormatClash NativeProxyFormat = "clash"
+	NativeProxyFormatSurge NativeProxyFormat = "surge"
+)
+
+// NativeProxy preserves a proxy declaration that is already expressed in one
+// target's native syntax. Payload contains one Clash YAML proxy mapping or the
+// right-hand side of one Surge [Proxy] declaration.
+type NativeProxy struct {
+	Format  NativeProxyFormat
+	Payload string
+}
+
 // GroupScope indicates whether a group is node-level or route-level.
 type GroupScope string
 
@@ -29,6 +46,7 @@ type Proxy struct {
 	Plugin *Plugin
 	Kind   ProxyKind
 	Dialer string // upstream proxy name; only set for chained proxies
+	Native *NativeProxy
 }
 
 // Plugin represents an outbound plugin attached to a proxy.

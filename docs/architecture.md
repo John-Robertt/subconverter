@@ -6,7 +6,7 @@
 
 ## 概述
 
-本系统是一个使用 Go 实现的单用户 HTTP 服务。它读取一份用户 YAML 配置，拉取 SS/AnyTLS 订阅源、Snell 来源和 VLESS 来源，结合自定义代理、节点分组、服务路由和远程规则集，生成 Clash Meta 或 Surge 配置文件。
+本系统是一个使用 Go 实现的单用户 HTTP 服务。它读取一份用户 YAML 配置，拉取订阅源（TXT / Clash YAML / Surge CONF）、Snell 来源和 VLESS 来源，结合自定义代理、节点分组、服务路由和远程规则集，生成 Clash Meta 或 Surge 配置文件。
 
 v2.0 在 v1.0 核心管道基础上新增：
 
@@ -100,7 +100,7 @@ subconverter (Go)
 
 系统围绕三类对象组织：
 
-- 节点：订阅节点、Snell 节点（仅 Surge 输出）、VLESS 节点（仅 Clash 输出）、自定义节点、链式节点
+- 节点：订阅节点（TXT 双格式、Clash YAML 仅 Clash、Surge CONF 仅 Surge）、Snell 节点（仅 Surge 输出）、VLESS 节点（仅 Clash 输出）、自定义节点、链式节点
 - 组：节点组、服务组
 - 路由规则：远程规则集、内联规则、fallback
 
@@ -136,7 +136,7 @@ RUnlock()
 - `LoadConfig`：读取并解析用户 YAML，产出 `Config`
 - `Prepare`：校验字段合法性、编译正则、解析自定义代理 URL、展开 `@auto`、检测命名冲突与路由环路，产出 `RuntimeConfig`
 - `Build`：构建格式无关 IR，其中 `Source/Filter/Group/Route/ValidateGraph` 仍按阶段拆分
-- `Target`：按目标格式做协议能力裁剪和格式相关图校验
+- `Target`：按目标格式做协议能力/原生来源格式裁剪和格式相关图校验
 - `Render`：把已投影的目标格式视图序列化为 Clash Meta 或 Surge 文本
 
 预览请求（`/api/preview/*`）执行管道的部分阶段：
@@ -265,7 +265,7 @@ Docker 环境下，`docker stop` 先发 `SIGTERM`，默认 10s 后 `SIGKILL`。�
     ├─► rules        ──► 内联规则
     └─► fallback     ──► 兜底出口
 
-订阅节点（SS/AnyTLS）+ Snell 节点 + VLESS 节点 + 自定义节点
+订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 自定义节点
     │
     ▼
 统一中间表示
@@ -288,7 +288,7 @@ Web 管理后台
 
 - `groups`、`routing`、`rulesets` 都要保留书写顺序
 - `@all` 只展开原始节点，不包含链式节点
-- 原始节点 = 订阅节点（SS/AnyTLS）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
+- 原始节点 = 订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
 - `@auto` 展开为自动补充池（节点组 → 包含 `@all` 的服务组 → DIRECT），自动去重且排除自身
 - `REJECT` 不在 `@auto` 补充池中；如需使用，必须显式声明
 - 链式组由自定义代理派生，但在节点组层中与地区组平级
@@ -311,6 +311,7 @@ Web 管理后台
 | 缓存范围 | 缓存订阅和模板的远程拉取结果 | 规则集由客户端消费 |
 | 资源加载模型 | 配置文件和模板均支持本地路径或 HTTP(S) URL | 统一 `LoadResource` |
 | 渲染器合并策略 | Clash 用 yaml.Node 替换；Surge 用 section 切分替换 | 保留底版用户设置 |
+| 结构化订阅表示 | `KindSubscription` + 可选 `NativeProxy` | 复用统一过滤/分组语义，同时完整保留目标原生节点字段 |
 | **热重载并发模型** | `sync.RWMutex` 保护 `RuntimeConfig` | 单进程无需分布式锁，读多写少场景最优 |
 | **前端部署方式** | Go 二进制嵌入 `web/dist`，单服务同源托管 SPA 与 API | 单镜像、单进程，生产同源访问 |
 | **开发模式** | Vite proxy 优先；`-cors` 仅作本地调试兜底 | 前后端分离开发 |
@@ -336,14 +337,14 @@ Web 管理后台
 
 > **触及时行动**：考虑严格模式时 → 优先扩充 `xxxKeyOrder` 而非引入白名单拒绝。
 
-- **现象**：`Proxy.Params` 是 `map[string]string`，容纳任意键
-- **权衡**：解析器不随目标格式版本迭代；代价是用户 typo 不会报错
+- **现象**：规范化节点的 `Proxy.Params` 是 `map[string]string`，容纳任意键；结构化订阅的 `NativeProxy.Payload` 则保留完整目标原生声明
+- **权衡**：TXT/Snell/VLESS 的规范化解析器不随目标格式版本迭代，但未知 Params 键可能被固定列表渲染器丢弃；Clash YAML / Surge CONF 原生声明不做字段白名单校验，用户 typo 会被原样带到目标客户端
 
-### 3. 协议格式专属性导致 Target 阶段级联过滤
+### 3. 协议或来源格式专属性导致 Target 阶段级联过滤
 
-> **触及时行动**：新增格式专属协议 → 复用 `filterByDroppedTypes` 策略；同步补跨格式过滤测试。
+> **触及时行动**：新增格式专属协议或结构化来源 → 复用共享 cascade 策略；同步补跨格式过滤测试。
 
-- **现象**：Snell 仅支持 Surge、VLESS 仅支持 Clash，不支持方在 Target 阶段做级联过滤
+- **现象**：Snell / Surge CONF 节点仅支持 Surge，VLESS / Clash YAML 节点仅支持 Clash；不支持方在 Target 阶段做级联过滤
 
 ### 4. RuntimeConfig 快照一致性
 

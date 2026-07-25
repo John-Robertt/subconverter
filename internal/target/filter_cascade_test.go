@@ -579,3 +579,118 @@ func TestInternalFilterError_UsesDedicatedProjectionCode(t *testing.T) {
 		})
 	}
 }
+
+// T-TGT-015: target projection keeps only matching native subscription formats.
+func TestTargetProjection_FiltersNativeSubscriptionFormats(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			{
+				Name: "HK-YAML",
+				Type: "trojan",
+				Kind: model.KindSubscription,
+				Native: &model.NativeProxy{
+					Format:  model.NativeProxyFormatClash,
+					Payload: "name: HK-YAML\ntype: trojan\n",
+				},
+			},
+			{
+				Name: "SG-CONF",
+				Type: "trojan",
+				Kind: model.KindSubscription,
+				Native: &model.NativeProxy{
+					Format:  model.NativeProxyFormatSurge,
+					Payload: "trojan, sg.example.com, 443, password=secret",
+				},
+			},
+			{
+				Name:   "US-TXT",
+				Type:   "ss",
+				Server: "us.example.com",
+				Port:   8388,
+				Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"},
+				Kind:   model.KindSubscription,
+			},
+		},
+		NodeGroups: []model.ProxyGroup{
+			{Name: "GRP_ALL", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-YAML", "SG-CONF", "US-TXT"}},
+		},
+		RouteGroups: []model.ProxyGroup{
+			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_ALL", "DIRECT"}},
+		},
+		Fallback:   "SVC_FINAL",
+		AllProxies: []string{"HK-YAML", "SG-CONF", "US-TXT"},
+	}
+
+	clash, err := ForClash(p)
+	if err != nil {
+		t.Fatalf("ForClash() error: %v", err)
+	}
+	clashNames := proxyNameSet(clash.Proxies)
+	if !clashNames["HK-YAML"] || !clashNames["US-TXT"] || clashNames["SG-CONF"] {
+		t.Fatalf("Clash proxy projection = %v, want YAML+TXT only", clashNames)
+	}
+	if stringSliceContains(clash.AllProxies, "SG-CONF") {
+		t.Fatalf("Clash @all leaked Surge CONF node: %v", clash.AllProxies)
+	}
+
+	surge, err := ForSurge(p)
+	if err != nil {
+		t.Fatalf("ForSurge() error: %v", err)
+	}
+	surgeNames := proxyNameSet(surge.Proxies)
+	if !surgeNames["SG-CONF"] || !surgeNames["US-TXT"] || surgeNames["HK-YAML"] {
+		t.Fatalf("Surge proxy projection = %v, want CONF+TXT only", surgeNames)
+	}
+	if stringSliceContains(surge.AllProxies, "HK-YAML") {
+		t.Fatalf("Surge @all leaked Clash YAML node: %v", surge.AllProxies)
+	}
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+// T-TGT-016: native-format filtering cascades through chained proxies and
+// reports the target-native root in a cleared fallback path.
+func TestForClash_SurgeNativeCascadeIncludesRootCause(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			{
+				Name: "HK-CONF",
+				Type: "trojan",
+				Kind: model.KindSubscription,
+				Native: &model.NativeProxy{
+					Format:  model.NativeProxyFormatSurge,
+					Payload: "trojan, hk.example.com, 443, password=secret",
+				},
+			},
+			{Name: "HK-CONF→CHAIN", Type: "socks5", Server: "127.0.0.1", Port: 1080, Kind: model.KindChained, Dialer: "HK-CONF"},
+		},
+		NodeGroups: []model.ProxyGroup{
+			{Name: "GRP_CHAIN", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-CONF→CHAIN"}},
+		},
+		RouteGroups: []model.ProxyGroup{
+			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_CHAIN"}},
+		},
+		Fallback: "SVC_FINAL",
+	}
+
+	_, err := ForClash(p)
+	if err == nil {
+		t.Fatal("expected fallback-empty error, got nil")
+	}
+	var targetErr *errtype.TargetError
+	if !errors.As(err, &targetErr) {
+		t.Fatalf("error type = %T, want *errtype.TargetError", err)
+	}
+	for _, want := range []string{"HK-CONF→CHAIN(chained)", "HK-CONF(Surge CONF 专属)", "SVC_FINAL"} {
+		if !strings.Contains(targetErr.Error(), want) {
+			t.Fatalf("cascade error missing %q: %s", want, targetErr.Error())
+		}
+	}
+}

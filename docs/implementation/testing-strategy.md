@@ -13,17 +13,18 @@
 - 保序映射解析
 - SS URI 解析
 - AnyTLS 订阅解析（URI / base64 / Surge 行 / Quantumult X 行；单元测试自构造样本，不依赖外部 fixture）
+- 结构化订阅解析（`.yaml` / `.yml` 的顶层 `proxies`、`.conf` 的 `[Proxy]`、无后缀内容识别、结构化格式优先于 TXT、错误 URL 脱敏）
 - Snell Surge 行解析（valid / invalid / skip / duplicate key / 边界）
 - VLESS URI 解析（valid / invalid / transport fallback / encryption 透传 / transport query dispatch）
 - SIP002 明文 `userinfo`
 - SS plugin query 解析与转义处理
-- 拉取类节点过滤（订阅（SS / AnyTLS）+ Snell + VLESS）
-- 地区节点组匹配（订阅（SS / AnyTLS）+ Snell + VLESS）
+- 拉取类节点过滤（订阅（TXT / Clash YAML / Surge CONF）+ Snell + VLESS）
+- 地区节点组匹配（订阅（TXT / Clash YAML / Surge CONF）+ Snell + VLESS）
 - `relay_through` 三种模式展开
 - Snell 节点可作为 `relay_through` 上游
 - VLESS 节点可作为 `relay_through` 上游
 - `@all` 不包含链式节点
-- `@all` 包含全部原始节点（订阅（SS / AnyTLS）+ Snell + VLESS + 不带 `relay_through` 的自定义）
+- `@all` 包含全部原始节点（订阅（TXT / Clash YAML / Surge CONF）+ Snell + VLESS + 不带 `relay_through` 的自定义）
 - `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT，去重且排除自身
 - `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
 - 同一 entry 内重复 `@auto` 会被静态校验拒绝
@@ -46,6 +47,8 @@
 - Surge 输出快照
 - 链式节点渲染字段
 - Clash 的 Snell 级联过滤与 fallback 清空路径
+- Clash YAML / Surge CONF 原生节点的跨格式过滤、链式依赖级联与 fallback 清空路径
+- 结构化原生声明保留未知/嵌套字段，跨源去重后覆盖原名称
 - Clash 的 VLESS 节点渲染（含 encryption 透传、transport fallback、transport opts）
 - Surge 的 VLESS 级联过滤与 fallback 清空路径
 - 清空路径中的 `(snell)` / `(chained)` 标记，以及共享掉落子图不误报 `(cycle)`
@@ -121,7 +124,7 @@
 - `T-RLD-006`：reload 成功后 `GET /api/status` 的 `runtime_config_revision` 更新，`config_dirty` 变为 `false`
 - `T-RLD-007`：远程主配置源读取失败时 reload 返回 502，旧 RuntimeConfig 不变，`config_dirty` 不被错误清除
 - `T-RLD-008`：reload 429 后锁状态可恢复——当前 reload 完成后，后续重试可以成功进入 reload 流程
-- `T-RLD-009`：reload 不拉取订阅（SS/AnyTLS）/Snell/VLESS 来源；订阅源不可用不影响 reload 成功，但会由预览或生成路径返回对应错误
+- `T-RLD-009`：reload 不拉取订阅（TXT / Clash YAML / Surge CONF）/Snell/VLESS 来源；订阅源不可用不影响 reload 成功，但会由预览或生成路径返回对应错误
 
 ---
 
@@ -205,7 +208,7 @@
 - `T-WEB-024`：B3 导入 ZIP 配置包前确认写入模板副本，并以 `application/zip` 调用 `POST /api/config/import`
 - `T-WEB-017`：端到端测试：本地可写配置全流程（归属 M10）
   - 测试入口：正式前端 E2E runner；后端使用临时本地配置文件、fake 订阅源和 fake 模板资源
-  - fixture：最小可启动 YAML、至少一个 SS/AnyTLS 订阅节点、一个规则集 URL、Clash / Surge 模板
+  - fixture：最小可启动 YAML、至少一个订阅节点、一个规则集 URL、Clash / Surge 模板
   - 操作步骤：打开 SPA → 加载 `GET /api/config` 草稿 → 在 A1/A3/A4/A7 补齐来源、节点组、路由和 fallback → A8 validate → 首次保存确认 → `PUT /api/config` → 用户显式触发 `POST /api/reload` → B1/B2/B3 预览 → 下载生成结果
   - 预期结果：保存后返回新 `config_revision`；reload 后 `runtime_config_revision` 更新且 `config_dirty=false`；B1 有 active 节点；B2 展示节点组和服务组；B3 生成预览与下载内容一致
 - `T-WEB-018`：端到端测试：错误路径覆盖（归属 M10）
@@ -215,7 +218,7 @@
   - 预期结果：静态校验失败显示 `200 valid=false` 诊断；B2 图级错误不展示部分成功结果；B3 生成期错误可重试；reload 失败后旧 RuntimeConfig 不变并保持 dirty 提示
 - `T-WEB-019`：端到端测试：Clash / Surge 双格式生成与下载路径（归属 M10）
   - 测试入口：正式前端 E2E runner；后端使用同一份已 reload 的本地配置
-  - fixture：同时包含 SS、Snell、VLESS、rulesets、fallback 和 base_url 的配置，覆盖格式专属过滤
+  - fixture：同时包含 TXT、Clash YAML、Surge CONF、Snell、VLESS、rulesets、fallback 和 base_url 的配置，覆盖格式专属过滤
   - 操作步骤：进入 B3 自动加载 Clash Meta 与 Surge 双格式运行时生成预览 → 分别触发下载 → 复制订阅链接确认
   - 预期结果：Clash 响应为 YAML 且不含 Snell；Surge 响应为 text/plain 且不含 VLESS；预览无 `Content-Disposition`，下载有附件响应；复制含 token 链接前出现确认
 - `T-WEB-020`：端到端测试：HTTP(S) 配置源只读模式（归属 M10）

@@ -85,7 +85,7 @@ internal/target → internal/{model,errtype}
    | `internal/model/proxy_invariant.go` 的 `allowedProxyTypesByKind`                      | 新 Kind 允许哪些 Type？需新增映射条目      |
    | `internal/model/proxy_invariant.go` 的 `ValidateProxyInvariant` KindChained 分支      | 新 Kind 是否有类似 Dialer 的结构约束？     |
 
-   > **注意**：`filterByDroppedTypes` 和 `renderSurgeProxy` switch 分派的是 `px.Type`（协议），不是 `px.Kind`。新增 Kind 不需触及这两处。新增协议时见 §新增 Proxy.Type。
+   > **注意**：`filterUnsupportedProxies` 同时按 `px.Type`（协议）和 `px.Native.Format`（结构化订阅原生格式）判断，`renderSurgeProxy` switch 分派的是 `px.Type`。新增 Kind 不需因 Kind 本身修改协议分支，但必须按行为语义评估目标格式投影；新增协议时见 §新增 Proxy.Type。
 
 4. 更新相关函数/变量的 doc comment（历史注释可能写 "只含 KindSubscription"，必须同步改）
 5. 写 group-level 回归测试（`TestGroup_<NewKind>ParticipatesInRegionMatch` 之类），防止 `isFetchedKind` 等 helper 被改窄导致静默回归
@@ -235,7 +235,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 > **触及时行动**：新增 format-specific 过滤时 → 重新评估是否引入 per-format validation hook（让 ValidateGraph 接受 `formatHint` 参数）。
 
 - **现象**：Build 阶段"合法"的配置，在某一输出格式的 Target 阶段可能失败（如 Snell 节点让 Clash fallback 被级联清空）
-- **报错路径**：`target.ForClash`（内部调用 `filterByDroppedTypes`）在 Target 阶段返回 `CodeTargetClashFallbackEmpty`
+- **报错路径**：`target.ForClash`（内部调用 `filterUnsupportedProxies`）在 Target 阶段返回 `CodeTargetClashFallbackEmpty`
 - **影响**：错误被"晚报"；调试时用户看到 render 错而非 build 错
 - **缓解方案（未实施）**：引入 per-format validation hook，让 ValidateGraph 接受 `formatHint` 参数，对每种输出格式跑一次图校验。当前规模下不必处理，但**新增 format-specific 过滤时应重新评估**
 
@@ -243,22 +243,22 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 > **触及时行动**：考虑严格模式时 → 优先扩充 `xxxKeyOrder` 而非引入白名单拒绝；需同时改解析器 + 渲染器 + 错误码。
 
-- **现象**：`Proxy.Params` 是 `map[string]string`，容纳任意键（如 Snell 的 `shadow-tls-*` 仅对 Surge 有意义）
-- **包容方式**：解析阶段宽松存所有键；渲染阶段按固定列表（如 `surgeSnellKeyOrder`）输出，未知键静默丢弃
-- **权衡**：好处是解析器不随目标格式版本迭代；代价是用户 typo 的键不会报错
+- **现象**：规范化节点的 `Proxy.Params` 是 `map[string]string`，容纳任意键（如 Snell 的 `shadow-tls-*` 仅对 Surge 有意义）；结构化订阅的 `NativeProxy.Payload` 保留完整目标原生声明
+- **包容方式**：TXT/Snell/VLESS 解析阶段宽松存 Params，渲染阶段按固定列表（如 `surgeSnellKeyOrder`）输出，未知键静默丢弃；Clash YAML / Surge CONF 原生声明不走字段白名单，匹配目标格式时原样复制
+- **权衡**：好处是解析器不随目标格式版本迭代；代价是 Params typo 可能被静默丢弃，原生声明 typo 则会被透传给目标客户端
 - **如果你在考虑严格模式**：需同时改解析器 + 渲染器 + 错误码，以及决定向后兼容策略。优先扩充 `xxxKeyOrder` 而非引入白名单拒绝
 
-### 3. 协议格式专属性导致 Target 阶段级联过滤
+### 3. 协议或来源格式专属性导致 Target 阶段级联过滤
 
-> **触及时行动**：新增格式专属协议 → 复用 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes` 过滤策略；同步补跨格式过滤测试（至少覆盖级联效应）。
+> **触及时行动**：新增格式专属协议或结构化来源 → 复用 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies` 过滤策略；同步补跨格式过滤测试（至少覆盖级联效应）。
 
-- **现象**：Snell 仅支持 Surge、VLESS 仅支持 Clash。不支持方在 Target 阶段做"视图过滤"（非 Build 阶段拒绝），导致只在特定输出格式下触发错误，而非 ValidateGraph 阶段
+- **现象**：Snell / Surge CONF 订阅节点仅支持 Surge，VLESS / Clash YAML 订阅节点仅支持 Clash。不支持方在 Target 阶段做"视图过滤"（非 Build 阶段拒绝），导致只在特定输出格式下触发错误，而非 ValidateGraph 阶段
 - **报错路径**：
-  - Clash 走 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes`（经 `target.ForClash`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetClashFallbackEmpty` 等错误
-  - Surge 走 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes`（经 `target.ForSurge`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetSurgeFallbackEmpty` 等错误
+  - Clash 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForClash`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetClashFallbackEmpty` 等错误
+  - Surge 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForSurge`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetSurgeFallbackEmpty` 等错误
 - **影响**：build 阶段"合法"的配置在 render 阶段失败；调试需读级联链（"FINAL 为空 ← SVC_X 为空 ← GRP_SG 被过滤 ← 仅含 Snell 节点"）
 - **与局限 1 的关系**：同属"ValidateGraph 不感知格式"的具体表现。缓解方案共享：per-format validation hook
-- **新增格式专属协议时**：复用 `internal/target/filter_cascade.go` 的 `filterByDroppedTypes` 过滤策略；同步补跨格式过滤测试（至少覆盖"该协议节点在另一格式下被过滤后 fallback / 规则的级联效应"）
+- **新增格式专属协议或结构化来源时**：复用 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies` 过滤策略；同步补跨格式过滤测试（至少覆盖"该节点在另一格式下被过滤后 fallback / 规则的级联效应"）
 
 ### 4. 热重载期间写锁阻塞
 
@@ -284,7 +284,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - [ ] **用户可见错误消息含 URL**：已用 `fetch.SanitizeURL` 脱敏（订阅/链路 URL 常含 token）
 - [ ] **新增来源类型** → 见 §新增来源类型：`configs/base_config.yaml` 已加注释示例块；docs 已同步
 - [ ] **函数行为语义变化** → 见 §语义变更优先 rename：已 rename 函数/变量名而非仅改注释（锚点一致性）
-- [ ] **格式专属协议改动** → 见 §已知架构局限 #3：已测级联效应
+- [ ] **格式专属协议/来源改动** → 见 §已知架构局限 #3：已测级联效应
 - [ ] **包间依赖变更** → 见 §新增来源类型 · 文档与示例同步：`docs/architecture.md` 模块边界图和 `docs/implementation/project-structure.md` 依赖方向图已同步更新
 - [ ] **测试跨边界导入** → 见 §测试：测试文件未导入同层或上层业务包（如 render 测试不导入 pipeline）
 - [ ] **删除代码后的清理** → 见 §CI 流水线检查：已确认无未使用的 test helper 函数、无多余 import、无尾部空行（`gofmt -l .` 通过）

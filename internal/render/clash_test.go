@@ -985,3 +985,72 @@ func TestClash_VlessNetworkWithNoSubfieldsOmitsOptsBlock(t *testing.T) {
 		t.Errorf("empty ws-opts block should be omitted, got:\n%s", out)
 	}
 }
+
+// T-RND-CLASH-NATIVE-001: copied Clash declarations preserve arbitrary fields
+// while the IR name remains authoritative after cross-source deduplication.
+func TestClash_NativeProxyPreservesFieldsAndUsesCurrentName(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name: "HK-YAML②",
+			Type: "trojan",
+			Kind: model.KindSubscription,
+			Native: &model.NativeProxy{
+				Format: model.NativeProxyFormatClash,
+				Payload: `name: HK-YAML
+type: trojan
+server: hk.example.com
+port: 443
+password: secret
+ws-opts:
+  path: /edge
+  headers:
+    Host: edge.example.com
+`,
+			},
+		}},
+		Fallback: "DIRECT",
+	}
+
+	got, err := Clash(p, nil)
+	if err != nil {
+		t.Fatalf("Clash() error: %v", err)
+	}
+	output := string(got)
+	for _, want := range []string{"name: HK-YAML②", "type: trojan", "password: secret", "ws-opts:", "Host: edge.example.com"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("native Clash output missing %q:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "name: HK-YAML\n") {
+		t.Errorf("stale source name leaked after deduplication:\n%s", output)
+	}
+}
+
+// T-RND-CLASH-NATIVE-002: a Surge-native declaration reaching Clash is a
+// projection-contract violation, not a lossy generic render.
+func TestClash_RejectsSurgeNativeProxy(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{{
+			Name: "HK-CONF",
+			Type: "trojan",
+			Kind: model.KindSubscription,
+			Native: &model.NativeProxy{
+				Format:  model.NativeProxyFormatSurge,
+				Payload: "trojan, hk.example.com, 443, password=secret",
+			},
+		}},
+		Fallback: "DIRECT",
+	}
+
+	_, err := Clash(p, nil)
+	if err == nil {
+		t.Fatal("expected RenderError, got nil")
+	}
+	var renderErr *errtype.RenderError
+	if !errors.As(err, &renderErr) {
+		t.Fatalf("error type = %T, want *errtype.RenderError", err)
+	}
+	if renderErr.Code != errtype.CodeRenderClashProxyInvalid {
+		t.Fatalf("Code = %q, want %q", renderErr.Code, errtype.CodeRenderClashProxyInvalid)
+	}
+}

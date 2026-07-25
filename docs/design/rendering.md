@@ -238,7 +238,22 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
 5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetSurgeFallbackEmpty`），错误消息附带清空路径（VLESS 根节点标记为 `NAME(vless)`，链式节点标记为 `NAME(chained) ← [<upstream>]`）
 
-算法由共享 cascade 引擎 `filterByDroppedTypes` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Render 阶段只消费已投影后的 Pipeline。
+算法由共享 cascade 引擎 `filterUnsupportedProxies` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Render 阶段只消费已投影后的 Pipeline。
+
+---
+
+## 结构化订阅原生声明
+
+`sources.subscriptions` 中识别出的 Clash YAML / Surge CONF 节点不经过协议字段归一化，而是保留目标原生声明：
+
+- Clash YAML：`NativeProxy.Payload` 保存 `proxies` 中的单个 YAML 映射。Clash Render 重新解析该映射、用当前 `Proxy.Name` 覆盖 `name`，然后把其余字段（包括未知协议字段和嵌套结构）写入输出
+- Surge CONF：`NativeProxy.Payload` 保存 `[Proxy]` 声明中 `=` 右侧的完整内容。Surge Render 输出 `<当前 Proxy.Name> = <Payload>`
+- Surge `[Proxy]` 中精确名称为 `DIRECT` / `REJECT` 的声明对应项目内置策略，Source 阶段跳过，不进入 IR 或 `@all`
+- 名称由 IR 统一管理，因此跨源去重追加 `②③...` 后，输出不会继续使用原生声明里的旧名称
+- Clash YAML 节点只进入 Clash 视图；Surge CONF 节点只进入 Surge 视图。目标不匹配时复用协议过滤的 cascade 引擎，原生根节点分别标记为 `NAME(Clash YAML 专属)` / `NAME(Surge CONF 专属)`
+- 若格式专属原生节点是链式上游，另一格式会同时剔除依赖它的链式节点；若进一步清空 fallback，TargetError 的清空路径会保留完整根因链
+
+结构化订阅只复制节点声明，不复制来源文档中的组、规则、DNS 或通用设置；这些部分仍由本项目配置和 `templates` 负责。
 
 ---
 
@@ -282,15 +297,15 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 ## 一致性要求
 
-无论输出 Clash Meta 还是 Surge，都必须保证：
+在剔除目标格式专属节点及其级联影响后，两种输出对共同存活的实体必须保证：
 
-- 同样的节点组顺序
-- 同样的服务组顺序
-- 同样的 ruleset 顺序
-- 同样的规则排列顺序
+- 节点组相对顺序一致
+- 服务组相对顺序一致
+- ruleset 相对顺序一致
+- 规则相对顺序一致
 - 同样的 fallback 语义
 - 同样的 `@auto` 和 `@all` 展开结果
-- 对目标格式不支持的协议，按格式能力做显式处理：Snell 为 Surge-only（Clash 目标投影侧级联过滤），VLESS 为 Clash-only（Surge 目标投影侧级联过滤）——两种方向由同一个共享 cascade 引擎（`internal/target/filter_cascade.go`）实现
+- 对目标格式不支持的协议或原生订阅格式做显式处理：Snell / Surge CONF 节点为 Surge-only，VLESS / Clash YAML 节点为 Clash-only；两种方向由同一个共享 cascade 引擎（`internal/target/filter_cascade.go`）实现
 
 ---
 

@@ -77,6 +77,30 @@ func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 				Dialer: "HK-01",
 			},
 		},
+		{
+			name: "native clash subscription with arbitrary type",
+			proxy: Proxy{
+				Name: "HK-Native",
+				Type: "wireguard",
+				Kind: KindSubscription,
+				Native: &NativeProxy{
+					Format:  NativeProxyFormatClash,
+					Payload: "name: HK-Native\ntype: wireguard\n",
+				},
+			},
+		},
+		{
+			name: "native surge subscription without endpoint",
+			proxy: Proxy{
+				Name: "SG-External",
+				Type: "external",
+				Kind: KindSubscription,
+				Native: &NativeProxy{
+					Format:  NativeProxyFormatSurge,
+					Payload: `external, exec="/opt/proxy"`,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -163,6 +187,44 @@ func TestValidateProxyInvariant_InvalidCases(t *testing.T) {
 				Kind:   KindVLess,
 			},
 			wantSubstr: "type=vless 缺少必填参数 network",
+		},
+		{
+			name: "native declaration on non subscription kind",
+			proxy: Proxy{
+				Name: "HK-Native",
+				Type: "trojan",
+				Kind: KindCustom,
+				Native: &NativeProxy{
+					Format:  NativeProxyFormatClash,
+					Payload: "name: HK-Native\ntype: trojan\n",
+				},
+			},
+			wantSubstr: "原生目标声明仅允许 kind=subscription",
+		},
+		{
+			name: "native declaration with unknown format",
+			proxy: Proxy{
+				Name: "HK-Native",
+				Type: "trojan",
+				Kind: KindSubscription,
+				Native: &NativeProxy{
+					Format:  "unknown",
+					Payload: "value",
+				},
+			},
+			wantSubstr: `原生目标格式 "unknown" 不受支持`,
+		},
+		{
+			name: "native declaration with empty payload",
+			proxy: Proxy{
+				Name: "HK-Native",
+				Type: "trojan",
+				Kind: KindSubscription,
+				Native: &NativeProxy{
+					Format: NativeProxyFormatClash,
+				},
+			},
+			wantSubstr: "原生目标声明 payload 不能为空",
 		},
 	}
 

@@ -61,7 +61,10 @@
 重点规则：
 
 - 订阅拉取结果不得为空（0 个有效节点视为上游订阅内容错误）
-- 订阅响应体可为 Base64 编码的 SS / AnyTLS URI 列表，或明文 SS / AnyTLS 列表（SS: SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`；AnyTLS: `anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）；非 Base64 且不像明文订阅列表的内容视为订阅内容格式错误
+- 订阅格式识别优先级为 Clash YAML → Surge CONF → TXT/Base64；`.yaml` / `.yml` / `.conf` URL 后缀强制对应结构化格式
+- Clash YAML 必须含顶层 `proxies` 序列，每个节点必须是带非空 `name` / `type` 的映射；Surge CONF 必须含 `[Proxy]` 段，每条有效内容必须符合非空 `NAME = VALUE`，其中内置 `DIRECT` / `REJECT` 声明不作为节点导入
+- 结构化订阅语法或声明错误返回 `CodeFetchSubscriptionFormatInvalid`，错误 URL 必须脱敏；结构化节点不限制协议白名单，目标客户端是否接受复制字段由对应原生格式负责
+- TXT 响应体可为 Base64 编码的 SS / AnyTLS URI 列表，或明文 SS / AnyTLS 列表（SS: SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`；AnyTLS: `anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）；非 Base64 且不像明文订阅列表的内容视为订阅内容格式错误
 - Snell 来源拉取结果不得为空（0 个有效节点报同类错误）
 - VLESS 来源拉取结果不得为空（0 个有效节点报同类错误）
 - Snell 来源中单行解析失败整源报错（与 `subscriptions` 的静默跳过不同，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
@@ -142,8 +145,9 @@ HTTP 层映射：
 
 - `target.ForClash`：剔除 Snell 节点及其级联影响
 - `target.ForSurge`：剔除 VLESS 节点及其级联影响
+- `target.ForClash` 同时剔除 Surge CONF 原生订阅节点；`target.ForSurge` 同时剔除 Clash YAML 原生订阅节点
 - 若 `fallback` 在目标格式视图中被清空，立即返回带清空路径的错误
-- 级联过滤的诊断路径格式（`(snell)`、`(chained)`、`(cycle)` 等标记）详见 `rendering.md` §级联过滤
+- 级联过滤的诊断路径格式（`(snell)`、`(vless)`、`(Clash YAML 专属)`、`(Surge CONF 专属)`、`(chained)`、`(cycle)` 等标记）详见 `rendering.md`
 
 这样分层后：
 

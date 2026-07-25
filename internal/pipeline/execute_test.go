@@ -108,6 +108,57 @@ func TestExecute_AnyTLSEndToEnd(t *testing.T) {
 	}
 }
 
+// T-EXEC-DOC-001: structured subscription nodes retain the ordinary
+// KindSubscription filter/group/@all semantics across native target formats.
+func TestExecute_StructuredSubscriptionsEndToEnd(t *testing.T) {
+	const clashURL = "https://sub.example.com/nodes.yml"
+	const surgeURL = "https://sub.example.com/nodes.conf"
+	f := &fakeFetcher{responses: map[string][]byte{
+		clashURL: []byte(`proxies:
+  - { name: HK-YAML, type: trojan, server: hk.example.com, port: 443, password: pw }
+  - { name: Traffic Reset, type: trojan, server: info.example.com, port: 443, password: pw }
+`),
+		surgeURL: []byte(`[Proxy]
+DIRECT = direct
+SG-CONF = trojan, sg.example.com, 443, password=pw
+`),
+	}}
+	cfg := &config.Config{
+		Sources: config.Sources{
+			Subscriptions: []config.Subscription{{URL: clashURL}, {URL: surgeURL}},
+		},
+		Filters: config.Filters{Exclude: "Traffic"},
+		Groups: mustGroupsMap(t,
+			`"HK": { match: "(HK)", strategy: select }
+"SG": { match: "(SG)", strategy: select }`,
+		),
+		Routing:  mustRoutingMap(t, `"proxy": ["HK", "SG", "@all", "DIRECT"]`),
+		Fallback: "proxy",
+	}
+
+	p, err := Execute(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if len(p.Proxies) != 2 {
+		t.Fatalf("active proxies = %d, want 2: %+v", len(p.Proxies), p.Proxies)
+	}
+	if !containsString(p.AllProxies, "HK-YAML") || !containsString(p.AllProxies, "SG-CONF") {
+		t.Fatalf("@all = %+v, want both structured subscription nodes", p.AllProxies)
+	}
+	if containsString(p.AllProxies, "Traffic Reset") || containsString(p.AllProxies, "DIRECT") {
+		t.Fatalf("@all leaked filtered or reserved entry: %+v", p.AllProxies)
+	}
+
+	groupMembers := make(map[string][]string, len(p.NodeGroups))
+	for _, group := range p.NodeGroups {
+		groupMembers[group.Name] = group.Members
+	}
+	if !containsString(groupMembers["HK"], "HK-YAML") || !containsString(groupMembers["SG"], "SG-CONF") {
+		t.Fatalf("structured nodes did not participate in region matching: %+v", groupMembers)
+	}
+}
+
 // TestExecute_FetchError verifies that a subscription fetch error propagates.
 func TestExecute_FetchError(t *testing.T) {
 	f := &fakeFetcher{err: errors.New("connection refused")}
