@@ -92,8 +92,8 @@ func TestSource_SingleSubscription(t *testing.T) {
 // T-SRC-ANYTLS-005: subscriptions may contain base64 encoded AnyTLS URI lists.
 func TestSource_SubscriptionAnyTLSBase64(t *testing.T) {
 	body := makeSubResponse(
-		"anytls://1b3614e427e3451b@demo.com:3383/?sni=cache-proxy.example.com&insecure=1#HK-AnyTLS-01",
-		"anytls://1b3614e427e3451b@demo.com:3814/?sni=cache-proxy.example.com&insecure=1#HK-AnyTLS-02",
+		"anytls://1b3614e427e3451b@demo.com:3383/?peer=cache-proxy.example.com&insecure=1#HK-AnyTLS-01",
+		"anytls://1b3614e427e3451b@demo.com:3814/?peer=cache-proxy.example.com&insecure=1#HK-AnyTLS-02",
 	)
 	cfg := baseCfg()
 	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/anytls"}}
@@ -113,6 +113,9 @@ func TestSource_SubscriptionAnyTLSBase64(t *testing.T) {
 		}
 		if proxy.Params["password"] != "1b3614e427e3451b" {
 			t.Errorf("proxy %q password = %q, want fixture password", proxy.Name, proxy.Params["password"])
+		}
+		if proxy.Params["sni"] != "cache-proxy.example.com" {
+			t.Errorf("proxy %q sni = %q, want peer query mapped to sni", proxy.Name, proxy.Params["sni"])
 		}
 	}
 }

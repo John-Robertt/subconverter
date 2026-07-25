@@ -122,8 +122,12 @@ func parseAnyTLSPort(raw string) (int, error) {
 }
 
 func applyAnyTLSURIQuery(values url.Values, params map[string]string) {
-	if v := strings.TrimSpace(values.Get("sni")); v != "" {
-		params["sni"] = v
+	sni := strings.TrimSpace(values.Get("sni"))
+	if sni == "" {
+		sni = strings.TrimSpace(values.Get("peer"))
+	}
+	if sni != "" {
+		params["sni"] = sni
 	}
 	if anyTLSParamBoolTrue(values.Get("insecure")) {
 		params["skip-cert-verify"] = "true"

@@ -29,6 +29,22 @@ func TestParseAnyTLSURI_Valid(t *testing.T) {
 			wantParams: map[string]string{"password": "1b3614e427e3451b", "sni": "cache-proxy.example.com", "skip-cert-verify": "true"},
 		},
 		{
+			name:       "peer query maps to sni",
+			uri:        "anytls://test-password@node.example.com:22001/?peer=cdn.example.com&insecure=1&udp=1&group=metadata#TEST%2001",
+			wantName:   "TEST 01",
+			wantServer: "node.example.com",
+			wantPort:   22001,
+			wantParams: map[string]string{"password": "test-password", "sni": "cdn.example.com", "skip-cert-verify": "true"},
+		},
+		{
+			name:       "sni query takes precedence over peer alias",
+			uri:        "anytls://secret@example.com:443/?peer=peer.example.com&sni=sni.example.com#HK-02",
+			wantName:   "HK-02",
+			wantServer: "example.com",
+			wantPort:   443,
+			wantParams: map[string]string{"password": "secret", "sni": "sni.example.com"},
+		},
+		{
 			name:       "default port",
 			uri:        "anytls://secret@example.com/?sni=edge.example.com#HK-01",
 			wantName:   "HK-01",
@@ -119,7 +135,7 @@ func TestParseSubscriptionLine_AnyTLSFormats(t *testing.T) {
 	}{
 		{
 			name:       "uri",
-			line:       "anytls://1b3614e427e3451b@demo.com:3383/?sni=cache-proxy.example.com&insecure=1#HK-01",
+			line:       "anytls://1b3614e427e3451b@demo.com:3383/?peer=cache-proxy.example.com&insecure=1#HK-01",
 			wantName:   "HK-01",
 			wantServer: "demo.com",
 			wantPort:   3383,
