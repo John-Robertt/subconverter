@@ -37,6 +37,8 @@ Thumbs.db
 .env
 *.pem
 
+.codegraph/
+
 test-results
 
 *ss.txt
