@@ -235,6 +235,7 @@ type NodePreviewResult struct {
 }
 
 type NodePreviewItem struct {
+    ID       string `json:"id"`       // 本次 Build 内的 proxy-N 调试标识
     Name     string `json:"name"`
     Type     string `json:"type"`
     Kind     string `json:"kind"`     // "subscription" | "snell" | "vless" | "custom"
@@ -251,26 +252,28 @@ type GroupPreviewResult struct {
     NodeGroups    []GroupItem `json:"node_groups"`
     ChainedGroups []GroupItem `json:"chained_groups"`
     ServiceGroups []ServiceGroupItem `json:"service_groups"`
-    AllProxies    []string    `json:"all_proxies"`
+    AllProxies    []PreviewMemberItem `json:"all_proxies"`
 }
 
 type GroupItem struct {
-    Name     string   `json:"name"`
-    Match    string   `json:"match,omitempty"` // 地区组原始正则；链式组无此概念，nil 时省略
-    Strategy string   `json:"strategy"`
-    Members  []string `json:"members"`
+    Name     string              `json:"name"`
+    Match    string              `json:"match,omitempty"` // 地区组原始正则；链式组无此概念
+    Strategy string              `json:"strategy"`
+    Members  []PreviewMemberItem `json:"members"`
 }
 
 type ServiceGroupItem struct {
-    Name            string                `json:"name"`
-    Strategy        string                `json:"strategy"`
-    Members         []string              `json:"members"`
-    ExpandedMembers []ExpandedMemberItem  `json:"expanded_members"`
+    Name            string              `json:"name"`
+    Strategy        string              `json:"strategy"`
+    Members         []PreviewMemberItem `json:"members"`
+    ExpandedMembers []PreviewMemberItem `json:"expanded_members"`
 }
 
-type ExpandedMemberItem struct {
-    Value  string `json:"value"`
-    Origin string `json:"origin"` // "literal" | "auto_expanded" | "all_expanded"
+type PreviewMemberItem struct {
+    Kind   string `json:"kind"`             // proxy | node_group | route_group | reserved
+    ID     string `json:"id,omitempty"`     // 仅 proxy；本次 Build 内的 proxy-N
+    Name   string `json:"name"`             // 显示名，允许重复
+    Origin string `json:"origin,omitempty"` // literal | auto_expanded | all_expanded
 }
 ```
 

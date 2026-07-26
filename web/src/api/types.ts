@@ -158,6 +158,7 @@ export interface ValidateResult {
 }
 
 export interface NodePreview {
+  id: string;
   name: string;
   type: string;
   kind: string;
@@ -173,24 +174,26 @@ export interface NodePreviewResponse {
   filtered_count: number;
 }
 
-export interface ExpandedMember {
-  value: string;
-  origin: "literal" | "auto_expanded" | "all_expanded" | string;
+export interface PreviewMember {
+  kind: "proxy" | "node_group" | "route_group" | "reserved" | string;
+  id?: string;
+  name: string;
+  origin?: "literal" | "auto_expanded" | "all_expanded" | string;
 }
 
 export interface PreviewGroup {
   name: string;
   strategy: string;
   match?: string;
-  members: string[];
-  expanded_members?: ExpandedMember[];
+  members: PreviewMember[];
+  expanded_members?: PreviewMember[];
 }
 
 export interface GroupPreviewResponse {
   node_groups: PreviewGroup[];
   chained_groups: PreviewGroup[];
   service_groups: PreviewGroup[];
-  all_proxies: string[];
+  all_proxies: PreviewMember[];
 }
 
 export interface GenerateLinkResponse {

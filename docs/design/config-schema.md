@@ -66,12 +66,12 @@ sources:
 - URL 没有上述扩展名时按内容识别：顶层存在 `proxies` 的 YAML 视为 Clash YAML；存在 `[Proxy]` 段的文本视为 Surge CONF；两者都不匹配才进入旧版 TXT/Base64 解析
 - Clash YAML 复制顶层 `proxies` 序列中的每个节点映射：
   - 每项必须是映射，且 `name` / `type` 必须是非空标量
-  - 节点的完整映射（包括未知协议和嵌套字段）保留到 Clash Render；去重后的 IR 名称会覆盖映射中的原 `name`
+  - 节点的完整映射（包括未知协议和嵌套字段）保留到 Clash Render；Clash 目标内分配的最终名称会覆盖映射中的原 `name`
   - 节点只进入 Clash 输出；Surge Target 投影会连同依赖它的链式节点、空组和规则一起级联剔除
 - Surge CONF 复制 `[Proxy]` 段中每条非注释 `NAME = VALUE` 声明：
   - `[Proxy]` 之后遇到下一个 section 即停止读取
   - 精确名称 `DIRECT` / `REJECT` 是本项目内置策略，不作为代理节点导入
-  - 完整 `VALUE` 保留到 Surge Render；去重后的 IR 名称会覆盖原 `NAME`
+  - 完整 `VALUE` 保留到 Surge Render；Surge 目标内分配的最终名称会覆盖原 `NAME`
   - 节点只进入 Surge 输出；Clash Target 投影会执行对称的级联剔除
 - 结构化文档语法错误、缺少目标字段/section 或节点声明无效时整源报错；错误 URL 会移除 query 与 fragment
 - 旧版 TXT 响应体可以是 Base64 编码后的 SS / AnyTLS URI 列表，也可以是明文列表
@@ -101,7 +101,7 @@ sources:
 - 可选字段：`version`、`obfs`、`obfs-host`、`obfs-uri`、`reuse`、`tfo`、`udp-relay`、`udp-port`、`shadow-tls-password`、`shadow-tls-sni`、`shadow-tls-version`
 - 空行和以 `#` / `//` 开头的注释行会被跳过；单行解析失败时整源报错（与 `subscriptions` 的静默跳过不同——Snell 来源通常是小规模手工清单，严格报错更有利于发现拼写问题）
 - 单行解析失败的错误消息会附带脱敏后的来源 URL 与 1-based 物理行号；原始解析根因保留在 `BuildError.Cause`
-- 节点名参与与订阅节点共享的跨源去重池（重复名追加 ②③... 后缀）
+- 节点名是显示名候选；同名节点保留独立 ID，最终输出名在各目标格式投影内独立消歧
 - Snell 节点**只进入 Surge 输出**；Clash 输出会过滤掉这些节点及级联清理的空组、失效链式节点、空规则。详见 `rendering.md`
 
 ### vless
@@ -117,7 +117,7 @@ sources:
 - 支持的 query 参数：`security`（`none`/`tls`/`reality`）、`encryption`（非空透传）、`flow`、`type`（已知值保留，缺失或未知值回落到 `tcp`）、`sni`、`fp`、`alpn`、`pbk`、`sid`、`spx`
 - 空行和以 `#` / `//` 开头的注释行会被跳过；单行解析失败时整源报错（与 Snell 一致——VLESS 来源通常也是小规模手工清单，严格报错更利于发现拼写问题）
 - 单行解析失败的错误消息会附带脱敏后的来源 URL 与 1-based 物理行号；原始解析根因保留在 `BuildError.Cause`
-- 节点名参与与订阅节点、Snell 节点共享的跨源去重池（重复名追加 ②③... 后缀）
+- 节点名是显示名候选；同名节点保留独立 ID，最终输出名在各目标格式投影内独立消歧
 - 当前 URI 模型仅承接本节列出的 query；像 `packet-encoding`、`support-x25519mlkem768` 等 Mihomo 代理字段本次不接入，避免在未定义稳定 query 契约前产生隐式支持承诺
 - VLESS 节点**只进入 Clash Meta 输出**；Surge 输出会过滤掉这些节点及级联清理的空组、失效链式节点、空规则（与 Snell 在 Clash 侧的处理对称）。详见 `rendering.md`
 
@@ -137,7 +137,7 @@ custom_proxies:
 
 字段约束：
 
-- `name` 必填。同时充当多重标识：无 `relay_through` 时是代理节点名；带 `relay_through` 时是链式组名（见下）
+- `name` 必填。无 `relay_through` 时是代理显示名候选，允许重名；带 `relay_through` 时是链式组名（见下），必须满足组命名空间唯一性
 - `url` 必填。支持三种 scheme：
   - `ss://userinfo@server:port[?plugin=...]`：SIP002 Shadowsocks。`userinfo` 可以是 base64 编码的 `method:password`，也可以是 percent-encoded 明文。`?plugin=` query 由"plugin 名称 + 分号分隔的 KEY=VALUE 选项"组成（参考 SS 客户端通用约定）。URI 末尾的 `#fragment` 节点名**会被静默忽略**，统一以外层 `name` 字段为准
   - `socks5://[user:pass@]server:port`：SOCKS5
@@ -146,7 +146,8 @@ custom_proxies:
 
 校验规则：
 
-- `name` 重复报错；`url` 缺失或不能解析（含 scheme 不识别、host/port 缺失、SS URI 缺少 cipher/password 等）报错
+- 带 `relay_through` 的 `name` 与其他组或保留策略重名时报错；无 `relay_through` 的重复节点名由 Target 在各输出格式内独立消歧
+- `url` 缺失或不能解析（含 scheme 不识别、host/port 缺失、SS URI 缺少 cipher/password 等）报错
 - `url` 解析在 `Prepare` 阶段完成，错误聚合输出，便于一次性发现多条配置问题
 
 ### relay_through

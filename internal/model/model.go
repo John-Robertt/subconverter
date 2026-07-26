@@ -1,5 +1,10 @@
 package model
 
+// ProxyID is the identity of a proxy inside one pipeline build. It is assigned
+// once by Source and remains stable while the graph is filtered and projected.
+// It is not a persistent identifier across configuration revisions.
+type ProxyID uint64
+
 // ProxyKind indicates the origin of a proxy node.
 type ProxyKind string
 
@@ -28,25 +33,19 @@ type NativeProxy struct {
 	Payload string
 }
 
-// GroupScope indicates whether a group is node-level or route-level.
-type GroupScope string
-
-const (
-	ScopeNode  GroupScope = "node"
-	ScopeRoute GroupScope = "route"
-)
-
 // Proxy represents a single proxy node in the intermediate representation.
 type Proxy struct {
-	Name   string
-	Type   string // e.g. "ss", "anytls", "socks5", "http", "snell", "vless"
-	Server string
-	Port   int
-	Params map[string]string // type-specific parameters (cipher, password, etc.)
-	Plugin *Plugin
-	Kind   ProxyKind
-	Dialer string // upstream proxy name; only set for chained proxies
-	Native *NativeProxy
+	ID              ProxyID
+	Name            string // declared display-name candidate; never used as identity
+	Type            string // e.g. "ss", "anytls", "socks5", "http", "snell", "vless"
+	Server          string
+	Port            int
+	Params          map[string]string // type-specific parameters (cipher, password, etc.)
+	Plugin          *Plugin
+	Kind            ProxyKind
+	DialerID        ProxyID // upstream proxy identity; only set for chained proxies
+	ChainNameSuffix string  // chain template name appended after the target-local dialer name
+	Native          *NativeProxy
 }
 
 // Plugin represents an outbound plugin attached to a proxy.
@@ -55,12 +54,38 @@ type Plugin struct {
 	Opts map[string]string
 }
 
-// ProxyGroup represents a named group of proxies on the client panel.
-type ProxyGroup struct {
+// NodeGroup contains only proxy identities. Keeping it separate from
+// RouteGroup prevents proxy names from becoming graph references again.
+type NodeGroup struct {
 	Name     string
-	Scope    GroupScope
-	Strategy string   // "select" or "url-test"
-	Members  []string // ordered list of member names
+	Strategy string    // "select" or "url-test"
+	Members  []ProxyID // ordered proxy identities
+}
+
+// PolicyRefKind identifies the target of one route-group member.
+type PolicyRefKind string
+
+const (
+	PolicyRefProxy      PolicyRefKind = "proxy"
+	PolicyRefNodeGroup  PolicyRefKind = "node_group"
+	PolicyRefRouteGroup PolicyRefKind = "route_group"
+	PolicyRefReserved   PolicyRefKind = "reserved"
+)
+
+// PolicyRef is a typed route-group reference. Proxy references use ProxyID;
+// group and reserved-policy references use Name.
+type PolicyRef struct {
+	Kind    PolicyRefKind
+	ProxyID ProxyID
+	Name    string
+}
+
+// RouteGroup represents a service-level group whose members may refer to
+// proxies, node groups, route groups, or reserved policies.
+type RouteGroup struct {
+	Name     string
+	Strategy string
+	Members  []PolicyRef
 }
 
 // Ruleset binds a set of remote rule URLs to a routing policy.
@@ -75,14 +100,44 @@ type Rule struct {
 	Policy string // extracted from last comma-delimited segment
 }
 
-// Pipeline is the complete intermediate result of one generation pass.
-// It aggregates all entities needed by renderers.
+// Pipeline is the format-agnostic ID graph produced by Build.
 type Pipeline struct {
 	Proxies     []Proxy
-	NodeGroups  []ProxyGroup // region groups + chain groups, ordered
-	RouteGroups []ProxyGroup // service groups, ordered
+	NodeGroups  []NodeGroup  // region groups + chain groups, ordered
+	RouteGroups []RouteGroup // service groups, ordered
 	Rulesets    []Ruleset    // ordered
 	Rules       []Rule       // ordered
 	Fallback    string       // name of the fallback route group
-	AllProxies  []string     // @all expansion: original proxy names only
+	AllProxies  []ProxyID    // @all expansion: original proxy identities only
+}
+
+// TargetProxy is a proxy after target filtering and target-local name
+// allocation. Renderers consume this type and never observe internal IDs.
+type TargetProxy struct {
+	Name   string
+	Type   string
+	Server string
+	Port   int
+	Params map[string]string
+	Plugin *Plugin
+	Kind   ProxyKind
+	Dialer string
+	Native *NativeProxy
+}
+
+// TargetGroup is a renderer-facing group with final member names.
+type TargetGroup struct {
+	Name     string
+	Strategy string
+	Members  []string
+}
+
+// TargetPipeline is the renderer-facing projection of Pipeline.
+type TargetPipeline struct {
+	Proxies     []TargetProxy
+	NodeGroups  []TargetGroup
+	RouteGroups []TargetGroup
+	Rulesets    []Ruleset
+	Rules       []Rule
+	Fallback    string
 }

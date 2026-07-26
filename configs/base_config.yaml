@@ -56,7 +56,8 @@ sources:
   #   3. TXT：base64 编码或明文 SS / AnyTLS 节点列表。
   # SS 支持：ss://、QuanX shadowsocks 行、Surge ss 行。
   # AnyTLS 支持：anytls://、QuanX anytls 行、Surge anytls 行。
-  # 支持多个订阅，节点按顺序合并，跨订阅重名自动追加后缀（②③...）。
+  # 支持多个订阅，节点按顺序合并。重名节点保留独立身份，并在 Clash /
+  # Surge 各自完成格式过滤后独立追加输出后缀（②③...）。
   # url 必填，必须为 http:// 或 https:// 开头。
   # 这里的 token 是上游订阅服务自己的 token，和本服务 `/generate`
   # 的访问 token 是两回事。
@@ -75,7 +76,7 @@ sources:
   #        udp-port / shadow-tls-password / shadow-tls-sni / shadow-tls-version
   # 空行与 # / // 注释行跳过；单行解析失败整源报错（与 subscriptions 静默跳过策略不同，
   # 原因：Snell 清单通常是小规模手工维护，严格报错更利于发现拼写问题）。
-  # 节点名与订阅 / VLESS 共享同一跨源去重池；可作为 relay_through 的链式上游。
+  # 与其他来源的同名节点保留独立身份；可作为 relay_through 的链式上游。
   # Snell 节点仅进入 Surge 输出；Clash 输出会级联过滤掉这些节点及依赖它们的组/规则。
   #
   snell:
@@ -87,7 +88,7 @@ sources:
   # 支持的 query：security（none/tls/reality）/ encryption / flow / type /
   #              sni / fp / alpn / pbk / sid / spx
   # 空行与 # / // 注释行跳过；单行解析失败整源报错（策略与 Snell 一致）。
-  # 节点名与订阅（TXT / Clash YAML / Surge CONF）/ Snell 共享同一跨源去重池；可作为 relay_through 的链式上游。
+  # 与其他来源的同名节点保留独立身份；可作为 relay_through 的链式上游。
   # VLESS 节点仅进入 Clash Meta 输出；Surge 输出会级联过滤掉这些节点及依赖它们的组/规则。
   #
   vless:
@@ -97,7 +98,7 @@ sources:
   # 不来自订阅、手动定义的节点（如机房专线、ISP 代理）。
   #
   # 字段说明：
-  #   name:  节点名称（不能与拉取类节点（订阅 / Snell / VLESS）或其他自定义代理重名）
+  #   name:  节点显示名候选；允许与其他节点重名，最终输出名按目标格式独立消歧
   #   url:   代理协议链接，支持 ss://、socks5://、http://
   #          - ss:      SIP002 格式 ss://base64(method:password)@server:port[?plugin=...][#ignored]
   #          - socks5:  socks5://[user:pass@]server:port

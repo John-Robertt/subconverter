@@ -76,6 +76,7 @@ proxies:
 	if second.Name != "SG-YAML" || second.Type != "wireguard" || second.Server != "" || second.Port != 0 {
 		t.Fatalf("second proxy identity = %+v, want serverless native wireguard declaration", second)
 	}
+	second.ID = 1
 	if err := model.ValidateProxyInvariant(second); err != nil {
 		t.Fatalf("serverless native Clash proxy should satisfy invariant: %v", err)
 	}

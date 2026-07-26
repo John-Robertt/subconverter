@@ -524,6 +524,7 @@ ZIP 请求体：
 {
   "nodes": [
     {
+      "id": "proxy-1",
       "name": "HK-01",
       "type": "ss",
       "kind": "subscription",
@@ -539,6 +540,8 @@ ZIP 请求体：
 ```
 
 - `kind` 标记来源类型：`subscription` / `snell` / `vless` / `custom`
+- `id` 是本次 Build 内的稳定调试标识；不会跨 reload / 配置 revision 持久化
+- `name` 是显示名候选，允许重复
 - `filtered` 标记该节点是否被 `filters.exclude` 排除
 - `nodes` 包含 `FilterResult.Included` 与 `FilterResult.Excluded` 的合并视图；生成管道只消费 `Included`
 - 节点列表利用现有 TTL 缓存，响应时间受上游影响
@@ -570,35 +573,50 @@ ZIP 请求体：
       "name": "🇭🇰 Hong Kong",
       "match": "(港|HK|Hong Kong)",
       "strategy": "select",
-      "members": ["HK-01", "HK-02"]
+      "members": [
+        { "kind": "proxy", "id": "proxy-1", "name": "HK-01" },
+        { "kind": "proxy", "id": "proxy-2", "name": "HK-02" }
+      ]
     }
   ],
   "chained_groups": [
     {
       "name": "🔗 HK-ISP",
       "strategy": "select",
-      "members": ["HK-01→🔗 HK-ISP", "HK-02→🔗 HK-ISP"]
+      "members": [
+        { "kind": "proxy", "id": "proxy-4", "name": "HK-01→🔗 HK-ISP" },
+        { "kind": "proxy", "id": "proxy-5", "name": "HK-02→🔗 HK-ISP" }
+      ]
     }
   ],
   "service_groups": [
     {
       "name": "🚀 快速选择",
       "strategy": "select",
-      "members": ["🇭🇰 Hong Kong", "🔗 HK-ISP", "DIRECT"],
+      "members": [
+        { "kind": "node_group", "name": "🇭🇰 Hong Kong" },
+        { "kind": "node_group", "name": "🔗 HK-ISP" },
+        { "kind": "reserved", "name": "DIRECT" }
+      ],
       "expanded_members": [
-        { "value": "🇭🇰 Hong Kong", "origin": "auto_expanded" },
-        { "value": "🔗 HK-ISP", "origin": "auto_expanded" },
-        { "value": "DIRECT", "origin": "auto_expanded" }
+        { "kind": "node_group", "name": "🇭🇰 Hong Kong", "origin": "auto_expanded" },
+        { "kind": "node_group", "name": "🔗 HK-ISP", "origin": "auto_expanded" },
+        { "kind": "reserved", "name": "DIRECT", "origin": "auto_expanded" }
       ]
     }
   ],
-  "all_proxies": ["HK-01", "HK-02", "SG-01"]
+  "all_proxies": [
+    { "kind": "proxy", "id": "proxy-1", "name": "HK-01" },
+    { "kind": "proxy", "id": "proxy-2", "name": "HK-02" },
+    { "kind": "proxy", "id": "proxy-3", "name": "SG-01" }
+  ]
 }
 ```
 
 - `service_groups` 展示 Route 阶段产出的服务组结果
 - `expanded_members` 用于前端区分用户显式声明、`@auto` 展开和 `@all` 展开结果
 - `origin` 可选值：`literal`、`auto_expanded`、`all_expanded`
+- 成员 `kind` 区分 `proxy`、`node_group`、`route_group`、`reserved`；只有代理成员携带 Build 内 `id`
 - `node_groups[].match` 是该地区组在 YAML 中声明的原始正则字符串（透传，不做转义）；`chained_groups` 由 `relay_through` 派生，没有 match 概念，字段省略（JSON 中以 `omitempty` 形式不输出）
 - 若 ValidateGraph 发现空节点组、空链式组、非法成员引用或循环引用等图级错误，本接口返回 `400` + 结构化诊断，不返回部分成功的分组结果
 

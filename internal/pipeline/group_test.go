@@ -15,6 +15,7 @@ import (
 
 func makeSubProxy(name string) model.Proxy {
 	return model.Proxy{
+		ID:     1,
 		Name:   name,
 		Type:   "ss",
 		Server: "example.com",
@@ -86,9 +87,6 @@ func TestGroup_RegionGroupMatching(t *testing.T) {
 	if hk.Name != "🇭🇰 Hong Kong" {
 		t.Errorf("group[0].Name = %q, want %q", hk.Name, "🇭🇰 Hong Kong")
 	}
-	if hk.Scope != model.ScopeNode {
-		t.Errorf("group[0].Scope = %q, want %q", hk.Scope, model.ScopeNode)
-	}
 	if hk.Strategy != "select" {
 		t.Errorf("group[0].Strategy = %q, want %q", hk.Strategy, "select")
 	}
@@ -97,8 +95,8 @@ func TestGroup_RegionGroupMatching(t *testing.T) {
 		t.Fatalf("HK members = %v, want %v", hk.Members, wantHK)
 	}
 	for i, want := range wantHK {
-		if hk.Members[i] != want {
-			t.Errorf("HK.Members[%d] = %q, want %q", i, hk.Members[i], want)
+		if got := proxyNameByID(result.Proxies, hk.Members[i]); got != want {
+			t.Errorf("HK.Members[%d] resolves to %q, want %q", i, got, want)
 		}
 	}
 
@@ -110,14 +108,14 @@ func TestGroup_RegionGroupMatching(t *testing.T) {
 	if sg.Strategy != "url-test" {
 		t.Errorf("group[1].Strategy = %q, want %q", sg.Strategy, "url-test")
 	}
-	if len(sg.Members) != 1 || sg.Members[0] != "SG-01" {
+	if len(sg.Members) != 1 || proxyNameByID(result.Proxies, sg.Members[0]) != "SG-01" {
 		t.Errorf("SG.Members = %v, want [SG-01]", sg.Members)
 	}
 
 	// Custom proxy "MY-PROXY" should NOT appear in any region group.
 	for _, g := range result.NodeGroups {
 		for _, m := range g.Members {
-			if m == "MY-PROXY" {
+			if proxyNameByID(result.Proxies, m) == "MY-PROXY" {
 				t.Errorf("custom proxy MY-PROXY should not be matched by region group %q", g.Name)
 			}
 		}
@@ -160,9 +158,6 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 	if chainGroup.Name != "HK-ISP" {
 		t.Errorf("chain group name = %q, want %q", chainGroup.Name, "HK-ISP")
 	}
-	if chainGroup.Scope != model.ScopeNode {
-		t.Errorf("chain group scope = %q, want %q", chainGroup.Scope, model.ScopeNode)
-	}
 	if chainGroup.Strategy != "select" {
 		t.Errorf("chain group strategy = %q, want %q", chainGroup.Strategy, "select")
 	}
@@ -172,8 +167,8 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 		t.Fatalf("chain members = %v, want %v", chainGroup.Members, wantMembers)
 	}
 	for i, want := range wantMembers {
-		if chainGroup.Members[i] != want {
-			t.Errorf("chain.Members[%d] = %q, want %q", i, chainGroup.Members[i], want)
+		if got := proxyNameByID(result.Proxies, chainGroup.Members[i]); got != want {
+			t.Errorf("chain.Members[%d] resolves to %q, want %q", i, got, want)
 		}
 	}
 
@@ -191,8 +186,8 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 	if chained.Kind != model.KindChained {
 		t.Errorf("chained.Kind = %q, want %q", chained.Kind, model.KindChained)
 	}
-	if chained.Dialer != "HK-01" {
-		t.Errorf("chained.Dialer = %q, want %q", chained.Dialer, "HK-01")
+	if got := proxyNameByID(result.Proxies, chained.DialerID); got != "HK-01" {
+		t.Errorf("chained.DialerID resolves to %q, want %q", got, "HK-01")
 	}
 	if chained.Type != "socks5" {
 		t.Errorf("chained.Type = %q, want %q", chained.Type, "socks5")
@@ -244,8 +239,8 @@ func TestGroup_ChainedTypeSelect(t *testing.T) {
 		t.Fatalf("chain members = %v, want %v", chainGroup.Members, wantMembers)
 	}
 	for i, want := range wantMembers {
-		if chainGroup.Members[i] != want {
-			t.Errorf("Members[%d] = %q, want %q", i, chainGroup.Members[i], want)
+		if got := proxyNameByID(result.Proxies, chainGroup.Members[i]); got != want {
+			t.Errorf("Members[%d] resolves to %q, want %q", i, got, want)
 		}
 	}
 }
@@ -299,8 +294,11 @@ func TestGroup_ChainedTypeSelectNoMatchingUpstreams(t *testing.T) {
 		AllProxies: result.AllProxies,
 	}
 	rr := &RouteResult{
-		RouteGroups: []model.ProxyGroup{
-			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"UNREACHED-CHAIN", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			{Name: "Final", Strategy: "select", Members: []model.PolicyRef{
+				{Kind: model.PolicyRefNodeGroup, Name: "UNREACHED-CHAIN"},
+				{Kind: model.PolicyRefReserved, Name: "DIRECT"},
+			}},
 		},
 		PreparedRouteGroups: []config.PreparedRouteGroup{
 			{
@@ -318,9 +316,9 @@ func TestGroup_ChainedTypeSelectNoMatchingUpstreams(t *testing.T) {
 		ResolvedRouteGroups: []ResolvedRouteGroup{
 			{
 				Name: "Final",
-				Members: []config.PreparedRouteMember{
-					{Raw: "UNREACHED-CHAIN", Origin: config.RouteMemberOriginLiteral},
-					{Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
+				Members: []ResolvedRouteMember{
+					{Ref: model.PolicyRef{Kind: model.PolicyRefNodeGroup, Name: "UNREACHED-CHAIN"}, Raw: "UNREACHED-CHAIN", Origin: config.RouteMemberOriginLiteral},
+					{Ref: model.PolicyRef{Kind: model.PolicyRefReserved, Name: "DIRECT"}, Raw: "DIRECT", Origin: config.RouteMemberOriginLiteral},
 				},
 			},
 		},
@@ -405,8 +403,8 @@ func TestGroup_ChainedTypeAll(t *testing.T) {
 		t.Fatalf("chain members = %v, want %v", chainGroup.Members, wantMembers)
 	}
 	for i, want := range wantMembers {
-		if chainGroup.Members[i] != want {
-			t.Errorf("Members[%d] = %q, want %q", i, chainGroup.Members[i], want)
+		if got := proxyNameByID(result.Proxies, chainGroup.Members[i]); got != want {
+			t.Errorf("Members[%d] resolves to %q, want %q", i, got, want)
 		}
 	}
 }
@@ -441,15 +439,15 @@ func TestGroup_AllProxiesExcludesChained(t *testing.T) {
 		t.Fatalf("AllProxies = %v, want %v", result.AllProxies, wantAll)
 	}
 	for i, want := range wantAll {
-		if result.AllProxies[i] != want {
-			t.Errorf("AllProxies[%d] = %q, want %q", i, result.AllProxies[i], want)
+		if got := proxyNameByID(result.Proxies, result.AllProxies[i]); got != want {
+			t.Errorf("AllProxies[%d] resolves to %q, want %q", i, got, want)
 		}
 	}
 
 	// Chained proxies should NOT be in AllProxies.
 	allSet := make(map[string]bool)
-	for _, name := range result.AllProxies {
-		allSet[name] = true
+	for _, id := range result.AllProxies {
+		allSet[proxyNameByID(result.Proxies, id)] = true
 	}
 	for _, p := range result.Proxies {
 		if p.Kind == model.KindChained && allSet[p.Name] {
@@ -626,8 +624,8 @@ func TestGroup_ChainedNodeProperties(t *testing.T) {
 	if chained.Params["password"] != "secret" {
 		t.Errorf("password = %q, want secret", chained.Params["password"])
 	}
-	if chained.Dialer != "HK-01" {
-		t.Errorf("Dialer = %q, want HK-01", chained.Dialer)
+	if got := proxyNameByID(result.Proxies, chained.DialerID); got != "HK-01" {
+		t.Errorf("DialerID resolves to %q, want HK-01", got)
 	}
 }
 
@@ -759,7 +757,7 @@ func TestGroup_SnellParticipatesInRegionMatch(t *testing.T) {
 	}
 	gotHK := map[string]bool{}
 	for _, m := range hk.Members {
-		gotHK[m] = true
+		gotHK[proxyNameByID(result.Proxies, m)] = true
 	}
 	if !gotHK["HK-01"] || !gotHK["HK-Snell"] {
 		t.Errorf("HK members = %v, want both HK-01 and HK-Snell", hk.Members)
@@ -767,14 +765,14 @@ func TestGroup_SnellParticipatesInRegionMatch(t *testing.T) {
 
 	// SG group should contain SG-Snell only.
 	sg := result.NodeGroups[1]
-	if len(sg.Members) != 1 || sg.Members[0] != "SG-Snell" {
+	if len(sg.Members) != 1 || proxyNameByID(result.Proxies, sg.Members[0]) != "SG-Snell" {
 		t.Errorf("SG members = %v, want [SG-Snell]", sg.Members)
 	}
 
 	// Custom proxy must not appear in any region group.
 	for _, g := range result.NodeGroups {
 		for _, m := range g.Members {
-			if m == "MY-PROXY" {
+			if proxyNameByID(result.Proxies, m) == "MY-PROXY" {
 				t.Errorf("custom proxy MY-PROXY leaked into region group %q", g.Name)
 			}
 		}
@@ -782,8 +780,8 @@ func TestGroup_SnellParticipatesInRegionMatch(t *testing.T) {
 
 	// @all expansion includes snell nodes.
 	gotAll := map[string]bool{}
-	for _, n := range result.AllProxies {
-		gotAll[n] = true
+	for _, id := range result.AllProxies {
+		gotAll[proxyNameByID(result.Proxies, id)] = true
 	}
 	for _, want := range []string{"HK-01", "HK-Snell", "SG-Snell", "MY-PROXY"} {
 		if !gotAll[want] {
@@ -825,7 +823,7 @@ func TestGroup_VLessParticipatesInRegionMatch(t *testing.T) {
 	}
 	gotHK := map[string]bool{}
 	for _, m := range hk.Members {
-		gotHK[m] = true
+		gotHK[proxyNameByID(result.Proxies, m)] = true
 	}
 	if !gotHK["HK-01"] || !gotHK["HK-VL"] {
 		t.Errorf("HK members = %v, want both HK-01 and HK-VL", hk.Members)
@@ -833,14 +831,14 @@ func TestGroup_VLessParticipatesInRegionMatch(t *testing.T) {
 
 	// SG group should contain SG-VL only.
 	sg := result.NodeGroups[1]
-	if len(sg.Members) != 1 || sg.Members[0] != "SG-VL" {
+	if len(sg.Members) != 1 || proxyNameByID(result.Proxies, sg.Members[0]) != "SG-VL" {
 		t.Errorf("SG members = %v, want [SG-VL]", sg.Members)
 	}
 
 	// Custom proxy must not appear in any region group.
 	for _, g := range result.NodeGroups {
 		for _, m := range g.Members {
-			if m == "MY-PROXY" {
+			if proxyNameByID(result.Proxies, m) == "MY-PROXY" {
 				t.Errorf("custom proxy MY-PROXY leaked into region group %q", g.Name)
 			}
 		}
@@ -848,8 +846,8 @@ func TestGroup_VLessParticipatesInRegionMatch(t *testing.T) {
 
 	// @all expansion includes VLESS nodes.
 	gotAll := map[string]bool{}
-	for _, n := range result.AllProxies {
-		gotAll[n] = true
+	for _, id := range result.AllProxies {
+		gotAll[proxyNameByID(result.Proxies, id)] = true
 	}
 	for _, want := range []string{"HK-01", "HK-VL", "SG-VL", "MY-PROXY"} {
 		if !gotAll[want] {
@@ -860,7 +858,7 @@ func TestGroup_VLessParticipatesInRegionMatch(t *testing.T) {
 
 // T-GROUP-VLESS-002: VLESS nodes are valid upstreams for relay_through
 // chains. Custom proxies with relay_through{type:all} produce chained
-// proxies whose Dialer points at the VLESS node's name.
+// proxies whose DialerID points at the VLESS node's identity.
 func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 	proxies := []model.Proxy{
 		{Name: "HK-VL", Type: "vless", Server: "hk.example.com", Port: 443,
@@ -884,7 +882,7 @@ func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Expect exactly one chained proxy with Dialer=HK-VL.
+	// Expect exactly one chained proxy whose DialerID resolves to HK-VL.
 	var chained model.Proxy
 	found := false
 	for _, p := range result.Proxies {
@@ -897,8 +895,8 @@ func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 	if !found {
 		t.Fatalf("no chained proxy generated; Proxies=%v", result.Proxies)
 	}
-	if chained.Dialer != "HK-VL" {
-		t.Errorf("chained.Dialer = %q, want HK-VL", chained.Dialer)
+	if got := proxyNameByID(result.Proxies, chained.DialerID); got != "HK-VL" {
+		t.Errorf("chained.DialerID resolves to %q, want HK-VL", got)
 	}
 	if chained.Name != "HK-VL→MY-CHAIN" {
 		t.Errorf("chained.Name = %q, want HK-VL→MY-CHAIN", chained.Name)

@@ -26,9 +26,12 @@ var allowedProxyTypesByKind = map[ProxyKind]map[string]bool{
 }
 
 // ValidateProxyInvariant validates the structural invariants of one IR proxy.
-// It centralizes the meaning of Kind/Type/Params/Dialer so downstream stages
+// It centralizes the meaning of ID/Kind/Type/Params/DialerID so downstream stages
 // don't each need to re-interpret partially overlapping rules.
 func ValidateProxyInvariant(p Proxy) error {
+	if p.ID == 0 {
+		return fmt.Errorf("id 不能为空")
+	}
 	if p.Name == "" {
 		return fmt.Errorf("name 不能为空")
 	}
@@ -40,11 +43,14 @@ func ValidateProxyInvariant(p Proxy) error {
 	}
 
 	if p.Kind == KindChained {
-		if p.Dialer == "" {
-			return fmt.Errorf("kind=chained 时 dialer 必填")
+		if p.DialerID == 0 {
+			return fmt.Errorf("kind=chained 时 dialer_id 必填")
 		}
-	} else if p.Dialer != "" {
-		return fmt.Errorf("仅 kind=chained 允许设置 dialer")
+		if p.ChainNameSuffix == "" {
+			return fmt.Errorf("kind=chained 时 chain_name_suffix 必填")
+		}
+	} else if p.DialerID != 0 || p.ChainNameSuffix != "" {
+		return fmt.Errorf("仅 kind=chained 允许设置 dialer_id 和 chain_name_suffix")
 	}
 
 	if p.Native != nil {

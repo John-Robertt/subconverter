@@ -179,8 +179,8 @@ name / type:anytls / server / port / password / udp:true
 Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。`Target` 阶段会先做级联过滤：
 
 1. 剔除 `Type=="snell"` 的节点
-2. 剔除链式节点中 `Dialer` 属于已剔除集合的节点（失效上游）；诊断路径中这类叶子会标记为 `<name>(chained) ← [<upstream>]`
-3. 对每个节点组 / 服务组，剔除 Members 中属于已剔除集合的名字；若 Members 清空则该组自身被剔除。迭代到不动点
+2. 剔除链式节点中 `DialerID` 属于已剔除集合的节点（失效上游）；诊断路径中这类叶子会同时显示候选名与 ID
+3. 对每个节点组 / 服务组，按 `ProxyID` 或类型化组引用剔除已删除成员；若 Members 清空则该组自身被剔除。迭代到不动点
 4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
 5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetClashFallbackEmpty`），错误消息附带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY(chained) ← [HK-Snell(snell)]]]`），便于定位根因
 
@@ -190,7 +190,7 @@ Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。`Ta
 - 受已删除上游牵连的链式节点标记为 `NAME(chained) ← [<upstream>]`
 - 共享掉落子图会正常展开；`(cycle)` 只表示真实递归保护命中，而不是普通共享引用
 
-过滤算法作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；现在它位于 `internal/target/filter_cascade.go`，由 `target.ForClash` 包装调用。渲染器只接收已经完成 Clash 投影的视图。
+过滤算法作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；现在它位于 `internal/target/filter_cascade.go`，由 `target.ForClash` 包装调用。过滤后再独立分配 Clash 输出名并产出 `TargetPipeline`，渲染器不接触内部 ID。
 
 ---
 
@@ -233,12 +233,12 @@ Snell 节点专属 Surge 输出（Clash 视图过滤掉 Snell 节点，见上文
 Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 Clash 侧过滤 Snell）：
 
 1. 剔除 `Type=="vless"` 的节点
-2. 剔除链式节点中 `Dialer` 属于已剔除集合的节点
-3. 对每个节点组 / 服务组，剔除 Members 中属于已剔除集合的名字；若 Members 清空则该组自身被剔除。迭代到不动点
+2. 剔除链式节点中 `DialerID` 属于已剔除集合的节点
+3. 对每个节点组 / 服务组，按 `ProxyID` 或类型化组引用剔除已删除成员；若 Members 清空则该组自身被剔除。迭代到不动点
 4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
 5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetSurgeFallbackEmpty`），错误消息附带清空路径（VLESS 根节点标记为 `NAME(vless)`，链式节点标记为 `NAME(chained) ← [<upstream>]`）
 
-算法由共享 cascade 引擎 `filterUnsupportedProxies` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；Render 阶段只消费已投影后的 Pipeline。
+算法由共享 cascade 引擎 `filterUnsupportedProxies` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；过滤后再独立分配 Surge 输出名，Render 只消费 `TargetPipeline`。
 
 ---
 
@@ -246,10 +246,10 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 `sources.subscriptions` 中识别出的 Clash YAML / Surge CONF 节点不经过协议字段归一化，而是保留目标原生声明：
 
-- Clash YAML：`NativeProxy.Payload` 保存 `proxies` 中的单个 YAML 映射。Clash Render 重新解析该映射、用当前 `Proxy.Name` 覆盖 `name`，然后把其余字段（包括未知协议字段和嵌套结构）写入输出
-- Surge CONF：`NativeProxy.Payload` 保存 `[Proxy]` 声明中 `=` 右侧的完整内容。Surge Render 输出 `<当前 Proxy.Name> = <Payload>`
+- Clash YAML：`NativeProxy.Payload` 保存 `proxies` 中的单个 YAML 映射。Clash Render 重新解析该映射、用 `TargetProxy.Name` 覆盖 `name`，然后把其余字段（包括未知协议字段和嵌套结构）写入输出
+- Surge CONF：`NativeProxy.Payload` 保存 `[Proxy]` 声明中 `=` 右侧的完整内容。Surge Render 输出 `<TargetProxy.Name> = <Payload>`
 - Surge `[Proxy]` 中精确名称为 `DIRECT` / `REJECT` 的声明对应项目内置策略，Source 阶段跳过，不进入 IR 或 `@all`
-- 名称由 IR 统一管理，因此跨源去重追加 `②③...` 后，输出不会继续使用原生声明里的旧名称
+- Source 保留原生候选名和独立 ID；Clash / Surge 分别在格式过滤后分配目标内唯一名称。若两个同名节点各自只支持一个目标，两边都保留原名；同一目标内冲突才追加 `②③...`
 - Clash YAML 节点只进入 Clash 视图；Surge CONF 节点只进入 Surge 视图。目标不匹配时复用协议过滤的 cascade 引擎，原生根节点分别标记为 `NAME(Clash YAML 专属)` / `NAME(Surge CONF 专属)`
 - 若格式专属原生节点是链式上游，另一格式会同时剔除依赖它的链式节点；若进一步清空 fallback，TargetError 的清空路径会保留完整根因链
 

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { getErrorMessage } from "../api/errors";
-import type { ExpandedMember, PreviewGroup } from "../api/types";
+import type { PreviewGroup, PreviewMember } from "../api/types";
 import { queryKeys } from "../app/queryKeys";
 import { DiagnosticList } from "../components/Diagnostics";
 import { Button, Chip, EmptyState, ErrorState, LoadingState, StatCard } from "../components/ui";
@@ -91,7 +91,7 @@ export function GroupPreviewPage() {
                       <Chip tone={group.strategy === "url-test" ? "success" : "info"}>{group.strategy}</Chip>
                       <Chip>{group.members.length} members</Chip>
                     </header>
-                    <MemberList members={(group.expanded_members ?? group.members.map((value) => ({ value, origin: "literal" }))).map((member) => normalizeMember(member))} />
+                    <MemberList members={group.expanded_members ?? group.members} />
                   </article>
                 ))}
               </div>
@@ -104,63 +104,61 @@ export function GroupPreviewPage() {
 }
 
 function GroupPreviewCard({ group }: { group: PreviewGroup }) {
-  const members = group.expanded_members ?? group.members.map((value) => ({ value, origin: "literal" }));
-  const normalized = members.map(normalizeMember);
+  const members = group.expanded_members ?? group.members;
   return (
     <article className="group-preview-card">
       <header>
         <h3>{group.name}</h3>
-        <Chip>{normalized.length}</Chip>
+        <Chip>{members.length}</Chip>
         <Chip className="group-strategy-chip" tone={group.strategy === "url-test" ? "success" : "info"}>{group.strategy}</Chip>
       </header>
       {group.match ? <code className="group-regex-block">{group.match}</code> : null}
       <div className="group-matched-list">
-        {normalized.map((member, index) => (
-          <span key={`${member.value}-${index}`}>{member.value}</span>
+        {members.map((member, index) => (
+          <span key={memberKey(member, index)}>{member.name}</span>
         ))}
-        {normalized.length === 0 ? <span style={{ color: "var(--error)" }}>未匹配到任何节点</span> : null}
+        {members.length === 0 ? <span style={{ color: "var(--error)" }}>未匹配到任何节点</span> : null}
       </div>
     </article>
   );
 }
 
 function ServiceGroupRow({ group }: { group: PreviewGroup }) {
-  const members = group.expanded_members ?? group.members.map((value) => ({ value, origin: "literal" }));
-  const normalized = members.map(normalizeMember);
+  const members = group.expanded_members ?? group.members;
   return (
     <div className="service-group-row">
       <div className="service-group-meta">
         <strong>{group.name}</strong>
-        <small>{group.members.length} 成员 → {normalized.length} 节点</small>
+        <small>{group.members.length} 成员 → {members.length} 节点</small>
       </div>
       <div className="member-chip-list">
-        {normalized.slice(0, 6).map((member, index) => (
-          <Chip key={`${member.value}-${index}`} tone={memberOriginTone(member.origin)}>{member.value}</Chip>
+        {members.slice(0, 6).map((member, index) => (
+          <Chip key={memberKey(member, index)} tone={memberOriginTone(member.origin)}>{member.name}</Chip>
         ))}
-        {normalized.length > 6 ? <Chip>+{normalized.length - 6}</Chip> : null}
+        {members.length > 6 ? <Chip>+{members.length - 6}</Chip> : null}
       </div>
     </div>
   );
 }
 
-function MemberList({ members }: { members: ExpandedMember[] }) {
+function MemberList({ members }: { members: PreviewMember[] }) {
   return (
     <ul className="member-tree">
       {members.map((member, index) => (
-        <li key={`${member.value}-${index}`}>
-          <span>{member.value}</span>
-          <Chip tone={memberOriginTone(member.origin)}>{member.origin}</Chip>
+        <li key={memberKey(member, index)}>
+          <span>{member.name}</span>
+          <Chip tone={memberOriginTone(member.origin)}>{member.origin ?? member.kind}</Chip>
         </li>
       ))}
     </ul>
   );
 }
 
-function normalizeMember(member: ExpandedMember | string): ExpandedMember {
-  return typeof member === "string" ? { value: member, origin: "literal" } : member;
+function memberKey(member: PreviewMember, index: number) {
+  return member.id ?? `${member.kind}-${member.name}-${index}`;
 }
 
-function memberOriginTone(origin: string): "neutral" | "accent" | "success" | "warning" | "info" {
+function memberOriginTone(origin?: string): "neutral" | "accent" | "success" | "warning" | "info" {
   if (origin === "all_expanded") return "accent";
   if (origin === "auto_expanded") return "success";
   if (origin === "all_proxies") return "warning";

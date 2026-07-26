@@ -54,6 +54,16 @@ func baseCfg() *config.Config {
 	}
 }
 
+func assertSequentialProxyIDs(t *testing.T, proxies []model.Proxy) {
+	t.Helper()
+	for index, proxy := range proxies {
+		want := model.ProxyID(index + 1)
+		if proxy.ID != want {
+			t.Errorf("proxy[%d].ID = %d, want %d", index, proxy.ID, want)
+		}
+	}
+}
+
 // --- Source tests ---
 
 func TestSource_SingleSubscription(t *testing.T) {
@@ -168,19 +178,21 @@ func TestSource_MultiSubscriptionMerge(t *testing.T) {
 		t.Fatalf("got %d proxies, want 7", len(proxies))
 	}
 
-	// sub1's HK-01 keeps original name, sub2's HK-01 becomes HK-01②.
+	// Source preserves declared names and assigns distinct graph identities.
 	if proxies[0].Name != "HK-01" {
-		t.Errorf("first HK-01 should keep name, got %q", proxies[0].Name)
+		t.Errorf("first HK-01 name = %q", proxies[0].Name)
 	}
-	if proxies[5].Name != "HK-01②" {
-		t.Errorf("duplicate HK-01 should become HK-01②, got %q", proxies[5].Name)
+	if proxies[5].Name != "HK-01" {
+		t.Errorf("duplicate HK-01 should remain unmodified at Source, got %q", proxies[5].Name)
 	}
 	if proxies[6].Name != "KR-01" {
 		t.Errorf("KR-01 should be unchanged, got %q", proxies[6].Name)
 	}
+	assertSequentialProxyIDs(t, proxies)
 }
 
-func TestSource_CrossSubscriptionDedup(t *testing.T) {
+// T-SRC-ID-001: duplicate display names remain intact while IDs stay unique.
+func TestSource_CrossSubscriptionDuplicateNamesGetDistinctIDs(t *testing.T) {
 	// Three subscriptions, all containing "NODE-A".
 	sub := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@a.example.com:8388#NODE-A")
 
@@ -203,7 +215,7 @@ func TestSource_CrossSubscriptionDedup(t *testing.T) {
 	}
 	proxies := source.Proxies
 
-	wantNames := []string{"NODE-A", "NODE-A②", "NODE-A③"}
+	wantNames := []string{"NODE-A", "NODE-A", "NODE-A"}
 	if len(proxies) != len(wantNames) {
 		t.Fatalf("got %d proxies, want %d", len(proxies), len(wantNames))
 	}
@@ -212,6 +224,7 @@ func TestSource_CrossSubscriptionDedup(t *testing.T) {
 			t.Errorf("proxy[%d].Name = %q, want %q", i, proxies[i].Name, want)
 		}
 	}
+	assertSequentialProxyIDs(t, proxies)
 }
 
 func TestSource_CustomProxyConversion(t *testing.T) {
@@ -302,7 +315,7 @@ func TestSource_ProxyInvariantValidation(t *testing.T) {
 		},
 	}
 
-	_, err := sourcePrepared(context.Background(), sources, config.StaticNamespace{}, &fakeFetcher{responses: map[string][]byte{}})
+	_, err := sourcePrepared(context.Background(), sources, &fakeFetcher{responses: map[string][]byte{}})
 	if err == nil {
 		t.Fatal("expected invariant error, got nil")
 	}
@@ -351,7 +364,7 @@ func TestSource_CustomProxyWithRelayThroughIsNotConvertedToKindCustom(t *testing
 	}
 }
 
-func TestSource_CustomVsSubscriptionConflict(t *testing.T) {
+func TestSource_CustomAndSubscriptionMayShareDisplayName(t *testing.T) {
 	sub := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-ISP")
 
 	cfg := baseCfg()
@@ -366,21 +379,17 @@ func TestSource_CustomVsSubscriptionConflict(t *testing.T) {
 		"https://sub.example.com": sub,
 	}}
 
-	_, err := Source(context.Background(), cfg, f)
-	if err == nil {
-		t.Fatal("expected error for name conflict")
+	source, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("same display name should be accepted: %v", err)
 	}
-
-	var buildErr *errtype.BuildError
-	if !errors.As(err, &buildErr) {
-		t.Fatalf("error type = %T, want *errtype.BuildError", err)
+	if len(source.Proxies) != 2 {
+		t.Fatalf("proxies = %+v, want subscription + custom", source.Proxies)
 	}
-	if buildErr.Phase != "source" {
-		t.Errorf("Phase = %q, want %q", buildErr.Phase, "source")
+	if source.Proxies[0].Name != "HK-ISP" || source.Proxies[1].Name != "HK-ISP" {
+		t.Fatalf("proxy names = %q/%q, want preserved HK-ISP", source.Proxies[0].Name, source.Proxies[1].Name)
 	}
-	if !strings.Contains(buildErr.Message, "HK-ISP") {
-		t.Errorf("error should mention conflicting name, got: %s", buildErr.Message)
-	}
+	assertSequentialProxyIDs(t, source.Proxies)
 }
 
 func TestSource_FetchError(t *testing.T) {
@@ -702,9 +711,9 @@ func TestSource_SubscriptionAndCustomCombined(t *testing.T) {
 	}
 }
 
-func TestSource_DedupSuffixCollision(t *testing.T) {
-	// Subscription already contains "NODE-A②", and "NODE-A" appears twice.
-	// The dedup suffix "NODE-A②" should not collide with the original "NODE-A②".
+func TestSource_NaturalSuffixDoesNotTriggerSourceRenaming(t *testing.T) {
+	// Target-local naming owns suffix allocation; Source preserves all three
+	// declared names and only assigns stable graph identities.
 	sub := makeSubResponse(
 		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@a.example.com:8388#NODE-A",
 		"ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@b.example.com:8388#NODE-A%E2%91%A1", // NODE-A②
@@ -730,28 +739,13 @@ func TestSource_DedupSuffixCollision(t *testing.T) {
 		t.Fatalf("got %d proxies, want 3", len(proxies))
 	}
 
-	// All names must be unique.
-	names := make(map[string]struct{})
-	for _, p := range proxies {
-		if _, exists := names[p.Name]; exists {
-			t.Errorf("duplicate name %q after dedup", p.Name)
+	wantNames := []string{"NODE-A", "NODE-A②", "NODE-A"}
+	for index, want := range wantNames {
+		if proxies[index].Name != want {
+			t.Errorf("proxy[%d].Name = %q, want %q", index, proxies[index].Name, want)
 		}
-		names[p.Name] = struct{}{}
 	}
-
-	// First NODE-A keeps original name.
-	if proxies[0].Name != "NODE-A" {
-		t.Errorf("proxy[0].Name = %q, want %q", proxies[0].Name, "NODE-A")
-	}
-	// Original NODE-A② keeps its name.
-	if proxies[1].Name != "NODE-A②" {
-		t.Errorf("proxy[1].Name = %q, want %q", proxies[1].Name, "NODE-A②")
-	}
-	// Second NODE-A would normally become NODE-A②, but that collides with the
-	// natural NODE-A②, so it should advance to NODE-A③.
-	if proxies[2].Name != "NODE-A③" {
-		t.Errorf("proxy[2].Name = %q, want %q", proxies[2].Name, "NODE-A③")
-	}
+	assertSequentialProxyIDs(t, proxies)
 }
 
 func TestSource_NoSubscriptionsOnlyCustom(t *testing.T) {
@@ -811,8 +805,8 @@ func TestSource_SnellSource(t *testing.T) {
 	}
 }
 
-// T-SRC-SNELL-002: Subscriptions and Snell sources share the name dedup pool.
-func TestSource_SnellAndSubscriptionDeduped(t *testing.T) {
+// T-SRC-SNELL-002: Subscription and Snell names may overlap; IDs do not.
+func TestSource_SnellAndSubscriptionDuplicateNamesGetDistinctIDs(t *testing.T) {
 	// SS subscription with name "HK-01".
 	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01")
 	// Snell source with the same name.
@@ -836,20 +830,18 @@ func TestSource_SnellAndSubscriptionDeduped(t *testing.T) {
 	if len(proxies) != 2 {
 		t.Fatalf("got %d proxies, want 2", len(proxies))
 	}
-	// Subscription is fetched first, so it keeps the original name.
 	if proxies[0].Name != "HK-01" {
 		t.Errorf("proxies[0].Name = %q, want HK-01", proxies[0].Name)
 	}
-	// Snell source gets the circled-2 suffix.
-	if proxies[1].Name != "HK-01②" {
-		t.Errorf("proxies[1].Name = %q, want HK-01②", proxies[1].Name)
+	if proxies[1].Name != "HK-01" {
+		t.Errorf("proxies[1].Name = %q, want unmodified HK-01", proxies[1].Name)
 	}
+	assertSequentialProxyIDs(t, proxies)
 }
 
-// T-SRC-SNELL-MULTI: Multiple Snell sources share the name-dedup pool;
-// duplicate names across sources get incrementing circled suffixes in
+// T-SRC-SNELL-MULTI: multiple Snell sources preserve names and receive IDs in
 // declaration order.
-func TestSource_MultiSnellSourcesDeduped(t *testing.T) {
+func TestSource_MultiSnellDuplicateNamesGetDistinctIDs(t *testing.T) {
 	url1 := "https://snell.example.com/a.txt"
 	url2 := "https://snell.example.com/b.txt"
 	body1 := []byte("SG-01 = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
@@ -872,14 +864,13 @@ func TestSource_MultiSnellSourcesDeduped(t *testing.T) {
 	if len(proxies) != 2 {
 		t.Fatalf("got %d proxies, want 2", len(proxies))
 	}
-	// First Snell source keeps original name.
 	if proxies[0].Name != "SG-01" {
 		t.Errorf("proxies[0].Name = %q, want SG-01", proxies[0].Name)
 	}
-	// Second Snell source gets circled-2 suffix.
-	if proxies[1].Name != "SG-01②" {
-		t.Errorf("proxies[1].Name = %q, want SG-01②", proxies[1].Name)
+	if proxies[1].Name != "SG-01" {
+		t.Errorf("proxies[1].Name = %q, want unmodified SG-01", proxies[1].Name)
 	}
+	assertSequentialProxyIDs(t, proxies)
 	// Both are KindSnell.
 	for i, px := range proxies {
 		if px.Kind != model.KindSnell {
@@ -1108,9 +1099,9 @@ func TestSource_VLessSource_EmptyReported(t *testing.T) {
 	}
 }
 
-// T-SRC-VLESS-SRC-005: Subscription, Snell and VLESS sources share a single
-// dedup pool.
-func TestSource_VLessSharesDedupPoolWithSSAndSnell(t *testing.T) {
+// T-SRC-VLESS-SRC-005: Subscription, Snell and VLESS may share a display name
+// while remaining distinct nodes by ID.
+func TestSource_VLessSharesDisplayNameWithSSAndSnell(t *testing.T) {
 	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01")
 	snellBody := []byte("HK-01 = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
 	vlessBody := []byte(vlessURIFor("HK-01", "hk.example.com", 443) + "\n")
@@ -1135,20 +1126,17 @@ func TestSource_VLessSharesDedupPoolWithSSAndSnell(t *testing.T) {
 	if len(proxies) != 3 {
 		t.Fatalf("got %d proxies, want 3", len(proxies))
 	}
-	// FetchOrder fallback: subscriptions, snell, vless (alphabetical-ish default).
-	// So SS "HK-01" first, Snell "HK-01②" second, VLESS "HK-01③" third.
-	wantNames := []string{"HK-01", "HK-01②", "HK-01③"}
+	wantNames := []string{"HK-01", "HK-01", "HK-01"}
 	for i, want := range wantNames {
 		if proxies[i].Name != want {
 			t.Errorf("proxies[%d].Name = %q, want %q", i, proxies[i].Name, want)
 		}
 	}
+	assertSequentialProxyIDs(t, proxies)
 }
 
-// T-SRC-VLESS-SRC-006: A custom proxy with the same name as a VLESS source
-// node is rejected via checkNameConflicts; the error message identifies
-// the conflict source as "VLESS 来源" (describeFetchedKind).
-func TestSource_VLessCustomNameConflictError(t *testing.T) {
+// T-SRC-VLESS-SRC-006: VLESS and custom nodes may share a display name.
+func TestSource_VLessAndCustomDuplicateNamesGetDistinctIDs(t *testing.T) {
 	vlessBody := []byte(vlessURIFor("HK-01", "hk.example.com", 443) + "\n")
 
 	cfg := baseCfg()
@@ -1162,13 +1150,14 @@ func TestSource_VLessCustomNameConflictError(t *testing.T) {
 		"https://vless.example.com/v.txt": vlessBody,
 	}}
 
-	_, err := Source(context.Background(), cfg, f)
-	if err == nil {
-		t.Fatal("expected conflict error")
+	source, err := Source(context.Background(), cfg, f)
+	if err != nil {
+		t.Fatalf("same display name should be accepted: %v", err)
 	}
-	if !strings.Contains(err.Error(), "VLESS 来源") {
-		t.Errorf("error message should identify VLESS source, got: %s", err.Error())
+	if len(source.Proxies) != 2 || source.Proxies[0].Name != "HK-01" || source.Proxies[1].Name != "HK-01" {
+		t.Fatalf("proxies = %+v, want two HK-01 nodes", source.Proxies)
 	}
+	assertSequentialProxyIDs(t, source.Proxies)
 }
 
 // TestSource_UnknownFetchKindErrors guards the Source() switch default
@@ -1250,14 +1239,9 @@ func TestSource_RespectsFetchOrder(t *testing.T) {
 	}
 }
 
-// A custom_proxy with relay_through becomes a chain group (not a direct
-// proxy). If its Name collides with a fetched node name, the error must
-// surface at the Source stage (not later at ValidateGraph) and distinguish
-// "链式组名" from "自定义代理名", so the user fixes the correct YAML section.
-//
-// Table covers all three fetched kinds (subscription / Snell / VLESS) to
-// guarantee describeFetchedKind routing stays wired for chain-template cp.
-func TestSource_ChainGroupNameConflictsWithFetchedNode(t *testing.T) {
+// A relay_through name becomes a group, but fetched proxies use IDs internally;
+// the target projection resolves their eventual output-name collision.
+func TestSource_ChainGroupAndFetchedNodeMayShareDisplayName(t *testing.T) {
 	const sharedName = "HK-EDGE"
 
 	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#" + sharedName)
@@ -1265,34 +1249,30 @@ func TestSource_ChainGroupNameConflictsWithFetchedNode(t *testing.T) {
 	vlessBody := []byte(vlessURIFor(sharedName, "hk.example.com", 443) + "\n")
 
 	cases := []struct {
-		name        string
-		setupCfg    func(*config.Config)
-		responses   map[string][]byte
-		wantKindTag string // expected Chinese label from describeFetchedKind
+		name      string
+		setupCfg  func(*config.Config)
+		responses map[string][]byte
 	}{
 		{
 			name: "subscription",
 			setupCfg: func(cfg *config.Config) {
 				cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
 			},
-			responses:   map[string][]byte{"https://sub.example.com/api": subBody},
-			wantKindTag: "订阅",
+			responses: map[string][]byte{"https://sub.example.com/api": subBody},
 		},
 		{
 			name: "snell",
 			setupCfg: func(cfg *config.Config) {
 				cfg.Sources.Snell = []config.SnellSource{{URL: "https://snell.example.com/s.txt"}}
 			},
-			responses:   map[string][]byte{"https://snell.example.com/s.txt": snellBody},
-			wantKindTag: "Snell 来源",
+			responses: map[string][]byte{"https://snell.example.com/s.txt": snellBody},
 		},
 		{
 			name: "vless",
 			setupCfg: func(cfg *config.Config) {
 				cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
 			},
-			responses:   map[string][]byte{"https://vless.example.com/v.txt": vlessBody},
-			wantKindTag: "VLESS 来源",
+			responses: map[string][]byte{"https://vless.example.com/v.txt": vlessBody},
 		},
 	}
 
@@ -1308,29 +1288,15 @@ func TestSource_ChainGroupNameConflictsWithFetchedNode(t *testing.T) {
 
 			f := &fakeFetcher{responses: tc.responses}
 
-			_, err := Source(context.Background(), cfg, f)
-			if err == nil {
-				t.Fatal("expected conflict error, got nil")
+			source, err := Source(context.Background(), cfg, f)
+			if err != nil {
+				t.Fatalf("same display name should be accepted: %v", err)
 			}
-
-			var be *errtype.BuildError
-			if !errors.As(err, &be) {
-				t.Fatalf("err type = %T, want *errtype.BuildError", err)
+			if len(source.Proxies) != 1 || source.Proxies[0].Name != sharedName {
+				t.Fatalf("proxies = %+v, want fetched %s", source.Proxies, sharedName)
 			}
-			if be.Code != errtype.CodeBuildCustomNameConflict {
-				t.Errorf("Code = %q, want %q", be.Code, errtype.CodeBuildCustomNameConflict)
-			}
-			if !strings.Contains(be.Message, "链式组名") {
-				t.Errorf("message should identify the cp as a chain group, got: %s", be.Message)
-			}
-			if strings.Contains(be.Message, "自定义代理名") {
-				t.Errorf("message should NOT use the direct-proxy label for a chain-template cp, got: %s", be.Message)
-			}
-			if !strings.Contains(be.Message, sharedName) {
-				t.Errorf("message should quote the conflicting name %q, got: %s", sharedName, be.Message)
-			}
-			if !strings.Contains(be.Message, tc.wantKindTag) {
-				t.Errorf("message should identify fetched kind %q, got: %s", tc.wantKindTag, be.Message)
+			if len(source.ChainTemplates) != 1 || source.ChainTemplates[0].Name != sharedName {
+				t.Fatalf("chain templates = %+v, want %s", source.ChainTemplates, sharedName)
 			}
 		})
 	}

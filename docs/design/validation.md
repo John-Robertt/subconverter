@@ -29,7 +29,7 @@
 - `subscriptions[].url` 必填
 - `snell[].url` 必填，必须为 HTTP(S) URL
 - `vless[].url` 必填，必须为 HTTP(S) URL
-- `custom_proxies[].name` 必填，且互不重复
+- `custom_proxies[].name` 必填；不带 `relay_through` 的节点允许重名，带 `relay_through` 的名称会成为链式组名，仍受组命名空间唯一性约束
 - `custom_proxies[].url` 必填；scheme 必须是 `ss://`、`socks5://` 或 `http://`；URL 解析失败（host/port 缺失、port 越界、SS userinfo 解码失败、SS plugin 选项格式错误等）记为字段错误
 - `custom_proxies[].url` 为 SS 时还需含 `cipher` + `password`（base64/明文 userinfo 解码后必须形如 `method:password`）
 - `groups[*].match` 必填
@@ -54,7 +54,7 @@
 检查范围：
 
 - 订阅拉取后是否得到至少一个有效节点
-- 运行期名称冲突是否出现
+- 代理 ID 是否完整且唯一
 - `relay_through.type=group` 的局部引用是否存在
 - SS URI、AnyTLS URI 与 plugin query 是否能按基本结构解析
 
@@ -69,7 +69,7 @@
 - VLESS 来源拉取结果不得为空（0 个有效节点报同类错误）
 - Snell 来源中单行解析失败整源报错（与 `subscriptions` 的静默跳过不同，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
 - VLESS 来源中单行解析失败整源报错（与 Snell 一致，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
-- 自定义代理名称不得与订阅、Snell 或 VLESS 节点名称冲突（错误消息会指明冲突源的 kind）
+- Source 为每个节点分配非零、Build 内唯一的 ID；候选节点名允许跨来源或在自定义代理之间重复
 - `relay_through.type=group` 引用的节点组必须存在
 - SS / AnyTLS URI 中端口值必须在 1-65535 范围内；Snell / VLESS 节点的 port 字段同理
 - 非法 SS URI、非法 AnyTLS URI、非法 fragment 编码、非法 query 编码、损坏的 plugin 参数都属于 Source 阶段构建期错误
@@ -85,7 +85,7 @@
 
 检查范围：
 
-- 共享命名空间是否无冲突、重复声明
+- 代理 ID 引用是否完整；组/保留策略命名空间是否无冲突、重复声明
 - `@all` 展开是否正确排除了链式节点
 - 空节点组（地区组和链式组）
 - 路由成员引用合法性（区分原始声明 vs 展开后的成员溯源）
@@ -95,15 +95,16 @@
 
 重点规则：
 
-- 跨订阅重名节点自动追加递增后缀
-- 代理名、节点组名、服务组名在引用体系中共享命名空间，不允许重名或重复声明
+- 代理 ID 必须非零且唯一；`DialerID`、节点组成员 ID、`@all` 展开 ID 必须指向现有代理
+- 代理名不是引用 key，允许重复，也允许与组名或保留策略同名
 - 节点组名与服务组名不得重复（共享同一命名空间）
 - `routing` 中原始声明的成员只允许引用节点组、服务组、`DIRECT`、`REJECT`、`@all`、`@auto`
-- `routing` 中 `@all` 展开后的具体代理名可出现在中间表示里，但用户配置不能直接声明这些代理名
+- `routing` 中 `@all` 展开为带 `ProxyID` 的类型化引用；用户配置不能直接声明代理显示名
 - `routing` 中引用的节点组、服务组、保留字都必须可解析
 - 自动生成的链式组必须至少包含一个成员
 - 地区节点组匹配结果不得为空
 - 若 `@all` 展开后为空列表（所有原始节点被过滤），引用 `@all` 的服务组成员可能为空，由空组检查或 Target 阶段的级联过滤捕获
+- Target 在格式过滤后独立分配唯一输出名；名称冲突通过确定性后缀解决，不属于 Build / ValidateGraph 错误
 
 ---
 

@@ -72,7 +72,7 @@ func TestSourceFilterGroupRouteValidateReturnsPreviewStages(t *testing.T) {
 	}
 	var hasAllExpanded bool
 	for _, member := range result.Route.ResolvedRouteGroups[0].Members {
-		if member.Raw == "HK-01" && member.Origin == config.RouteMemberOriginAllExpanded {
+		if member.Ref.ProxyID == 1 && member.Origin == config.RouteMemberOriginAllExpanded {
 			hasAllExpanded = true
 		}
 	}

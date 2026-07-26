@@ -52,10 +52,10 @@ var surgeAnyTLSKeyOrder = []string{
 // sectionHeaderRe matches INI-style section headers like [Proxy].
 var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
 
-// Surge renders a Pipeline into Surge conf format.
+// Surge renders a target-projected pipeline into Surge conf format.
 // managedURL is used for the #!MANAGED-CONFIG header (empty = omit header).
 // If baseTemplate is non-nil, generated sections replace corresponding sections in the template.
-func Surge(p *model.Pipeline, managedURL string, baseTemplate []byte) ([]byte, error) {
+func Surge(p *model.TargetPipeline, managedURL string, baseTemplate []byte) ([]byte, error) {
 	proxySection, err := buildSurgeProxies(p.Proxies)
 	if err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func Surge(p *model.Pipeline, managedURL string, baseTemplate []byte) ([]byte, e
 	return buf.Bytes(), nil
 }
 
-func buildSurgeProxies(proxies []model.Proxy) (string, error) {
+func buildSurgeProxies(proxies []model.TargetProxy) (string, error) {
 	var sb strings.Builder
 	for _, px := range proxies {
 		line, err := renderSurgeProxy(px)
@@ -104,7 +104,7 @@ func buildSurgeProxies(proxies []model.Proxy) (string, error) {
 	return sb.String(), nil
 }
 
-func renderSurgeProxy(px model.Proxy) (string, error) {
+func renderSurgeProxy(px model.TargetProxy) (string, error) {
 	if px.Native != nil {
 		if px.Native.Format != model.NativeProxyFormatSurge {
 			return "", fmt.Errorf("原生声明格式为 %q，不能写入 Surge", px.Native.Format)
@@ -235,7 +235,7 @@ func isSurgeSSObfsPlugin(name string) bool {
 	}
 }
 
-func buildSurgeGroups(nodeGroups, routeGroups []model.ProxyGroup) string {
+func buildSurgeGroups(nodeGroups, routeGroups []model.TargetGroup) string {
 	var sb strings.Builder
 	allGroups := append(routeGroups, nodeGroups...)
 	for _, g := range allGroups {
@@ -245,7 +245,7 @@ func buildSurgeGroups(nodeGroups, routeGroups []model.ProxyGroup) string {
 	return sb.String()
 }
 
-func renderSurgeGroup(g model.ProxyGroup) string {
+func renderSurgeGroup(g model.TargetGroup) string {
 	parts := []string{g.Name + " = " + g.Strategy}
 	parts = append(parts, g.Members...)
 

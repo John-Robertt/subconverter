@@ -20,7 +20,7 @@ type GroupPreviewStageResult struct {
 // SourceAndFilter executes the Source + Filter stages and keeps both included
 // and excluded nodes for preview diagnostics.
 func SourceAndFilter(ctx context.Context, cfg *config.RuntimeConfig, fetcher fetch.Fetcher) (*FilterResult, error) {
-	source, err := sourcePrepared(ctx, cfg.SourceInput(), cfg.StaticNamespace(), fetcher)
+	source, err := sourcePrepared(ctx, cfg.SourceInput(), fetcher)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +30,7 @@ func SourceAndFilter(ctx context.Context, cfg *config.RuntimeConfig, fetcher fet
 // SourceFilterGroupRouteValidate executes the preview path through graph
 // validation. It returns no partial group result when ValidateGraph fails.
 func SourceFilterGroupRouteValidate(ctx context.Context, cfg *config.RuntimeConfig, fetcher fetch.Fetcher) (*GroupPreviewStageResult, error) {
-	source, err := sourcePrepared(ctx, cfg.SourceInput(), cfg.StaticNamespace(), fetcher)
+	source, err := sourcePrepared(ctx, cfg.SourceInput(), fetcher)
 	if err != nil {
 		return nil, err
 	}

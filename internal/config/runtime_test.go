@@ -127,7 +127,4 @@ func TestRuntimeConfig_AccessorsExposeStartupValues(t *testing.T) {
 	if rt.Templates().Clash != "https://example.com/base.yaml" {
 		t.Fatalf("Templates().Clash = %q, want https://example.com/base.yaml", rt.Templates().Clash)
 	}
-	if kind, ok := rt.StaticNamespace().Kind("HK"); !ok || kind != "节点组" {
-		t.Fatalf("StaticNamespace().Kind(HK) = (%q, %v), want (节点组, true)", kind, ok)
-	}
 }

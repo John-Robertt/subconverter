@@ -108,13 +108,13 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 - 编译正则表达式（`groups[*].match`、`filters.exclude`、`relay_through.match`）
 - 解析自定义代理 URL（`custom_proxies[].url`），校验 SS 参数
 - 展开 `@auto`（存入 `ExpandedMembers`），`@all` 保留到请求期 Route 阶段展开
-- 构建静态命名空间（`StaticNamespace`）：注册 DIRECT/REJECT、节点组名、服务组名、自定义代理名、链式组名，检测跨类别命名冲突
+- 构建策略命名空间：注册 DIRECT/REJECT、节点组名、服务组名和链式组名，检测组/保留策略之间的命名冲突
 - 检测路由环路
 - 校验 ruleset/rule 策略引用合法性、fallback 存在性
 
 输出：
 
-- `RuntimeConfig`（含编译后的正则、解析后的自定义代理、展开后的路由成员、静态命名空间）
+- `RuntimeConfig`（含编译后的正则、解析后的自定义代理、展开后的路由成员）
 
 并发语义：
 
@@ -130,6 +130,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 - 拉取所有远程来源
 - 解析订阅节点（TXT / Clash YAML / Surge CONF）、Snell 节点、VLESS 节点
 - 将自定义代理转换为原始节点对象或链式模板
+- 按来源与声明顺序为每个原始节点分配非零、Build 内唯一的 `ProxyID`
 
 输入：
 
@@ -142,7 +143,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 说明：
 
 - 本阶段不生成链式节点
-- 跨订阅重名通过两轮去重处理
+- 同名节点保留各自候选显示名和独立 ID；本阶段不修改节点名
 - 订阅格式按 `Clash YAML → Surge CONF → TXT/Base64` 的优先级识别；`.yaml` / `.yml` / `.conf` URL 后缀会强制对应格式，其他 URL 再按顶层 `proxies` 或 `[Proxy]` 内容识别
 - Clash YAML 复制 `proxies` 中的完整节点映射；Surge CONF 复制 `[Proxy]` 中每条声明的完整右值。两类节点都保留为 `KindSubscription`，并用 `NativeProxy.Format` 记录其唯一目标格式
 - TXT 响应体支持 Base64 编码列表和明文列表；明文列表兼容 SS（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`）和 AnyTLS（`anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）行格式
@@ -210,8 +211,9 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 关键规则：
 
 - `@all` 只包含原始节点
+- 地区组、链式组和 `@all` 都保存 `ProxyID`，不保存节点名
 - 原始节点 = 订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
-- 链式展开的上游只来自拉取类节点
+- 链式展开的上游只来自拉取类节点，并通过 `DialerID` 引用
 
 ---
 
@@ -220,7 +222,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 职责：
 
 - 根据 `routing` 生成服务组
-- 展开 `@auto` 和 `@all` token
+- 将预计算后的 `@auto` 成员和 `@all` token解析为类型化引用
 - 根据 `rulesets` 生成服务组绑定关系
 - 解析 `rules`
 - 记录 `fallback`
@@ -237,7 +239,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 说明：
 
 - 服务组统一为 `select`
-- `@auto` 在启动期 Prepare 阶段已展开；Route 阶段仅展开 `@all`
+- `@auto` 在启动期 Prepare 阶段已展开；Route 阶段将组名/保留策略解析为对应 `PolicyRef`，并将 `@all` 展开为 `PolicyRefProxy`
 
 ---
 
@@ -245,7 +247,8 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 职责：
 
-- 检查共享命名空间冲突和重复声明
+- 检查代理 ID 唯一性、组/保留策略命名空间冲突和重复声明
+- 检查 `DialerID`、节点组成员 ID、服务组类型化引用的存在性
 - 检查 `@all` 展开排除链式节点
 - 检查空节点组
 - 检查路由成员引用合法性
@@ -268,6 +271,14 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 - 将格式无关 IR 投影为目标格式视图
 - 做目标格式协议能力过滤
 - 做目标格式特有的级联校验
+- 在过滤完成后为本目标独立分配唯一节点输出名，并把所有 ID / 类型化引用转换为最终名称
+
+目标名称分配遵循以下顺序：
+
+1. 预留节点组名、服务组名、`DIRECT`、`REJECT`
+2. 按管道顺序处理非链式节点；冲突时追加 `②`…`⑩`、`(11)`… 后缀
+3. 使用上游在本目标中的最终名称组装链式候选名，再用同一分配器消歧
+4. 产出 `TargetPipeline`；Render 只消费最终名称，不再观察内部 ID
 
 说明：
 

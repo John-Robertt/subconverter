@@ -2,12 +2,28 @@ package pipeline
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
 )
+
+func routeMemberLabel(member model.PolicyRef) string {
+	if member.Kind == model.PolicyRefProxy {
+		return fmt.Sprintf("#%d", member.ProxyID)
+	}
+	return member.Name
+}
+
+func routeMemberLabels(members []model.PolicyRef) []string {
+	labels := make([]string, 0, len(members))
+	for _, member := range members {
+		labels = append(labels, routeMemberLabel(member))
+	}
+	return labels
+}
 
 // --- Route tests ---
 
@@ -22,7 +38,7 @@ func TestRoute_ServiceGroups(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	result, err := routeFromConfig(cfg, &GroupResult{AllProxies: []string{"HK-01", "SG-01"}})
+	result, err := routeFromConfig(cfg, &GroupResult{AllProxies: []model.ProxyID{1, 2}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -36,9 +52,6 @@ func TestRoute_ServiceGroups(t *testing.T) {
 	for i, want := range wantNames {
 		if result.RouteGroups[i].Name != want {
 			t.Errorf("group[%d].Name = %q, want %q", i, result.RouteGroups[i].Name, want)
-		}
-		if result.RouteGroups[i].Scope != model.ScopeRoute {
-			t.Errorf("group[%d].Scope = %q, want route", i, result.RouteGroups[i].Scope)
 		}
 		if result.RouteGroups[i].Strategy != "select" {
 			t.Errorf("group[%d].Strategy = %q, want select", i, result.RouteGroups[i].Strategy)
@@ -61,7 +74,7 @@ func TestRoute_AllExpansion(t *testing.T) {
 		Fallback: "🐟 FINAL",
 	}
 
-	allProxies := []string{"HK-01", "SG-01", "JP-01"}
+	allProxies := []model.ProxyID{1, 2, 3}
 
 	result, err := routeFromConfig(cfg, &GroupResult{AllProxies: allProxies})
 	if err != nil {
@@ -73,21 +86,21 @@ func TestRoute_AllExpansion(t *testing.T) {
 	if len(manual.Members) != 3 {
 		t.Fatalf("手动切换 members = %v, want 3", manual.Members)
 	}
-	for i, want := range allProxies {
-		if manual.Members[i] != want {
-			t.Errorf("Members[%d] = %q, want %q", i, manual.Members[i], want)
+	for i, want := range []string{"#1", "#2", "#3"} {
+		if got := routeMemberLabel(manual.Members[i]); got != want {
+			t.Errorf("Members[%d] = %q, want %q", i, got, want)
 		}
 	}
 
 	// Mixed expansion.
 	mixed := result.RouteGroups[1]
-	wantMixed := []string{"🇭🇰 Hong Kong", "HK-01", "SG-01", "JP-01", "DIRECT"}
+	wantMixed := []string{"🇭🇰 Hong Kong", "#1", "#2", "#3", "DIRECT"}
 	if len(mixed.Members) != len(wantMixed) {
 		t.Fatalf("混合 members = %v, want %v", mixed.Members, wantMixed)
 	}
 	for i, want := range wantMixed {
-		if mixed.Members[i] != want {
-			t.Errorf("Mixed.Members[%d] = %q, want %q", i, mixed.Members[i], want)
+		if got := routeMemberLabel(mixed.Members[i]); got != want {
+			t.Errorf("Mixed.Members[%d] = %q, want %q", i, got, want)
 		}
 	}
 }
@@ -244,8 +257,8 @@ func TestRoute_AllExpansionEmpty(t *testing.T) {
 		t.Fatalf("members = %v, want %v", members, wantMembers)
 	}
 	for i, want := range wantMembers {
-		if members[i] != want {
-			t.Errorf("Members[%d] = %q, want %q", i, members[i], want)
+		if got := routeMemberLabel(members[i]); got != want {
+			t.Errorf("Members[%d] = %q, want %q", i, got, want)
 		}
 	}
 }
@@ -260,20 +273,20 @@ func TestRoute_ResultMembersContainExpandedValuesOnly(t *testing.T) {
 	}
 
 	result, err := routeFromConfig(cfg, &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
 		},
-		AllProxies: []string{"HK-01", "SG-01"},
+		AllProxies: []model.ProxyID{1, 2},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got := result.RouteGroups[0].Members; len(got) != 3 || got[0] != "🇭🇰 Hong Kong" || got[1] != "🚀 手动切换" || got[2] != "DIRECT" {
+	if got := routeMemberLabels(result.RouteGroups[0].Members); len(got) != 3 || got[0] != "🇭🇰 Hong Kong" || got[1] != "🚀 手动切换" || got[2] != "DIRECT" {
 		t.Fatalf("快速选择 members = %v, want [🇭🇰 Hong Kong 🚀 手动切换 DIRECT]", got)
 	}
-	if got := result.RouteGroups[1].Members; len(got) != 2 || got[0] != "HK-01" || got[1] != "SG-01" {
-		t.Fatalf("手动切换 members = %v, want [HK-01 SG-01]", got)
+	if got := routeMemberLabels(result.RouteGroups[1].Members); len(got) != 2 || got[0] != "#1" || got[1] != "#2" {
+		t.Fatalf("手动切换 members = %v, want [#1 #2]", got)
 	}
 }
 
@@ -290,12 +303,12 @@ func TestRoute_AutoFillBasic(t *testing.T) {
 	}
 
 	gr := &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
-			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
-			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
+			{Name: "🇸🇬 Singapore"},
+			{Name: "🔗 HK-ISP"},
 		},
-		AllProxies: []string{"HK-01", "SG-01", "HK-ISP"},
+		AllProxies: []model.ProxyID{1, 2, 3},
 	}
 
 	result, err := routeFromConfig(cfg, gr)
@@ -313,8 +326,8 @@ func TestRoute_AutoFillBasic(t *testing.T) {
 		t.Fatalf("快速选择 members = %v, want %v", quick.Members, want)
 	}
 	for i, w := range want {
-		if quick.Members[i] != w {
-			t.Errorf("Members[%d] = %q, want %q", i, quick.Members[i], w)
+		if got := routeMemberLabel(quick.Members[i]); got != w {
+			t.Errorf("Members[%d] = %q, want %q", i, got, w)
 		}
 	}
 }
@@ -331,12 +344,12 @@ func TestRoute_AutoFillWithPreferred(t *testing.T) {
 	}
 
 	gr := &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
-			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
-			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
+			{Name: "🇸🇬 Singapore"},
+			{Name: "🔗 HK-ISP"},
 		},
-		AllProxies: []string{"HK-01", "SG-01"},
+		AllProxies: []model.ProxyID{1, 2},
 	}
 
 	result, err := routeFromConfig(cfg, gr)
@@ -357,20 +370,20 @@ func TestRoute_AutoFillWithPreferred(t *testing.T) {
 		t.Fatalf("Telegram members = %v,\nwant %v", telegram.Members, want)
 	}
 	for i, w := range want {
-		if telegram.Members[i] != w {
-			t.Errorf("Members[%d] = %q, want %q", i, telegram.Members[i], w)
+		if got := routeMemberLabel(telegram.Members[i]); got != w {
+			t.Errorf("Members[%d] = %q, want %q", i, got, w)
 		}
 	}
 }
 
 func TestRoute_AutoFillPreservesManualRejectPlacement(t *testing.T) {
 	gr := &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
-			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
-			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
+			{Name: "🇸🇬 Singapore"},
+			{Name: "🔗 HK-ISP"},
 		},
-		AllProxies: []string{"HK-01", "SG-01"},
+		AllProxies: []model.ProxyID{1, 2},
 	}
 
 	tests := []struct {
@@ -415,8 +428,8 @@ func TestRoute_AutoFillPreservesManualRejectPlacement(t *testing.T) {
 				t.Fatalf("Telegram members = %v, want %v", telegram.Members, tt.want)
 			}
 			for i, w := range tt.want {
-				if telegram.Members[i] != w {
-					t.Errorf("Members[%d] = %q, want %q", i, telegram.Members[i], w)
+				if got := routeMemberLabel(telegram.Members[i]); got != w {
+					t.Errorf("Members[%d] = %q, want %q", i, got, w)
 				}
 			}
 		})
@@ -434,10 +447,10 @@ func TestRoute_AutoFillExcludesSelf(t *testing.T) {
 	}
 
 	gr := &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
 		},
-		AllProxies: []string{"HK-01"},
+		AllProxies: []model.ProxyID{1},
 	}
 
 	result, err := routeFromConfig(cfg, gr)
@@ -447,7 +460,7 @@ func TestRoute_AutoFillExcludesSelf(t *testing.T) {
 
 	quick := result.RouteGroups[0]
 	for _, m := range quick.Members {
-		if m == "🚀 快速选择" {
+		if routeMemberLabel(m) == "🚀 快速选择" {
 			t.Error("快速选择 should not contain itself")
 		}
 	}
@@ -463,11 +476,11 @@ func TestRoute_AutoFillIncludesChainedGroups(t *testing.T) {
 	}
 
 	gr := &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
-			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
-			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
-			{Name: "🔗 SG-ISP", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
+			{Name: "🇸🇬 Singapore"},
+			{Name: "🔗 HK-ISP"},
+			{Name: "🔗 SG-ISP"},
 		},
 	}
 
@@ -480,7 +493,7 @@ func TestRoute_AutoFillIncludesChainedGroups(t *testing.T) {
 	// SG is preferred; HK, 🔗 HK-ISP, 🔗 SG-ISP should be auto-filled
 	found := make(map[string]bool)
 	for _, m := range netflix.Members {
-		found[m] = true
+		found[routeMemberLabel(m)] = true
 	}
 	for _, want := range []string{"🔗 HK-ISP", "🔗 SG-ISP", "🇭🇰 Hong Kong"} {
 		if !found[want] {
@@ -501,10 +514,10 @@ func TestRoute_AutoFillIncludesAllRouteGroups(t *testing.T) {
 	}
 
 	gr := &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
 		},
-		AllProxies: []string{"HK-01"},
+		AllProxies: []model.ProxyID{1},
 	}
 
 	result, err := routeFromConfig(cfg, gr)
@@ -515,7 +528,7 @@ func TestRoute_AutoFillIncludesAllRouteGroups(t *testing.T) {
 	telegram := result.RouteGroups[0]
 	found := make(map[string]bool)
 	for _, m := range telegram.Members {
-		found[m] = true
+		found[routeMemberLabel(m)] = true
 	}
 	if !found["🚀 手动切换"] {
 		t.Error("expected 🚀 手动切换 in auto-fill")
@@ -536,10 +549,10 @@ func TestRoute_AutoFillOrder(t *testing.T) {
 	}
 
 	gr := &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
-			{Name: "🇸🇬 Singapore", Scope: model.ScopeNode},
-			{Name: "🔗 HK-ISP", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
+			{Name: "🇸🇬 Singapore"},
+			{Name: "🔗 HK-ISP"},
 		},
 	}
 
@@ -560,8 +573,8 @@ func TestRoute_AutoFillOrder(t *testing.T) {
 		t.Fatalf("FINAL members = %v, want %v", final.Members, want)
 	}
 	for i, w := range want {
-		if final.Members[i] != w {
-			t.Errorf("Members[%d] = %q, want %q", i, final.Members[i], w)
+		if got := routeMemberLabel(final.Members[i]); got != w {
+			t.Errorf("Members[%d] = %q, want %q", i, got, w)
 		}
 	}
 }
@@ -576,8 +589,8 @@ func TestRoute_NoAutoFill(t *testing.T) {
 	}
 
 	gr := &GroupResult{
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 Hong Kong", Scope: model.ScopeNode},
+		NodeGroups: []model.NodeGroup{
+			{Name: "🇭🇰 Hong Kong"},
 		},
 	}
 
@@ -592,8 +605,8 @@ func TestRoute_NoAutoFill(t *testing.T) {
 		t.Fatalf("BanList members = %v, want %v", ban.Members, want)
 	}
 	for i, w := range want {
-		if ban.Members[i] != w {
-			t.Errorf("Members[%d] = %q, want %q", i, ban.Members[i], w)
+		if got := routeMemberLabel(ban.Members[i]); got != w {
+			t.Errorf("Members[%d] = %q, want %q", i, got, w)
 		}
 	}
 }
@@ -618,8 +631,8 @@ func TestRoute_NilGroupResult(t *testing.T) {
 		t.Fatalf("Telegram members = %v, want %v", telegram.Members, want)
 	}
 	for i, w := range want {
-		if telegram.Members[i] != w {
-			t.Errorf("Members[%d] = %q, want %q", i, telegram.Members[i], w)
+		if got := routeMemberLabel(telegram.Members[i]); got != w {
+			t.Errorf("Members[%d] = %q, want %q", i, got, w)
 		}
 	}
 }

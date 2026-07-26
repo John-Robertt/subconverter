@@ -13,7 +13,6 @@ const (
 	staticKindReserved   = "保留策略"
 	staticKindNodeGroup  = "节点组"
 	staticKindRouteGroup = "服务组"
-	staticKindCustom     = "自定义代理"
 	staticKindChainGroup = "链式组"
 )
 
@@ -67,7 +66,6 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 		return nil, err
 	}
 
-	rt.staticNamespace = newStaticNamespace(registry)
 	return rt, nil
 }
 
@@ -170,25 +168,18 @@ func prepareCustomProxies(c *collector, rt *RuntimeConfig, registry map[string]s
 		chainGroupNames:       make([]string, 0, len(cfg.Sources.CustomProxies)),
 		standaloneCustomNames: make(map[string]struct{}),
 	}
-	seenCustomNames := make(map[string]bool)
-
 	for i, cp := range cfg.Sources.CustomProxies {
 		baseLoc := valuePath("sources", fmt.Sprintf("custom_proxies[%d]", i))
 
 		if cp.Name == "" {
 			c.addCode(valuePath("sources", fmt.Sprintf("custom_proxies[%d].name", i)), errtype.CodeConfigRequired, "必填")
-		} else if seenCustomNames[cp.Name] {
-			c.addCode(valuePath("sources", fmt.Sprintf("custom_proxies[%d].name", i)), errtype.CodeConfigDuplicateName, fmt.Sprintf("自定义代理名 %q 重复", cp.Name))
 		} else {
-			seenCustomNames[cp.Name] = true
-			kind := staticKindCustom
 			if cp.RelayThrough != nil {
-				kind = staticKindChainGroup
 				result.chainGroupNames = append(result.chainGroupNames, cp.Name)
+				registerStaticName(c, registry, valuePath("sources", fmt.Sprintf("custom_proxies[%d].name", i)), cp.Name, staticKindChainGroup)
 			} else {
 				result.standaloneCustomNames[cp.Name] = struct{}{}
 			}
-			registerStaticName(c, registry, valuePath("sources", fmt.Sprintf("custom_proxies[%d].name", i)), cp.Name, kind)
 		}
 
 		prepared := PreparedCustomProxy{Name: cp.Name}
@@ -424,14 +415,6 @@ func registerStaticName(c *collector, registry map[string]staticDecl, loc diagno
 		return
 	}
 	registry[name] = staticDecl{kind: kind}
-}
-
-func newStaticNamespace(registry map[string]staticDecl) StaticNamespace {
-	labels := make(map[string]string, len(registry))
-	for name, decl := range registry {
-		labels[name] = decl.kind
-	}
-	return StaticNamespace{labels: labels}
 }
 
 func newLiteralRouteMember(raw string) PreparedRouteMember {

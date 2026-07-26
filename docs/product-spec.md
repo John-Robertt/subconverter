@@ -20,7 +20,7 @@ anytls://password@hk.example.com:443/?sni=edge.example.com&insecure=1#HK-AnyTLS
 - **Surge CONF（`.conf`）**：复制 `[Proxy]` 段节点，只进入 Surge 输出
 - **TXT / Base64**：支持 SS / AnyTLS 的 URI、Surge 行和 Quantumult X 行，同时进入两种输出
 
-结构化格式优先于 TXT；即使 URL 没有扩展名，也会先按顶层 `proxies` 和 `[Proxy]` 内容识别。节点名称是后续过滤、分组、去重与链式展开的依据，三类格式都共用 `sources.subscriptions` 和同一跨源去重池。
+结构化格式优先于 TXT；即使 URL 没有扩展名，也会先按顶层 `proxies` 和 `[Proxy]` 内容识别。节点名称用于过滤、分组和显示，但不承担身份职责；Source 为每个节点分配独立 ID，Clash / Surge 在完成各自格式过滤后独立分配唯一输出名。
 
 ### 1.1b Snell 来源（Surge 专属）
 
@@ -43,7 +43,7 @@ JP-Snell = snell, 9.10.11.12, 443, psk=zzz, version=4, shadow-tls-password=sss, 
 
 - **只进入 Surge 输出**：Clash Meta 主线不支持 Snell v4/v5（jinqians 默认版本），Clash 目标格式投影阶段会过滤 Snell 节点并级联清理空组/规则
 - **全字段支持**：包括 ShadowTLS（Surge 独有）、reuse、tfo、obfs、udp-relay 等
-- 节点参与与订阅节点共享的去重池、`filters.exclude` 过滤、区域组 regex 匹配
+- 同名节点保留独立 ID；参与 `filters.exclude` 过滤和区域组 regex 匹配
 - 可作为 `relay_through` 的链式上游
 - **失败可定位**：单行解析失败会报整源错误，消息附带脱敏后的来源 URL 和 1-based 物理行号；原始解析根因保留在错误链中
 
@@ -68,7 +68,7 @@ vless://11111111-2222-3333-4444-555555555555@sg.example.com:443?security=reality
 
 - **只进入 Clash 输出**：Surge 不原生支持 VLESS，Surge 目标格式投影阶段会过滤 VLESS 节点并级联清理空组/规则
 - `type` 缺失或未知值回落到 `tcp`；`encryption` 非空时透传
-- 节点参与与订阅 / Snell 共享的去重池、`filters.exclude` 过滤、区域组 regex 匹配
+- 同名节点保留独立 ID；参与 `filters.exclude` 过滤和区域组 regex 匹配
 - 可作为 `relay_through` 的链式上游
 - **失败可定位**：单行解析失败会报整源错误，消息附带脱敏后的来源 URL 和 1-based 物理行号；原始解析根因保留在错误链中
 

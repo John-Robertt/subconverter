@@ -8,8 +8,8 @@ import (
 // ForSurge projects a format-agnostic Pipeline into the subset supported by
 // Surge by removing VLESS and Clash-native subscription nodes together with
 // their cascading consequences.
-func ForSurge(p *model.Pipeline) (*model.Pipeline, error) {
-	return filterUnsupportedProxies(p, []string{"vless"}, cascadeOptions{
+func ForSurge(p *model.Pipeline) (*model.TargetPipeline, error) {
+	opts := cascadeOptions{
 		formatName:        "surge",
 		formatDisplayName: "Surge",
 		nativeFormat:      model.NativeProxyFormatSurge,
@@ -17,5 +17,10 @@ func ForSurge(p *model.Pipeline) (*model.Pipeline, error) {
 		emptyCode:         errtype.CodeTargetSurgeFallbackEmpty,
 		internalCode:      errtype.CodeTargetSurgeProjectionInvalid,
 		emptyReasonClause: "被 vless 过滤级联清空，或被 Clash YAML 专属节点级联清空",
-	})
+	}
+	filtered, err := filterUnsupportedProxies(p, []string{"vless"}, opts)
+	if err != nil {
+		return nil, err
+	}
+	return projectTargetNames(filtered, opts)
 }

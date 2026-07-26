@@ -1,12 +1,12 @@
-// Package model defines the format-agnostic intermediate representation
-// shared across all pipeline stages and renderers.
+// Package model defines the format-agnostic ID graph shared across pipeline
+// stages and the target-projected representation consumed by renderers.
 //
 // Core entities:
-//   - Proxy:      a single proxy node (subscription, Snell, VLESS, custom, or chained)
-//   - ProxyGroup: a named group of proxies (node-scope or route-scope)
-//   - Ruleset:    a set of remote rule URLs bound to a policy
-//   - Rule:       a single inline rule entry
-//   - Pipeline:   aggregation of all above for one generation pass
+//   - Proxy:          one identified proxy node
+//   - NodeGroup:      an ordered group of proxy identities
+//   - RouteGroup:     an ordered group of typed policy references
+//   - Pipeline:       the format-agnostic ID graph for one generation pass
+//   - TargetPipeline: renderer input with final target-local names
 //
 // Design reference: docs/design/domain-model.md
 package model

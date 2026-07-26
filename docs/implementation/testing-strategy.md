@@ -31,7 +31,7 @@
 - `@auto` 与 `@all` 在同一 entry 中互斥
 - `Route(cfg, nil)` 按空 `GroupResult` 处理，不发生 panic
 - `routing` 不允许显式引用原始代理名
-- 代理名、节点组名、服务组名共享命名空间无冲突
+- 代理 ID 非零且唯一；节点组名、服务组名与保留策略共享命名空间无冲突
 - 服务组引用校验
 - 循环引用校验
 - Snell 单行失败错误携带脱敏 URL 与 1-based 物理行号
@@ -48,7 +48,7 @@
 - 链式节点渲染字段
 - Clash 的 Snell 级联过滤与 fallback 清空路径
 - Clash YAML / Surge CONF 原生节点的跨格式过滤、链式依赖级联与 fallback 清空路径
-- 结构化原生声明保留未知/嵌套字段，跨源去重后覆盖原名称
+- 结构化原生声明保留未知/嵌套字段，Target 分配最终输出名后覆盖原名称
 - Clash 的 VLESS 节点渲染（含 encryption 透传、transport fallback、transport opts）
 - Surge 的 VLESS 级联过滤与 fallback 清空路径
 - 清空路径中的 `(snell)` / `(chained)` 标记，以及共享掉落子图不误报 `(cycle)`

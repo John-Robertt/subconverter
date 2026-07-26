@@ -19,18 +19,20 @@ func TestProxyKindValues(t *testing.T) {
 	}
 }
 
-// T-MDL-002: GroupScope constants have expected string values
-func TestGroupScopeValues(t *testing.T) {
+// T-MDL-002: PolicyRefKind constants have expected string values
+func TestPolicyRefKindValues(t *testing.T) {
 	tests := []struct {
-		scope GroupScope
-		want  string
+		kind PolicyRefKind
+		want string
 	}{
-		{ScopeNode, "node"},
-		{ScopeRoute, "route"},
+		{PolicyRefProxy, "proxy"},
+		{PolicyRefNodeGroup, "node_group"},
+		{PolicyRefRouteGroup, "route_group"},
+		{PolicyRefReserved, "reserved"},
 	}
 	for _, tt := range tests {
-		if string(tt.scope) != tt.want {
-			t.Errorf("GroupScope = %q, want %q", tt.scope, tt.want)
+		if string(tt.kind) != tt.want {
+			t.Errorf("PolicyRefKind = %q, want %q", tt.kind, tt.want)
 		}
 	}
 }
@@ -39,18 +41,21 @@ func TestGroupScopeValues(t *testing.T) {
 func TestPipelineConstruction(t *testing.T) {
 	p := Pipeline{
 		Proxies: []Proxy{
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Kind: KindSubscription},
+			{ID: 1, Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Kind: KindSubscription},
 		},
-		NodeGroups: []ProxyGroup{
-			{Name: "HK", Scope: ScopeNode, Strategy: "select", Members: []string{"HK-01"}},
+		NodeGroups: []NodeGroup{
+			{Name: "HK", Strategy: "select", Members: []ProxyID{1}},
 		},
-		RouteGroups: []ProxyGroup{
-			{Name: "Proxy", Scope: ScopeRoute, Strategy: "select", Members: []string{"HK", "DIRECT"}},
+		RouteGroups: []RouteGroup{
+			{Name: "Proxy", Strategy: "select", Members: []PolicyRef{
+				{Kind: PolicyRefNodeGroup, Name: "HK"},
+				{Kind: PolicyRefReserved, Name: "DIRECT"},
+			}},
 		},
 		Rulesets:   []Ruleset{{Policy: "Proxy", URLs: []string{"https://example.com/rules.list"}}},
 		Rules:      []Rule{{Raw: "GEOIP,CN,DIRECT", Policy: "DIRECT"}},
 		Fallback:   "Proxy",
-		AllProxies: []string{"HK-01"},
+		AllProxies: []ProxyID{1},
 	}
 
 	if len(p.Proxies) != 1 || p.Proxies[0].Name != "HK-01" {

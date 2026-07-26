@@ -28,9 +28,9 @@ func mustParseClashProviderDoc(t *testing.T, data []byte) clashProviderDoc {
 	return doc
 }
 
-func goldenPipeline() *model.Pipeline {
-	return &model.Pipeline{
-		Proxies: []model.Proxy{
+func goldenPipeline() *model.TargetPipeline {
+	return &model.TargetPipeline{
+		Proxies: []model.TargetProxy{
 			{
 				Name:   "HK-01",
 				Type:   "ss",
@@ -65,13 +65,13 @@ func goldenPipeline() *model.Pipeline {
 				Dialer: "HK-01",
 			},
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "🇭🇰 HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01"}},
-			{Name: "🔗 MY-PROXY", Scope: model.ScopeNode, Strategy: "url-test", Members: []string{"HK-01→MY-PROXY"}},
+		NodeGroups: []model.TargetGroup{
+			{Name: "🇭🇰 HK", Strategy: "select", Members: []string{"HK-01"}},
+			{Name: "🔗 MY-PROXY", Strategy: "url-test", Members: []string{"HK-01→MY-PROXY"}},
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "Quick", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"🇭🇰 HK", "🔗 MY-PROXY", "DIRECT"}},
-			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"Quick", "DIRECT"}},
+		RouteGroups: []model.TargetGroup{
+			{Name: "Quick", Strategy: "select", Members: []string{"🇭🇰 HK", "🔗 MY-PROXY", "DIRECT"}},
+			{Name: "Final", Strategy: "select", Members: []string{"Quick", "DIRECT"}},
 		},
 		Rulesets: []model.Ruleset{
 			{Policy: "Quick", URLs: []string{
@@ -82,8 +82,7 @@ func goldenPipeline() *model.Pipeline {
 		Rules: []model.Rule{
 			{Raw: "GEOIP,CN,Final", Policy: "Final"},
 		},
-		Fallback:   "Final",
-		AllProxies: []string{"HK-01", "SG-01", "MY-PROXY"},
+		Fallback: "Final",
 	}
 }
 
@@ -129,8 +128,8 @@ func TestClash_ChainedProxyHasDialerProxy(t *testing.T) {
 }
 
 func TestClash_SSProxyWithSimpleObfsPlugin(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-OBFS",
 			Type:   "ss",
 			Server: "hk.example.com",
@@ -169,8 +168,8 @@ func TestClash_SSProxyWithSimpleObfsPlugin(t *testing.T) {
 }
 
 func TestClash_SSProxyWithGenericPluginOptions(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-V2RAY",
 			Type:   "ss",
 			Server: "hk.example.com",
@@ -197,8 +196,8 @@ func TestClash_SSProxyWithGenericPluginOptions(t *testing.T) {
 }
 
 func TestClash_SSProxyUDPAndTFO(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-SS",
 			Type:   "ss",
 			Server: "hk.example.com",
@@ -229,8 +228,8 @@ func TestClash_SSProxyUDPAndTFO(t *testing.T) {
 }
 
 func TestClash_AnyTLSProxy(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-AnyTLS",
 			Type:   "anytls",
 			Server: "demo.com",
@@ -423,12 +422,12 @@ func TestClash_NullYAMLBaseTemplate(t *testing.T) {
 func TestClash_ProviderNameCollisionWithNatural(t *testing.T) {
 	// URL A and B both extract to "Ad", generating "Ad" and "Ad-2".
 	// URL C's natural name is "Ad-2", which would collide.
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{
 			{Name: "N1", Type: "ss", Server: "s", Port: 1, Params: map[string]string{"cipher": "aes-256-gcm", "password": "p"}, Kind: model.KindSubscription},
 		},
-		NodeGroups:  []model.ProxyGroup{{Name: "G", Scope: model.ScopeNode, Strategy: "select", Members: []string{"N1"}}},
-		RouteGroups: []model.ProxyGroup{{Name: "R", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"G"}}},
+		NodeGroups:  []model.TargetGroup{{Name: "G", Strategy: "select", Members: []string{"N1"}}},
+		RouteGroups: []model.TargetGroup{{Name: "R", Strategy: "select", Members: []string{"G"}}},
 		Rulesets: []model.Ruleset{
 			{Policy: "R", URLs: []string{
 				"https://example.com/rules/Ad.list",   // "Ad"
@@ -436,8 +435,7 @@ func TestClash_ProviderNameCollisionWithNatural(t *testing.T) {
 				"https://example.com/rules/Ad-2.list", // natural "Ad-2" → must not collide
 			}},
 		},
-		Fallback:   "R",
-		AllProxies: []string{"N1"},
+		Fallback: "R",
 	}
 
 	got, err := Clash(p, nil)
@@ -457,7 +455,7 @@ func TestClash_ProviderNameCollisionWithNatural(t *testing.T) {
 
 // vlessPipeline builds a minimal Pipeline with one VLESS proxy matching the
 // given overrides. Unset fields in overrides default to the Reality sample.
-func vlessPipeline(name string, params map[string]string) *model.Pipeline {
+func vlessPipeline(name string, params map[string]string) *model.TargetPipeline {
 	// baseline reality params
 	base := map[string]string{
 		"uuid":     "b33a72bf-75ab-4be2-b182-223a727b37a5",
@@ -471,8 +469,8 @@ func vlessPipeline(name string, params map[string]string) *model.Pipeline {
 			base[k] = v
 		}
 	}
-	return &model.Pipeline{
-		Proxies: []model.Proxy{{
+	return &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   name,
 			Type:   "vless",
 			Server: "11.11.11.11",
@@ -636,7 +634,7 @@ func TestClash_VlessAlpnListEmission(t *testing.T) {
 
 // T-CLASH-VLESS-006: Unknown URI type is normalized to tcp before render.
 func TestClash_VlessUnknownTypeFallbackRendersAsTCP(t *testing.T) {
-	px := model.Proxy{
+	px := model.TargetProxy{
 		Name:   "VL-TCP-FALLBACK",
 		Type:   "vless",
 		Server: "hk.example.com",
@@ -651,8 +649,8 @@ func TestClash_VlessUnknownTypeFallbackRendersAsTCP(t *testing.T) {
 		Kind: model.KindVLess,
 	}
 
-	got, err := Clash(&model.Pipeline{
-		Proxies:  []model.Proxy{px},
+	got, err := Clash(&model.TargetPipeline{
+		Proxies:  []model.TargetProxy{px},
 		Fallback: "DIRECT",
 	}, nil)
 	if err != nil {
@@ -695,8 +693,8 @@ func TestClash_VlessUDPDefaultTrue(t *testing.T) {
 
 // T-CLASH-VLESS-008: Chained proxy with VLESS upstream emits dialer-proxy.
 func TestClash_VlessChainAsDialerProxy(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{
 			{
 				Name:   "VL-HK",
 				Type:   "vless",
@@ -989,8 +987,8 @@ func TestClash_VlessNetworkWithNoSubfieldsOmitsOptsBlock(t *testing.T) {
 // T-RND-CLASH-NATIVE-001: copied Clash declarations preserve arbitrary fields
 // while the IR name remains authoritative after cross-source deduplication.
 func TestClash_NativeProxyPreservesFieldsAndUsesCurrentName(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name: "HK-YAML②",
 			Type: "trojan",
 			Kind: model.KindSubscription,
@@ -1029,8 +1027,8 @@ ws-opts:
 // T-RND-CLASH-NATIVE-002: a Surge-native declaration reaching Clash is a
 // projection-contract violation, not a lossy generic render.
 func TestClash_RejectsSurgeNativeProxy(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name: "HK-CONF",
 			Type: "trojan",
 			Kind: model.KindSubscription,

@@ -10,11 +10,11 @@ import (
 
 // GroupResult holds the output of the Group stage (pipeline stage 5).
 type GroupResult struct {
-	Proxies       []model.Proxy      // all proxies: original + chained
-	RegionGroups  []model.ProxyGroup // region groups, declaration order
-	ChainedGroups []model.ProxyGroup // chain groups, declaration order
-	NodeGroups    []model.ProxyGroup // region groups + chain groups, declaration order
-	AllProxies    []string           // @all expansion: original proxy names only
+	Proxies       []model.Proxy     // all proxies: original + chained
+	RegionGroups  []model.NodeGroup // region groups, declaration order
+	ChainedGroups []model.NodeGroup // chain groups, declaration order
+	NodeGroups    []model.NodeGroup // region groups + chain groups, declaration order
+	AllProxies    []model.ProxyID   // @all expansion: original proxy identities only
 }
 
 // Group executes pipeline stage 5: build region node groups, chained
@@ -23,7 +23,7 @@ type GroupResult struct {
 // Three sub-steps in order:
 //  1. Build region node groups from groups config
 //  2. Build chained nodes and groups from relay_through definitions
-//  3. Compute @all (original proxy names, excluding chained)
+//  3. Compute @all (original proxy identities, excluding chained)
 func Group(source *SourceResult, groups []config.PreparedGroup) (*GroupResult, error) {
 	if source == nil {
 		source = &SourceResult{}
@@ -43,7 +43,7 @@ func Group(source *SourceResult, groups []config.PreparedGroup) (*GroupResult, e
 
 	allProxies := computeAllProxies(source.Proxies)
 
-	nodeGroups := make([]model.ProxyGroup, 0, len(regionGroups)+len(chainGroups))
+	nodeGroups := make([]model.NodeGroup, 0, len(regionGroups)+len(chainGroups))
 	nodeGroups = append(nodeGroups, regionGroups...)
 	nodeGroups = append(nodeGroups, chainGroups...)
 
@@ -68,9 +68,9 @@ func Group(source *SourceResult, groups []config.PreparedGroup) (*GroupResult, e
 // each group's regex pattern, in groups declaration order. KindCustom and
 // KindChained are excluded from matching: custom proxies are already named
 // exactly by the user, and chained proxies are derived from upstreams.
-func buildRegionGroups(proxies []model.Proxy, groups []config.PreparedGroup) ([]model.ProxyGroup, error) {
+func buildRegionGroups(proxies []model.Proxy, groups []config.PreparedGroup) ([]model.NodeGroup, error) {
 	fetched := fetchedProxies(proxies)
-	result := make([]model.ProxyGroup, 0, len(groups))
+	result := make([]model.NodeGroup, 0, len(groups))
 
 	for _, g := range groups {
 		if g.Match == nil {
@@ -81,16 +81,15 @@ func buildRegionGroups(proxies []model.Proxy, groups []config.PreparedGroup) ([]
 			}
 		}
 
-		var members []string
+		var members []model.ProxyID
 		for _, p := range fetched {
 			if g.Match.MatchString(p.Name) {
-				members = append(members, p.Name)
+				members = append(members, p.ID)
 			}
 		}
 
-		result = append(result, model.ProxyGroup{
+		result = append(result, model.NodeGroup{
 			Name:     g.Name,
-			Scope:    model.ScopeNode,
 			Strategy: g.Strategy,
 			Members:  members,
 		})
@@ -105,12 +104,13 @@ func buildRegionGroups(proxies []model.Proxy, groups []config.PreparedGroup) ([]
 func buildChainedNodesAndGroups(
 	proxies []model.Proxy,
 	chainTemplates []ChainTemplate,
-	regionGroups []model.ProxyGroup,
-) ([]model.Proxy, []model.ProxyGroup, error) {
+	regionGroups []model.NodeGroup,
+) ([]model.Proxy, []model.NodeGroup, error) {
 	fetched := fetchedProxies(proxies)
+	nextID := nextProxyID(proxies)
 
 	var chainedProxies []model.Proxy
-	var chainGroups []model.ProxyGroup
+	var chainGroups []model.NodeGroup
 
 	for _, template := range chainTemplates {
 		rt := template.RelayThrough
@@ -120,25 +120,27 @@ func buildChainedNodesAndGroups(
 			return nil, nil, err
 		}
 
-		var members []string
+		var members []model.ProxyID
 		for _, upstream := range upstreams {
 			chained := model.Proxy{
-				Name:   upstream.Name + "→" + template.Name,
-				Type:   template.Type,
-				Server: template.Server,
-				Port:   template.Port,
-				Params: copyParams(template.Params),
-				Plugin: copyPlugin(template.Plugin),
-				Kind:   model.KindChained,
-				Dialer: upstream.Name,
+				ID:              nextID,
+				Name:            upstream.Name + "→" + template.Name,
+				Type:            template.Type,
+				Server:          template.Server,
+				Port:            template.Port,
+				Params:          copyParams(template.Params),
+				Plugin:          copyPlugin(template.Plugin),
+				Kind:            model.KindChained,
+				DialerID:        upstream.ID,
+				ChainNameSuffix: template.Name,
 			}
+			nextID++
 			chainedProxies = append(chainedProxies, chained)
-			members = append(members, chained.Name)
+			members = append(members, chained.ID)
 		}
 
-		chainGroups = append(chainGroups, model.ProxyGroup{
+		chainGroups = append(chainGroups, model.NodeGroup{
 			Name:     template.Name,
-			Scope:    model.ScopeNode,
 			Strategy: rt.Strategy,
 			Members:  members,
 		})
@@ -153,7 +155,7 @@ func buildChainedNodesAndGroups(
 // are never valid upstreams.
 func resolveUpstreams(
 	fetched []model.Proxy,
-	regionGroups []model.ProxyGroup,
+	regionGroups []model.NodeGroup,
 	rt *config.PreparedRelayThrough,
 ) ([]model.Proxy, error) {
 	switch rt.Type {
@@ -198,31 +200,31 @@ func resolveUpstreams(
 	}
 }
 
-// resolveMembers looks up proxy objects by name from a proxy pool.
-func resolveMembers(pool []model.Proxy, names []string) []model.Proxy {
-	index := make(map[string]model.Proxy, len(pool))
+// resolveMembers looks up proxy objects by identity from a proxy pool.
+func resolveMembers(pool []model.Proxy, ids []model.ProxyID) []model.Proxy {
+	index := make(map[model.ProxyID]model.Proxy, len(pool))
 	for _, p := range pool {
-		index[p.Name] = p
+		index[p.ID] = p
 	}
 
-	result := make([]model.Proxy, 0, len(names))
-	for _, name := range names {
-		if p, ok := index[name]; ok {
+	result := make([]model.Proxy, 0, len(ids))
+	for _, id := range ids {
+		if p, ok := index[id]; ok {
 			result = append(result, p)
 		}
 	}
 	return result
 }
 
-// computeAllProxies collects names of original proxies (KindSubscription +
+// computeAllProxies collects identities of original proxies (KindSubscription +
 // KindSnell + KindVLess + KindCustom), excluding chained proxies. Called
 // before chained nodes are generated so `@all` never includes chained
 // derivatives.
-func computeAllProxies(proxies []model.Proxy) []string {
-	result := make([]string, 0, len(proxies))
+func computeAllProxies(proxies []model.Proxy) []model.ProxyID {
+	result := make([]model.ProxyID, 0, len(proxies))
 	for _, p := range proxies {
 		if p.Kind != model.KindChained {
-			result = append(result, p.Name)
+			result = append(result, p.ID)
 		}
 	}
 	return result
@@ -247,12 +249,22 @@ func fetchedProxies(proxies []model.Proxy) []model.Proxy {
 	return result
 }
 
-// findGroupByName looks up a proxy group by name.
-func findGroupByName(groups []model.ProxyGroup, name string) (model.ProxyGroup, bool) {
+func nextProxyID(proxies []model.Proxy) model.ProxyID {
+	var maxID model.ProxyID
+	for _, proxy := range proxies {
+		if proxy.ID > maxID {
+			maxID = proxy.ID
+		}
+	}
+	return maxID + 1
+}
+
+// findGroupByName looks up a node group by name.
+func findGroupByName(groups []model.NodeGroup, name string) (model.NodeGroup, bool) {
 	for _, g := range groups {
 		if g.Name == name {
 			return g, true
 		}
 	}
-	return model.ProxyGroup{}, false
+	return model.NodeGroup{}, false
 }

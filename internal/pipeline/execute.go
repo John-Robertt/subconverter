@@ -12,7 +12,7 @@ import (
 // Source → Filter → Group → Route → ValidateGraph.
 // It returns the assembled Pipeline ready for target projection or rendering.
 func Build(ctx context.Context, cfg *config.RuntimeConfig, fetcher fetch.Fetcher) (*model.Pipeline, error) {
-	source, err := sourcePrepared(ctx, cfg.SourceInput(), cfg.StaticNamespace(), fetcher)
+	source, err := sourcePrepared(ctx, cfg.SourceInput(), fetcher)
 	if err != nil {
 		return nil, err
 	}

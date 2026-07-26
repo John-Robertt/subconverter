@@ -68,13 +68,14 @@ func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 		{
 			name: "chained ss",
 			proxy: Proxy{
-				Name:   "HK-01→CHAIN",
-				Type:   "ss",
-				Server: "1.2.3.4",
-				Port:   8388,
-				Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"},
-				Kind:   KindChained,
-				Dialer: "HK-01",
+				Name:            "HK-01→CHAIN",
+				Type:            "ss",
+				Server:          "1.2.3.4",
+				Port:            8388,
+				Params:          map[string]string{"cipher": "aes-256-gcm", "password": "pw"},
+				Kind:            KindChained,
+				DialerID:        2,
+				ChainNameSuffix: "CHAIN",
 			},
 		},
 		{
@@ -105,7 +106,11 @@ func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateProxyInvariant(tt.proxy); err != nil {
+			proxy := tt.proxy
+			if proxy.ID == 0 {
+				proxy.ID = 1
+			}
+			if err := ValidateProxyInvariant(proxy); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
@@ -133,14 +138,14 @@ func TestValidateProxyInvariant_InvalidCases(t *testing.T) {
 		{
 			name: "non chained has dialer",
 			proxy: Proxy{
-				Name:   "MY-PROXY",
-				Type:   "socks5",
-				Server: "1.2.3.4",
-				Port:   1080,
-				Kind:   KindCustom,
-				Dialer: "HK-01",
+				Name:     "MY-PROXY",
+				Type:     "socks5",
+				Server:   "1.2.3.4",
+				Port:     1080,
+				Kind:     KindCustom,
+				DialerID: 2,
 			},
-			wantSubstr: "仅 kind=chained 允许设置 dialer",
+			wantSubstr: "仅 kind=chained 允许设置 dialer_id",
 		},
 		{
 			name: "chained missing dialer",
@@ -151,7 +156,7 @@ func TestValidateProxyInvariant_InvalidCases(t *testing.T) {
 				Port:   1080,
 				Kind:   KindChained,
 			},
-			wantSubstr: "kind=chained 时 dialer 必填",
+			wantSubstr: "kind=chained 时 dialer_id 必填",
 		},
 		{
 			name: "ss missing password",
@@ -230,7 +235,11 @@ func TestValidateProxyInvariant_InvalidCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateProxyInvariant(tt.proxy)
+			proxy := tt.proxy
+			if proxy.ID == 0 {
+				proxy.ID = 1
+			}
+			err := ValidateProxyInvariant(proxy)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}

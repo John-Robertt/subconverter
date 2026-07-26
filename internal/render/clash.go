@@ -31,10 +31,10 @@ type providerEntry struct {
 	url    string
 }
 
-// Clash renders a Pipeline into Clash Meta YAML.
+// Clash renders a target-projected pipeline into Clash Meta YAML.
 // If baseTemplate is non-nil, generated sections are injected into the template;
 // otherwise only generated sections are output.
-func Clash(p *model.Pipeline, baseTemplate []byte) ([]byte, error) {
+func Clash(p *model.TargetPipeline, baseTemplate []byte) ([]byte, error) {
 	generated, providers, err := buildClashSections(p)
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ type clashSections struct {
 	proxyGroups *yaml.Node
 }
 
-func buildClashSections(p *model.Pipeline) (*clashSections, []providerEntry, error) {
+func buildClashSections(p *model.TargetPipeline) (*clashSections, []providerEntry, error) {
 	proxies := &yaml.Node{Kind: yaml.SequenceNode}
 	for _, px := range p.Proxies {
 		node, err := buildClashProxy(px)
@@ -131,7 +131,7 @@ func buildClashSections(p *model.Pipeline) (*clashSections, []providerEntry, err
 	}, providers, nil
 }
 
-func buildClashProxy(px model.Proxy) (*yaml.Node, error) {
+func buildClashProxy(px model.TargetProxy) (*yaml.Node, error) {
 	if px.Native != nil {
 		return buildNativeClashProxy(px)
 	}
@@ -182,7 +182,7 @@ func buildClashProxy(px model.Proxy) (*yaml.Node, error) {
 	return m, nil
 }
 
-func buildNativeClashProxy(px model.Proxy) (*yaml.Node, error) {
+func buildNativeClashProxy(px model.TargetProxy) (*yaml.Node, error) {
 	if px.Native.Format != model.NativeProxyFormatClash {
 		return nil, fmt.Errorf("原生声明格式为 %q，不能写入 Clash", px.Native.Format)
 	}
@@ -210,7 +210,7 @@ func paramBoolTrue(v string) bool {
 }
 
 // emitClashAnyTLSFields writes AnyTLS-specific fields in a fixed order.
-func emitClashAnyTLSFields(m *yaml.Node, px model.Proxy) {
+func emitClashAnyTLSFields(m *yaml.Node, px model.TargetProxy) {
 	if v := px.Params["password"]; v != "" {
 		addPair(m, "password", scalarNode(v))
 	}
@@ -256,7 +256,7 @@ func emitClashAnyTLSFields(m *yaml.Node, px model.Proxy) {
 // Network branches emit the matching transport opts block (ws-opts /
 // http-opts / h2-opts / grpc-opts / xhttp-opts). Missing or unknown URI
 // `type` values are normalized to tcp by the parser before render.
-func emitClashVLessFields(m *yaml.Node, px model.Proxy) {
+func emitClashVLessFields(m *yaml.Node, px model.TargetProxy) {
 	if v := px.Params["uuid"]; v != "" {
 		addPair(m, "uuid", scalarNode(v))
 	}
@@ -312,7 +312,7 @@ func emitClashVLessFields(m *yaml.Node, px model.Proxy) {
 // An opts block with zero populated sub-fields is omitted entirely — Clash
 // treats "network: ws" without `ws-opts` as default-empty ws-opts, which is
 // the same outcome.
-func emitClashVLessTransportOpts(m *yaml.Node, px model.Proxy) {
+func emitClashVLessTransportOpts(m *yaml.Node, px model.TargetProxy) {
 	switch px.Params["network"] {
 	case "ws":
 		if opts := buildClashVLessWsOpts(px); len(opts.Content) > 0 {
@@ -338,7 +338,7 @@ func emitClashVLessTransportOpts(m *yaml.Node, px model.Proxy) {
 }
 
 // buildClashVLessWsOpts → ws-opts: { path, headers: { Host } }.
-func buildClashVLessWsOpts(px model.Proxy) *yaml.Node {
+func buildClashVLessWsOpts(px model.TargetProxy) *yaml.Node {
 	opts := &yaml.Node{Kind: yaml.MappingNode}
 	if v := px.Params["ws-path"]; v != "" {
 		addPair(opts, "path", scalarNode(v))
@@ -353,7 +353,7 @@ func buildClashVLessWsOpts(px model.Proxy) *yaml.Node {
 
 // buildClashVLessHttpOpts → http-opts: { path:[...], headers:{Host:[...]} }.
 // URI can only carry one path / one host; Clash requires list values.
-func buildClashVLessHttpOpts(px model.Proxy) *yaml.Node {
+func buildClashVLessHttpOpts(px model.TargetProxy) *yaml.Node {
 	opts := &yaml.Node{Kind: yaml.MappingNode}
 	if v := px.Params["http-path"]; v != "" {
 		addPair(opts, "path", sequenceOfStrings([]string{v}))
@@ -367,7 +367,7 @@ func buildClashVLessHttpOpts(px model.Proxy) *yaml.Node {
 }
 
 // buildClashVLessH2Opts → h2-opts: { host:[...], path }. host is a list.
-func buildClashVLessH2Opts(px model.Proxy) *yaml.Node {
+func buildClashVLessH2Opts(px model.TargetProxy) *yaml.Node {
 	opts := &yaml.Node{Kind: yaml.MappingNode}
 	if v := px.Params["h2-host"]; v != "" {
 		addPair(opts, "host", sequenceOfStrings([]string{v}))
@@ -379,7 +379,7 @@ func buildClashVLessH2Opts(px model.Proxy) *yaml.Node {
 }
 
 // buildClashVLessGrpcOpts → grpc-opts: { grpc-service-name }.
-func buildClashVLessGrpcOpts(px model.Proxy) *yaml.Node {
+func buildClashVLessGrpcOpts(px model.TargetProxy) *yaml.Node {
 	opts := &yaml.Node{Kind: yaml.MappingNode}
 	if v := px.Params["grpc-service-name"]; v != "" {
 		addPair(opts, "grpc-service-name", scalarNode(v))
@@ -388,7 +388,7 @@ func buildClashVLessGrpcOpts(px model.Proxy) *yaml.Node {
 }
 
 // buildClashVLessXhttpOpts → xhttp-opts: { mode, path, host }.
-func buildClashVLessXhttpOpts(px model.Proxy) *yaml.Node {
+func buildClashVLessXhttpOpts(px model.TargetProxy) *yaml.Node {
 	opts := &yaml.Node{Kind: yaml.MappingNode}
 	if v := px.Params["xhttp-mode"]; v != "" {
 		addPair(opts, "mode", scalarNode(v))
@@ -467,7 +467,7 @@ func mapClashPluginOpt(pluginName, key string) string {
 	return key
 }
 
-func buildClashGroup(g model.ProxyGroup) *yaml.Node {
+func buildClashGroup(g model.TargetGroup) *yaml.Node {
 	m := &yaml.Node{Kind: yaml.MappingNode}
 	addPair(m, "name", scalarNode(g.Name))
 	addPair(m, "type", scalarNode(g.Strategy))

@@ -39,7 +39,7 @@ type SourceResult struct {
 }
 
 // sourcePrepared executes the request-time Source stage against startup-
-// prepared source declarations and static namespace information.
+// prepared source declarations.
 //
 // Traversal order within the three fetch-kinds follows sources.FetchOrder,
 // which reflects the YAML declaration order (e.g. `snell:` then `vless:`
@@ -47,12 +47,12 @@ type SourceResult struct {
 // FetchOrder is empty (unit-test Configs built in memory), a deterministic
 // default is used.
 //
-// Sources are processed sequentially to guarantee deterministic dedup
-// suffixes. Fetch errors are fail-fast; individual malformed SS/AnyTLS lines
+// Sources are processed sequentially to guarantee deterministic ProxyID
+// assignment. Fetch errors are fail-fast; individual malformed SS/AnyTLS lines
 // within a subscription are skipped, but a subscription yielding zero valid nodes
 // is an error. VLESS and Snell sources abort on any single-line parse
 // failure (small hand-curated lists — strict failure surfaces typos early).
-func sourcePrepared(ctx context.Context, sources config.PreparedSources, staticNamespace config.StaticNamespace, fetcher fetch.Fetcher) (*SourceResult, error) {
+func sourcePrepared(ctx context.Context, sources config.PreparedSources, fetcher fetch.Fetcher) (*SourceResult, error) {
 	var fetchedProxies []model.Proxy
 
 	order := sources.FetchOrder
@@ -100,23 +100,25 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, staticN
 		}
 	}
 
-	fetchedProxies = deduplicateNames(fetchedProxies)
-
-	// Reject remote names that collide with startup-known local static names
-	// or reserved policies.
-	if err := checkFetchedNameConflicts(fetchedProxies, staticNamespace); err != nil {
-		return nil, err
-	}
-
 	customProxies, chainTemplates := convertCustomProxies(sources.CustomProxies)
 
 	proxies := make([]model.Proxy, 0, len(fetchedProxies)+len(customProxies))
 	proxies = append(proxies, fetchedProxies...)
 	proxies = append(proxies, customProxies...)
+	proxies = assignProxyIDs(proxies)
 	if err := validateGeneratedProxies("source", proxies); err != nil {
 		return nil, err
 	}
 	return &SourceResult{Proxies: proxies, ChainTemplates: chainTemplates}, nil
+}
+
+func assignProxyIDs(proxies []model.Proxy) []model.Proxy {
+	result := make([]model.Proxy, len(proxies))
+	for index, proxy := range proxies {
+		proxy.ID = model.ProxyID(index + 1)
+		result[index] = proxy
+	}
+	return result
 }
 
 // fetchSubscription fetches one subscription URL. Structured Clash YAML and
@@ -349,51 +351,6 @@ func splitSubscriptionLines(text string) []string {
 	return lines
 }
 
-// deduplicateNames renames duplicate proxy names by appending circled number
-// suffixes (②, ③, ...) for the 2nd through 10th occurrence, then (N) beyond.
-// Candidate names are always derived from the original base name so collisions
-// with natural names still advance to the next logical suffix (e.g. "HK-01",
-// "HK-01②", "HK-01③").
-func deduplicateNames(proxies []model.Proxy) []model.Proxy {
-	nextSeq := make(map[string]int, len(proxies))
-	used := make(map[string]struct{}, len(proxies))
-	result := make([]model.Proxy, 0, len(proxies))
-
-	for _, p := range proxies {
-		seq := nextSeq[p.Name] + 1
-		candidate := deduplicatedName(p.Name, seq)
-		for {
-			if _, exists := used[candidate]; !exists {
-				break
-			}
-			seq++
-			candidate = deduplicatedName(p.Name, seq)
-		}
-
-		deduped := p
-		deduped.Name = candidate
-		result = append(result, deduped)
-
-		nextSeq[p.Name] = seq
-		used[candidate] = struct{}{}
-	}
-
-	return result
-}
-
-func deduplicatedName(base string, seq int) string {
-	if seq <= 1 {
-		return base
-	}
-
-	circled := []string{"②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"}
-	if seq-2 < len(circled) {
-		return base + circled[seq-2]
-	}
-
-	return fmt.Sprintf("%s(%d)", base, seq)
-}
-
 // convertCustomProxies converts startup-prepared custom proxies into either
 // standalone custom proxies or chain templates for later expansion in Group.
 func convertCustomProxies(cps []config.PreparedCustomProxy) ([]model.Proxy, []ChainTemplate) {
@@ -464,45 +421,4 @@ func convertPluginSpec(src *proxyparse.PluginSpec) *model.Plugin {
 		}
 	}
 	return dst
-}
-
-func checkFetchedNameConflicts(fetched []model.Proxy, staticNamespace config.StaticNamespace) error {
-	for _, p := range fetched {
-		label, exists := staticNamespace.Kind(p.Name)
-		if !exists {
-			continue
-		}
-		code := errtype.CodeBuildValidationFailed
-		if label == "自定义代理" || label == "链式组" {
-			code = errtype.CodeBuildCustomNameConflict
-		}
-		displayLabel := label
-		switch label {
-		case "自定义代理":
-			displayLabel = "自定义代理名"
-		case "链式组":
-			displayLabel = "链式组名"
-		}
-		return &errtype.BuildError{
-			Code:    code,
-			Phase:   "source",
-			Message: fmt.Sprintf("%s %q 与%s节点重名", displayLabel, p.Name, describeFetchedKind(p.Kind)),
-		}
-	}
-	return nil
-}
-
-// describeFetchedKind returns a Chinese label for a fetched-kind proxy used
-// in user-facing error messages.
-func describeFetchedKind(k model.ProxyKind) string {
-	switch k {
-	case model.KindSubscription:
-		return "订阅"
-	case model.KindSnell:
-		return "Snell 来源"
-	case model.KindVLess:
-		return "VLESS 来源"
-	default:
-		return "远程拉取"
-	}
 }

@@ -101,7 +101,7 @@ export function NodesPage() {
               </thead>
               <tbody>
                 {filteredNodes.map((node) => (
-                  <tr key={`${node.kind}-${node.type}-${node.name}`}>
+                  <tr key={node.id}>
                     <td><span className={node.filtered ? "node-dot filtered" : "node-dot"} aria-hidden="true" /></td>
                     <td>{node.name}</td>
                     <td><code>{node.type}</code></td>

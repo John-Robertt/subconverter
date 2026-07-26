@@ -19,7 +19,7 @@ var reservedPolicies = map[string]bool{
 // Group and Route stages, then assembles a Pipeline.
 //
 // Checks (in order):
-//  1. Shared namespace collisions and duplicate declarations
+//  1. Proxy identity integrity and shared group/output namespace collisions
 //  2. @all expansion excludes chained proxies
 //  3. Empty node groups (region and chained)
 //  4. Declared route members only use allowed reference kinds
@@ -39,12 +39,15 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 	var c graphCollector
 
 	index := buildNamespaceIndex(&c, gr.Proxies, gr.NodeGroups, rr.RouteGroups)
+	validateProxyReferences(&c, gr.Proxies, gr.NodeGroups, index.proxyIDs)
 
 	// 2. @all must exclude chained proxies.
-	chainedProxyNames := buildChainedProxyNameSet(gr.Proxies)
-	for _, name := range gr.AllProxies {
-		if chainedProxyNames[name] {
-			c.add(fmt.Sprintf("@all 包含了链式节点 %q", name))
+	chainedProxyIDs := buildChainedProxyIDSet(gr.Proxies)
+	for _, id := range gr.AllProxies {
+		if !index.proxyIDs[id] {
+			c.add(fmt.Sprintf("@all 引用了不存在的代理 ID %d", id))
+		} else if chainedProxyIDs[id] {
+			c.add(fmt.Sprintf("@all 包含了链式节点 ID %d", id))
 		}
 	}
 
@@ -72,20 +75,7 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 	// 5. Resolved route member resolution with provenance.
 	for _, g := range resolvedRouteGroups(rr) {
 		for _, member := range g.Members {
-			if member.Origin == config.RouteMemberOriginLiteral {
-				continue
-			}
-			switch {
-			case reservedPolicies[member.Raw], index.nodeGroupNames[member.Raw], index.routeGroupNames[member.Raw]:
-				continue
-			case index.proxyNames[member.Raw]:
-				if allowsProxyReference(member.Origin) {
-					continue
-				}
-				c.add(fmt.Sprintf("服务组 %q 的成员 %q 必须引用节点组、服务组、DIRECT、REJECT、@all 或 @auto", g.Name, member.Raw))
-			default:
-				c.add(fmt.Sprintf("服务组 %q 的成员 %q 不存在", g.Name, member.Raw))
-			}
+			validateResolvedRouteMember(&c, g.Name, member, index)
 		}
 	}
 
@@ -113,27 +103,39 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 }
 
 type namespaceIndex struct {
+	proxyIDs        map[model.ProxyID]bool
 	proxyNames      map[string]bool
 	nodeGroupNames  map[string]bool
 	routeGroupNames map[string]bool
 }
 
-func buildNamespaceIndex(c *graphCollector, proxies []model.Proxy, nodeGroups, routeGroups []model.ProxyGroup) namespaceIndex {
+func buildNamespaceIndex(c *graphCollector, proxies []model.Proxy, nodeGroups []model.NodeGroup, routeGroups []model.RouteGroup) namespaceIndex {
 	idx := namespaceIndex{
+		proxyIDs:        make(map[model.ProxyID]bool, len(proxies)),
 		proxyNames:      make(map[string]bool, len(proxies)),
 		nodeGroupNames:  make(map[string]bool, len(nodeGroups)),
 		routeGroupNames: make(map[string]bool, len(routeGroups)),
 	}
-	registry := make(map[string]string, len(proxies)+len(nodeGroups)+len(routeGroups))
-
-	for _, p := range proxies {
-		registerName(c, idx.proxyNames, registry, p.Name, "代理")
+	registry := map[string]string{
+		"DIRECT": "保留策略",
+		"REJECT": "保留策略",
 	}
+
 	for _, g := range nodeGroups {
 		registerName(c, idx.nodeGroupNames, registry, g.Name, "节点组")
 	}
 	for _, g := range routeGroups {
 		registerName(c, idx.routeGroupNames, registry, g.Name, "服务组")
+	}
+	for _, p := range proxies {
+		if p.ID == 0 {
+			c.add(fmt.Sprintf("代理 %q 的 ID 不能为空", p.Name))
+		} else if idx.proxyIDs[p.ID] {
+			c.add(fmt.Sprintf("代理 ID %d 重复声明", p.ID))
+		} else {
+			idx.proxyIDs[p.ID] = true
+		}
+		idx.proxyNames[p.Name] = true
 	}
 
 	return idx
@@ -153,24 +155,64 @@ func registerName(c *graphCollector, names map[string]bool, registry map[string]
 	registry[name] = kind
 }
 
-func buildChainedProxyNameSet(proxies []model.Proxy) map[string]bool {
-	s := make(map[string]bool)
+func validateProxyReferences(c *graphCollector, proxies []model.Proxy, nodeGroups []model.NodeGroup, proxyIDs map[model.ProxyID]bool) {
+	for _, proxy := range proxies {
+		if proxy.DialerID != 0 && !proxyIDs[proxy.DialerID] {
+			c.add(fmt.Sprintf("链式代理 %q 引用了不存在的上游 ID %d", proxy.Name, proxy.DialerID))
+		}
+	}
+	for _, group := range nodeGroups {
+		for _, id := range group.Members {
+			if !proxyIDs[id] {
+				c.add(fmt.Sprintf("节点组 %q 引用了不存在的代理 ID %d", group.Name, id))
+			}
+		}
+	}
+}
+
+func validateResolvedRouteMember(c *graphCollector, groupName string, member ResolvedRouteMember, index namespaceIndex) {
+	switch member.Ref.Kind {
+	case model.PolicyRefProxy:
+		if !index.proxyIDs[member.Ref.ProxyID] {
+			c.add(fmt.Sprintf("服务组 %q 引用了不存在的代理 ID %d", groupName, member.Ref.ProxyID))
+		} else if !allowsProxyReference(member.Origin) {
+			c.add(fmt.Sprintf("服务组 %q 的成员 %q 不能直接引用代理", groupName, member.Raw))
+		}
+	case model.PolicyRefNodeGroup:
+		if !index.nodeGroupNames[member.Ref.Name] {
+			c.add(fmt.Sprintf("服务组 %q 引用了不存在的节点组 %q", groupName, member.Ref.Name))
+		}
+	case model.PolicyRefRouteGroup:
+		if !index.routeGroupNames[member.Ref.Name] {
+			c.add(fmt.Sprintf("服务组 %q 引用了不存在的服务组 %q", groupName, member.Ref.Name))
+		}
+	case model.PolicyRefReserved:
+		if !reservedPolicies[member.Ref.Name] {
+			c.add(fmt.Sprintf("服务组 %q 引用了不存在的保留策略 %q", groupName, member.Ref.Name))
+		}
+	default:
+		c.add(fmt.Sprintf("服务组 %q 的成员 %q 不存在", groupName, member.Raw))
+	}
+}
+
+func buildChainedProxyIDSet(proxies []model.Proxy) map[model.ProxyID]bool {
+	s := make(map[model.ProxyID]bool)
 	for _, p := range proxies {
 		if p.Kind == model.KindChained {
-			s[p.Name] = true
+			s[p.ID] = true
 		}
 	}
 	return s
 }
 
-func detectCycle(groups []model.ProxyGroup, routeGroupNames map[string]bool) string {
+func detectCycle(groups []model.RouteGroup, routeGroupNames map[string]bool) string {
 	adj := make(map[string][]string)
 	order := make([]string, 0, len(groups))
 	for _, g := range groups {
 		order = append(order, g.Name)
-		for _, m := range g.Members {
-			if routeGroupNames[m] {
-				adj[g.Name] = append(adj[g.Name], m)
+		for _, member := range g.Members {
+			if member.Kind == model.PolicyRefRouteGroup && routeGroupNames[member.Name] {
+				adj[g.Name] = append(adj[g.Name], member.Name)
 			}
 		}
 	}
@@ -186,7 +228,7 @@ func preparedRouteGroups(rr *RouteResult) []config.PreparedRouteGroup {
 		members := make([]config.PreparedRouteMember, 0, len(group.Members))
 		for _, member := range group.Members {
 			members = append(members, config.PreparedRouteMember{
-				Raw:    member,
+				Raw:    policyRefRaw(member),
 				Origin: config.RouteMemberOriginLiteral,
 			})
 		}
@@ -205,16 +247,24 @@ func resolvedRouteGroups(rr *RouteResult) []ResolvedRouteGroup {
 	}
 	result := make([]ResolvedRouteGroup, 0, len(rr.RouteGroups))
 	for _, group := range rr.RouteGroups {
-		members := make([]config.PreparedRouteMember, 0, len(group.Members))
+		members := make([]ResolvedRouteMember, 0, len(group.Members))
 		for _, member := range group.Members {
-			members = append(members, config.PreparedRouteMember{
-				Raw:    member,
+			members = append(members, ResolvedRouteMember{
+				Ref:    member,
+				Raw:    policyRefRaw(member),
 				Origin: config.RouteMemberOriginLiteral,
 			})
 		}
 		result = append(result, ResolvedRouteGroup{Name: group.Name, Members: members})
 	}
 	return result
+}
+
+func policyRefRaw(ref model.PolicyRef) string {
+	if ref.Kind == model.PolicyRefProxy {
+		return fmt.Sprintf("proxy:%d", ref.ProxyID)
+	}
+	return ref.Name
 }
 
 func allowsProxyReference(origin config.RouteMemberOrigin) bool {

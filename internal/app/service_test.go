@@ -17,6 +17,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/fetch"
 	"github.com/John-Robertt/subconverter/internal/generate"
+	"github.com/John-Robertt/subconverter/internal/model"
 )
 
 const validConfigYAML = `
@@ -614,7 +615,7 @@ func TestPreviewGroupsReturnsSeparatedGroupsAndExpandedMembers(t *testing.T) {
 	}
 	var hasAllExpanded bool
 	for _, member := range result.ServiceGroups[0].ExpandedMembers {
-		if member.Value == "HK-01" && member.Origin == "all_expanded" {
+		if member.Name == "HK-01" && member.ID != "" && member.Kind == string(model.PolicyRefProxy) && member.Origin == "all_expanded" {
 			hasAllExpanded = true
 		}
 	}

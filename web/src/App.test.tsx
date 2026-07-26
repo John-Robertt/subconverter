@@ -146,7 +146,7 @@ function mockBackend(options: MockBackendOptions = {}) {
     }
     if (path === "/api/preview/nodes") {
       return json({
-        nodes: [{ name: "HK-01", type: "ss", kind: "subscription", server: "hk.example.com", port: 8388, filtered: false }],
+        nodes: [{ id: "proxy-1", name: "HK-01", type: "ss", kind: "subscription", server: "hk.example.com", port: 8388, filtered: false }],
         total: 1,
         active_count: 1,
         filtered_count: 0
@@ -173,10 +173,15 @@ function mockBackend(options: MockBackendOptions = {}) {
         );
       }
       return json({
-        node_groups: [{ name: "HK", strategy: "select", members: ["HK-01"] }],
+        node_groups: [{ name: "HK", strategy: "select", members: [{ kind: "proxy", id: "proxy-1", name: "HK-01" }] }],
         chained_groups: [],
-        service_groups: [{ name: "Proxy", strategy: "select", members: ["HK"], expanded_members: [{ value: "HK", origin: "literal" }] }],
-        all_proxies: ["HK-01"]
+        service_groups: [{
+          name: "Proxy",
+          strategy: "select",
+          members: [{ kind: "node_group", name: "HK" }],
+          expanded_members: [{ kind: "node_group", name: "HK", origin: "literal" }]
+        }],
+        all_proxies: [{ kind: "proxy", id: "proxy-1", name: "HK-01" }]
       });
     }
     if (path.startsWith("/api/generate/preview")) {

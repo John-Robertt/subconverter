@@ -11,16 +11,15 @@ import (
 // pipeline stages. It is treated as read-only after Prepare; request-time code
 // should derive new dynamic results instead of mutating prepared inputs.
 type RuntimeConfig struct {
-	sources         PreparedSources
-	filters         PreparedFilters
-	groups          []PreparedGroup
-	routing         []PreparedRouteGroup
-	rulesets        []PreparedRuleset
-	rules           []PreparedRule
-	fallback        string
-	baseURL         string
-	templates       Templates
-	staticNamespace StaticNamespace
+	sources   PreparedSources
+	filters   PreparedFilters
+	groups    []PreparedGroup
+	routing   []PreparedRouteGroup
+	rulesets  []PreparedRuleset
+	rules     []PreparedRule
+	fallback  string
+	baseURL   string
+	templates Templates
 }
 
 // PreparedSources is the startup-prepared subset consumed by the Source stage.
@@ -97,21 +96,6 @@ type PreparedRelayThrough struct {
 	Match    *regexp.Regexp
 }
 
-// StaticNamespace is the startup-known shared naming space used to reject
-// fetched node names that collide with local static objects or reserved names.
-type StaticNamespace struct {
-	labels map[string]string
-}
-
-// Kind returns the static object kind registered for name.
-func (ns StaticNamespace) Kind(name string) (string, bool) {
-	if ns.labels == nil {
-		return "", false
-	}
-	kind, ok := ns.labels[name]
-	return kind, ok
-}
-
 // SourceInput returns the Source-stage inputs.
 func (rt *RuntimeConfig) SourceInput() PreparedSources {
 	if rt == nil {
@@ -142,14 +126,6 @@ func (rt *RuntimeConfig) RouteInput() ([]PreparedRouteGroup, []PreparedRuleset, 
 		return nil, nil, nil, ""
 	}
 	return rt.routing, rt.rulesets, rt.rules, rt.fallback
-}
-
-// StaticNamespace returns the startup-known static namespace.
-func (rt *RuntimeConfig) StaticNamespace() StaticNamespace {
-	if rt == nil {
-		return StaticNamespace{}
-	}
-	return rt.staticNamespace
 }
 
 // BaseURL returns the prepared base_url value.

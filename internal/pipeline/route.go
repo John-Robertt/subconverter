@@ -5,15 +5,23 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
+// ResolvedRouteMember stores one typed route reference plus its declaration
+// provenance for validation and preview.
+type ResolvedRouteMember struct {
+	Ref    model.PolicyRef
+	Raw    string
+	Origin config.RouteMemberOrigin
+}
+
 // ResolvedRouteGroup stores the final request-time route members with provenance.
 type ResolvedRouteGroup struct {
 	Name    string
-	Members []config.PreparedRouteMember
+	Members []ResolvedRouteMember
 }
 
 // RouteResult holds the output of the Route stage (pipeline stage 6).
 type RouteResult struct {
-	RouteGroups         []model.ProxyGroup
+	RouteGroups         []model.RouteGroup
 	PreparedRouteGroups []config.PreparedRouteGroup
 	ResolvedRouteGroups []ResolvedRouteGroup
 	Rulesets            []model.Ruleset
@@ -50,20 +58,27 @@ func Route(
 // buildRouteGroups creates service-level proxy groups from routing config.
 // @auto has already been expanded at startup; Route only expands @all.
 // Service group strategy is always "select".
-func buildRouteGroups(routing []config.PreparedRouteGroup, gr *GroupResult) ([]model.ProxyGroup, []ResolvedRouteGroup) {
-	modelGroups := make([]model.ProxyGroup, 0, len(routing))
+func buildRouteGroups(routing []config.PreparedRouteGroup, gr *GroupResult) ([]model.RouteGroup, []ResolvedRouteGroup) {
+	modelGroups := make([]model.RouteGroup, 0, len(routing))
 	resolvedGroups := make([]ResolvedRouteGroup, 0, len(routing))
+	nodeGroupNames := make(map[string]bool, len(gr.NodeGroups))
+	for _, group := range gr.NodeGroups {
+		nodeGroupNames[group.Name] = true
+	}
+	routeGroupNames := make(map[string]bool, len(routing))
 	for _, group := range routing {
-		resolved := expandResolvedMembers(group.ExpandedMembers, gr.AllProxies)
-		memberNames := make([]string, 0, len(resolved))
+		routeGroupNames[group.Name] = true
+	}
+	for _, group := range routing {
+		resolved := expandResolvedMembers(group.ExpandedMembers, gr.AllProxies, nodeGroupNames, routeGroupNames)
+		refs := make([]model.PolicyRef, 0, len(resolved))
 		for _, member := range resolved {
-			memberNames = append(memberNames, member.Raw)
+			refs = append(refs, member.Ref)
 		}
-		modelGroups = append(modelGroups, model.ProxyGroup{
+		modelGroups = append(modelGroups, model.RouteGroup{
 			Name:     group.Name,
-			Scope:    model.ScopeRoute,
 			Strategy: "select",
-			Members:  memberNames,
+			Members:  refs,
 		})
 		resolvedGroups = append(resolvedGroups, ResolvedRouteGroup{
 			Name:    group.Name,
@@ -73,21 +88,47 @@ func buildRouteGroups(routing []config.PreparedRouteGroup, gr *GroupResult) ([]m
 	return modelGroups, resolvedGroups
 }
 
-func expandResolvedMembers(members []config.PreparedRouteMember, allProxies []string) []config.PreparedRouteMember {
-	result := make([]config.PreparedRouteMember, 0, len(members))
+func expandResolvedMembers(
+	members []config.PreparedRouteMember,
+	allProxies []model.ProxyID,
+	nodeGroupNames map[string]bool,
+	routeGroupNames map[string]bool,
+) []ResolvedRouteMember {
+	result := make([]ResolvedRouteMember, 0, len(members))
 	for _, member := range members {
 		if member.Raw != "@all" {
-			result = append(result, member)
+			result = append(result, ResolvedRouteMember{
+				Ref:    resolveNamedPolicyRef(member.Raw, nodeGroupNames, routeGroupNames),
+				Raw:    member.Raw,
+				Origin: member.Origin,
+			})
 			continue
 		}
-		for _, proxyName := range allProxies {
-			result = append(result, config.PreparedRouteMember{
-				Raw:    proxyName,
+		for _, proxyID := range allProxies {
+			result = append(result, ResolvedRouteMember{
+				Ref: model.PolicyRef{
+					Kind:    model.PolicyRefProxy,
+					ProxyID: proxyID,
+				},
+				Raw:    member.Raw,
 				Origin: config.RouteMemberOriginAllExpanded,
 			})
 		}
 	}
 	return result
+}
+
+func resolveNamedPolicyRef(name string, nodeGroupNames, routeGroupNames map[string]bool) model.PolicyRef {
+	switch {
+	case config.IsReservedPolicyName(name):
+		return model.PolicyRef{Kind: model.PolicyRefReserved, Name: name}
+	case nodeGroupNames[name]:
+		return model.PolicyRef{Kind: model.PolicyRefNodeGroup, Name: name}
+	case routeGroupNames[name]:
+		return model.PolicyRef{Kind: model.PolicyRefRouteGroup, Name: name}
+	default:
+		return model.PolicyRef{Name: name}
+	}
 }
 
 // buildRulesets creates Ruleset entries from rulesets config, preserving

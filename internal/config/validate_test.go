@@ -43,15 +43,6 @@ func TestPrepare_ValidConfig(t *testing.T) {
 	if !groups[0].Match.MatchString("HK-01") {
 		t.Error("compiled regex should match HK-01")
 	}
-	if kind, ok := rt.StaticNamespace().Kind("HK"); !ok || kind != staticKindNodeGroup {
-		t.Errorf("StaticNamespace HK = (%q, %v), want (%q, true)", kind, ok, staticKindNodeGroup)
-	}
-	if kind, ok := rt.StaticNamespace().Kind("DIRECT"); !ok || kind != staticKindReserved {
-		t.Errorf("StaticNamespace DIRECT = (%q, %v), want (%q, true)", kind, ok, staticKindReserved)
-	}
-	if kind, ok := rt.StaticNamespace().Kind("proxy"); !ok || kind != staticKindRouteGroup {
-		t.Errorf("StaticNamespace proxy = (%q, %v), want (%q, true)", kind, ok, staticKindRouteGroup)
-	}
 }
 
 func TestPrepare_MissingSubscriptionURL(t *testing.T) {
@@ -157,9 +148,6 @@ func TestPrepare_CustomProxySocks5Valid(t *testing.T) {
 	if parsed.Type != "socks5" {
 		t.Errorf("parsed type = %q, want socks5", parsed.Type)
 	}
-	if kind, ok := rt.StaticNamespace().Kind("p1"); !ok || kind != staticKindCustom {
-		t.Errorf("StaticNamespace p1 = (%q, %v), want (%q, true)", kind, ok, staticKindCustom)
-	}
 }
 
 func TestPrepare_CustomProxyHTTPValid(t *testing.T) {
@@ -239,11 +227,30 @@ func TestPrepare_CustomProxySSMissingPassword(t *testing.T) {
 	assertFieldError(t, err, "sources.custom_proxies[0].url")
 }
 
-func TestPrepare_DuplicateCustomProxyNames(t *testing.T) {
+// T-CFG-ID-001: standalone custom proxies may share a display name.
+func TestPrepare_DuplicateStandaloneCustomProxyNamesAllowed(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{
 		testCustomProxy("dup", "socks5://1.2.3.4:1080", nil),
 		testCustomProxy("dup", "http://5.6.7.8:8080", nil),
+	}
+	rt, err := Prepare(&cfg)
+	if err != nil {
+		t.Fatalf("duplicate standalone display names should be valid: %v", err)
+	}
+	if got := len(rt.SourceInput().CustomProxies); got != 2 {
+		t.Fatalf("prepared custom proxies = %d, want 2", got)
+	}
+}
+
+// T-CFG-ID-002: relay_through declarations still create groups, whose names
+// remain unique in the group namespace.
+func TestPrepare_DuplicateChainGroupNamesRejected(t *testing.T) {
+	cfg := validBase()
+	relay := &RelayThrough{Type: "all", Strategy: "select"}
+	cfg.Sources.CustomProxies = []CustomProxy{
+		testCustomProxy("dup-chain", "socks5://1.2.3.4:1080", relay),
+		testCustomProxy("dup-chain", "http://5.6.7.8:8080", relay),
 	}
 	_, err := Prepare(&cfg)
 	assertFieldError(t, err, "sources.custom_proxies[1].name")
@@ -267,9 +274,6 @@ func TestPrepare_CustomProxySSWithRelayThrough(t *testing.T) {
 	}
 	if relay.Strategy != "select" {
 		t.Errorf("relay strategy = %q, want select", relay.Strategy)
-	}
-	if kind, ok := rt.StaticNamespace().Kind("chain-ss"); !ok || kind != staticKindChainGroup {
-		t.Errorf("StaticNamespace chain-ss = (%q, %v), want (%q, true)", kind, ok, staticKindChainGroup)
 	}
 }
 

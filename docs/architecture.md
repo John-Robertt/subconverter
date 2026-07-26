@@ -287,6 +287,8 @@ Web 管理后台
 设计要求：
 
 - `groups`、`routing`、`rulesets` 都要保留书写顺序
+- 格式无关管道用 `ProxyID` 表达节点身份；候选节点名不承担图引用职责
+- Clash / Surge 在完成各自格式过滤后独立分配唯一输出名
 - `@all` 只展开原始节点，不包含链式节点
 - 原始节点 = 订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
 - `@auto` 展开为自动补充池（节点组 → 包含 `@all` 的服务组 → DIRECT），自动去重且排除自身
@@ -312,6 +314,8 @@ Web 管理后台
 | 资源加载模型 | 配置文件和模板均支持本地路径或 HTTP(S) URL | 统一 `LoadResource` |
 | 渲染器合并策略 | Clash 用 yaml.Node 替换；Surge 用 section 切分替换 | 保留底版用户设置 |
 | 结构化订阅表示 | `KindSubscription` + 可选 `NativeProxy` | 复用统一过滤/分组语义，同时完整保留目标原生节点字段 |
+| 节点身份 | Build 内唯一 `ProxyID`；节点名只是显示名候选 | 同名节点可安全共存，过滤/分组/链式关系不依赖可变名称 |
+| 输出命名 | 每个目标在格式过滤后独立消歧 | Clash-only / Surge-only 同名节点都可保留原名，目标内仍满足唯一性 |
 | **热重载并发模型** | `sync.RWMutex` 保护 `RuntimeConfig` | 单进程无需分布式锁，读多写少场景最优 |
 | **前端部署方式** | Go 二进制嵌入 `web/dist`，单服务同源托管 SPA 与 API | 单镜像、单进程，生产同源访问 |
 | **开发模式** | Vite proxy 优先；`-cors` 仅作本地调试兜底 | 前后端分离开发 |

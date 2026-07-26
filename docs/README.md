@@ -11,7 +11,7 @@
 | 系统整体如何工作、模块边界、关键决策 | `architecture.md` |
 | 用户配置文件的完整字段定义 | `design/config-schema.md` |
 | 管道每个阶段做了什么、输入输出是什么 | `design/pipeline.md` |
-| Proxy / ProxyGroup / Ruleset 等实体的字段语义 | `design/domain-model.md` |
+| Proxy / NodeGroup / RouteGroup / TargetPipeline 等实体的字段语义 | `design/domain-model.md` |
 | 每个 API 端点的请求/响应格式 | `design/api.md` |
 | `app.Service` 的 Go 层接口契约与 DTO | `design/app-service.md` |
 | Clash Meta / Surge 的输出映射与级联过滤 | `design/rendering.md` |

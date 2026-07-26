@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { Diagnostic, GroupConfig, OrderedEntry } from "../api/types";
+import type { Diagnostic, GroupConfig, OrderedEntry, PreviewGroup } from "../api/types";
 import { api } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import { DiagnosticList } from "../components/Diagnostics";
@@ -204,7 +204,7 @@ function locateDiagnostic(diagnostic: Diagnostic, setSelectedIndex: (index: numb
   }
 }
 
-function PreviewGroupList({ title, groups }: { title: string; groups: { name: string; strategy: string; members: string[] }[] }) {
+function PreviewGroupList({ title, groups }: { title: string; groups: PreviewGroup[] }) {
   return (
     <div className="preview-column compact">
       <h4>{title}</h4>

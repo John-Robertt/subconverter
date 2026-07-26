@@ -149,8 +149,10 @@ func TestServiceGenerateUnsupportedFormat(t *testing.T) {
 	}
 }
 
-// T-GEN-DOC-001: Clash YAML and Surge CONF subscriptions flow through the
-// complete build/target/render path and appear only in their matching output.
+// T-GEN-DOC-001: Clash YAML and Surge CONF subscriptions with the same
+// candidate name flow through the complete build/target/render path. Each
+// target keeps the original name because name allocation happens after
+// format-specific filtering.
 func TestServiceGenerateStructuredSubscriptionsByTarget(t *testing.T) {
 	const clashSubURL = "https://sub.example.com/nodes.yaml?token=clash-secret"
 	const surgeSubURL = "https://sub.example.com/nodes.conf?token=surge-secret"
@@ -162,14 +164,14 @@ func TestServiceGenerateStructuredSubscriptionsByTarget(t *testing.T) {
 				{URL: surgeSubURL},
 			},
 		},
-		Groups:   mustGroupsMap(t, `"ALL": { match: "(YAML|CONF)", strategy: select }`),
+		Groups:   mustGroupsMap(t, `"ALL": { match: "(SHARED)", strategy: select }`),
 		Routing:  mustRoutingMap(t, `"proxy": ["ALL", "DIRECT"]`),
 		Fallback: "proxy",
 	}
 	rt := mustRuntimeConfig(t, cfg)
 	svc := New(&fakeFetcher{responses: map[string][]byte{
 		clashSubURL: []byte(`proxies:
-  - name: HK-YAML
+  - name: SHARED
     type: trojan
     server: hk.example.com
     port: 443
@@ -177,7 +179,7 @@ func TestServiceGenerateStructuredSubscriptionsByTarget(t *testing.T) {
     future-option: enabled
 `),
 		surgeSubURL: []byte(`[Proxy]
-SG-CONF = trojan, sg.example.com, 443, password=surge-password, future-option=enabled
+SHARED = trojan, sg.example.com, 443, password=surge-password, future-option=enabled
 `),
 	}}, Options{})
 
@@ -189,12 +191,12 @@ SG-CONF = trojan, sg.example.com, 443, password=surge-password, future-option=en
 		t.Fatalf("Generate(clash) error = %v", err)
 	}
 	clashBody := string(clashResult.Body)
-	for _, want := range []string{"name: HK-YAML", "future-option: enabled", "ALL"} {
+	for _, want := range []string{"name: SHARED", "future-option: enabled", "ALL"} {
 		if !strings.Contains(clashBody, want) {
 			t.Errorf("Clash body missing %q:\n%s", want, clashBody)
 		}
 	}
-	if strings.Contains(clashBody, "SG-CONF") || strings.Contains(clashBody, "surge-password") {
+	if strings.Contains(clashBody, "SHARED②") || strings.Contains(clashBody, "surge-password") {
 		t.Errorf("Clash body leaked Surge CONF proxy:\n%s", clashBody)
 	}
 
@@ -206,11 +208,11 @@ SG-CONF = trojan, sg.example.com, 443, password=surge-password, future-option=en
 		t.Fatalf("Generate(surge) error = %v", err)
 	}
 	surgeBody := string(surgeResult.Body)
-	wantSurgeProxy := "SG-CONF = trojan, sg.example.com, 443, password=surge-password, future-option=enabled"
+	wantSurgeProxy := "SHARED = trojan, sg.example.com, 443, password=surge-password, future-option=enabled"
 	if !strings.Contains(surgeBody, wantSurgeProxy) {
 		t.Errorf("Surge body missing copied proxy declaration:\n%s", surgeBody)
 	}
-	if strings.Contains(surgeBody, "HK-YAML") || strings.Contains(surgeBody, "clash-password") {
+	if strings.Contains(surgeBody, "SHARED②") || strings.Contains(surgeBody, "clash-password") {
 		t.Errorf("Surge body leaked Clash YAML proxy:\n%s", surgeBody)
 	}
 }

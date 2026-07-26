@@ -9,545 +9,636 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
+func ssProxy(id model.ProxyID, name string) model.Proxy {
+	return model.Proxy{
+		ID:     id,
+		Name:   name,
+		Type:   "ss",
+		Server: "proxy.example.com",
+		Port:   8388,
+		Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"},
+		Kind:   model.KindSubscription,
+	}
+}
+
+func snellProxy(id model.ProxyID, name string) model.Proxy {
+	return model.Proxy{
+		ID:     id,
+		Name:   name,
+		Type:   "snell",
+		Server: "proxy.example.com",
+		Port:   57891,
+		Params: map[string]string{"psk": "pw", "version": "4"},
+		Kind:   model.KindSnell,
+	}
+}
+
+func vlessProxy(id model.ProxyID, name string) model.Proxy {
+	return model.Proxy{
+		ID:     id,
+		Name:   name,
+		Type:   "vless",
+		Server: "proxy.example.com",
+		Port:   443,
+		Params: map[string]string{
+			"uuid":     "11111111-2222-3333-4444-555555555555",
+			"security": "tls",
+			"network":  "tcp",
+		},
+		Kind: model.KindVLess,
+	}
+}
+
+func nativeProxy(id model.ProxyID, name string, format model.NativeProxyFormat) model.Proxy {
+	payload := "name: " + name + "\ntype: trojan\n"
+	if format == model.NativeProxyFormatSurge {
+		payload = "trojan, proxy.example.com, 443, password=pw"
+	}
+	return model.Proxy{
+		ID:   id,
+		Name: name,
+		Type: "trojan",
+		Kind: model.KindSubscription,
+		Native: &model.NativeProxy{
+			Format:  format,
+			Payload: payload,
+		},
+	}
+}
+
+func chainedProxy(id model.ProxyID, name string, dialerID model.ProxyID, suffix string) model.Proxy {
+	return model.Proxy{
+		ID:              id,
+		Name:            name,
+		Type:            "socks5",
+		Server:          "127.0.0.1",
+		Port:            1080,
+		Kind:            model.KindChained,
+		DialerID:        dialerID,
+		ChainNameSuffix: suffix,
+	}
+}
+
+func nodeGroup(name string, members ...model.ProxyID) model.NodeGroup {
+	return model.NodeGroup{Name: name, Strategy: "select", Members: members}
+}
+
+func proxyPolicy(id model.ProxyID) model.PolicyRef {
+	return model.PolicyRef{Kind: model.PolicyRefProxy, ProxyID: id}
+}
+
+func nodePolicy(name string) model.PolicyRef {
+	return model.PolicyRef{Kind: model.PolicyRefNodeGroup, Name: name}
+}
+
+func routePolicy(name string) model.PolicyRef {
+	return model.PolicyRef{Kind: model.PolicyRefRouteGroup, Name: name}
+}
+
+func reservedPolicy(name string) model.PolicyRef {
+	return model.PolicyRef{Kind: model.PolicyRefReserved, Name: name}
+}
+
+func routeGroup(name string, members ...model.PolicyRef) model.RouteGroup {
+	return model.RouteGroup{Name: name, Strategy: "select", Members: members}
+}
+
+func targetProxyNameSet(proxies []model.TargetProxy) map[string]bool {
+	result := make(map[string]bool, len(proxies))
+	for _, proxy := range proxies {
+		result[proxy.Name] = true
+	}
+	return result
+}
+
+func targetGroupNameSet(groups []model.TargetGroup) map[string]bool {
+	result := make(map[string]bool, len(groups))
+	for _, group := range groups {
+		result[group.Name] = true
+	}
+	return result
+}
+
+func targetGroupByName(groups []model.TargetGroup, name string) *model.TargetGroup {
+	for index := range groups {
+		if groups[index].Name == name {
+			return &groups[index]
+		}
+	}
+	return nil
+}
+
+func targetProxyByName(proxies []model.TargetProxy, name string) *model.TargetProxy {
+	for index := range proxies {
+		if proxies[index].Name == name {
+			return &proxies[index]
+		}
+	}
+	return nil
+}
+
 func buildSnellFilterPipeline() *model.Pipeline {
 	return &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Kind: model.KindSubscription},
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-			{Name: "SG-Snell", Type: "snell", Server: "5.6.7.8", Port: 8989, Params: map[string]string{"psk": "y", "version": "4"}, Kind: model.KindSnell},
+			ssProxy(1, "HK-01"),
+			snellProxy(2, "HK-Snell"),
+			snellProxy(3, "SG-Snell"),
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01", "HK-Snell"}},
-			{Name: "GRP_SG", Scope: model.ScopeNode, Strategy: "select", Members: []string{"SG-Snell"}},
+		NodeGroups: []model.NodeGroup{
+			nodeGroup("GRP_HK", 1, 2),
+			nodeGroup("GRP_SG", 3),
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_Quick", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "GRP_SG"}},
-			{Name: "SVC_SGOnly", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_SG"}},
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "SVC_SGOnly", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_Quick", nodePolicy("GRP_HK"), nodePolicy("GRP_SG")),
+			routeGroup("SVC_SGOnly", nodePolicy("GRP_SG")),
+			routeGroup("SVC_FINAL", nodePolicy("GRP_HK"), routePolicy("SVC_SGOnly"), reservedPolicy("DIRECT")),
 		},
 		Rulesets: []model.Ruleset{
-			{Policy: "SVC_SGOnly", URLs: []string{"https://example.com/NF.list"}},
-			{Policy: "SVC_Quick", URLs: []string{"https://example.com/Global.list"}},
+			{Policy: "SVC_SGOnly", URLs: []string{"https://example.com/sg.list"}},
+			{Policy: "SVC_Quick", URLs: []string{"https://example.com/global.list"}},
 		},
 		Rules: []model.Rule{
 			{Raw: "GEOIP,SG,SVC_SGOnly", Policy: "SVC_SGOnly"},
 			{Raw: "GEOIP,CN,SVC_Quick", Policy: "SVC_Quick"},
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-01", "HK-Snell", "SG-Snell"},
+		AllProxies: []model.ProxyID{1, 2, 3},
 	}
 }
 
 func buildVLessFilterPipeline() *model.Pipeline {
 	return &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"}, Kind: model.KindSubscription},
-			{Name: "HK-VL", Type: "vless", Server: "1.2.3.4", Port: 443, Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp"}, Kind: model.KindVLess},
-			{Name: "SG-VL", Type: "vless", Server: "5.6.7.8", Port: 443, Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp"}, Kind: model.KindVLess},
+			ssProxy(1, "HK-01"),
+			vlessProxy(2, "HK-VL"),
+			vlessProxy(3, "SG-VL"),
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01", "HK-VL"}},
-			{Name: "GRP_SG", Scope: model.ScopeNode, Strategy: "select", Members: []string{"SG-VL"}},
+		NodeGroups: []model.NodeGroup{
+			nodeGroup("GRP_HK", 1, 2),
+			nodeGroup("GRP_SG", 3),
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_Quick", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "GRP_SG"}},
-			{Name: "SVC_SGOnly", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_SG"}},
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "SVC_SGOnly", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_Quick", nodePolicy("GRP_HK"), nodePolicy("GRP_SG")),
+			routeGroup("SVC_SGOnly", nodePolicy("GRP_SG")),
+			routeGroup("SVC_FINAL", nodePolicy("GRP_HK"), routePolicy("SVC_SGOnly"), reservedPolicy("DIRECT")),
 		},
 		Rulesets: []model.Ruleset{
-			{Policy: "SVC_SGOnly", URLs: []string{"https://example.com/NF.list"}},
-			{Policy: "SVC_Quick", URLs: []string{"https://example.com/Global.list"}},
+			{Policy: "SVC_SGOnly", URLs: []string{"https://example.com/sg.list"}},
+			{Policy: "SVC_Quick", URLs: []string{"https://example.com/global.list"}},
 		},
 		Rules: []model.Rule{
 			{Raw: "GEOIP,SG,SVC_SGOnly", Policy: "SVC_SGOnly"},
 			{Raw: "GEOIP,CN,SVC_Quick", Policy: "SVC_Quick"},
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-01", "HK-VL", "SG-VL"},
+		AllProxies: []model.ProxyID{1, 2, 3},
 	}
 }
 
-func proxyNameSet(proxies []model.Proxy) map[string]bool {
-	out := make(map[string]bool, len(proxies))
-	for _, px := range proxies {
-		out[px.Name] = true
-	}
-	return out
-}
-
-func groupNameSet(groups []model.ProxyGroup) map[string]bool {
-	out := make(map[string]bool, len(groups))
-	for _, g := range groups {
-		out[g.Name] = true
-	}
-	return out
-}
-
-func rulesetPolicySet(rulesets []model.Ruleset) map[string]bool {
-	out := make(map[string]bool, len(rulesets))
-	for _, rs := range rulesets {
-		out[rs.Policy] = true
-	}
-	return out
-}
-
-func rulePolicySet(rules []model.Rule) map[string]bool {
-	out := make(map[string]bool, len(rules))
-	for _, r := range rules {
-		out[r.Policy] = true
-	}
-	return out
-}
-
-// T-TGT-001: Clash drops snell proxies and cascades to groups
+// T-TGT-001: Clash drops Snell nodes and all empty dependants.
 func TestForClash_DropsSnellCascade(t *testing.T) {
-	p := buildSnellFilterPipeline()
-
-	projected, err := ForClash(p)
+	projected, err := ForClash(buildSnellFilterPipeline())
 	if err != nil {
-		t.Fatalf("ForClash() error: %v", err)
+		t.Fatalf("ForClash: %v", err)
 	}
 
-	proxies := proxyNameSet(projected.Proxies)
-	if proxies["HK-Snell"] || proxies["SG-Snell"] {
-		t.Fatalf("snell proxies should be dropped, got %v", projected.Proxies)
+	proxies := targetProxyNameSet(projected.Proxies)
+	if proxies["HK-Snell"] || proxies["SG-Snell"] || !proxies["HK-01"] {
+		t.Fatalf("Clash proxies = %v, want HK-01 only", proxies)
 	}
-	if !proxies["HK-01"] {
-		t.Fatalf("HK-01 should survive, got %v", projected.Proxies)
+	nodeGroups := targetGroupNameSet(projected.NodeGroups)
+	if nodeGroups["GRP_SG"] || !nodeGroups["GRP_HK"] {
+		t.Fatalf("Clash node groups = %v", nodeGroups)
 	}
-
-	nodeGroups := groupNameSet(projected.NodeGroups)
-	if nodeGroups["GRP_SG"] {
-		t.Fatalf("GRP_SG should be dropped, got %v", projected.NodeGroups)
+	routeGroups := targetGroupNameSet(projected.RouteGroups)
+	if routeGroups["SVC_SGOnly"] || !routeGroups["SVC_Quick"] || !routeGroups["SVC_FINAL"] {
+		t.Fatalf("Clash route groups = %v", routeGroups)
 	}
-	if !nodeGroups["GRP_HK"] {
-		t.Fatalf("GRP_HK should survive, got %v", projected.NodeGroups)
+	if len(projected.Rulesets) != 1 || projected.Rulesets[0].Policy != "SVC_Quick" {
+		t.Fatalf("Clash rulesets = %+v", projected.Rulesets)
 	}
-
-	routeGroups := groupNameSet(projected.RouteGroups)
-	if routeGroups["SVC_SGOnly"] {
-		t.Fatalf("SVC_SGOnly should be dropped, got %v", projected.RouteGroups)
-	}
-	if !routeGroups["SVC_Quick"] || !routeGroups["SVC_FINAL"] {
-		t.Fatalf("surviving route groups missing, got %v", projected.RouteGroups)
-	}
-
-	rulesets := rulesetPolicySet(projected.Rulesets)
-	if rulesets["SVC_SGOnly"] {
-		t.Fatalf("ruleset for dropped policy should be removed, got %v", projected.Rulesets)
-	}
-	if !rulesets["SVC_Quick"] {
-		t.Fatalf("ruleset for surviving policy missing, got %v", projected.Rulesets)
-	}
-
-	rules := rulePolicySet(projected.Rules)
-	if rules["SVC_SGOnly"] {
-		t.Fatalf("rule for dropped policy should be removed, got %v", projected.Rules)
-	}
-	if !rules["SVC_Quick"] {
-		t.Fatalf("rule for surviving policy missing, got %v", projected.Rules)
-	}
-
-	for _, name := range projected.AllProxies {
-		if name == "HK-Snell" || name == "SG-Snell" {
-			t.Fatalf("filtered snell proxy leaked into AllProxies: %v", projected.AllProxies)
-		}
+	if len(projected.Rules) != 1 || projected.Rules[0].Policy != "SVC_Quick" {
+		t.Fatalf("Clash rules = %+v", projected.Rules)
 	}
 }
 
-// T-TGT-002: Clash drops chained proxy when its dialer is dropped
+// T-TGT-002: chained nodes follow the identity of their dialer.
 func TestForClash_DropsChainedOnDroppedUpstream(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Kind: model.KindSubscription},
-			{Name: "HK-Snell→MY-PROXY", Type: "socks5", Server: "1.1.1.1", Port: 1080, Kind: model.KindChained, Dialer: "HK-Snell"},
-			{Name: "HK-01→MY-PROXY", Type: "socks5", Server: "1.1.1.1", Port: 1080, Kind: model.KindChained, Dialer: "HK-01"},
+			snellProxy(1, "HK-Snell"),
+			ssProxy(2, "HK-01"),
+			chainedProxy(3, "HK-Snell→MY-PROXY", 1, "MY-PROXY"),
+			chainedProxy(4, "HK-01→MY-PROXY", 2, "MY-PROXY"),
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01"}},
-			{Name: "GRP_CHAIN", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-Snell→MY-PROXY", "HK-01→MY-PROXY"}},
+		NodeGroups: []model.NodeGroup{
+			nodeGroup("GRP_HK", 2),
+			nodeGroup("GRP_CHAIN", 3, 4),
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "GRP_CHAIN", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_HK"), nodePolicy("GRP_CHAIN"), reservedPolicy("DIRECT")),
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-Snell", "HK-01"},
+		AllProxies: []model.ProxyID{1, 2},
 	}
 
 	projected, err := ForClash(p)
 	if err != nil {
-		t.Fatalf("ForClash() error: %v", err)
+		t.Fatalf("ForClash: %v", err)
 	}
-
-	proxies := proxyNameSet(projected.Proxies)
-	if proxies["HK-Snell→MY-PROXY"] {
-		t.Fatalf("chained proxy with snell upstream should be dropped, got %v", projected.Proxies)
-	}
-	if !proxies["HK-01→MY-PROXY"] {
-		t.Fatalf("chained proxy with ss upstream should survive, got %v", projected.Proxies)
+	proxies := targetProxyNameSet(projected.Proxies)
+	if proxies["HK-Snell→MY-PROXY"] || !proxies["HK-01→MY-PROXY"] {
+		t.Fatalf("projected proxies = %v", proxies)
 	}
 }
 
-// T-TGT-003: Clash returns TargetError when fallback group cleared by cascade
+// T-TGT-003: cleared fallback reports the complete identity-aware path.
 func TestForClash_FallbackCleared(t *testing.T) {
 	p := &model.Pipeline{
-		Proxies: []model.Proxy{
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_SG", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-Snell"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_SG"}},
+		Proxies:    []model.Proxy{snellProxy(1, "HK-Snell")},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_SG", 1)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_SG")),
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-Snell"},
+		AllProxies: []model.ProxyID{1},
 	}
 
 	_, err := ForClash(p)
-	if err == nil {
-		t.Fatal("expected TargetError when fallback group is cleared")
+	var targetErr *errtype.TargetError
+	if !errors.As(err, &targetErr) {
+		t.Fatalf("error = %T %v, want TargetError", err, err)
 	}
-	var te *errtype.TargetError
-	if !errors.As(err, &te) {
-		t.Fatalf("err type = %T, want *errtype.TargetError", err)
+	if targetErr.Code != errtype.CodeTargetClashFallbackEmpty {
+		t.Fatalf("Code = %q", targetErr.Code)
 	}
-	if te.Code != errtype.CodeTargetClashFallbackEmpty {
-		t.Fatalf("Code = %q, want %q", te.Code, errtype.CodeTargetClashFallbackEmpty)
-	}
-	for _, keyword := range []string{"SVC_FINAL", "GRP_SG", "HK-Snell(snell)"} {
-		if !strings.Contains(te.Error(), keyword) {
-			t.Fatalf("error message missing %q: %s", keyword, te.Error())
+	for _, want := range []string{"SVC_FINAL", "GRP_SG", "HK-Snell#1(snell)"} {
+		if !strings.Contains(targetErr.Error(), want) {
+			t.Fatalf("error missing %q: %s", want, targetErr.Error())
 		}
 	}
 }
 
-// T-TGT-004: Clash fallback error path labels chained proxies in cascade trace
+// T-TGT-004: chain removal paths retain both child and root identities.
 func TestForClash_FallbackPathLabelsChainedProxy(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-			{Name: "HK-Snell→MY-PROXY", Type: "socks5", Server: "10.0.0.1", Port: 1080, Kind: model.KindChained, Dialer: "HK-Snell"},
+			snellProxy(1, "HK-Snell"),
+			chainedProxy(2, "HK-Snell→CHAIN", 1, "CHAIN"),
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_CHAIN", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-Snell→MY-PROXY"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_CHAIN"}},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_CHAIN", 2)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_CHAIN")),
 		},
 		Fallback: "SVC_FINAL",
 	}
 
 	_, err := ForClash(p)
-	if err == nil {
-		t.Fatal("expected TargetError when fallback group is cleared")
-	}
-	var te *errtype.TargetError
-	if !errors.As(err, &te) {
-		t.Fatalf("err type = %T, want *errtype.TargetError", err)
-	}
-	if !strings.Contains(te.Error(), "HK-Snell→MY-PROXY(chained)") {
-		t.Fatalf("cascade path should label chained proxy explicitly: %s", te.Error())
-	}
-	if !strings.Contains(te.Error(), "HK-Snell(snell)") {
-		t.Fatalf("cascade path should include upstream snell root: %s", te.Error())
-	}
-}
-
-// T-TGT-005: Clash shared subgraph does not misreport as cycle
-func TestForClash_SharedSubgraphDoesNotReportCycle(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_SHARED", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-Snell"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_A", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_SHARED"}},
-			{Name: "SVC_B", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_SHARED"}},
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"SVC_A", "SVC_B"}},
-		},
-		Fallback: "SVC_FINAL",
-	}
-
-	_, err := ForClash(p)
-	if err == nil {
-		t.Fatal("expected TargetError when fallback group is cleared")
-	}
-	if strings.Contains(err.Error(), "(cycle)") {
-		t.Fatalf("shared drop subgraph should not be labeled as cycle: %s", err.Error())
-	}
-}
-
-// 当父服务组在 RouteGroups slice 中声明得比子服务组更早（非拓扑序）时，
-// 单次遍历会漏掉父组——必须通过不动点循环在第 2 轮捕获 "SVC_PARENT 成员仅剩 SVC_CHILD，
-// 而 SVC_CHILD 刚被清空"。若未来有人把 buildGroupCascade 的 for 循环改成单 pass
-// （误以为 "一次遍历所有组足够"），此测试会立即失败。
-// T-TGT-006: Clash cascade handles non-topological group declaration order
-func TestForClash_CascadeHandlesNonTopologicalDeclaration(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_SNELL", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-Snell"}},
-		},
-		// 故意把 SVC_PARENT 放在 SVC_CHILD 之前声明。
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_PARENT", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"SVC_CHILD"}},
-			{Name: "SVC_CHILD", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_SNELL"}},
-		},
-		Fallback:   "SVC_PARENT",
-		AllProxies: []string{"HK-Snell"},
-	}
-
-	_, err := ForClash(p)
-	if err == nil {
-		t.Fatal("expected TargetError when fallback cascade clears parent")
-	}
-	var te *errtype.TargetError
-	if !errors.As(err, &te) {
-		t.Fatalf("err type = %T, want *errtype.TargetError", err)
-	}
-	if te.Code != errtype.CodeTargetClashFallbackEmpty {
-		t.Fatalf("Code = %q, want %q", te.Code, errtype.CodeTargetClashFallbackEmpty)
-	}
-	// 清空路径应贯穿 SVC_PARENT ← SVC_CHILD ← GRP_SNELL ← HK-Snell(snell)，
-	// 证明 2 轮不动点遍历已将父组一并清空。
-	for _, keyword := range []string{"SVC_PARENT", "SVC_CHILD", "GRP_SNELL", "HK-Snell(snell)"} {
-		if !strings.Contains(te.Error(), keyword) {
-			t.Fatalf("error message missing %q: %s", keyword, te.Error())
+	for _, want := range []string{"HK-Snell→CHAIN#2(chained)", "HK-Snell#1(snell)"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %s", want, err)
 		}
 	}
 }
 
-// T-TGT-007: Clash drops route group when all members are snell
+// T-TGT-005: shared dropped subgraphs are not cycles.
+func TestForClash_SharedSubgraphDoesNotReportCycle(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies:    []model.Proxy{snellProxy(1, "HK-Snell")},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_SHARED", 1)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_A", nodePolicy("GRP_SHARED")),
+			routeGroup("SVC_B", nodePolicy("GRP_SHARED")),
+			routeGroup("SVC_FINAL", routePolicy("SVC_A"), routePolicy("SVC_B")),
+		},
+		Fallback: "SVC_FINAL",
+	}
+
+	_, err := ForClash(p)
+	if err == nil || strings.Contains(err.Error(), "(cycle)") {
+		t.Fatalf("shared subgraph error = %v", err)
+	}
+}
+
+// T-TGT-006: cascade converges even when route groups are not topological.
+func TestForClash_CascadeHandlesNonTopologicalDeclaration(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies:    []model.Proxy{snellProxy(1, "HK-Snell")},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_SNELL", 1)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_PARENT", routePolicy("SVC_CHILD")),
+			routeGroup("SVC_CHILD", nodePolicy("GRP_SNELL")),
+		},
+		Fallback: "SVC_PARENT",
+	}
+
+	_, err := ForClash(p)
+	for _, want := range []string{"SVC_PARENT", "SVC_CHILD", "GRP_SNELL", "HK-Snell#1(snell)"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %s", want, err)
+		}
+	}
+}
+
+// T-TGT-007: direct proxy references are pruned by identity.
 func TestForClash_DropsAllSnellRouteGroup(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-			{Name: "SG-Snell", Type: "snell", Server: "5.6.7.8", Port: 8989, Params: map[string]string{"psk": "y", "version": "4"}, Kind: model.KindSnell},
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Kind: model.KindSubscription},
+			snellProxy(1, "HK-Snell"),
+			snellProxy(2, "SG-Snell"),
+			ssProxy(3, "HK-01"),
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_ManualAll", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"HK-Snell", "SG-Snell"}},
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "SVC_ManualAll", "DIRECT"}},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_HK", 3)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_ManualAll", proxyPolicy(1), proxyPolicy(2)),
+			routeGroup("SVC_FINAL", nodePolicy("GRP_HK"), routePolicy("SVC_ManualAll"), reservedPolicy("DIRECT")),
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-Snell", "SG-Snell", "HK-01"},
+		AllProxies: []model.ProxyID{1, 2, 3},
 	}
 
 	projected, err := ForClash(p)
 	if err != nil {
-		t.Fatalf("ForClash() error: %v", err)
+		t.Fatalf("ForClash: %v", err)
 	}
-	if groupNameSet(projected.RouteGroups)["SVC_ManualAll"] {
-		t.Fatalf("all-snell route group should be dropped, got %v", projected.RouteGroups)
+	if targetGroupNameSet(projected.RouteGroups)["SVC_ManualAll"] {
+		t.Fatalf("all-Snell route group survived: %+v", projected.RouteGroups)
 	}
 }
 
-// T-TGT-008: Clash is no-op when pipeline contains no snell
-func TestForClash_NoOpWhenNoSnell(t *testing.T) {
+// T-TGT-008: a compatible pipeline is still projected into renderer types.
+func TestForClash_CompatiblePipelineProjectsNames(t *testing.T) {
 	p := &model.Pipeline{
-		Proxies: []model.Proxy{
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Kind: model.KindSubscription},
-		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK"}},
+		Proxies:    []model.Proxy{ssProxy(1, "HK-01")},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_HK", 1)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_HK")),
 		},
 		Fallback: "SVC_FINAL",
 	}
 
-	out, err := ForClash(p)
+	projected, err := ForClash(p)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("ForClash: %v", err)
 	}
-	if out != p {
-		t.Fatal("expected identical pointer when no filtering is needed")
+	if len(projected.Proxies) != 1 || projected.Proxies[0].Name != "HK-01" {
+		t.Fatalf("projected proxies = %+v", projected.Proxies)
+	}
+	if got := targetGroupByName(projected.NodeGroups, "GRP_HK"); got == nil || len(got.Members) != 1 || got.Members[0] != "HK-01" {
+		t.Fatalf("projected node groups = %+v", projected.NodeGroups)
 	}
 }
 
-// T-TGT-009: Surge drops vless proxies and cascades to groups
+// T-TGT-009: Surge applies the symmetric VLESS cascade.
 func TestForSurge_DropsVLessCascade(t *testing.T) {
-	p := buildVLessFilterPipeline()
-
-	projected, err := ForSurge(p)
+	projected, err := ForSurge(buildVLessFilterPipeline())
 	if err != nil {
-		t.Fatalf("ForSurge() error: %v", err)
+		t.Fatalf("ForSurge: %v", err)
 	}
-
-	proxies := proxyNameSet(projected.Proxies)
-	if proxies["HK-VL"] || proxies["SG-VL"] {
-		t.Fatalf("vless proxies should be dropped, got %v", projected.Proxies)
+	proxies := targetProxyNameSet(projected.Proxies)
+	if proxies["HK-VL"] || proxies["SG-VL"] || !proxies["HK-01"] {
+		t.Fatalf("Surge proxies = %v", proxies)
 	}
-	if !proxies["HK-01"] {
-		t.Fatalf("HK-01 should survive, got %v", projected.Proxies)
+	if targetGroupNameSet(projected.NodeGroups)["GRP_SG"] {
+		t.Fatalf("Surge node groups = %+v", projected.NodeGroups)
 	}
-
-	nodeGroups := groupNameSet(projected.NodeGroups)
-	if nodeGroups["GRP_SG"] {
-		t.Fatalf("GRP_SG should be dropped, got %v", projected.NodeGroups)
-	}
-	if !nodeGroups["GRP_HK"] {
-		t.Fatalf("GRP_HK should survive, got %v", projected.NodeGroups)
-	}
-
-	routeGroups := groupNameSet(projected.RouteGroups)
-	if routeGroups["SVC_SGOnly"] {
-		t.Fatalf("SVC_SGOnly should be dropped, got %v", projected.RouteGroups)
-	}
-	if !routeGroups["SVC_Quick"] || !routeGroups["SVC_FINAL"] {
-		t.Fatalf("surviving route groups missing, got %v", projected.RouteGroups)
-	}
-
-	rulesets := rulesetPolicySet(projected.Rulesets)
-	if rulesets["SVC_SGOnly"] {
-		t.Fatalf("ruleset for dropped policy should be removed, got %v", projected.Rulesets)
-	}
-	if !rulesets["SVC_Quick"] {
-		t.Fatalf("ruleset for surviving policy missing, got %v", projected.Rulesets)
-	}
-
-	rules := rulePolicySet(projected.Rules)
-	if rules["SVC_SGOnly"] {
-		t.Fatalf("rule for dropped policy should be removed, got %v", projected.Rules)
-	}
-	if !rules["SVC_Quick"] {
-		t.Fatalf("rule for surviving policy missing, got %v", projected.Rules)
+	if targetGroupNameSet(projected.RouteGroups)["SVC_SGOnly"] {
+		t.Fatalf("Surge route groups = %+v", projected.RouteGroups)
 	}
 }
 
-// T-TGT-010: Surge drops chained proxy when its dialer is dropped
+// T-TGT-010: Surge drops chains whose VLESS dialer was removed.
 func TestForSurge_DropsChainedOnDroppedUpstream(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"}, Kind: model.KindSubscription},
-			{Name: "HK-VL", Type: "vless", Server: "1.2.3.4", Port: 443, Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp"}, Kind: model.KindVLess},
-			{Name: "HK-VL→CHAIN", Type: "socks5", Server: "127.0.0.1", Port: 1080, Kind: model.KindChained, Dialer: "HK-VL"},
+			ssProxy(1, "HK-01"),
+			vlessProxy(2, "HK-VL"),
+			chainedProxy(3, "HK-VL→CHAIN", 2, "CHAIN"),
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01"}},
-			{Name: "GRP_CHAIN", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-VL→CHAIN"}},
+		NodeGroups: []model.NodeGroup{
+			nodeGroup("GRP_HK", 1),
+			nodeGroup("GRP_CHAIN", 3),
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "GRP_CHAIN", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_HK"), nodePolicy("GRP_CHAIN"), reservedPolicy("DIRECT")),
 		},
-		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-01", "HK-VL"},
+		Fallback: "SVC_FINAL",
 	}
 
 	projected, err := ForSurge(p)
 	if err != nil {
-		t.Fatalf("ForSurge() error: %v", err)
+		t.Fatalf("ForSurge: %v", err)
 	}
-
-	proxies := proxyNameSet(projected.Proxies)
-	if proxies["HK-VL→CHAIN"] {
-		t.Fatalf("chained proxy with dropped VLESS upstream should be dropped, got %v", projected.Proxies)
+	if targetProxyNameSet(projected.Proxies)["HK-VL→CHAIN"] {
+		t.Fatalf("VLESS chain survived: %+v", projected.Proxies)
 	}
-	if groupNameSet(projected.NodeGroups)["GRP_CHAIN"] {
-		t.Fatalf("GRP_CHAIN should be dropped after its only member was removed, got %v", projected.NodeGroups)
+	if targetGroupNameSet(projected.NodeGroups)["GRP_CHAIN"] {
+		t.Fatalf("empty chain group survived: %+v", projected.NodeGroups)
 	}
 }
 
-// T-TGT-011: Surge returns TargetError when fallback group cleared by cascade
+// T-TGT-011: Surge uses its dedicated fallback error code.
 func TestForSurge_FallbackCleared(t *testing.T) {
 	p := &model.Pipeline{
-		Proxies: []model.Proxy{
-			{Name: "HK-VL", Type: "vless", Server: "1.2.3.4", Port: 443, Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp"}, Kind: model.KindVLess},
+		Proxies:    []model.Proxy{vlessProxy(1, "HK-VL")},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_HK", 1)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_HK")),
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-VL"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK"}},
-		},
-		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-VL"},
+		Fallback: "SVC_FINAL",
 	}
 
 	_, err := ForSurge(p)
-	if err == nil {
-		t.Fatal("expected Surge fallback-empty error")
+	var targetErr *errtype.TargetError
+	if !errors.As(err, &targetErr) {
+		t.Fatalf("error = %T %v", err, err)
 	}
-	var te *errtype.TargetError
-	if !errors.As(err, &te) {
-		t.Fatalf("err type = %T, want *TargetError", err)
+	if targetErr.Code != errtype.CodeTargetSurgeFallbackEmpty || targetErr.Format != "surge" {
+		t.Fatalf("TargetError = %+v", targetErr)
 	}
-	if te.Code != errtype.CodeTargetSurgeFallbackEmpty {
-		t.Fatalf("Code = %q, want %q", te.Code, errtype.CodeTargetSurgeFallbackEmpty)
-	}
-	if te.Format != "surge" {
-		t.Fatalf("Format = %q, want surge", te.Format)
-	}
-	for _, want := range []string{"SVC_FINAL", "GRP_HK", "HK-VL(vless)", "被 vless 过滤级联清空"} {
-		if !strings.Contains(te.Message, want) {
-			t.Fatalf("message missing %q, got: %s", want, te.Message)
+	for _, want := range []string{"SVC_FINAL", "GRP_HK", "HK-VL#1(vless)"} {
+		if !strings.Contains(targetErr.Error(), want) {
+			t.Fatalf("error missing %q: %s", want, targetErr.Error())
 		}
 	}
 }
 
-// T-TGT-012: Surge shared subgraph does not misreport as cycle
-func TestForSurge_SharedSubgraphNoCycleMisreport(t *testing.T) {
+// T-TGT-012: projection keeps only target-native structured subscriptions.
+func TestTargetProjection_FiltersNativeSubscriptionFormats(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "VL-SRC", Type: "vless", Server: "1.2.3.4", Port: 443, Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp"}, Kind: model.KindVLess},
-			{Name: "VL-SRC→A", Type: "socks5", Server: "127.0.0.1", Port: 1080, Kind: model.KindChained, Dialer: "VL-SRC"},
-			{Name: "VL-SRC→B", Type: "socks5", Server: "127.0.0.1", Port: 1081, Kind: model.KindChained, Dialer: "VL-SRC"},
+			nativeProxy(1, "HK-YAML", model.NativeProxyFormatClash),
+			nativeProxy(2, "SG-CONF", model.NativeProxyFormatSurge),
+			ssProxy(3, "US-TXT"),
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_CHAIN", Scope: model.ScopeNode, Strategy: "select", Members: []string{"VL-SRC→A", "VL-SRC→B"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_CHAIN"}},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_ALL", 1, 2, 3)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_ALL"), reservedPolicy("DIRECT")),
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"VL-SRC"},
+		AllProxies: []model.ProxyID{1, 2, 3},
 	}
 
-	_, err := ForSurge(p)
-	if err == nil {
-		t.Fatal("expected fallback-empty error")
-	}
-	if strings.Contains(err.Error(), "cycle") {
-		t.Fatalf("shared upstream should not trigger cycle report, got: %s", err.Error())
-	}
-}
-
-// T-TGT-013: Surge is no-op when pipeline contains no vless
-func TestForSurge_NoOpWhenNoVLess(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"}, Kind: model.KindSubscription},
-		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "DIRECT"}},
-		},
-		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-01"},
-	}
-
-	filtered, err := ForSurge(p)
+	clash, err := ForClash(p)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("ForClash: %v", err)
 	}
-	if filtered != p {
-		t.Fatal("expected pointer identity passthrough when no VLESS is present")
+	clashNames := targetProxyNameSet(clash.Proxies)
+	if !clashNames["HK-YAML"] || !clashNames["US-TXT"] || clashNames["SG-CONF"] {
+		t.Fatalf("Clash names = %v", clashNames)
+	}
+
+	surge, err := ForSurge(p)
+	if err != nil {
+		t.Fatalf("ForSurge: %v", err)
+	}
+	surgeNames := targetProxyNameSet(surge.Proxies)
+	if !surgeNames["SG-CONF"] || !surgeNames["US-TXT"] || surgeNames["HK-YAML"] {
+		t.Fatalf("Surge names = %v", surgeNames)
 	}
 }
 
-// T-TGT-014: internal filter error uses CodeTargetClashProjectionInvalid
+// T-TGT-013: incompatible native roots remain visible in cascade diagnostics.
+func TestForClash_SurgeNativeCascadeIncludesRootCause(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			nativeProxy(1, "HK-CONF", model.NativeProxyFormatSurge),
+			chainedProxy(2, "HK-CONF→CHAIN", 1, "CHAIN"),
+		},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_CHAIN", 2)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_CHAIN")),
+		},
+		Fallback: "SVC_FINAL",
+	}
+
+	_, err := ForClash(p)
+	for _, want := range []string{"HK-CONF→CHAIN#2(chained)", "HK-CONF#1(Surge CONF 专属)", "SVC_FINAL"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %s", want, err)
+		}
+	}
+}
+
+// T-TGT-ID-001: names are allocated independently after format filtering.
+func TestTargetProjection_DuplicateNativeNamesRemainOriginalPerFormat(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			nativeProxy(1, "SAME", model.NativeProxyFormatClash),
+			nativeProxy(2, "SAME", model.NativeProxyFormatSurge),
+		},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_ALL", 1, 2)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_ALL")),
+		},
+		Fallback: "SVC_FINAL",
+	}
+
+	clash, err := ForClash(p)
+	if err != nil {
+		t.Fatalf("ForClash: %v", err)
+	}
+	surge, err := ForSurge(p)
+	if err != nil {
+		t.Fatalf("ForSurge: %v", err)
+	}
+	if len(clash.Proxies) != 1 || clash.Proxies[0].Name != "SAME" {
+		t.Fatalf("Clash proxies = %+v, want original SAME", clash.Proxies)
+	}
+	if len(surge.Proxies) != 1 || surge.Proxies[0].Name != "SAME" {
+		t.Fatalf("Surge proxies = %+v, want original SAME", surge.Proxies)
+	}
+}
+
+// T-TGT-ID-002: duplicates inside one target use deterministic suffixes, while
+// preserving natural suffix declarations.
+func TestTargetProjection_DeduplicatesWithinOneFormat(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			ssProxy(1, "NODE-A"),
+			ssProxy(2, "NODE-A②"),
+			ssProxy(3, "NODE-A"),
+		},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_ALL", 1, 2, 3)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_ALL")),
+		},
+		Fallback: "SVC_FINAL",
+	}
+
+	projected, err := ForClash(p)
+	if err != nil {
+		t.Fatalf("ForClash: %v", err)
+	}
+	want := []string{"NODE-A", "NODE-A②", "NODE-A③"}
+	for index, name := range want {
+		if projected.Proxies[index].Name != name {
+			t.Errorf("Proxies[%d].Name = %q, want %q", index, projected.Proxies[index].Name, name)
+		}
+	}
+	group := targetGroupByName(projected.NodeGroups, "GRP_ALL")
+	if group == nil || strings.Join(group.Members, ",") != strings.Join(want, ",") {
+		t.Fatalf("GRP_ALL = %+v, want %v", group, want)
+	}
+}
+
+// T-TGT-ID-003: group and reserved names are target-local reservations, not
+// graph identities; colliding proxies are renamed during projection.
+func TestTargetProjection_AvoidsGroupAndReservedNames(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			ssProxy(1, "GRP_ALL"),
+			ssProxy(2, "DIRECT"),
+		},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_ALL", 1, 2)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_ALL"), reservedPolicy("DIRECT")),
+		},
+		Fallback: "SVC_FINAL",
+	}
+
+	projected, err := ForClash(p)
+	if err != nil {
+		t.Fatalf("ForClash: %v", err)
+	}
+	if projected.Proxies[0].Name != "GRP_ALL②" || projected.Proxies[1].Name != "DIRECT②" {
+		t.Fatalf("projected proxies = %+v", projected.Proxies)
+	}
+}
+
+// T-TGT-ID-004: a chain name and dialer reference are derived from the
+// dialer's final target-local name.
+func TestTargetProjection_ChainedNamesUseFinalDialerName(t *testing.T) {
+	p := &model.Pipeline{
+		Proxies: []model.Proxy{
+			ssProxy(1, "UPSTREAM"),
+			ssProxy(2, "UPSTREAM"),
+			chainedProxy(3, "UPSTREAM→CHAIN", 2, "CHAIN"),
+		},
+		NodeGroups: []model.NodeGroup{nodeGroup("GRP_CHAIN", 3)},
+		RouteGroups: []model.RouteGroup{
+			routeGroup("SVC_FINAL", nodePolicy("GRP_CHAIN")),
+		},
+		Fallback: "SVC_FINAL",
+	}
+
+	projected, err := ForClash(p)
+	if err != nil {
+		t.Fatalf("ForClash: %v", err)
+	}
+	chain := targetProxyByName(projected.Proxies, "UPSTREAM②→CHAIN")
+	if chain == nil {
+		t.Fatalf("projected proxies = %+v", projected.Proxies)
+	}
+	if chain.Dialer != "UPSTREAM②" {
+		t.Fatalf("chain.Dialer = %q, want UPSTREAM②", chain.Dialer)
+	}
+	if group := targetGroupByName(projected.NodeGroups, "GRP_CHAIN"); group == nil || len(group.Members) != 1 || group.Members[0] != chain.Name {
+		t.Fatalf("GRP_CHAIN = %+v, want %q", group, chain.Name)
+	}
+}
+
+// T-TGT-014: projection-invariant failures use target-specific codes.
 func TestInternalFilterError_UsesDedicatedProjectionCode(t *testing.T) {
 	tests := []struct {
 		name string
@@ -566,131 +657,16 @@ func TestInternalFilterError_UsesDedicatedProjectionCode(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := internalFilterError(tc.opts, "boom")
-			var te *errtype.TargetError
-			if !errors.As(err, &te) {
-				t.Fatalf("err type = %T, want *errtype.TargetError", err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := internalFilterError(test.opts, "boom")
+			var targetErr *errtype.TargetError
+			if !errors.As(err, &targetErr) {
+				t.Fatalf("error = %T, want TargetError", err)
 			}
-			if te.Code != tc.want {
-				t.Fatalf("Code = %q, want %q", te.Code, tc.want)
+			if targetErr.Code != test.want {
+				t.Fatalf("Code = %q, want %q", targetErr.Code, test.want)
 			}
 		})
-	}
-}
-
-// T-TGT-015: target projection keeps only matching native subscription formats.
-func TestTargetProjection_FiltersNativeSubscriptionFormats(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{
-			{
-				Name: "HK-YAML",
-				Type: "trojan",
-				Kind: model.KindSubscription,
-				Native: &model.NativeProxy{
-					Format:  model.NativeProxyFormatClash,
-					Payload: "name: HK-YAML\ntype: trojan\n",
-				},
-			},
-			{
-				Name: "SG-CONF",
-				Type: "trojan",
-				Kind: model.KindSubscription,
-				Native: &model.NativeProxy{
-					Format:  model.NativeProxyFormatSurge,
-					Payload: "trojan, sg.example.com, 443, password=secret",
-				},
-			},
-			{
-				Name:   "US-TXT",
-				Type:   "ss",
-				Server: "us.example.com",
-				Port:   8388,
-				Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"},
-				Kind:   model.KindSubscription,
-			},
-		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_ALL", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-YAML", "SG-CONF", "US-TXT"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_ALL", "DIRECT"}},
-		},
-		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-YAML", "SG-CONF", "US-TXT"},
-	}
-
-	clash, err := ForClash(p)
-	if err != nil {
-		t.Fatalf("ForClash() error: %v", err)
-	}
-	clashNames := proxyNameSet(clash.Proxies)
-	if !clashNames["HK-YAML"] || !clashNames["US-TXT"] || clashNames["SG-CONF"] {
-		t.Fatalf("Clash proxy projection = %v, want YAML+TXT only", clashNames)
-	}
-	if stringSliceContains(clash.AllProxies, "SG-CONF") {
-		t.Fatalf("Clash @all leaked Surge CONF node: %v", clash.AllProxies)
-	}
-
-	surge, err := ForSurge(p)
-	if err != nil {
-		t.Fatalf("ForSurge() error: %v", err)
-	}
-	surgeNames := proxyNameSet(surge.Proxies)
-	if !surgeNames["SG-CONF"] || !surgeNames["US-TXT"] || surgeNames["HK-YAML"] {
-		t.Fatalf("Surge proxy projection = %v, want CONF+TXT only", surgeNames)
-	}
-	if stringSliceContains(surge.AllProxies, "HK-YAML") {
-		t.Fatalf("Surge @all leaked Clash YAML node: %v", surge.AllProxies)
-	}
-}
-
-func stringSliceContains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
-// T-TGT-016: native-format filtering cascades through chained proxies and
-// reports the target-native root in a cleared fallback path.
-func TestForClash_SurgeNativeCascadeIncludesRootCause(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{
-			{
-				Name: "HK-CONF",
-				Type: "trojan",
-				Kind: model.KindSubscription,
-				Native: &model.NativeProxy{
-					Format:  model.NativeProxyFormatSurge,
-					Payload: "trojan, hk.example.com, 443, password=secret",
-				},
-			},
-			{Name: "HK-CONF→CHAIN", Type: "socks5", Server: "127.0.0.1", Port: 1080, Kind: model.KindChained, Dialer: "HK-CONF"},
-		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_CHAIN", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-CONF→CHAIN"}},
-		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_CHAIN"}},
-		},
-		Fallback: "SVC_FINAL",
-	}
-
-	_, err := ForClash(p)
-	if err == nil {
-		t.Fatal("expected fallback-empty error, got nil")
-	}
-	var targetErr *errtype.TargetError
-	if !errors.As(err, &targetErr) {
-		t.Fatalf("error type = %T, want *errtype.TargetError", err)
-	}
-	for _, want := range []string{"HK-CONF→CHAIN(chained)", "HK-CONF(Surge CONF 专属)", "SVC_FINAL"} {
-		if !strings.Contains(targetErr.Error(), want) {
-			t.Fatalf("cascade error missing %q: %s", want, targetErr.Error())
-		}
 	}
 }

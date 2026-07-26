@@ -97,13 +97,13 @@ func TestExecute_AnyTLSEndToEnd(t *testing.T) {
 			t.Errorf("proxy %q Kind/Type = %q/%q, want subscription/anytls", proxy.Name, proxy.Kind, proxy.Type)
 		}
 	}
-	if len(p.NodeGroups) != 1 || !containsString(p.NodeGroups[0].Members, "HK-AnyTLS") {
+	if len(p.NodeGroups) != 1 || !containsProxyName(p.Proxies, p.NodeGroups[0].Members, "HK-AnyTLS") {
 		t.Fatalf("HK group members = %+v, want HK-AnyTLS", p.NodeGroups)
 	}
-	if !containsString(p.AllProxies, "HK-AnyTLS") || !containsString(p.AllProxies, "SG-AnyTLS") {
+	if !containsProxyName(p.Proxies, p.AllProxies, "HK-AnyTLS") || !containsProxyName(p.Proxies, p.AllProxies, "SG-AnyTLS") {
 		t.Fatalf("@all = %+v, want active AnyTLS nodes", p.AllProxies)
 	}
-	if containsString(p.AllProxies, "Traffic Reset") {
+	if containsProxyName(p.Proxies, p.AllProxies, "Traffic Reset") {
 		t.Fatalf("@all leaked filtered info node: %+v", p.AllProxies)
 	}
 }
@@ -143,18 +143,18 @@ SG-CONF = trojan, sg.example.com, 443, password=pw
 	if len(p.Proxies) != 2 {
 		t.Fatalf("active proxies = %d, want 2: %+v", len(p.Proxies), p.Proxies)
 	}
-	if !containsString(p.AllProxies, "HK-YAML") || !containsString(p.AllProxies, "SG-CONF") {
+	if !containsProxyName(p.Proxies, p.AllProxies, "HK-YAML") || !containsProxyName(p.Proxies, p.AllProxies, "SG-CONF") {
 		t.Fatalf("@all = %+v, want both structured subscription nodes", p.AllProxies)
 	}
-	if containsString(p.AllProxies, "Traffic Reset") || containsString(p.AllProxies, "DIRECT") {
+	if containsProxyName(p.Proxies, p.AllProxies, "Traffic Reset") || containsProxyName(p.Proxies, p.AllProxies, "DIRECT") {
 		t.Fatalf("@all leaked filtered or reserved entry: %+v", p.AllProxies)
 	}
 
-	groupMembers := make(map[string][]string, len(p.NodeGroups))
+	groupMembers := make(map[string][]model.ProxyID, len(p.NodeGroups))
 	for _, group := range p.NodeGroups {
 		groupMembers[group.Name] = group.Members
 	}
-	if !containsString(groupMembers["HK"], "HK-YAML") || !containsString(groupMembers["SG"], "SG-CONF") {
+	if !containsProxyName(p.Proxies, groupMembers["HK"], "HK-YAML") || !containsProxyName(p.Proxies, groupMembers["SG"], "SG-CONF") {
 		t.Fatalf("structured nodes did not participate in region matching: %+v", groupMembers)
 	}
 }
@@ -253,7 +253,7 @@ func TestExecute_SnellSourceEndToEnd(t *testing.T) {
 	}
 
 	// HK node group should contain both HK-01 and HK-Snell (regex-matched).
-	var hkGroup *model.ProxyGroup
+	var hkGroup *model.NodeGroup
 	for i, g := range p.NodeGroups {
 		if g.Name == "HK" {
 			hkGroup = &p.NodeGroups[i]
@@ -266,7 +266,7 @@ func TestExecute_SnellSourceEndToEnd(t *testing.T) {
 	wantMembers := map[string]bool{"HK-01": true, "HK-Snell": true}
 	gotMembers := make(map[string]bool)
 	for _, m := range hkGroup.Members {
-		gotMembers[m] = true
+		gotMembers[proxyNameByID(p.Proxies, m)] = true
 	}
 	for m := range wantMembers {
 		if !gotMembers[m] {
@@ -277,8 +277,8 @@ func TestExecute_SnellSourceEndToEnd(t *testing.T) {
 
 // TestExecute_SnellAsRelayThroughUpstream verifies that Snell nodes are valid
 // upstream candidates for a custom proxy's relay_through chain. The resulting
-// Pipeline should contain a HK-Snell→MY-PROXY chained node with Dialer set
-// to the Snell node's name; Clash rendering later cascades it out, while
+// Pipeline should contain a HK-Snell→MY-PROXY chained node with DialerID set
+// to the Snell node's identity; Clash rendering later cascades it out, while
 // Surge includes it. This test guards against accidentally narrowing the
 // upstream pool back to KindSubscription only.
 func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
@@ -318,14 +318,14 @@ func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 	if chained.Name != "HK-Snell→MY-PROXY" {
 		t.Errorf("chained.Name = %q, want HK-Snell→MY-PROXY", chained.Name)
 	}
-	if chained.Dialer != "HK-Snell" {
-		t.Errorf("chained.Dialer = %q, want HK-Snell (the snell upstream)", chained.Dialer)
+	if got := proxyNameByID(p.Proxies, chained.DialerID); got != "HK-Snell" {
+		t.Errorf("chained.DialerID resolves to %q, want HK-Snell (the snell upstream)", got)
 	}
 
 	// AllProxies must NOT include the chained node but MUST include HK-Snell.
 	inAll := map[string]bool{}
-	for _, n := range p.AllProxies {
-		inAll[n] = true
+	for _, id := range p.AllProxies {
+		inAll[proxyNameByID(p.Proxies, id)] = true
 	}
 	if !inAll["HK-Snell"] {
 		t.Error("AllProxies should include HK-Snell (original node)")
@@ -489,7 +489,7 @@ func TestExecute_VLessEndToEnd(t *testing.T) {
 	}
 
 	// HK region group: HK-01 (ss) + HK-VL (vless).
-	var hk *model.ProxyGroup
+	var hk *model.NodeGroup
 	for i, g := range p.NodeGroups {
 		if g.Name == "HK" {
 			hk = &p.NodeGroups[i]
@@ -502,7 +502,7 @@ func TestExecute_VLessEndToEnd(t *testing.T) {
 	wantHK := map[string]bool{"HK-01": true, "HK-VL": true}
 	gotHK := map[string]bool{}
 	for _, m := range hk.Members {
-		gotHK[m] = true
+		gotHK[proxyNameByID(p.Proxies, m)] = true
 	}
 	for m := range wantHK {
 		if !gotHK[m] {
@@ -550,14 +550,14 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 	if chained.Name != "HK-VL→MY-PROXY" {
 		t.Errorf("chained.Name = %q, want HK-VL→MY-PROXY", chained.Name)
 	}
-	if chained.Dialer != "HK-VL" {
-		t.Errorf("chained.Dialer = %q, want HK-VL (the vless upstream)", chained.Dialer)
+	if got := proxyNameByID(p.Proxies, chained.DialerID); got != "HK-VL" {
+		t.Errorf("chained.DialerID resolves to %q, want HK-VL (the vless upstream)", got)
 	}
 
 	// @all includes original vless node, not the chained derivative.
 	inAll := map[string]bool{}
-	for _, n := range p.AllProxies {
-		inAll[n] = true
+	for _, id := range p.AllProxies {
+		inAll[proxyNameByID(p.Proxies, id)] = true
 	}
 	if !inAll["HK-VL"] {
 		t.Error("AllProxies should include HK-VL (original node)")
@@ -660,8 +660,8 @@ func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
 
 	// MY-SS appears in @all expansion.
 	foundInAll := false
-	for _, name := range p.AllProxies {
-		if name == "MY-SS" {
+	for _, id := range p.AllProxies {
+		if proxyNameByID(p.Proxies, id) == "MY-SS" {
 			foundInAll = true
 			break
 		}
@@ -677,7 +677,7 @@ func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
 			continue
 		}
 		for _, m := range g.Members {
-			if m == "MY-SS" {
+			if proxyNameByID(p.Proxies, m) == "MY-SS" {
 				t.Errorf("MY-SS leaked into HK region group; KindCustom must not match region regex")
 			}
 		}
@@ -744,8 +744,8 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 		} else if px.Plugin.Name != "obfs-local" || px.Plugin.Opts["obfs"] != "http" {
 			t.Errorf("chained %q Plugin = %+v", px.Name, px.Plugin)
 		}
-		if px.Dialer == "" {
-			t.Errorf("chained %q missing Dialer", px.Name)
+		if px.DialerID == 0 {
+			t.Errorf("chained %q missing DialerID", px.Name)
 		}
 	}
 	for name, found := range wantChained {
@@ -755,7 +755,7 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 	}
 
 	// Chain group "SS-Chain" exists in NodeGroups containing both chained members.
-	var chainGroup *model.ProxyGroup
+	var chainGroup *model.NodeGroup
 	for i := range p.NodeGroups {
 		if p.NodeGroups[i].Name == "SS-Chain" {
 			chainGroup = &p.NodeGroups[i]
@@ -771,7 +771,8 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 
 	// SS-Chain does NOT enter @all expansion (chained nodes excluded; chain
 	// template doesn't produce a standalone node).
-	for _, name := range p.AllProxies {
+	for _, id := range p.AllProxies {
+		name := proxyNameByID(p.Proxies, id)
 		if name == "SS-Chain" || strings.Contains(name, "→SS-Chain") {
 			t.Errorf("chain-related %q leaked into @all", name)
 		}

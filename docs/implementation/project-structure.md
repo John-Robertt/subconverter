@@ -44,7 +44,7 @@ subconverter/
 - 配置结构（含 `Templates` 底版模板声明）
 - YAML 加载（支持本地路径和远程 URL）
 - 保序映射
-- 静态校验与启动期预计算（`Prepare` 产出启动期准备好的 `RuntimeConfig`，含编译后正则、解析后自定义代理、展开后路由成员、静态命名空间；请求期按只读契约消费）
+- 静态校验与启动期预计算（`Prepare` 产出启动期准备好的 `RuntimeConfig`，含编译后正则、解析后自定义代理和展开后路由成员；请求期按只读契约消费）
 - 原始配置层（`Config`）不持有运行期派生的代理字段；预计算层（`RuntimeConfig`）存储启动期产物
 
 `internal/errtype`
@@ -55,7 +55,7 @@ subconverter/
 `internal/model`
 
 - 统一中间表示
-- `ValidateProxyInvariant`：集中校验单个 Proxy 的结构不变量（Kind/Type 一致性、Dialer 约束、必填参数），供 pipeline 阶段调用以避免各阶段重复解释部分重叠的校验规则
+- `ValidateProxyInvariant`：集中校验单个 Proxy 的结构不变量（非零 ID、Kind/Type 一致性、DialerID 约束、必填参数），供 pipeline 阶段调用以避免各阶段重复解释部分重叠的校验规则
 
 `internal/fetch`
 
@@ -231,7 +231,7 @@ subconverter/
 - `SaveConfig`：基于 `config_revision` 做条件写回，revision 冲突返回 `409`
 - `ValidateDraft`：校验草稿配置，返回结构化诊断
 - `Reload`：强制刷新主配置源、Prepare 后原子替换 `RuntimeConfig`
-- `PreviewNodes` / `PreviewGroups`：支持运行时 GET 预览与草稿 POST 预览；返回 `app` 包内定义的 DTO（如 `NodePreview` / `GroupPreview`），由 `app.Service` 负责从 `model.Proxy` / `model.ProxyGroup` 转换，使 `admin` 层无需导入 `model`
+- `PreviewNodes` / `PreviewGroups`：支持运行时 GET 预览与草稿 POST 预览；返回 `app` 包内定义的 DTO，由 `app.Service` 负责从 `model.Proxy` / `model.NodeGroup` / `model.RouteGroup` 转换，并用 `proxy-N` 暴露本次 Build 内的调试 ID，使 `admin` 层无需导入 `model`
 - `Generate` / `GenerateFromDraft`：分别基于当前 `RuntimeConfig` 快照或草稿配置，传入无状态的生成逻辑输出文本；“preview”只属于 HTTP route / handler 命名，`app.Service` 不新增薄封装方法
 - `GenerateLink`：根据当前配置 `base_url`、格式、文件名和订阅访问 token 生成客户端订阅链接
 - `Status`：返回配置源能力、当前 revision、运行时 revision、dirty 与最近 reload 信息

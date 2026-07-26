@@ -91,22 +91,12 @@ func TestIntegration_PrepareExampleConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prepare example config: %v", err)
 	}
-
-	ns := rt.StaticNamespace()
-	for _, name := range []string{"DIRECT", "REJECT"} {
-		if kind, ok := ns.Kind(name); !ok || kind != staticKindReserved {
-			t.Errorf("StaticNamespace %s = (%q, %v), want (%q, true)", name, kind, ok, staticKindReserved)
-		}
+	if len(rt.GroupInput()) != cfg.Groups.Len() {
+		t.Errorf("prepared groups = %d, want %d", len(rt.GroupInput()), cfg.Groups.Len())
 	}
-	for _, name := range cfg.Groups.Keys() {
-		if kind, ok := ns.Kind(name); !ok || kind != staticKindNodeGroup {
-			t.Errorf("StaticNamespace group %s = (%q, %v), want (%q, true)", name, kind, ok, staticKindNodeGroup)
-		}
-	}
-	for _, name := range cfg.Routing.Keys() {
-		if kind, ok := ns.Kind(name); !ok || kind != staticKindRouteGroup {
-			t.Errorf("StaticNamespace route %s = (%q, %v), want (%q, true)", name, kind, ok, staticKindRouteGroup)
-		}
+	routing, _, _, _ := rt.RouteInput()
+	if len(routing) != cfg.Routing.Len() {
+		t.Errorf("prepared routing = %d, want %d", len(routing), cfg.Routing.Len())
 	}
 }
 

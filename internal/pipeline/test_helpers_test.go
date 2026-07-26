@@ -20,9 +20,18 @@ func Execute(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*m
 	return Build(ctx, rt, fetcher)
 }
 
-func containsString(items []string, want string) bool {
-	for _, item := range items {
-		if item == want {
+func proxyNameByID(proxies []model.Proxy, id model.ProxyID) string {
+	for _, proxy := range proxies {
+		if proxy.ID == id {
+			return proxy.Name
+		}
+	}
+	return ""
+}
+
+func containsProxyName(proxies []model.Proxy, ids []model.ProxyID, want string) bool {
+	for _, id := range ids {
+		if proxyNameByID(proxies, id) == want {
 			return true
 		}
 	}
@@ -36,7 +45,7 @@ func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*So
 	if err != nil {
 		return nil, err
 	}
-	return sourcePrepared(ctx, rt.SourceInput(), rt.StaticNamespace(), fetcher)
+	return sourcePrepared(ctx, rt.SourceInput(), fetcher)
 }
 
 func groupFromConfig(cfg *config.Config, proxies []model.Proxy) (*GroupResult, error) {
@@ -51,6 +60,7 @@ func groupFromConfig(cfg *config.Config, proxies []model.Proxy) (*GroupResult, e
 	allProxies := make([]model.Proxy, 0, len(proxies)+len(standalone))
 	allProxies = append(allProxies, proxies...)
 	allProxies = append(allProxies, standalone...)
+	allProxies = assignProxyIDs(allProxies)
 	return Group(&SourceResult{
 		Proxies:        allProxies,
 		ChainTemplates: chainTemplates,

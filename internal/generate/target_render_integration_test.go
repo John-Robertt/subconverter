@@ -38,18 +38,27 @@ func mustRenderSurgeProjected(t *testing.T, p *model.Pipeline) []byte {
 func buildSnellFilterPipeline() *model.Pipeline {
 	return &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Kind: model.KindSubscription},
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-			{Name: "SG-Snell", Type: "snell", Server: "5.6.7.8", Port: 8989, Params: map[string]string{"psk": "y", "version": "4"}, Kind: model.KindSnell},
+			{ID: 1, Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Kind: model.KindSubscription},
+			{ID: 2, Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
+			{ID: 3, Name: "SG-Snell", Type: "snell", Server: "5.6.7.8", Port: 8989, Params: map[string]string{"psk": "y", "version": "4"}, Kind: model.KindSnell},
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01", "HK-Snell"}},
-			{Name: "GRP_SG", Scope: model.ScopeNode, Strategy: "select", Members: []string{"SG-Snell"}},
+		NodeGroups: []model.NodeGroup{
+			{Name: "GRP_HK", Strategy: "select", Members: []model.ProxyID{1, 2}},
+			{Name: "GRP_SG", Strategy: "select", Members: []model.ProxyID{3}},
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_Quick", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "GRP_SG"}},
-			{Name: "SVC_SGOnly", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_SG"}},
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "SVC_SGOnly", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			{Name: "SVC_Quick", Strategy: "select", Members: []model.PolicyRef{
+				{Kind: model.PolicyRefNodeGroup, Name: "GRP_HK"},
+				{Kind: model.PolicyRefNodeGroup, Name: "GRP_SG"},
+			}},
+			{Name: "SVC_SGOnly", Strategy: "select", Members: []model.PolicyRef{
+				{Kind: model.PolicyRefNodeGroup, Name: "GRP_SG"},
+			}},
+			{Name: "SVC_FINAL", Strategy: "select", Members: []model.PolicyRef{
+				{Kind: model.PolicyRefNodeGroup, Name: "GRP_HK"},
+				{Kind: model.PolicyRefRouteGroup, Name: "SVC_SGOnly"},
+				{Kind: model.PolicyRefReserved, Name: "DIRECT"},
+			}},
 		},
 		Rulesets: []model.Ruleset{
 			{Policy: "SVC_SGOnly", URLs: []string{"https://example.com/NF.list"}},
@@ -60,7 +69,7 @@ func buildSnellFilterPipeline() *model.Pipeline {
 			{Raw: "GEOIP,CN,SVC_Quick", Policy: "SVC_Quick"},
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-01", "HK-Snell", "SG-Snell"},
+		AllProxies: []model.ProxyID{1, 2, 3},
 	}
 }
 
@@ -68,20 +77,24 @@ func buildSnellFilterPipeline() *model.Pipeline {
 func TestRender_SnellUpstreamChainVisibility(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Params: map[string]string{"cipher": "aes-256-gcm", "password": "s"}, Kind: model.KindSubscription},
-			{Name: "HK-Snell→MY-PROXY", Type: "socks5", Server: "10.0.0.1", Port: 1080, Params: map[string]string{"username": "u", "password": "p"}, Kind: model.KindChained, Dialer: "HK-Snell"},
-			{Name: "HK-01→MY-PROXY", Type: "socks5", Server: "10.0.0.1", Port: 1080, Params: map[string]string{"username": "u", "password": "p"}, Kind: model.KindChained, Dialer: "HK-01"},
+			{ID: 1, Name: "HK-Snell", Type: "snell", Server: "1.2.3.4", Port: 57891, Params: map[string]string{"psk": "x", "version": "4"}, Kind: model.KindSnell},
+			{ID: 2, Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Params: map[string]string{"cipher": "aes-256-gcm", "password": "s"}, Kind: model.KindSubscription},
+			{ID: 3, Name: "HK-Snell→MY-PROXY", Type: "socks5", Server: "10.0.0.1", Port: 1080, Params: map[string]string{"username": "u", "password": "p"}, Kind: model.KindChained, DialerID: 1, ChainNameSuffix: "MY-PROXY"},
+			{ID: 4, Name: "HK-01→MY-PROXY", Type: "socks5", Server: "10.0.0.1", Port: 1080, Params: map[string]string{"username": "u", "password": "p"}, Kind: model.KindChained, DialerID: 2, ChainNameSuffix: "MY-PROXY"},
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01", "HK-Snell"}},
-			{Name: "GRP_CHAIN", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-Snell→MY-PROXY", "HK-01→MY-PROXY"}},
+		NodeGroups: []model.NodeGroup{
+			{Name: "GRP_HK", Strategy: "select", Members: []model.ProxyID{2, 1}},
+			{Name: "GRP_CHAIN", Strategy: "select", Members: []model.ProxyID{3, 4}},
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "GRP_CHAIN", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			{Name: "SVC_FINAL", Strategy: "select", Members: []model.PolicyRef{
+				{Kind: model.PolicyRefNodeGroup, Name: "GRP_HK"},
+				{Kind: model.PolicyRefNodeGroup, Name: "GRP_CHAIN"},
+				{Kind: model.PolicyRefReserved, Name: "DIRECT"},
+			}},
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-Snell", "HK-01"},
+		AllProxies: []model.ProxyID{1, 2},
 	}
 
 	surgeOut := mustRenderSurgeProjected(t, p)
@@ -133,17 +146,20 @@ func TestRender_SnellVisibilityDiffersBetweenFormats(t *testing.T) {
 func TestRender_VLessVisibilityDiffersBetweenFormats(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
-			{Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"}, Kind: model.KindSubscription},
-			{Name: "HK-VL", Type: "vless", Server: "1.2.3.4", Port: 443, Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp", "servername": "www.example.com"}, Kind: model.KindVLess},
+			{ID: 1, Name: "HK-01", Type: "ss", Server: "hk.example.com", Port: 8388, Params: map[string]string{"cipher": "aes-256-gcm", "password": "pw"}, Kind: model.KindSubscription},
+			{ID: 2, Name: "HK-VL", Type: "vless", Server: "1.2.3.4", Port: 443, Params: map[string]string{"uuid": "11111111-2222-3333-4444-555555555555", "security": "tls", "network": "tcp", "servername": "www.example.com"}, Kind: model.KindVLess},
 		},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-01", "HK-VL"}},
+		NodeGroups: []model.NodeGroup{
+			{Name: "GRP_HK", Strategy: "select", Members: []model.ProxyID{1, 2}},
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			{Name: "SVC_FINAL", Strategy: "select", Members: []model.PolicyRef{
+				{Kind: model.PolicyRefNodeGroup, Name: "GRP_HK"},
+				{Kind: model.PolicyRefReserved, Name: "DIRECT"},
+			}},
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-01", "HK-VL"},
+		AllProxies: []model.ProxyID{1, 2},
 	}
 
 	clashOut := mustRenderClashProjected(t, p)
@@ -171,6 +187,7 @@ func TestRender_VLessVisibilityDiffersBetweenFormats(t *testing.T) {
 func TestRender_AnyTLSVisibleInBothFormats(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{{
+			ID:     1,
 			Name:   "HK-AnyTLS",
 			Type:   "anytls",
 			Server: "hk.example.com",
@@ -187,14 +204,17 @@ func TestRender_AnyTLSVisibleInBothFormats(t *testing.T) {
 			},
 			Kind: model.KindSubscription,
 		}},
-		NodeGroups: []model.ProxyGroup{
-			{Name: "GRP_HK", Scope: model.ScopeNode, Strategy: "select", Members: []string{"HK-AnyTLS"}},
+		NodeGroups: []model.NodeGroup{
+			{Name: "GRP_HK", Strategy: "select", Members: []model.ProxyID{1}},
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "SVC_FINAL", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"GRP_HK", "DIRECT"}},
+		RouteGroups: []model.RouteGroup{
+			{Name: "SVC_FINAL", Strategy: "select", Members: []model.PolicyRef{
+				{Kind: model.PolicyRefNodeGroup, Name: "GRP_HK"},
+				{Kind: model.PolicyRefReserved, Name: "DIRECT"},
+			}},
 		},
 		Fallback:   "SVC_FINAL",
-		AllProxies: []string{"HK-AnyTLS"},
+		AllProxies: []model.ProxyID{1},
 	}
 
 	clashOut := string(mustRenderClashProjected(t, p))

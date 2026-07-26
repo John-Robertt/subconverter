@@ -78,8 +78,8 @@ func TestSurge_ChainedProxyHasUnderlyingProxy(t *testing.T) {
 }
 
 func TestSurge_SSProxyWithSimpleObfsPlugin(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-OBFS",
 			Type:   "ss",
 			Server: "hk.example.com",
@@ -109,8 +109,8 @@ func TestSurge_SSProxyWithSimpleObfsPlugin(t *testing.T) {
 }
 
 func TestSurge_AnyTLSProxy(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-AnyTLS",
 			Type:   "anytls",
 			Server: "demo.com",
@@ -160,8 +160,8 @@ func TestSurge_AnyTLSProxy(t *testing.T) {
 }
 
 func TestSurge_SSProxyWithUnsupportedPlugin(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-V2RAY",
 			Type:   "ss",
 			Server: "hk.example.com",
@@ -188,8 +188,8 @@ func TestSurge_SSProxyWithUnsupportedPlugin(t *testing.T) {
 }
 
 func TestSurge_SSProxyUDPAndTFO(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-SS",
 			Type:   "ss",
 			Server: "hk.example.com",
@@ -219,8 +219,8 @@ func TestSurge_SSProxyUDPAndTFO(t *testing.T) {
 func TestSurge_SSProxyQuotesCommaSeparatedParams(t *testing.T) {
 	paramKey := "pass" + "word"
 	paramValue := `value,with"\tail`
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-SS",
 			Type:   "ss",
 			Server: "hk.example.com",
@@ -359,8 +359,8 @@ func TestSurge_GroupOrderRouteBeforeNode(t *testing.T) {
 
 // T-SURGE-SNELL-001: Snell proxy renders with the fixed key order.
 func TestSurge_SnellProxy_BasicFields(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "HK-Snell",
 			Type:   "snell",
 			Server: "1.2.3.4",
@@ -391,8 +391,8 @@ func TestSurge_SnellProxy_BasicFields(t *testing.T) {
 
 // T-SURGE-SNELL-002: ShadowTLS fields appear after base fields in declared order.
 func TestSurge_SnellProxy_ShadowTLS(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "JP-Snell",
 			Type:   "snell",
 			Server: "9.10.11.12",
@@ -425,8 +425,8 @@ func TestSurge_SnellProxy_ShadowTLS(t *testing.T) {
 // Verifies that #!MANAGED-CONFIG appears exactly once (not duplicated by the
 // template merge) and Snell proxy lines land in the [Proxy] section.
 func TestSurge_SnellWithManagedHeader(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{
 			{
 				Name:   "HK-Snell",
 				Type:   "snell",
@@ -436,8 +436,8 @@ func TestSurge_SnellWithManagedHeader(t *testing.T) {
 				Kind:   model.KindSnell,
 			},
 		},
-		RouteGroups: []model.ProxyGroup{
-			{Name: "Final", Scope: model.ScopeRoute, Strategy: "select", Members: []string{"HK-Snell", "DIRECT"}},
+		RouteGroups: []model.TargetGroup{
+			{Name: "Final", Strategy: "select", Members: []string{"HK-Snell", "DIRECT"}},
 		},
 		Fallback: "Final",
 	}
@@ -467,8 +467,8 @@ func TestSurge_SnellWithManagedHeader(t *testing.T) {
 
 // T-SURGE-SNELL-003: Unknown Params keys are not emitted (fixed-list renderer).
 func TestSurge_SnellProxy_UnknownKeyDropped(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name:   "X",
 			Type:   "snell",
 			Server: "1.1.1.1",
@@ -498,8 +498,8 @@ func TestSurge_SnellProxy_UnknownKeyDropped(t *testing.T) {
 // T-RND-SURGE-NATIVE-001: copied [Proxy] declarations preserve their complete
 // right-hand side while the IR name remains authoritative after deduplication.
 func TestSurge_NativeProxyPreservesDeclarationAndUsesCurrentName(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name: "HK-CONF②",
 			Type: "trojan",
 			Kind: model.KindSubscription,
@@ -528,8 +528,8 @@ func TestSurge_NativeProxyPreservesDeclarationAndUsesCurrentName(t *testing.T) {
 // T-RND-SURGE-NATIVE-002: a Clash-native declaration reaching Surge is a
 // projection-contract violation.
 func TestSurge_RejectsClashNativeProxy(t *testing.T) {
-	p := &model.Pipeline{
-		Proxies: []model.Proxy{{
+	p := &model.TargetPipeline{
+		Proxies: []model.TargetProxy{{
 			Name: "HK-YAML",
 			Type: "trojan",
 			Kind: model.KindSubscription,

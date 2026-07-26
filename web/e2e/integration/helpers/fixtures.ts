@@ -125,15 +125,15 @@ export const fixtureAuthLocked: AuthStatus = {
 
 export const fixtureNodes: NodePreviewResponse = {
   nodes: [
-    { name: "🇭🇰 香港 IEPL 01", type: "ss", kind: "subscription", server: "hk01.example.com", port: 443, filtered: false },
-    { name: "🇭🇰 香港 IEPL 02", type: "ss", kind: "subscription", server: "hk02.example.com", port: 443, filtered: false },
-    { name: "🇯🇵 大阪 BGP 01", type: "ss", kind: "subscription", server: "jp01.example.com", port: 443, filtered: false },
-    { name: "🇯🇵 东京 IEPL 02", type: "ss", kind: "subscription", server: "jp02.example.com", port: 443, filtered: false },
-    { name: "🇸🇬 新加坡 01", type: "ss", kind: "subscription", server: "sg01.example.com", port: 443, filtered: false },
-    { name: "🏳️ 测试·流量信息", type: "ss", kind: "subscription", server: "info.example.com", port: 80, filtered: true },
-    { name: "🇭🇰 Snell HK Premium", type: "snell", kind: "snell", server: "hk-snell.example.com", port: 6160, filtered: false },
-    { name: "🇩🇪 法兰克福 Reality", type: "vless", kind: "vless", server: "fra.example.io", port: 443, filtered: false },
-    { name: "Home Relay", type: "ss", kind: "custom", server: "home.example.com", port: 8388, filtered: false }
+    { id: "proxy-1", name: "🇭🇰 香港 IEPL 01", type: "ss", kind: "subscription", server: "hk01.example.com", port: 443, filtered: false },
+    { id: "proxy-2", name: "🇭🇰 香港 IEPL 02", type: "ss", kind: "subscription", server: "hk02.example.com", port: 443, filtered: false },
+    { id: "proxy-3", name: "🇯🇵 大阪 BGP 01", type: "ss", kind: "subscription", server: "jp01.example.com", port: 443, filtered: false },
+    { id: "proxy-4", name: "🇯🇵 东京 IEPL 02", type: "ss", kind: "subscription", server: "jp02.example.com", port: 443, filtered: false },
+    { id: "proxy-5", name: "🇸🇬 新加坡 01", type: "ss", kind: "subscription", server: "sg01.example.com", port: 443, filtered: false },
+    { id: "proxy-6", name: "🏳️ 测试·流量信息", type: "ss", kind: "subscription", server: "info.example.com", port: 80, filtered: true },
+    { id: "proxy-7", name: "🇭🇰 Snell HK Premium", type: "snell", kind: "snell", server: "hk-snell.example.com", port: 6160, filtered: false },
+    { id: "proxy-8", name: "🇩🇪 法兰克福 Reality", type: "vless", kind: "vless", server: "fra.example.io", port: 443, filtered: false },
+    { id: "proxy-9", name: "Home Relay", type: "ss", kind: "custom", server: "home.example.com", port: 8388, filtered: false }
   ],
   total: 9,
   active_count: 8,
@@ -146,19 +146,26 @@ export const fixtureGroups: GroupPreviewResponse = {
       name: "GRP_HK",
       strategy: "url-test",
       match: "(港|HK)",
-      members: ["🇭🇰 香港 IEPL 01", "🇭🇰 香港 IEPL 02", "🇭🇰 Snell HK Premium"]
+      members: [
+        { kind: "proxy", id: "proxy-1", name: "🇭🇰 香港 IEPL 01" },
+        { kind: "proxy", id: "proxy-2", name: "🇭🇰 香港 IEPL 02" },
+        { kind: "proxy", id: "proxy-7", name: "🇭🇰 Snell HK Premium" }
+      ]
     },
     {
       name: "GRP_JP",
       strategy: "url-test",
       match: "(日本|JP|东京)",
-      members: ["🇯🇵 大阪 BGP 01", "🇯🇵 东京 IEPL 02"]
+      members: [
+        { kind: "proxy", id: "proxy-3", name: "🇯🇵 大阪 BGP 01" },
+        { kind: "proxy", id: "proxy-4", name: "🇯🇵 东京 IEPL 02" }
+      ]
     },
     {
       name: "GRP_SG",
       strategy: "select",
       match: "(新加坡|SG)",
-      members: ["🇸🇬 新加坡 01"]
+      members: [{ kind: "proxy", id: "proxy-5", name: "🇸🇬 新加坡 01" }]
     }
   ],
   chained_groups: [],
@@ -166,30 +173,35 @@ export const fixtureGroups: GroupPreviewResponse = {
     {
       name: "SVC_PROXY",
       strategy: "select",
-      members: ["@auto", "@all", "GRP_HK", "GRP_JP"],
+      members: [
+        { kind: "node_group", name: "GRP_HK" },
+        { kind: "node_group", name: "GRP_JP" },
+        { kind: "proxy", id: "proxy-1", name: "🇭🇰 香港 IEPL 01" },
+        { kind: "proxy", id: "proxy-4", name: "🇯🇵 东京 IEPL 02" }
+      ],
       expanded_members: [
-        { value: "GRP_HK", origin: "auto_expanded" },
-        { value: "GRP_JP", origin: "auto_expanded" },
-        { value: "🇭🇰 香港 IEPL 01", origin: "all_expanded" },
-        { value: "🇯🇵 东京 IEPL 02", origin: "all_expanded" }
+        { kind: "node_group", name: "GRP_HK", origin: "auto_expanded" },
+        { kind: "node_group", name: "GRP_JP", origin: "auto_expanded" },
+        { kind: "proxy", id: "proxy-1", name: "🇭🇰 香港 IEPL 01", origin: "all_expanded" },
+        { kind: "proxy", id: "proxy-4", name: "🇯🇵 东京 IEPL 02", origin: "all_expanded" }
       ]
     },
     {
       name: "SVC_DIRECT",
       strategy: "select",
-      members: ["DIRECT"],
-      expanded_members: [{ value: "DIRECT", origin: "literal" }]
+      members: [{ kind: "reserved", name: "DIRECT" }],
+      expanded_members: [{ kind: "reserved", name: "DIRECT", origin: "literal" }]
     }
   ],
   all_proxies: [
-    "🇭🇰 香港 IEPL 01",
-    "🇭🇰 香港 IEPL 02",
-    "🇯🇵 大阪 BGP 01",
-    "🇯🇵 东京 IEPL 02",
-    "🇸🇬 新加坡 01",
-    "🇭🇰 Snell HK Premium",
-    "🇩🇪 法兰克福 Reality",
-    "Home Relay"
+    { kind: "proxy", id: "proxy-1", name: "🇭🇰 香港 IEPL 01" },
+    { kind: "proxy", id: "proxy-2", name: "🇭🇰 香港 IEPL 02" },
+    { kind: "proxy", id: "proxy-3", name: "🇯🇵 大阪 BGP 01" },
+    { kind: "proxy", id: "proxy-4", name: "🇯🇵 东京 IEPL 02" },
+    { kind: "proxy", id: "proxy-5", name: "🇸🇬 新加坡 01" },
+    { kind: "proxy", id: "proxy-7", name: "🇭🇰 Snell HK Premium" },
+    { kind: "proxy", id: "proxy-8", name: "🇩🇪 法兰克福 Reality" },
+    { kind: "proxy", id: "proxy-9", name: "Home Relay" }
   ]
 };
 

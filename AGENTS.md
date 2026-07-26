@@ -1,6 +1,6 @@
 # subconverter 项目协作指南
 
-**项目成功标准**：每次修改在保持管道不变量（节点名唯一、组名互斥、保序、链式上游约束、@all 语义）的前提下，正确扩展或修复功能，且两种输出格式（Clash Meta / Surge）的 golden 测试通过。
+**项目成功标准**：每次修改在保持管道不变量（代理 ID 唯一、目标输出名唯一、组名互斥、保序、链式上游约束、@all 语义）的前提下，正确扩展或修复功能，且两种输出格式（Clash Meta / Surge）的 golden 测试通过。
 
 本文件沉淀**本项目的具体语境**——架构边界、扩展模板、已知局限。
 
@@ -54,7 +54,8 @@ internal/target → internal/{model,errtype}
 
 **关键不变量**（修改时必须维持）：
 
-- 节点名全局唯一（跨订阅两轮去重）
+- 每次 Build 内代理 ID 唯一；节点名只是显示名候选，不作为图引用或身份
+- Clash / Surge 在各自 Target 投影内、完成格式过滤后独立分配唯一输出名
 - 节点组名和服务组名共享命名空间，互斥
 - 链式节点上游只能是拉取类节点
 - `@all` 仅含原始节点，不含链式节点；带 `relay_through` 的 custom_proxy 仅派生 `KindChained` + 同名链式组，不产出 `KindCustom`，不进入 `@all`
@@ -80,10 +81,10 @@ internal/target → internal/{model,errtype}
    | `internal/pipeline/group.go` 的 `fetchedProxies`                                      | 是否参与区域组 regex 匹配？                |
    | `internal/pipeline/group.go` 的 `computeAllProxies`                                   | 是否进入 `@all`？                          |
    | `internal/pipeline/group.go` 的 `buildChainedNodesAndGroups`                          | 是否可作为链式上游？                       |
-   | `internal/pipeline/source.go` 的 `deduplicateNames` / `checkFetchedNameConflicts`     | 是否与其他 Kind 共享去重池？冲突检测范围？ |
-   | `internal/pipeline/validate.go` 的 `buildChainedProxyNameSet` + `buildNamespaceIndex` | 是否纳入命名空间检查？链式集合判定？       |
+   | `internal/pipeline/source.go` 的 ID 分配                                              | 是否获得非零、全 Build 唯一的 `ProxyID`？  |
+   | `internal/pipeline/validate.go` 的 `buildChainedProxyIDSet` + `buildNamespaceIndex`   | 是否纳入 ID 引用检查？链式集合判定？       |
    | `internal/model/proxy_invariant.go` 的 `allowedProxyTypesByKind`                      | 新 Kind 允许哪些 Type？需新增映射条目      |
-   | `internal/model/proxy_invariant.go` 的 `ValidateProxyInvariant` KindChained 分支      | 新 Kind 是否有类似 Dialer 的结构约束？     |
+   | `internal/model/proxy_invariant.go` 的 `ValidateProxyInvariant` KindChained 分支      | 新 Kind 是否有类似 DialerID 的结构约束？   |
 
    > **注意**：`filterUnsupportedProxies` 同时按 `px.Type`（协议）和 `px.Native.Format`（结构化订阅原生格式）判断，`renderSurgeProxy` switch 分派的是 `px.Type`。新增 Kind 不需因 Kind 本身修改协议分支，但必须按行为语义评估目标格式投影；新增协议时见 §新增 Proxy.Type。
 
@@ -110,7 +111,7 @@ internal/target → internal/{model,errtype}
 **最小测试集**（缺一项就不算完成）：
 
 - [ ] 解析器单测：valid / invalid / skip（注释/空行）/ 重复键 / 边界（端口越界）
-- [ ] Source 阶段：与其他来源**共享去重池**的测试
+- [ ] Source 阶段：与其他来源共享 ID 分配序列、同名候选仍保留独立 ID 的测试
 - [ ] Source 阶段：单行失败路径 + 整源为空路径，URL 必须脱敏
 - [ ] Filter 阶段：若节点参与 `filters.exclude`，补 KindXxx 过滤用例
 - [ ] Group 阶段：混合 Kind 的 region regex 匹配用例
@@ -213,7 +214,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 - `docs/architecture.md` — 系统架构与管道模型
 - `docs/design/config-schema.md` — 用户 YAML 配置字段规约
-- `docs/design/domain-model.md` — 中间表示（Proxy / ProxyGroup / Ruleset / Rule / Pipeline）
+- `docs/design/domain-model.md` — 中间表示（Proxy / NodeGroup / RouteGroup / TargetPipeline）
 - `docs/design/pipeline.md` — 各阶段输入输出与不变量
 - `docs/design/rendering.md` — Clash Meta / Surge 渲染映射
 - `docs/design/validation.md` — 配置与图校验规则

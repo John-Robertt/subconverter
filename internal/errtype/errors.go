@@ -38,7 +38,6 @@ const (
 	CodeBuildRelayGroupMissing      Code = "build_relay_group_missing"
 	CodeBuildRelayRegexInvalid      Code = "build_relay_regex_invalid"
 	CodeBuildRelayTypeInvalid       Code = "build_relay_type_invalid"
-	CodeBuildCustomNameConflict     Code = "build_custom_name_conflict"
 	CodeBuildRuleFormatInvalid      Code = "build_rule_format_invalid"
 	CodeBuildSSURIInvalid           Code = "build_ss_uri_invalid"
 	CodeBuildAnyTLSURIInvalid       Code = "build_anytls_uri_invalid"

@@ -6,7 +6,7 @@ SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源、Snell 来源和
 
 ## 功能特性
 
-- **多订阅源** — 支持 Base64、SIP002 `ss://`、Quantumult X 和 Surge 明文 SS 订阅源合并，跨订阅自动去重
+- **多订阅源** — 支持 Base64、SIP002 `ss://`、Quantumult X 和 Surge 明文 SS 订阅源合并；同名节点保留独立身份，并在 Clash / Surge 各自输出内确定性消歧
 - **Snell 来源** — 支持拉取纯文本 Snell 节点清单；Snell 节点仅进入 Surge 输出，Clash 会做级联过滤
 - **VLESS 来源** — 支持拉取纯文本 VLESS URI 清单；VLESS 节点仅进入 Clash 输出，Surge 会做级联过滤；`type` 缺失或未知值回落到 `tcp`，`encryption` 非空时透传
 - **SIP002 兼容** — 支持常见 SS URI 变体，包括 base64/plain userinfo、query 参数和 plugin 声明
