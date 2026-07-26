@@ -200,6 +200,39 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 	}
 }
 
+// T-GRP-ID-001: filtered source identities are never reused by chained nodes.
+func TestGroup_ChainedIDStartsAfterSourceAllocationHighWatermark(t *testing.T) {
+	source := &SourceResult{
+		Proxies: []model.Proxy{
+			makeSubProxy("HK-01"),
+		},
+		ChainTemplates: []ChainTemplate{
+			{
+				Name:   "RELAY",
+				Type:   "socks5",
+				Server: "relay.example.com",
+				Port:   1080,
+				RelayThrough: &config.PreparedRelayThrough{
+					Type:     "all",
+					Strategy: "select",
+				},
+			},
+		},
+		NextProxyID: 3, // ID 2 belonged to an original proxy removed by Filter.
+	}
+
+	result, err := Group(source, nil)
+	if err != nil {
+		t.Fatalf("Group: %v", err)
+	}
+	if len(result.Proxies) != 2 {
+		t.Fatalf("Proxies = %+v, want one original and one chained proxy", result.Proxies)
+	}
+	if got := result.Proxies[1].ID; got != 3 {
+		t.Fatalf("chained proxy ID = %d, want 3; filtered source ID 2 must not be reused", got)
+	}
+}
+
 // T-GRP-003: relay_through type=select
 func TestGroup_ChainedTypeSelect(t *testing.T) {
 	proxies := []model.Proxy{

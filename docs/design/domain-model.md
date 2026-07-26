@@ -32,7 +32,7 @@
 - `url` 解析得到的 `type/server/port/params/plugin` 在 `Prepare` 阶段存入 `PreparedCustomProxy.Parsed`，不回写到 `Config`
 - `ChainTemplate` 是 Group 阶段使用的运行期结构，不属于稳定领域模型
 - `PreparedRouteMember` 携带 `RouteMemberOrigin` 枚举（`Literal` / `AutoExpanded` / `AllExpanded`），用于 ValidateGraph 区分用户声明 vs 机器展开的成员
-- `ProxyID` 由 Source 在一次 Build 内顺序分配；它只在本次构建中稳定，不承诺跨配置 revision 持久化
+- `ProxyID` 在节点创建阶段分配：Source 为原始节点分配，Group 为链式节点分配；ID 在本次 Build 内不复用且保持稳定，不承诺跨配置 revision 持久化
 - 节点显示名不进入图引用命名空间；节点组、服务组、`DIRECT`、`REJECT` 仍共享策略命名空间
 
 ---
@@ -203,7 +203,7 @@
 
 ### 目标输出名称唯一性保证策略
 
-节点名不是引用体系的 key。Source 保留原始候选名并分配独立 ID；Clash 和 Surge 分别在格式专属节点过滤完成后分配唯一输出名。
+节点名不是引用体系的 key。Source 保留原始节点候选名并分配独立 ID，Group 为派生链式节点分配独立 ID；Clash 和 Surge 分别在格式专属节点过滤完成后分配唯一输出名。
 
 | 冲突场景 | 策略 | 原因 |
 |---------|------|------|

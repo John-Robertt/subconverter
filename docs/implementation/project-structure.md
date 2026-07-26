@@ -86,6 +86,8 @@ subconverter/
 - Clash / Surge 目标格式投影
 - 协议支持过滤（Snell / VLESS）
 - fallback 清空等格式相关级联校验
+- 在格式过滤后独立分配目标输出名
+- 产出 Render 唯一接受的 `TargetPipeline`
 
 `internal/generate`
 

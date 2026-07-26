@@ -32,10 +32,13 @@ type ChainTemplate struct {
 
 // SourceResult is the output of the Source stage. Proxies contains all
 // original proxies (fetched + standalone custom); ChainTemplates carries
-// relay_through declarations for the Group stage.
+// relay_through declarations for the Group stage. NextProxyID is the first
+// identity not allocated by Source and survives filtering so Group never
+// reuses an identity that belonged to an excluded original proxy.
 type SourceResult struct {
 	Proxies        []model.Proxy
 	ChainTemplates []ChainTemplate
+	NextProxyID    model.ProxyID
 }
 
 // sourcePrepared executes the request-time Source stage against startup-
@@ -109,7 +112,11 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, fetcher
 	if err := validateGeneratedProxies("source", proxies); err != nil {
 		return nil, err
 	}
-	return &SourceResult{Proxies: proxies, ChainTemplates: chainTemplates}, nil
+	return &SourceResult{
+		Proxies:        proxies,
+		ChainTemplates: chainTemplates,
+		NextProxyID:    model.ProxyID(len(proxies) + 1),
+	}, nil
 }
 
 func assignProxyIDs(proxies []model.Proxy) []model.Proxy {

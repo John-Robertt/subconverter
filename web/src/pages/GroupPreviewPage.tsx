@@ -44,7 +44,7 @@ export function GroupPreviewPage() {
             <StatCard label="节点组" value={result.node_groups.length} sub="node_groups" />
             <StatCard label="链式组" value={result.chained_groups.length} sub="chained_groups" tone="info" />
             <StatCard label="服务组" value={result.service_groups.length} sub="service_groups" tone="success" />
-            <StatCard label="全部代理" value={result.all_proxies.length} sub="All proxies · @all 展开基础" tone="warning" />
+            <StatCard label="全部代理" value={(result.all_proxy_details ?? result.all_proxies).length} sub="All proxies · @all 展开基础" tone="warning" />
           </div>
 
           {result.node_groups.length > 0 ? (
@@ -91,7 +91,7 @@ export function GroupPreviewPage() {
                       <Chip tone={group.strategy === "url-test" ? "success" : "info"}>{group.strategy}</Chip>
                       <Chip>{group.members.length} members</Chip>
                     </header>
-                    <MemberList members={group.expanded_members ?? group.members} />
+                    <MemberList members={expandedGroupMembers(group)} />
                   </article>
                 ))}
               </div>
@@ -104,7 +104,7 @@ export function GroupPreviewPage() {
 }
 
 function GroupPreviewCard({ group }: { group: PreviewGroup }) {
-  const members = group.expanded_members ?? group.members;
+  const members = declaredGroupMembers(group);
   return (
     <article className="group-preview-card">
       <header>
@@ -124,7 +124,7 @@ function GroupPreviewCard({ group }: { group: PreviewGroup }) {
 }
 
 function ServiceGroupRow({ group }: { group: PreviewGroup }) {
-  const members = group.expanded_members ?? group.members;
+  const members = expandedGroupMembers(group);
   return (
     <div className="service-group-row">
       <div className="service-group-meta">
@@ -155,7 +155,23 @@ function MemberList({ members }: { members: PreviewMember[] }) {
 }
 
 function memberKey(member: PreviewMember, index: number) {
-  return member.id ?? `${member.kind}-${member.name}-${index}`;
+  return `${member.id ?? `${member.kind}-${member.name}`}-${index}`;
+}
+
+function declaredGroupMembers(group: PreviewGroup): PreviewMember[] {
+  return group.member_details ?? group.members.map((name) => ({ kind: "legacy", name }));
+}
+
+function expandedGroupMembers(group: PreviewGroup): PreviewMember[] {
+  if (group.expanded_member_details) return group.expanded_member_details;
+  if (group.expanded_members) {
+    return group.expanded_members.map((member) => ({
+      kind: "legacy",
+      name: member.value,
+      origin: member.origin
+    }));
+  }
+  return declaredGroupMembers(group);
 }
 
 function memberOriginTone(origin?: string): "neutral" | "accent" | "success" | "warning" | "info" {

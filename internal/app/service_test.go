@@ -582,7 +582,7 @@ func TestPreviewNodesRuntimeAndDraftAreIsolated(t *testing.T) {
 	}
 }
 
-// T-APP-007: preview groups returns separated groups with expanded_members origin
+// T-APP-007: preview groups preserves legacy fields and adds identity-rich details
 func TestPreviewGroupsReturnsSeparatedGroupsAndExpandedMembers(t *testing.T) {
 	subURL := "https://sub.example.com/runtime"
 	path := filepath.Join(t.TempDir(), "config.yaml")
@@ -613,14 +613,61 @@ func TestPreviewGroupsReturnsSeparatedGroupsAndExpandedMembers(t *testing.T) {
 	if len(result.ServiceGroups) != 1 {
 		t.Fatalf("ServiceGroups = %+v, want one group", result.ServiceGroups)
 	}
+	if len(result.NodeGroups[0].Members) != 2 || result.NodeGroups[0].Members[0] != "HK-01" {
+		t.Fatalf("legacy node members = %+v, want proxy names", result.NodeGroups[0].Members)
+	}
+	if len(result.AllProxies) != 2 || result.AllProxies[0] != "HK-01" {
+		t.Fatalf("legacy all_proxies = %+v, want proxy names", result.AllProxies)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal preview result: %v", err)
+	}
+	for _, want := range []string{
+		`"members":["HK-01","HK-02"]`,
+		`"member_details":[{"kind":"proxy","id":"proxy-1","name":"HK-01"`,
+		`"all_proxies":["HK-01","HK-02"]`,
+		`"all_proxy_details":[{"kind":"proxy","id":"proxy-1","name":"HK-01"`,
+	} {
+		if !strings.Contains(string(encoded), want) {
+			t.Fatalf("preview JSON missing compatibility/detail shape %q: %s", want, encoded)
+		}
+	}
 	var hasAllExpanded bool
-	for _, member := range result.ServiceGroups[0].ExpandedMembers {
+	for _, member := range result.ServiceGroups[0].ExpandedMemberDetails {
 		if member.Name == "HK-01" && member.ID != "" && member.Kind == string(model.PolicyRefProxy) && member.Origin == "all_expanded" {
 			hasAllExpanded = true
 		}
 	}
 	if !hasAllExpanded {
-		t.Fatalf("ExpandedMembers missing all_expanded HK-01: %+v", result.ServiceGroups[0].ExpandedMembers)
+		t.Fatalf("ExpandedMemberDetails missing all_expanded HK-01: %+v", result.ServiceGroups[0].ExpandedMemberDetails)
+	}
+	var hasLegacyAllExpanded bool
+	for _, member := range result.ServiceGroups[0].ExpandedMembers {
+		if member.Value == "HK-01" && member.Origin == "all_expanded" {
+			hasLegacyAllExpanded = true
+		}
+	}
+	if !hasLegacyAllExpanded {
+		t.Fatalf("legacy ExpandedMembers missing expanded proxy name: %+v", result.ServiceGroups[0].ExpandedMembers)
+	}
+	if len(result.ServiceGroups[0].ExpandedMembers) != len(result.ServiceGroups[0].ExpandedMemberDetails) {
+		t.Fatalf(
+			"legacy/detail expanded member lengths differ: legacy=%+v details=%+v",
+			result.ServiceGroups[0].ExpandedMembers,
+			result.ServiceGroups[0].ExpandedMemberDetails,
+		)
+	}
+	for index, member := range result.ServiceGroups[0].ExpandedMembers {
+		if member.Value != result.ServiceGroups[0].ExpandedMemberDetails[index].Name ||
+			member.Origin != result.ServiceGroups[0].ExpandedMemberDetails[index].Origin {
+			t.Fatalf(
+				"legacy/detail expanded member %d diverged: legacy=%+v detail=%+v",
+				index,
+				member,
+				result.ServiceGroups[0].ExpandedMemberDetails[index],
+			)
+		}
 	}
 }
 

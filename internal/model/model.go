@@ -1,8 +1,9 @@
 package model
 
 // ProxyID is the identity of a proxy inside one pipeline build. It is assigned
-// once by Source and remains stable while the graph is filtered and projected.
-// It is not a persistent identifier across configuration revisions.
+// once when the proxy is created (Source for original proxies, Group for
+// chained proxies) and remains stable while the graph is filtered and
+// projected. It is not persistent across configuration revisions.
 type ProxyID uint64
 
 // ProxyKind indicates the origin of a proxy node.

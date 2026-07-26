@@ -39,7 +39,7 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 	var c graphCollector
 
 	index := buildNamespaceIndex(&c, gr.Proxies, gr.NodeGroups, rr.RouteGroups)
-	validateProxyReferences(&c, gr.Proxies, gr.NodeGroups, index.proxyIDs)
+	validateProxyReferences(&c, gr.Proxies, gr.NodeGroups, index)
 
 	// 2. @all must exclude chained proxies.
 	chainedProxyIDs := buildChainedProxyIDSet(gr.Proxies)
@@ -104,6 +104,7 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 
 type namespaceIndex struct {
 	proxyIDs        map[model.ProxyID]bool
+	proxyKinds      map[model.ProxyID]model.ProxyKind
 	proxyNames      map[string]bool
 	nodeGroupNames  map[string]bool
 	routeGroupNames map[string]bool
@@ -112,6 +113,7 @@ type namespaceIndex struct {
 func buildNamespaceIndex(c *graphCollector, proxies []model.Proxy, nodeGroups []model.NodeGroup, routeGroups []model.RouteGroup) namespaceIndex {
 	idx := namespaceIndex{
 		proxyIDs:        make(map[model.ProxyID]bool, len(proxies)),
+		proxyKinds:      make(map[model.ProxyID]model.ProxyKind, len(proxies)),
 		proxyNames:      make(map[string]bool, len(proxies)),
 		nodeGroupNames:  make(map[string]bool, len(nodeGroups)),
 		routeGroupNames: make(map[string]bool, len(routeGroups)),
@@ -134,6 +136,7 @@ func buildNamespaceIndex(c *graphCollector, proxies []model.Proxy, nodeGroups []
 			c.add(fmt.Sprintf("代理 ID %d 重复声明", p.ID))
 		} else {
 			idx.proxyIDs[p.ID] = true
+			idx.proxyKinds[p.ID] = p.Kind
 		}
 		idx.proxyNames[p.Name] = true
 	}
@@ -155,15 +158,21 @@ func registerName(c *graphCollector, names map[string]bool, registry map[string]
 	registry[name] = kind
 }
 
-func validateProxyReferences(c *graphCollector, proxies []model.Proxy, nodeGroups []model.NodeGroup, proxyIDs map[model.ProxyID]bool) {
+func validateProxyReferences(c *graphCollector, proxies []model.Proxy, nodeGroups []model.NodeGroup, index namespaceIndex) {
 	for _, proxy := range proxies {
-		if proxy.DialerID != 0 && !proxyIDs[proxy.DialerID] {
+		if proxy.DialerID == 0 {
+			continue
+		}
+		upstreamKind, exists := index.proxyKinds[proxy.DialerID]
+		if !exists {
 			c.add(fmt.Sprintf("链式代理 %q 引用了不存在的上游 ID %d", proxy.Name, proxy.DialerID))
+		} else if !isFetchedKind(upstreamKind) {
+			c.add(fmt.Sprintf("链式代理 %q 的上游 ID %d 必须是拉取类节点，当前 kind=%q", proxy.Name, proxy.DialerID, upstreamKind))
 		}
 	}
 	for _, group := range nodeGroups {
 		for _, id := range group.Members {
-			if !proxyIDs[id] {
+			if !index.proxyIDs[id] {
 				c.add(fmt.Sprintf("节点组 %q 引用了不存在的代理 ID %d", group.Name, id))
 			}
 		}

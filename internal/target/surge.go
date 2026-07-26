@@ -22,5 +22,5 @@ func ForSurge(p *model.Pipeline) (*model.TargetPipeline, error) {
 	if err != nil {
 		return nil, err
 	}
-	return projectTargetNames(filtered, opts)
+	return projectTargetPipeline(filtered, opts)
 }

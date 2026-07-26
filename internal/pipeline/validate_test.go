@@ -183,6 +183,30 @@ func TestValidateGraph_DuplicateProxyIDsRejected(t *testing.T) {
 	}
 }
 
+// T-VAL-ID-003: chained proxies may only dial fetched source kinds.
+func TestValidateGraph_ChainedUpstreamMustBeFetched(t *testing.T) {
+	tests := []struct {
+		name     string
+		dialerID model.ProxyID
+		wantKind model.ProxyKind
+	}{
+		{name: "custom", dialerID: 3, wantKind: model.KindCustom},
+		{name: "chained", dialerID: 4, wantKind: model.KindChained},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gr := validGroupResult()
+			gr.Proxies[3].DialerID = tt.dialerID
+
+			_, err := ValidateGraph(gr, validRouteResult())
+			if !containsError(err, `必须是拉取类节点`) || !containsError(err, `kind="`+string(tt.wantKind)+`"`) {
+				t.Fatalf("error = %v, want rejection for upstream kind %q", err, tt.wantKind)
+			}
+		})
+	}
+}
+
 func TestValidateGraph_RouteGroupMemberNotFound(t *testing.T) {
 	gr := validGroupResult()
 	rr := validRouteResult()

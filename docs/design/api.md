@@ -573,7 +573,8 @@ ZIP 请求体：
       "name": "🇭🇰 Hong Kong",
       "match": "(港|HK|Hong Kong)",
       "strategy": "select",
-      "members": [
+      "members": ["HK-01", "HK-02"],
+      "member_details": [
         { "kind": "proxy", "id": "proxy-1", "name": "HK-01" },
         { "kind": "proxy", "id": "proxy-2", "name": "HK-02" }
       ]
@@ -583,7 +584,8 @@ ZIP 请求体：
     {
       "name": "🔗 HK-ISP",
       "strategy": "select",
-      "members": [
+      "members": ["HK-01→🔗 HK-ISP", "HK-02→🔗 HK-ISP"],
+      "member_details": [
         { "kind": "proxy", "id": "proxy-4", "name": "HK-01→🔗 HK-ISP" },
         { "kind": "proxy", "id": "proxy-5", "name": "HK-02→🔗 HK-ISP" }
       ]
@@ -593,19 +595,26 @@ ZIP 请求体：
     {
       "name": "🚀 快速选择",
       "strategy": "select",
-      "members": [
+      "members": ["🇭🇰 Hong Kong", "🔗 HK-ISP", "DIRECT"],
+      "member_details": [
         { "kind": "node_group", "name": "🇭🇰 Hong Kong" },
         { "kind": "node_group", "name": "🔗 HK-ISP" },
         { "kind": "reserved", "name": "DIRECT" }
       ],
       "expanded_members": [
+        { "value": "🇭🇰 Hong Kong", "origin": "auto_expanded" },
+        { "value": "🔗 HK-ISP", "origin": "auto_expanded" },
+        { "value": "DIRECT", "origin": "auto_expanded" }
+      ],
+      "expanded_member_details": [
         { "kind": "node_group", "name": "🇭🇰 Hong Kong", "origin": "auto_expanded" },
         { "kind": "node_group", "name": "🔗 HK-ISP", "origin": "auto_expanded" },
         { "kind": "reserved", "name": "DIRECT", "origin": "auto_expanded" }
       ]
     }
   ],
-  "all_proxies": [
+  "all_proxies": ["HK-01", "HK-02", "SG-01"],
+  "all_proxy_details": [
     { "kind": "proxy", "id": "proxy-1", "name": "HK-01" },
     { "kind": "proxy", "id": "proxy-2", "name": "HK-02" },
     { "kind": "proxy", "id": "proxy-3", "name": "SG-01" }
@@ -614,7 +623,9 @@ ZIP 请求体：
 ```
 
 - `service_groups` 展示 Route 阶段产出的服务组结果
-- `expanded_members` 用于前端区分用户显式声明、`@auto` 展开和 `@all` 展开结果
+- `members`、`expanded_members` 和 `all_proxies` 保留 v2.0 已有字符串/`{value, origin}` 结构，避免破坏既有调用方
+- `member_details`、`expanded_member_details` 和 `all_proxy_details` 提供包含代理 ID 与引用种类的富身份视图
+- `expanded_member_details` 用于前端区分用户显式声明、`@auto` 展开和 `@all` 展开结果
 - `origin` 可选值：`literal`、`auto_expanded`、`all_expanded`
 - 成员 `kind` 区分 `proxy`、`node_group`、`route_group`、`reserved`；只有代理成员携带 Build 内 `id`
 - `node_groups[].match` 是该地区组在 YAML 中声明的原始正则字符串（透传，不做转义）；`chained_groups` 由 `relay_through` 派生，没有 match 概念，字段省略（JSON 中以 `omitempty` 形式不输出）

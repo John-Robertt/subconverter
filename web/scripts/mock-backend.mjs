@@ -86,7 +86,18 @@ const NODES = [
   { name: "🇭🇰 Snell HK Premium", type: "snell", kind: "snell", server: "hk-snell.example.com", port: 6160, filtered: false },
   { name: "🇩🇪 法兰克福 Reality", type: "vless", kind: "vless", server: "fra.example.io", port: 443, filtered: false },
   { name: "Home Relay", type: "ss", kind: "custom", server: "home.example.com", port: 8388, filtered: false }
-];
+].map((node, index) => ({ id: `proxy-${index + 1}`, ...node }));
+
+function proxyDetail(node) {
+  return { kind: "proxy", id: node.id, name: node.name };
+}
+
+function policyDetail(name) {
+  if (name === "DIRECT" || name === "REJECT") return { kind: "reserved", name };
+  if (config.groups.some(group => group.key === name)) return { kind: "node_group", name };
+  if (config.routing.some(group => group.key === name)) return { kind: "route_group", name };
+  return { kind: "unresolved", name };
+}
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...headers });
@@ -154,10 +165,24 @@ const server = createServer(async (req, res) => {
       name: g.key,
       strategy: g.value.strategy,
       match: g.value.match,
-      members: NODES.filter(n => { try { return new RegExp(g.value.match).test(n.name); } catch { return false; } }).map(n => n.name)
+      members: NODES.filter(n => { try { return new RegExp(g.value.match).test(n.name); } catch { return false; } }).map(n => n.name),
+      member_details: NODES.filter(n => { try { return new RegExp(g.value.match).test(n.name); } catch { return false; } }).map(proxyDetail)
     }));
-    const service_groups = config.routing.map(r => ({ name: r.key, strategy: "select", members: r.value }));
-    return send(res, 200, { node_groups, chained_groups: [], service_groups, all_proxies: NODES.map(n => n.name) });
+    const service_groups = config.routing.map(r => ({
+      name: r.key,
+      strategy: "select",
+      members: r.value,
+      member_details: r.value.map(policyDetail),
+      expanded_members: r.value.map(value => ({ value, origin: "literal" })),
+      expanded_member_details: r.value.map(value => ({ ...policyDetail(value), origin: "literal" }))
+    }));
+    return send(res, 200, {
+      node_groups,
+      chained_groups: [],
+      service_groups,
+      all_proxies: NODES.map(n => n.name),
+      all_proxy_details: NODES.map(proxyDetail)
+    });
   }
   if (path === "/api/generate/preview") {
     const fmt = u.searchParams.get("format");

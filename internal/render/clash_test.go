@@ -985,7 +985,7 @@ func TestClash_VlessNetworkWithNoSubfieldsOmitsOptsBlock(t *testing.T) {
 }
 
 // T-RND-CLASH-NATIVE-001: copied Clash declarations preserve arbitrary fields
-// while the IR name remains authoritative after cross-source deduplication.
+// while the target-local allocated name remains authoritative.
 func TestClash_NativeProxyPreservesFieldsAndUsesCurrentName(t *testing.T) {
 	p := &model.TargetPipeline{
 		Proxies: []model.TargetProxy{{
@@ -1020,7 +1020,7 @@ ws-opts:
 		}
 	}
 	if strings.Contains(output, "name: HK-YAML\n") {
-		t.Errorf("stale source name leaked after deduplication:\n%s", output)
+		t.Errorf("stale source name leaked after target name allocation:\n%s", output)
 	}
 }
 

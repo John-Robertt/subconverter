@@ -3,9 +3,11 @@
 //
 // Stages:
 //   - Source: subscription/Snell/VLESS fetching, SS/AnyTLS/Snell/VLESS parsing,
-//     cross-source dedup, custom proxy conversion
+//     original-proxy ID allocation, candidate-name preservation, custom proxy
+//     conversion
 //   - Filter: exclude regex filtering on fetched nodes
-//   - Group: region groups, chained nodes/groups, @all computation
+//   - Group: region groups, chained-node ID allocation, chained groups, @all
+//     computation
 //   - Route: service groups, rulesets, rules, fallback
 //   - ValidateGraph: graph-level reference and namespace validation
 //   - Build: full pipeline orchestration (entry point)

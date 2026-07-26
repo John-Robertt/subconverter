@@ -64,6 +64,7 @@ func groupFromConfig(cfg *config.Config, proxies []model.Proxy) (*GroupResult, e
 	return Group(&SourceResult{
 		Proxies:        allProxies,
 		ChainTemplates: chainTemplates,
+		NextProxyID:    model.ProxyID(len(allProxies) + 1),
 	}, rt.GroupInput())
 }
 

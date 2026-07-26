@@ -10,7 +10,8 @@ import (
 
 // Build runs the format-agnostic build pipeline:
 // Source → Filter → Group → Route → ValidateGraph.
-// It returns the assembled Pipeline ready for target projection or rendering.
+// It returns an assembled Pipeline for target projection. Renderers only
+// consume the TargetPipeline produced by the target package.
 func Build(ctx context.Context, cfg *config.RuntimeConfig, fetcher fetch.Fetcher) (*model.Pipeline, error) {
 	source, err := sourcePrepared(ctx, cfg.SourceInput(), fetcher)
 	if err != nil {

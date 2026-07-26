@@ -6,7 +6,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-func projectTargetNames(p *model.Pipeline, opts cascadeOptions) (*model.TargetPipeline, error) {
+func projectTargetPipeline(p *model.Pipeline, opts cascadeOptions) (*model.TargetPipeline, error) {
 	if p == nil {
 		p = &model.Pipeline{}
 	}

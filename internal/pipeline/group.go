@@ -35,7 +35,7 @@ func Group(source *SourceResult, groups []config.PreparedGroup) (*GroupResult, e
 	}
 
 	chainedProxies, chainGroups, err := buildChainedNodesAndGroups(
-		source.Proxies, source.ChainTemplates, regionGroups,
+		source.Proxies, source.ChainTemplates, regionGroups, source.NextProxyID,
 	)
 	if err != nil {
 		return nil, err
@@ -105,9 +105,12 @@ func buildChainedNodesAndGroups(
 	proxies []model.Proxy,
 	chainTemplates []ChainTemplate,
 	regionGroups []model.NodeGroup,
+	nextID model.ProxyID,
 ) ([]model.Proxy, []model.NodeGroup, error) {
 	fetched := fetchedProxies(proxies)
-	nextID := nextProxyID(proxies)
+	if minimumNextID := nextProxyID(proxies); nextID < minimumNextID {
+		nextID = minimumNextID
+	}
 
 	var chainedProxies []model.Proxy
 	var chainGroups []model.NodeGroup

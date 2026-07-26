@@ -496,7 +496,7 @@ func TestSurge_SnellProxy_UnknownKeyDropped(t *testing.T) {
 }
 
 // T-RND-SURGE-NATIVE-001: copied [Proxy] declarations preserve their complete
-// right-hand side while the IR name remains authoritative after deduplication.
+// right-hand side while the target-local allocated name remains authoritative.
 func TestSurge_NativeProxyPreservesDeclarationAndUsesCurrentName(t *testing.T) {
 	p := &model.TargetPipeline{
 		Proxies: []model.TargetProxy{{
@@ -521,7 +521,7 @@ func TestSurge_NativeProxyPreservesDeclarationAndUsesCurrentName(t *testing.T) {
 		t.Errorf("native Surge declaration not preserved.\nwant substring:\n%s\ngot:\n%s", want, output)
 	}
 	if strings.Contains(output, "HK-CONF = trojan") {
-		t.Errorf("stale source name leaked after deduplication:\n%s", output)
+		t.Errorf("stale source name leaked after target name allocation:\n%s", output)
 	}
 }
 

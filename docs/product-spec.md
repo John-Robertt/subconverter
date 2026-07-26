@@ -20,7 +20,7 @@ anytls://password@hk.example.com:443/?sni=edge.example.com&insecure=1#HK-AnyTLS
 - **Surge CONF（`.conf`）**：复制 `[Proxy]` 段节点，只进入 Surge 输出
 - **TXT / Base64**：支持 SS / AnyTLS 的 URI、Surge 行和 Quantumult X 行，同时进入两种输出
 
-结构化格式优先于 TXT；即使 URL 没有扩展名，也会先按顶层 `proxies` 和 `[Proxy]` 内容识别。节点名称用于过滤、分组和显示，但不承担身份职责；Source 为每个节点分配独立 ID，Clash / Surge 在完成各自格式过滤后独立分配唯一输出名。
+结构化格式优先于 TXT；即使 URL 没有扩展名，也会先按顶层 `proxies` 和 `[Proxy]` 内容识别。节点名称用于过滤、分组和显示，但不承担身份职责；节点在创建阶段获得独立 ID（原始节点由 Source 分配，链式节点由 Group 分配），Clash / Surge 在完成各自格式过滤后独立分配唯一输出名。
 
 ### 1.1b Snell 来源（Surge 专属）
 

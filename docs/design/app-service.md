@@ -252,21 +252,30 @@ type GroupPreviewResult struct {
     NodeGroups    []GroupItem `json:"node_groups"`
     ChainedGroups []GroupItem `json:"chained_groups"`
     ServiceGroups []ServiceGroupItem `json:"service_groups"`
-    AllProxies    []PreviewMemberItem `json:"all_proxies"`
+    AllProxies    []string `json:"all_proxies"` // 兼容既有调用方
+    AllProxyDetails []PreviewMemberItem `json:"all_proxy_details"`
 }
 
 type GroupItem struct {
-    Name     string              `json:"name"`
-    Match    string              `json:"match,omitempty"` // 地区组原始正则；链式组无此概念
-    Strategy string              `json:"strategy"`
-    Members  []PreviewMemberItem `json:"members"`
+    Name          string              `json:"name"`
+    Match         string              `json:"match,omitempty"` // 地区组原始正则；链式组无此概念
+    Strategy      string              `json:"strategy"`
+    Members       []string            `json:"members"` // 兼容既有调用方
+    MemberDetails []PreviewMemberItem `json:"member_details"`
 }
 
 type ServiceGroupItem struct {
-    Name            string              `json:"name"`
-    Strategy        string              `json:"strategy"`
-    Members         []PreviewMemberItem `json:"members"`
-    ExpandedMembers []PreviewMemberItem `json:"expanded_members"`
+    Name                  string               `json:"name"`
+    Strategy              string               `json:"strategy"`
+    Members               []string             `json:"members"` // 兼容既有调用方
+    MemberDetails         []PreviewMemberItem  `json:"member_details"`
+    ExpandedMembers       []ExpandedMemberItem `json:"expanded_members"` // 兼容既有调用方
+    ExpandedMemberDetails []PreviewMemberItem  `json:"expanded_member_details"`
+}
+
+type ExpandedMemberItem struct {
+    Value  string `json:"value"`
+    Origin string `json:"origin"`
 }
 
 type PreviewMemberItem struct {

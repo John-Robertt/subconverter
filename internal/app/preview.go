@@ -28,24 +28,33 @@ type NodePreviewItem struct {
 }
 
 type GroupPreviewResult struct {
-	NodeGroups    []GroupItem         `json:"node_groups"`
-	ChainedGroups []GroupItem         `json:"chained_groups"`
-	ServiceGroups []ServiceGroupItem  `json:"service_groups"`
-	AllProxies    []PreviewMemberItem `json:"all_proxies"`
+	NodeGroups      []GroupItem         `json:"node_groups"`
+	ChainedGroups   []GroupItem         `json:"chained_groups"`
+	ServiceGroups   []ServiceGroupItem  `json:"service_groups"`
+	AllProxies      []string            `json:"all_proxies"`
+	AllProxyDetails []PreviewMemberItem `json:"all_proxy_details"`
 }
 
 type GroupItem struct {
-	Name     string              `json:"name"`
-	Match    string              `json:"match,omitempty"`
-	Strategy string              `json:"strategy"`
-	Members  []PreviewMemberItem `json:"members"`
+	Name          string              `json:"name"`
+	Match         string              `json:"match,omitempty"`
+	Strategy      string              `json:"strategy"`
+	Members       []string            `json:"members"`
+	MemberDetails []PreviewMemberItem `json:"member_details"`
 }
 
 type ServiceGroupItem struct {
-	Name            string              `json:"name"`
-	Strategy        string              `json:"strategy"`
-	Members         []PreviewMemberItem `json:"members"`
-	ExpandedMembers []PreviewMemberItem `json:"expanded_members"`
+	Name                  string               `json:"name"`
+	Strategy              string               `json:"strategy"`
+	Members               []string             `json:"members"`
+	MemberDetails         []PreviewMemberItem  `json:"member_details"`
+	ExpandedMembers       []ExpandedMemberItem `json:"expanded_members"`
+	ExpandedMemberDetails []PreviewMemberItem  `json:"expanded_member_details"`
+}
+
+type ExpandedMemberItem struct {
+	Value  string `json:"value"`
+	Origin string `json:"origin"`
 }
 
 type PreviewMemberItem struct {
@@ -144,19 +153,22 @@ func nodePreviewItem(proxy model.Proxy, filtered bool) NodePreviewItem {
 func groupPreviewFromStage(stage *pipeline.GroupPreviewStageResult, cfg *config.RuntimeConfig) *GroupPreviewResult {
 	if stage == nil || stage.Group == nil || stage.Route == nil {
 		return &GroupPreviewResult{
-			NodeGroups:    []GroupItem{},
-			ChainedGroups: []GroupItem{},
-			ServiceGroups: []ServiceGroupItem{},
-			AllProxies:    []PreviewMemberItem{},
+			NodeGroups:      []GroupItem{},
+			ChainedGroups:   []GroupItem{},
+			ServiceGroups:   []ServiceGroupItem{},
+			AllProxies:      []string{},
+			AllProxyDetails: []PreviewMemberItem{},
 		}
 	}
 	matchByName := groupMatchMap(cfg)
 	proxiesByID := proxyPreviewIndex(stage.Group.Proxies)
+	allProxyDetails := proxyPreviewItems(stage.Group.AllProxies, proxiesByID)
 	return &GroupPreviewResult{
-		NodeGroups:    groupItems(stage.Group.RegionGroups, matchByName, proxiesByID),
-		ChainedGroups: groupItems(stage.Group.ChainedGroups, matchByName, proxiesByID),
-		ServiceGroups: serviceGroupItems(stage.Route, proxiesByID),
-		AllProxies:    proxyPreviewItems(stage.Group.AllProxies, proxiesByID),
+		NodeGroups:      groupItems(stage.Group.RegionGroups, matchByName, proxiesByID),
+		ChainedGroups:   groupItems(stage.Group.ChainedGroups, matchByName, proxiesByID),
+		ServiceGroups:   serviceGroupItems(stage.Route, proxiesByID),
+		AllProxies:      previewMemberNames(allProxyDetails),
+		AllProxyDetails: allProxyDetails,
 	}
 }
 
@@ -175,11 +187,13 @@ func groupMatchMap(cfg *config.RuntimeConfig) map[string]string {
 func groupItems(groups []model.NodeGroup, matchByName map[string]string, proxiesByID map[model.ProxyID]model.Proxy) []GroupItem {
 	result := make([]GroupItem, 0, len(groups))
 	for _, group := range groups {
+		memberDetails := proxyPreviewItems(group.Members, proxiesByID)
 		result = append(result, GroupItem{
-			Name:     group.Name,
-			Match:    matchByName[group.Name],
-			Strategy: group.Strategy,
-			Members:  proxyPreviewItems(group.Members, proxiesByID),
+			Name:          group.Name,
+			Match:         matchByName[group.Name],
+			Strategy:      group.Strategy,
+			Members:       previewMemberNames(memberDetails),
+			MemberDetails: memberDetails,
 		})
 	}
 	return result
@@ -189,11 +203,16 @@ func serviceGroupItems(route *pipeline.RouteResult, proxiesByID map[model.ProxyI
 	result := make([]ServiceGroupItem, 0, len(route.RouteGroups))
 	resolved := resolvedMembersByName(route.ResolvedRouteGroups)
 	for _, group := range route.RouteGroups {
+		memberDetails := policyPreviewItems(group.Members, proxiesByID, "")
+		expanded := resolved[group.Name]
+		expandedDetails := resolvedPreviewItems(expanded, proxiesByID)
 		result = append(result, ServiceGroupItem{
-			Name:            group.Name,
-			Strategy:        group.Strategy,
-			Members:         policyPreviewItems(group.Members, proxiesByID, ""),
-			ExpandedMembers: resolvedPreviewItems(resolved[group.Name], proxiesByID),
+			Name:                  group.Name,
+			Strategy:              group.Strategy,
+			Members:               previewMemberNames(memberDetails),
+			MemberDetails:         memberDetails,
+			ExpandedMembers:       expandedMemberItems(expandedDetails),
+			ExpandedMemberDetails: expandedDetails,
 		})
 	}
 	return result
@@ -211,6 +230,25 @@ func resolvedPreviewItems(members []pipeline.ResolvedRouteMember, proxiesByID ma
 	result := make([]PreviewMemberItem, 0, len(members))
 	for _, member := range members {
 		result = append(result, policyPreviewItem(member.Ref, proxiesByID, string(member.Origin)))
+	}
+	return result
+}
+
+func expandedMemberItems(members []PreviewMemberItem) []ExpandedMemberItem {
+	result := make([]ExpandedMemberItem, 0, len(members))
+	for _, member := range members {
+		result = append(result, ExpandedMemberItem{
+			Value:  member.Name,
+			Origin: member.Origin,
+		})
+	}
+	return result
+}
+
+func previewMemberNames(members []PreviewMemberItem) []string {
+	result := make([]string, 0, len(members))
+	for _, member := range members {
+		result = append(result, member.Name)
 	}
 	return result
 }

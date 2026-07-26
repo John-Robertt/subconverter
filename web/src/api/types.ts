@@ -181,19 +181,27 @@ export interface PreviewMember {
   origin?: "literal" | "auto_expanded" | "all_expanded" | string;
 }
 
+export interface ExpandedPreviewMember {
+  value: string;
+  origin: "literal" | "auto_expanded" | "all_expanded" | string;
+}
+
 export interface PreviewGroup {
   name: string;
   strategy: string;
   match?: string;
-  members: PreviewMember[];
-  expanded_members?: PreviewMember[];
+  members: string[];
+  member_details?: PreviewMember[];
+  expanded_members?: ExpandedPreviewMember[];
+  expanded_member_details?: PreviewMember[];
 }
 
 export interface GroupPreviewResponse {
   node_groups: PreviewGroup[];
   chained_groups: PreviewGroup[];
   service_groups: PreviewGroup[];
-  all_proxies: PreviewMember[];
+  all_proxies: string[];
+  all_proxy_details?: PreviewMember[];
 }
 
 export interface GenerateLinkResponse {
