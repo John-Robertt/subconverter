@@ -241,7 +241,7 @@
 3. 请求中的 `config_revision` 与当前 revision 不一致 → 不写入，返回 `409 config_revision_conflict`
 4. JSON 反序列化为 `Config`
 5. 执行 `Prepare` 校验
-6. 校验通过 → 序列化为 YAML → 写入同目录临时文件 → 原子 rename 覆盖原配置文件 → 重新计算新的 `config_revision` → 同步更新 `app.Service` 内缓存的 `config_revision` → 返回新的 `config_revision`
+6. 校验通过 → 序列化为 YAML → 写入同目录临时文件 → 原子 rename 覆盖原配置文件 → 根据写出的字节计算并返回新的 `config_revision`
 7. 校验失败 → 不写入，返回 `400` + `ValidateResult`（`valid=false`）
 
 成功响应：
@@ -481,9 +481,9 @@ ZIP 请求体：
 
 处理流程：
 
-1. 读取配置源（`LoadConfig`；本地文件或 HTTP(S) URL）
-2. 执行 `Prepare` 校验（不消费 `sources.fetch_order` 等 Admin API JSON-only 字段）
-3. 校验通过 → `WLock` 替换 `RuntimeConfig` 指针，同时将重读主配置源得到的 `config_revision`（`sha256:<hex>`）写入 `runtime_config_revision`，此后 `GET /api/status` 的 `config_dirty` 变为 `false` → 返回 `200`
+1. 读取并解析本地或远程 YAML；远程主配置先清除对应缓存项，再读取
+2. 执行应用层检查和 `Prepare`（不消费 `sources.fetch_order` 等 Admin API JSON-only 字段）；读取、解析和校验均在配置写锁外完成
+3. 校验通过 → 短暂加写锁，一起替换 `RuntimeConfig`、生效 YAML、revision 和重载状态 → 返回 `200`。若配置源随后没有被改动，`GET /api/status` 的 `config_dirty` 为 `false`
 4. 校验失败 → 不替换，返回 `400` + `ValidateResult` 结构的静态诊断（与 `POST /api/config/validate` 的 Body 结构一致，但 HTTP 状态不同）
 
 成功响应：
@@ -903,10 +903,7 @@ Cookie session 下，所有会修改状态的管理请求必须校验同源 `Ori
 
 ### `/api/reload` 流程
 
-1. 重新加载配置源（`LoadConfig`；远程主配置 URL 必须 bypass / invalidate 缓存）
-2. 执行 `Prepare`
-3. 成功 → `WLock` 替换 `RuntimeConfig` 与 `runtime_config_revision` → 返回
-4. 失败 → 返回错误
+流程与错误响应见本文 [热重载接口](#post-apireload)；Go 层的配置锁、重载互斥和保存边界见 [app.Service 并发安全](app-service.md#并发安全)。
 
 ### `GET /api/preview/*` 流程
 

@@ -1,12 +1,12 @@
 # SubConverter
 
-将 Shadowsocks 订阅、Snell 节点源与 VLESS 节点源转换为 Clash Meta 和 Surge 代理配置的单二进制 HTTP 服务。
+读取节点来源与 YAML 路由配置，生成 Clash Meta 和 Surge 配置的单二进制 HTTP 服务。
 
-SubConverter 读取声明式 YAML 配置，拉取 SS 订阅源、Snell 来源和 VLESS 来源，执行过滤与分组，定义服务路由策略，最终渲染为 Clash Meta YAML 或 Surge conf。两种输出尽量共享同一语义；若目标格式不支持某类协议，则按格式能力处理（如 Snell 仅进入 Surge 输出，VLESS 仅进入 Clash 输出）。
+SubConverter 根据 YAML 中的来源、过滤、分组和路由声明，拉取订阅、Snell 和 VLESS 节点，生成 Clash Meta YAML 或 Surge conf。订阅支持 TXT、Clash YAML 和 Surge CONF；TXT 支持 SS 与 AnyTLS 节点。生成时会先过滤目标格式不支持的节点，再整理组和路由，例如 Snell 仅进入 Surge，VLESS 仅进入 Clash。
 
 ## 功能特性
 
-- **多订阅源** — 支持 Base64、SIP002 `ss://`、Quantumult X 和 Surge 明文 SS 订阅源合并；同名节点保留独立身份，并在 Clash / Surge 各自输出内确定性消歧
+- **多订阅源** — 支持 TXT/Base64 的 SS、AnyTLS 列表，以及 Clash YAML / Surge CONF 原生节点；原生节点只进入对应格式，同名节点在每种输出内分别分配唯一名称
 - **Snell 来源** — 支持拉取纯文本 Snell 节点清单；Snell 节点仅进入 Surge 输出，Clash 会做级联过滤
 - **VLESS 来源** — 支持拉取纯文本 VLESS URI 清单；VLESS 节点仅进入 Clash 输出，Surge 会做级联过滤；`type` 缺失或未知值回落到 `tcp`，`encryption` 非空时透传
 - **SIP002 兼容** — 支持常见 SS URI 变体，包括 base64/plain userinfo、query 参数和 plugin 声明
@@ -208,8 +208,8 @@ curl "http://localhost:8080/healthz"
 | --------------- | ------------ | ------------------------------------------------------------------------------------------- |
 | `-config`       | _（必填）_   | YAML 配置文件路径或 HTTP(S) URL                                                             |
 | `-listen`       | `:8080`      | HTTP 监听地址；未显式传入时可由 `SUBCONVERTER_LISTEN` 提供                                  |
-| `-cache-ttl`    | `5m`         | 订阅和模板缓存的 TTL                                                                        |
-| `-timeout`      | `30s`        | 拉取订阅的 HTTP 超时时间                                                                    |
+| `-cache-ttl`    | `5m`         | 远程节点来源、模板和主配置的缓存 TTL                                                        |
+| `-timeout`      | `30s`        | 每次远程资源拉取的 HTTP 超时时间                                                            |
 | `-access-token` | _空_         | `/generate` 访问 token；未显式传入时可由 `SUBCONVERTER_TOKEN` 提供                          |
 | `-auth-state`   | 系统配置目录 | 管理员密码哈希与 session 状态文件；未显式传入时可由 `SUBCONVERTER_AUTH_STATE` 提供          |
 | `-setup-token`  | 自动生成     | 首次 setup bootstrap token；未显式传入时可由 `SUBCONVERTER_SETUP_TOKEN` 提供                |

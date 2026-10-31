@@ -1,12 +1,12 @@
-# 项目结构建议
+# 项目结构与包边界
 
 ## 目标
 
-本文件定义代码目录和包职责，作为实现阶段的结构约束。
+本文件说明当前代码放在哪里、每个包负责什么，以及谁可以调用谁。依赖方向图是包边界的权威来源；新增或调整 import 时，在这里同步更新。
 
 ---
 
-## 推荐目录
+## 当前主要目录
 
 ```text
 subconverter/
@@ -209,9 +209,9 @@ ssparse
 
 ---
 
-## v2.0 新增目录与包
+## Web 后台与应用服务
 
-### 新增目录
+### 相关目录
 
 ```text
 subconverter/
@@ -241,7 +241,8 @@ subconverter/
 ### `internal/admin` 包职责
 
 - 认证 handler（`GET /api/auth/status`、`POST /api/auth/login`、`POST /api/auth/setup`、`POST /api/auth/logout`），调用 `internal/auth`
-- 配置 CRUD handler（`GET /api/config`、`PUT /api/config`）
+- 配置读取与保存 handler（`GET /api/config`、`PUT /api/config`）
+- 配置导入与生效配置导出 handler（`POST /api/config/import`、`GET /api/config/effective.yaml`、`GET /api/config/effective.zip`）
 - 配置校验 handler（`POST /api/config/validate`）
 - 热重载 handler（`POST /api/reload`）
 - 运行时和草稿预览 handler（`GET/POST /api/preview/nodes`、`GET/POST /api/preview/groups`）

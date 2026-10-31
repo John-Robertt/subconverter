@@ -6,13 +6,15 @@
 
 ## 概述
 
-本系统是一个使用 Go 实现的单用户 HTTP 服务。它读取一份用户 YAML 配置，拉取订阅源（TXT / Clash YAML / Surge CONF）、Snell 来源和 VLESS 来源，结合自定义代理、节点分组、服务路由和远程规则集，生成 Clash Meta 或 Surge 配置文件。
+本系统是一个使用 Go 实现的单用户 HTTP 服务。用户在 YAML 中声明节点来源、分组和路由，服务拉取节点后，把这些声明转换为 Clash Meta 或 Surge 配置文件。远程规则集只写入 URL，正文由客户端自行拉取。
+
+程序分三步完成转换：`pipeline` 先构建节点与组之间的引用关系，`target` 再根据目标格式删除不支持的节点并整理引用，`render` 最后输出文本。Web 后台通过应用服务调用同一套转换逻辑。
 
 v2.0 在 v1.0 核心管道基础上新增：
 
 - **Web 管理后台**：React SPA，生产镜像将构建产物嵌入 Go 二进制，由同一服务托管静态资源和 API
 - **配置热重载**：运行时重新加载配置，无需重启服务
-- **Admin API**：配置 CRUD、校验、预览和系统状态接口
+- **Admin API**：配置读取、保存、导入导出、校验、预览和系统状态接口
 
 系统目标：
 
@@ -35,7 +37,7 @@ v2.0 在 v1.0 核心管道基础上新增：
 
 本系统按**单用户信任模型**设计：运行者 = 使用者，所有通过管理员登录态进入的 Admin API 输入视为可信。单用户不等于公网后台无认证；v2.0 Web 管理后台必须使用独立的管理员账号与 Cookie session 保护。
 
-- 管理后台访问 `/login` 完成登录；未登录访问任意 SPA 页面或 `/api/*` 管理接口时返回登录要求或重定向到 `/login?next=<原路径>`
+- 浏览器可以加载 SPA 静态文件；前端 `ProtectedRoute` 将未登录用户转到 `/login?next=<原路径>`。受保护的 `/api/*` 接口由后端校验 `session_id` Cookie；`/api/auth/status`、login、setup 和 logout 按各自认证流程处理
 - 后端首次启动且没有管理员凭据时进入 setup 流程；setup 必须提交 bootstrap setup token，创建单一管理员账号并写入独立 auth state 文件。若未显式配置 `SUBCONVERTER_SETUP_TOKEN`，服务启动时生成一次性 32-byte URL-safe token 并仅打印到日志。若 auth state 不可写，服务必须 fail closed，不允许自动放开管理接口
 - 管理后台登录成功后写入 `session_id` Cookie（HttpOnly、SameSite=Lax、HTTPS 下 Secure）；未选择“记住我”时最长 24 小时，选择后最长 7 天
 - auth state 只保存 PBKDF2 密码哈希和 session token 的 SHA-256 哈希，不保存明文密码或明文 session id；文件权限必须收紧到 `0600`
@@ -48,24 +50,35 @@ v2.0 在 v1.0 核心管道基础上新增：
 
 ## 运行模型
 
-系统按单用户模式设计，运行期分三个阶段：
+程序只有一个进程。`cmd/subconverter/main.go` 创建共享的资源缓存、`app.Service`、认证服务和 HTTP 服务。配置保存在 YAML 中，账号和会话保存在独立认证状态文件（auth state）中，远程资源缓存只保留在内存里。
+
+配置有三种状态，编辑、保存和生效是三个不同动作：
+
+| 状态 | 谁持有 | 何时改变 |
+|------|--------|----------|
+| 浏览器草稿 | 前端 `ConfigProvider` | 用户编辑或导入配置时 |
+| 配置源中的内容 | 本地 YAML 文件或远程 HTTP(S) 地址 | 本地保存或外部系统修改时 |
+| 当前生效配置 | `app.Service` 中的 `RuntimeConfig` | 启动成功或热重载成功时 |
+
+例如，把地区组名称改好并点击“保存”，只会写回 YAML。点击“热重载”且校验成功后，后续生成请求才会使用新名称。草稿、保存和生效状态的字段及接口见 [app.Service 契约](design/app-service.md)。
 
 ### 启动
 
-- 加载 YAML 配置文件，执行静态校验和预计算（`LoadConfig → Prepare`），产出不可变的 `RuntimeConfig`
-- 创建服务实例，`*RuntimeConfig` 指针由 `sync.RWMutex` 保护；请求只在锁内读取指针快照
+- `app.New` 读取并解析 YAML，再通过 `prepareAdminConfig` 调用 `config.Prepare`，校验字段、编译正则并展开 `@auto`
+- 成功后保存 `RuntimeConfig`、源 YAML 字节和对应 revision；失败则退出启动流程
+- 请求按只读约定使用 `RuntimeConfig`。其方法会返回含切片等引用的数据，Go 类型本身没有强制禁止修改；管道应另建结果，保持这份准备好的配置不变
 
 ### 热重载
 
-- `POST /api/reload` 触发：重新加载配置源 → 重新执行 `Prepare` → 校验通过后 `WLock` 原子替换 `RuntimeConfig` 指针
+- `POST /api/reload` 触发：在配置锁外重新读取、解析和校验 → 成功后短暂加写锁，一起替换配置指针、revision、生效 YAML 和重载状态
 - 校验失败时保留旧配置不变，返回错误
 - 已取得快照的请求继续使用旧配置完成；新请求在替换后读取新配置
 
 ### 请求期
 
-- 每个 `/generate` 或 `/api/preview/*` 请求短暂持有 `RLock` 读取当前 `RuntimeConfig` 快照，随后释放锁
-- 使用快照执行 `Build → Target → Render` 管道（或部分阶段用于预览）
-- 请求之间无共享可变状态
+- `/generate` 和 GET 预览短暂加读锁，取得当前配置指针后立即释放锁，再执行生成或预览所需阶段
+- POST 草稿预览从请求体生成临时 `RuntimeConfig`，使用草稿运行所需阶段，保持文件和生效配置不变
+- 每个请求各自构建节点图；请求间共享配置快照、资源缓存、认证状态和计数器。这些共享数据分别按只读约定或各自的锁、原子操作保护
 
 ```text
 config.yaml + remote sources
@@ -118,13 +131,13 @@ subconverter (Go)
 
 ```text
 启动期 / 热重载期:
-LoadConfig
-  -> Prepare (produces RuntimeConfig)
+读取并解析 YAML
+  -> Prepare（产出 RuntimeConfig）
      ↑ POST /api/reload 可重新触发
 
-请求期:
+运行时生成（/generate、GET /api/generate/preview）:
 RLock()
-  -> snapshot *RuntimeConfig
+  -> 取得 *RuntimeConfig 指针
 RUnlock()
   -> Build(Source -> Filter -> Group -> Route -> ValidateGraph)
   -> Target
@@ -133,11 +146,13 @@ RUnlock()
 
 对应职责：
 
-- `LoadConfig`：读取并解析用户 YAML，产出 `Config`
+- 配置加载：读取并解析用户 YAML，产出 `Config`；当前应用入口由 `app.Service` 完成，代码对应关系见 [管道设计](design/pipeline.md#stage-1-loadconfig)
 - `Prepare`：校验字段合法性、编译正则、解析自定义代理 URL、展开 `@auto`、检测命名冲突与路由环路，产出 `RuntimeConfig`
-- `Build`：构建格式无关 IR，其中 `Source/Filter/Group/Route/ValidateGraph` 仍按阶段拆分
-- `Target`：按目标格式做协议能力/原生来源格式裁剪和格式相关图校验
-- `Render`：把已投影的目标格式视图序列化为 Clash Meta 或 Surge 文本
+- `Build`：把来源、过滤和路由声明变成格式无关的节点图，即中间表示（IR）。图内用 `ProxyID` 引用代理，节点显示名可以重复
+- `Target`：过滤目标格式不支持的节点，清理因此失效的链式节点、组和规则，再分配本格式内唯一的输出名
+- `Render`：只接收已整理好的 `TargetPipeline`，将其与可选底版模板合并，输出 Clash Meta 或 Surge 文本
+
+例如，两个来源都声明了 `HK` 节点，Build 会保留两个不同 ID。Clash 和 Surge 各自过滤后再分配名称；最终只剩一个时可保留 `HK`，两个都保留时则用后缀区分。组成员始终通过 ID 跟随对应节点，直到 Target 将引用转换为最终名称。
 
 预览请求（`/api/preview/*`）执行管道的部分阶段：
 
@@ -162,10 +177,10 @@ RUnlock()
 - `target`：目标格式投影与格式相关级联校验
 - `render`：Clash Meta 与 Surge 渲染器，只做序列化
 - `generate`：单一"生成配置"服务，承接 `Build -> Target -> Render`。v2.0 起改为无状态设计：`Generate` 方法接收 `*RuntimeConfig` 参数，不再通过结构体字段持有配置指针；`app.Service` 在每次请求时取快照后传入
-- `app`：v2.0 应用服务层，统一承接配置快照、条件写回、热重载、运行时预览、草稿预览、订阅链接生成、状态查询；用 `RWMutex` 保护 `*RuntimeConfig` 指针快照与替换。包内按文件拆分职责（`service.go` / `preview.go` / `generate_link.go` / `diagnostic.go` / `validation.go` / `status.go` / `errors.go` / `generate_input.go`），保持包级别统一入口而非引入不必要的子包抽象
+- `app`：应用服务入口，承接配置快照、保存、导入导出、热重载、预览、订阅链接和状态查询；将内部节点图转换为 API 所需数据，让 HTTP 层无需理解管道细节
 - `auth`：v2.0 管理后台认证层，承接 bootstrap setup token、管理员 PBKDF2 密码哈希、auth state 文件、session 创建/校验/注销和登录失败锁定；不依赖配置生成管道
 - `admin`：Admin API 处理器，只做 JSON 解析、同源校验、调用 `app.Service` 或 `auth`、错误映射；不直接编排管道或渲染逻辑
-- `server`：HTTP 路由注册、`/generate`、`/healthz`、SPA fallback、响应缓存和文本错误映射
+- `server`：HTTP 路由注册、`/generate`、`/healthz`、SPA 路由回退、响应缓存头和文本错误映射；生成响应设置 `no-store`，静态资源按路径设置缓存头，具体见 [API 契约](design/api.md#错误语义)
 
 依赖原则：
 
@@ -199,12 +214,14 @@ RUnlock()
 - 后端：Go 服务（默认 `localhost:8080`）
 - 推荐通过 Vite proxy 将 `/api/*`、`/generate` 和 `/healthz` 转发到后端；若不使用 proxy，可在后端启动时加 `-cors` 标志用于本地跨域调试
 
-### YAML 真相源原则
+### 配置以 YAML 为持久来源
 
-- UI 是 YAML 配置的可视化外壳，不存在"前端独有"持久状态
-- 前端通过 `/api/config` 读写配置，不直接操作 YAML 文件
+- 前端通过 `/api/config` 读取和保存业务配置；浏览器中的草稿在保存前只存在于内存，主题等界面偏好另行保存在浏览器中
+- 已保存内容的版本由 `config_revision` 表示，生效内容的版本由 `runtime_config_revision` 表示；两者不同时，状态接口返回 `config_dirty=true`
 - 保序字段（groups / routing / rulesets）在 JSON 中用 `[{key, value}]` 数组表示
-- 当 `-config` 是本地文件时，后台可写回 YAML；当 `-config` 是 HTTP(S) URL 时，后台以只读模式运行
+- 本地文件及所在目录均可写时，后台允许保存；本地不可写或 HTTP(S) 配置源进入只读模式。状态字段与保存错误码见 [配置源能力](design/api.md#配置源能力)
+
+前端状态的具体职责见 [前端架构契约](../web/docs/frontend-architecture.md#状态边界)。
 
 ---
 
@@ -213,14 +230,15 @@ RUnlock()
 ```text
 POST /api/reload
   │
-  ├─ re-LoadConfig(source)      读取最新 YAML（远程主配置 bypass / invalidate 缓存）
-  ├─ re-Prepare(config)         静态校验 + 预计算
+  ├─ reloadMu.TryLock()        已有重载在执行时，立即返回 429
+  ├─ 读取并解析 YAML            远程主配置先 Invalidate，再读取
+  ├─ prepareAdminConfig       静态校验 + Prepare 预计算；均在配置写锁外
   │
   ├─ 校验失败？ ──► 返回错误，不替换
   │
   └─ 校验通过：
        WLock()
-       swap *RuntimeConfig pointer + runtime config revision
+       替换配置指针、revision、生效 YAML 和重载状态
        WUnlock()
        返回成功 + 耗时
 ```
@@ -228,10 +246,12 @@ POST /api/reload
 并发模型：
 
 - `app.Service` 内部持有 `sync.RWMutex` 保护 `*RuntimeConfig` 指针
-- `/generate` 和 `/api/preview/*` 请求只在复制配置指针时短暂使用 `RLock`
+- `/generate` 和 GET 预览只在复制配置指针时短暂使用 `RLock`；POST 草稿预览另建临时配置
 - `/api/reload` 使用 `WLock` 替换配置指针
 - 慢速订阅拉取、模板加载或渲染不持有配置锁，因此不会阻塞热重载获取写锁
-- 无需请求排队或版本号机制；请求以取得快照的时间点决定使用旧配置或新配置
+- 同时只执行一次重载，重复重载请求直接返回 `429 reload_in_progress`；生成请求按取得快照的时间点使用旧配置或新配置
+
+热重载成功只说明主配置通过静态检查。订阅是否可拉取、地区组是否匹配到节点，以及某种格式的兜底组是否会被过滤清空，仍由后续预览或生成发现。资源刷新范围见 [缓存设计](design/caching.md#热重载与预览如何使用缓存)。
 
 ---
 
@@ -246,10 +266,10 @@ POST /api/reload
 进程收到 `SIGTERM` 或 `SIGINT` 后按以下顺序停止：
 
 1. 停止接受新连接
-2. 等待 in-flight 请求完成（超时由 `http.Server.Shutdown` 的 context 控制，建议 30s）
-3. 超时后强制关闭剩余连接并退出
+2. 调用 `http.Server.Shutdown`，最多等待 10 秒，让已接受的请求完成
+3. 正常完成后退出；等待超时时记录错误，随后主函数返回，进程退出。当前代码没有另行调用 `Server.Close`
 
-Docker 环境下，`docker stop` 先发 `SIGTERM`，默认 10s 后 `SIGKILL`。建议 Dockerfile 中设置 `STOPSIGNAL SIGTERM`（Go 默认已处理），并确保 shutdown timeout ≤ Docker 的 stop grace period。
+实现位于 `cmd/subconverter/main.go`。部署时应让容器或进程管理器留出足够的停止等待时间，使程序有机会完成这 10 秒的退出流程。
 
 ---
 
@@ -310,18 +330,18 @@ Web 管理后台
 | 链式组建模 | 属于节点组，由 `relay_through` 派生 | 与用户心智一致 |
 | `@all` 范围 | 仅原始节点，不含链式节点 | 控制节点膨胀 |
 | `@auto` 语义 | 自动补充节点组 + 包含 `@all` 的服务组 + DIRECT | 消除 routing 冗余 |
-| 缓存范围 | 缓存订阅和模板的远程拉取结果 | 规则集由客户端消费 |
+| 缓存范围 | 缓存节点来源、模板和主配置的远程响应 | 缓存行为与刷新边界见 [缓存设计](design/caching.md) |
 | 资源加载模型 | 配置文件和模板均支持本地路径或 HTTP(S) URL | 统一 `LoadResource` |
 | 渲染器合并策略 | Clash 用 yaml.Node 替换；Surge 用 section 切分替换 | 保留底版用户设置 |
 | 结构化订阅表示 | `KindSubscription` + 可选 `NativeProxy` | 复用统一过滤/分组语义，同时完整保留目标原生节点字段 |
 | 节点身份 | Build 内唯一 `ProxyID`；节点名只是显示名候选 | 同名节点可安全共存，过滤/分组/链式关系不依赖可变名称 |
 | 输出命名 | 每个目标在格式过滤后独立消歧 | Clash-only / Surge-only 同名节点都可保留原名，目标内仍满足唯一性 |
 | **热重载并发模型** | `sync.RWMutex` 保护 `RuntimeConfig` | 单进程无需分布式锁，读多写少场景最优 |
-| **前端部署方式** | Go 二进制嵌入 `web/dist`，单服务同源托管 SPA 与 API | 单镜像、单进程，生产同源访问 |
+| **前端部署方式** | `web/dist` 同步至 `internal/webui/dist`，再用 `webui` 标签嵌入二进制 | 单镜像、单进程，生产同源访问 |
 | **开发模式** | Vite proxy 优先；`-cors` 仅作本地调试兜底 | 前后端分离开发 |
 | **Admin API 前缀** | `/api/*` | 与 `/generate` 平行，不冲突 |
 | **YAML 真相源** | UI 是 YAML 的可视化外壳 | 数据一致性，修改可追溯 |
-| **配置源写入边界** | 本地文件可写，HTTP(S) 配置只读 | 远程配置源无法可靠写回，需显式暴露能力 |
+| **配置源写入边界** | 本地文件及所在目录均可写时允许保存；HTTP(S) 配置只读 | 状态接口报告实际写入能力，前端据此控制保存入口 |
 | **条件写回** | `config_revision = sha256:<hex>` | 乐观并发令牌，防止旧页面或旧 revision 覆盖已观测到的新配置；不承诺外部多写者线性一致 |
 | **应用服务边界** | `admin -> app -> pipeline/generate` | HTTP 层保持薄边界，管道编排不泄漏到 handler |
 
@@ -335,7 +355,7 @@ Web 管理后台
 
 - **现象**：Build 阶段"合法"的配置，在某一输出格式的 Target 阶段可能失败
 - **报错路径**：`target.ForClash` / `target.ForSurge` 在 Target 阶段返回 `TargetError`
-- **影响**：错误被"晚报"；调试时用户看到 render 错而非 build 错
+- **影响**：静态校验或分组预览通过后，某一种格式仍可能在 Target 阶段失败；错误类型是 `TargetError`，发生在 Render 之前
 
 ### 2. 中间表示对"格式限定字段"的宽松包容
 

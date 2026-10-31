@@ -18,16 +18,18 @@
 
 ```
 启动期 / 热重载期:
-LoadConfig
-  -> Prepare (produces RuntimeConfig)
+读取并解析 YAML
+  -> Prepare（产出 RuntimeConfig）
      ↑ POST /api/reload 可重新触发
 
 请求期:
-RLock(RuntimeConfig)
+RLock → 取得当前 RuntimeConfig 指针 → RUnlock
   -> Build(Source -> Filter -> Group -> Route -> ValidateGraph)
   -> Target
   -> Render
 ```
+
+上图描述运行时生成。GET 预览只运行所需阶段；POST 草稿预览先准备临时配置。完整流程及代码入口见 [管道设计](docs/design/pipeline.md)。
 
 **包边界**（依赖单向）：
 
@@ -180,8 +182,10 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 4. **`go test ./...`**：标准测试
 5. **`go test -tags webui ./...`**：含 Web UI 嵌入资产的构建标签测试
 6. **`go vet ./...`**
-7. **嵌入资产验证**：`test -s internal/webui/dist/index.html`——确认 Web 前端产物已正确嵌入
+7. **嵌入资产存在检查**：`test -s internal/webui/dist/index.html`——只确认入口文件非空；是否可嵌入由带 `webui` 标签的测试和后续构建检查
 8. **`docker build -f Dockerfile .`**：确认生产 Dockerfile 可使用已同步 Web embed 产物构建单镜像
+
+当前 Release workflow 不运行前端测试、类型检查或重新构建，也不比较 Web 源码与已提交产物。发布者需在提交 Web 改动时完成本地检查与 `pnpm web:embed`；发布顺序和检查边界见 [构建与部署](docs/deployment.md#release)。
 
 **本地预检命令**：
 
@@ -237,7 +241,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 - **现象**：Build 阶段"合法"的配置，在某一输出格式的 Target 阶段可能失败（如 Snell 节点让 Clash fallback 被级联清空）
 - **报错路径**：`target.ForClash`（内部调用 `filterUnsupportedProxies`）在 Target 阶段返回 `CodeTargetClashFallbackEmpty`
-- **影响**：错误被"晚报"；调试时用户看到 render 错而非 build 错
+- **影响**：Build 通过后，某一种格式仍可能在 Target 阶段失败；返回 `TargetError`，此时尚未执行 Render
 - **缓解方案（未实施）**：引入 per-format validation hook，让 ValidateGraph 接受 `formatHint` 参数，对每种输出格式跑一次图校验。当前规模下不必处理，但**新增 format-specific 过滤时应重新评估**
 
 ### 2. 中间表示对"格式限定字段"的宽松包容
@@ -257,16 +261,15 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - **报错路径**：
   - Clash 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForClash`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetClashFallbackEmpty` 等错误
   - Surge 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForSurge`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetSurgeFallbackEmpty` 等错误
-- **影响**：build 阶段"合法"的配置在 render 阶段失败；调试需读级联链（"FINAL 为空 ← SVC_X 为空 ← GRP_SG 被过滤 ← 仅含 Snell 节点"）
+- **影响**：Build 阶段通过的配置可能在 Target 阶段失败；调试需读级联链（"FINAL 为空 ← SVC_X 为空 ← GRP_SG 被过滤 ← 仅含 Snell 节点"）
 - **与局限 1 的关系**：同属"ValidateGraph 不感知格式"的具体表现。缓解方案共享：per-format validation hook
 - **新增格式专属协议或结构化来源时**：复用 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies` 过滤策略；同步补跨格式过滤测试（至少覆盖"该节点在另一格式下被过滤后 fallback / 规则的级联效应"）
 
-### 4. 热重载期间写锁阻塞
+### 4. 热重载后，在途请求继续使用旧快照
 
-> **触及时行动**：若 `Prepare` 耗时过长导致读请求可感知延迟 → 考虑 copy-on-write 或双缓冲方案。
+> **触及时行动**：若需求改为“重载成功后，所有在途请求也必须使用新配置” → 先确认是否调整快照一致性的边界。
 
-- **现象**：`WLock` 期间所有 `/generate` 和 `/api/preview/*` 请求被阻塞
-- **缓解**：`Prepare` 是纯 CPU 计算（正则编译、URL 解析），通常毫秒级完成；`LoadConfig` 在 `WLock` 之前完成，写锁仅保护指针替换
+当前实现让请求取得配置指针后释放读锁，重载在锁外读取并准备新配置，最后短暂加写锁替换生效状态。因此，已经取得旧快照的请求会用旧配置完成。具体权衡见 [架构局限 #4](docs/architecture.md#4-runtimeconfig-快照一致性)，锁的职责见 [app.Service 并发安全](docs/design/app-service.md#并发安全)。
 
 ### 5. YAML 写回丢失注释与格式
 

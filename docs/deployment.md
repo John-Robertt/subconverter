@@ -37,12 +37,13 @@ Docker 镜像平台矩阵：
 
 - 推送 `v*` tag，例如 `v0.1.0`
 
-执行内容：
+发布按 `test → binaries → docker` 三个 job 顺序执行，前一步失败，后一步就不会开始：
 
-- 运行 lint（golangci-lint）、格式检查（gofmt）、测试（go test）和 vet（go vet）
-- 用 GoReleaser 发布二进制和 `checksums.txt` 到 GitHub Release
-- 校验已同步的 Web 嵌入产物存在
-- 构建并推送内嵌 Web SPA 的 GHCR 多架构镜像；Dockerfile 本身不安装 Node/pnpm
+1. `test`：依次运行 `go mod verify`、golangci-lint、gofmt 检查、`go test ./...`、`go test -tags webui ./...`、`go vet ./...`，检查 `internal/webui/dist/index.html` 非空，再执行 Docker 构建。
+2. `binaries`：用 GoReleaser 将带 Web 资源的二进制压缩包和 `checksums.txt` 发布到 GitHub Release。
+3. `docker`：构建并推送内嵌 Web SPA 的 GHCR 多架构镜像。
+
+当前仓库中的 workflow 只在推送 tag 时触发，没有分支推送或 PR 检查。它也不运行 pnpm，不重新生成 Web 产物。入口文件非空只能证明产物存在，不能证明它与 `web/src` 一致；发布者需要先完成下方 [Web 构建](#web-构建)，并提交同步后的产物。
 
 ---
 
@@ -129,7 +130,7 @@ docker run -d \
 
 注意：该示例未挂载 `/auth`，不适合作为首次 Web setup 的完整配置。需要 Web 管理后台时，请额外挂载可写 auth state（如 `-v $(pwd)/auth:/auth`）并设置 `SUBCONVERTER_SETUP_TOKEN`，或直接使用下方 Compose 示例。
 
-### Docker 部署（可写目录挂载，为 v2.0 写回预留）
+### Docker 部署（后台可保存配置）
 
 若要允许 Web 后台写回配置，可挂载整个配置目录，并确保容器内运行用户对该目录有写权限：
 
@@ -145,7 +146,7 @@ docker run -d \
   ghcr.io/john-robertt/subconverter:latest
 ```
 
-挂载目录而不是单个文件，可以让后续 `PUT /api/config` 使用“写临时文件 + rename 覆盖”的方式原子写回 YAML，避免保存中断时留下半文件。
+挂载目录而不是单个文件，可以让 `PUT /api/config` 使用“写临时文件 + rename 覆盖”的方式原子写回 YAML，避免保存中断时留下半文件。配置文件和目录都要允许容器运行用户写入。后台认证文件还需要独立的可写 `/auth` 挂载，完整示例见下方 Compose 部署。
 
 如果需要额外挂载自定义模板，可以在配置文件中改成绝对路径，并将模板文件挂载进容器。
 
@@ -156,6 +157,7 @@ docker run -d \
 仓库内示例文件：
 
 ```bash
+pnpm web:embed
 pnpm docker:build
 mkdir -p config auth
 cp configs/base_config.yaml config/config.yaml
@@ -226,7 +228,7 @@ healthcheck:
 
 若不显式传入 `-listen`，进程会按 `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址。
 
-若不显式传入 `-access-token`，进程会按 `SUBCONVERTER_TOKEN` > 空值解析订阅访问 token；空值表示当前 `/generate` 不启用 token 鉴权。v2.0 Web 管理后台实现后，`/api/*` 不使用该 token，而是要求有效管理员 session。
+若不显式传入 `-access-token`，进程会按 `SUBCONVERTER_TOKEN` > 空值解析订阅访问 token；空值表示 `/generate` 不启用 token 鉴权。受保护的 `/api/*` 管理接口要求有效管理员 session，使用自己的认证边界。
 
 若不显式传入 `-auth-state`，进程会按 `SUBCONVERTER_AUTH_STATE` > 默认路径解析 auth state 文件。生产部署应把该路径放在可写持久卷中；若没有管理员凭据且 auth state 不可写，首次 setup 无法完成，管理后台保持关闭。
 
@@ -258,8 +260,8 @@ healthcheck:
 
 ## 发布流程
 
-1. 确保 `main` 分支 CI 通过
-2. 创建并推送 tag
+1. 在发布提交上完成本地检查。涉及前端时先运行 `pnpm web:test`、`pnpm web:typecheck` 和 `pnpm web:embed`，确认同步产物已提交；当前 workflow 不替发布者执行这一步。
+2. 创建并推送 tag，触发上方 [Release](#release) 流程。
 
 ```bash
 git tag v0.1.0
@@ -311,13 +313,9 @@ docker build -t subconverter:local .
 - SPA 入口 `index.html` 使用 `Cache-Control: no-cache` 或等价重验证策略，确保发布后能及时发现新构建
 - Vite 生成的带 hash 静态资源可使用长期缓存，例如 `Cache-Control: public, max-age=31536000, immutable`
 
-### Release 流程
+### 构建与发布的关系
 
-Release workflow 发布内嵌 Web SPA 的单镜像：
-
-1. Go lint / format / test / vet
-2. `test -s internal/webui/dist/index.html` 校验 Web 嵌入产物已随仓库同步
-3. Docker build（根 `Dockerfile`，只执行 Go `webui` 构建，不在 Docker 内重复执行 pnpm）
+Web 源码先在本地构建并同步，Go 构建再将 `internal/webui/dist` 嵌入二进制。Release workflow 使用提交中的这份产物，具体检查顺序见上方 [Release](#release)。因此，修改 `web/src` 后只提交源码，会让发布构建继续使用此前提交的 Web 产物。
 
 Docker Compose 只启动一个 `subconverter` 服务。默认 Go 二进制构建不要求 Web 静态资源；生产 Docker 构建使用 `webui` build tag 嵌入资源。
 

@@ -73,9 +73,10 @@ func (s *Service) ValidateDraft(ctx context.Context, configJSON json.RawMessage)
 
 ```go
 // Reload 触发完整热重载流程：
-// 1. 重新加载配置源（远程主配置 bypass 缓存）
-// 2. Prepare 校验
-// 3. 成功 → WLock 替换 RuntimeConfig 指针 + runtime_config_revision
+// 1. reloadMu.TryLock；已有重载在执行时返回 ErrReloadInProgress
+// 2. 在配置锁外读取并解析 YAML，再执行 prepareAdminConfig / Prepare
+//    远程主配置读取前先 Invalidate 对应缓存项
+// 3. 成功 → 短暂加写锁，替换配置指针、revision、生效 YAML 和重载状态
 // 4. 失败 → 旧配置不变，返回错误
 // 用于 POST /api/reload。
 func (s *Service) Reload(ctx context.Context) (*ReloadResult, error)
@@ -441,18 +442,28 @@ var (
 
 ## 并发安全
 
-`app.Service` 内部持有 `sync.RWMutex`：
+这里需要分清三件事：正在生成的请求使用哪份配置、是否已有重载在执行，以及保存时文件有没有变化。它们由不同机制处理。
+
+`sync.RWMutex` 保护当前生效配置及相关内存状态：
 
 - 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
 - `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 由响应中的 `config_revision != runtime_config_revision` 计算
 - `EffectiveConfigYAML`：只在 `RLock` 内复制当前生效 YAML 字节；该快照只在启动成功和 `Reload` 成功时更新
 - `EffectiveConfigArchive`：只在 `RLock` 内复制当前生效 YAML 字节和模板位置；模板内容读取与 ZIP 编码在释放锁后执行
-- 写路径（`Reload`）：`WLock` 只保护指针替换，不包含 `LoadConfig` / `Prepare` / I/O
+- 写路径（`Reload`）：先在锁外读取、解析和准备配置；校验成功后，短暂加写锁一起更新配置指针、revision、生效 YAML、加载时间和重载状态
 - 慢速订阅拉取、模板加载和渲染不持有配置锁
-- `SaveConfig` 的原子写回使用临时文件 + `os.Rename`，与配置锁独立
-- Reload 互斥：`app.Service` 内部持有独立的 `reloadMu sync.Mutex`。`Reload` 入口处 `TryLock`，失败时返回 `ErrReloadInProgress`（`admin` 映射为 429）。此锁独立于 `RWMutex`，不影响读路径
-- `SaveConfig` 使用 `config_revision` 作为乐观并发令牌，目标是防止旧页面、旧标签页或旧 revision 覆盖已经观测到的新配置；它不承诺外部多写者线性一致
-- `SaveConfig` 的 revision 检查依赖文件系统原子性（`os.Rename`），不使用额外文件锁保护 check-then-write 序列。理论上存在 TOCTOU 窗口（外部进程在 revision 比对和 rename 之间修改文件），但单用户场景下该窗口极窄且可接受；若未来明确支持 GitOps 多写者并发写入，再引入文件锁、rename 前重检或备份策略
+
+例如，请求 A 取得旧配置后开始下载订阅，重载 B 此时可以准备并发布新配置。A 仍用旧配置完成，之后取得快照的请求才使用新配置。`RuntimeConfig` 按只读约定使用，管道各自构建结果；其 Go 类型并未强制深层数据不可修改。
+
+`reloadMu` 只负责重载互斥：入口调用 `TryLock`，已有重载在执行时立即返回 `ErrReloadInProgress`，由 `admin` 映射为 429。它不会让普通生成请求排队。
+
+`SaveConfig` 只负责写回配置文件，保持生效快照不变：
+
+- 先读取文件并计算 `config_revision`，与调用方传入的版本比较；不匹配时返回冲突，保留文件原样
+- 校验通过后，把完整 YAML 写入同目录临时文件，再用 `os.Rename` 替换原文件；读文件的请求不会看到本次写入了一半的 YAML
+- 成功时根据写出的字节计算并返回新 revision。下一次本地 `Status` 会重新读文件并计算 revision，生效 revision 仍要等成功重载才更新
+
+版本比较和文件替换是两个步骤，当前没有锁把它们合成一次操作。外部进程或另一个保存请求若恰好在两步之间写入，仍可能被覆盖。原子 rename 保证文件完整替换，并不保证多写者的版本检查与替换不可分割；当前仍保持单用户写入边界。
 
 ---
 

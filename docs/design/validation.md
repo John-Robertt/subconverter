@@ -39,7 +39,7 @@
 - `relay_through.type=group` 时必须提供 `name`
 - `relay_through.type=select` 时必须提供 `match`
 - `fallback` 必填
-- `groups` 不得为空（至少声明一个地区节点组）
+- 应用入口要求 `groups` 不得为空（至少声明一个地区节点组）；由 `app.prepareAdminConfig` 检查，`config.Prepare` 本身不检查组数
 - `base_url` 可选；若非空，必须以 `http://` 或 `https://` 开头
 - Admin API JSON 输入中的 `sources.fetch_order` 缺失或为空时使用默认顺序；非空时只能包含 `subscriptions`、`snell`、`vless` 且三项各出现一次，否则返回 `invalid_fetch_order`。该规则由 app 层 wrapper 在调用 `config.Prepare()` 前校验，不属于 YAML reload 的通用 Prepare 规则
 - `routing` 中同一 entry 内 `@auto` 最多出现一次

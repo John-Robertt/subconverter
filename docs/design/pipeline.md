@@ -6,7 +6,7 @@
 
 ## 目标
 
-本文件定义系统从配置输入到配置输出的阶段划分、输入输出和阶段职责。v2.0 在 v1.0 的 9 阶段管道基础上，新增热重载生命周期和预览管道。
+本文件说明用户配置怎样一步步变成客户端配置。前两阶段读取并准备配置；请求到来后，再根据远程节点构建引用关系，按输出格式整理这些关系，最后写成文本。预览复用所需的阶段，并在得到结果时停止。
 
 ---
 
@@ -14,22 +14,26 @@
 
 ```text
 启动期 / 热重载期:
-LoadConfig
-  -> Prepare (produces RuntimeConfig)
+读取并解析 YAML
+  -> Prepare（产出 RuntimeConfig）
      ↑ POST /api/reload 可重新触发
 
-请求期（/generate, /api/preview/*）:
+运行时生成（/generate, GET /api/generate/preview）:
 RLock()
-  -> snapshot *RuntimeConfig
+  -> 取得 *RuntimeConfig 指针
 RUnlock()
   -> Build(Source -> Filter -> Group -> Route -> ValidateGraph)
   -> Target
   -> Render
 
+运行时节点 / 分组预览（GET /api/preview/*）:
+读取当前配置指针快照并释放锁
+  -> 所需阶段，见下方预览管道表
+
 草稿预览期（POST /api/preview/*, POST /api/generate/preview）:
-Draft Config
-  -> Prepare (temporary RuntimeConfig)
-  -> requested preview stages
+草稿 Config
+  -> Prepare（产出本次请求的临时 RuntimeConfig）
+  -> 所需预览阶段
 ```
 
 设计原则：
@@ -42,28 +46,33 @@ Draft Config
 
 ## 热重载生命周期
 
-`POST /api/reload` 触发完整的 LoadConfig + Prepare 流程：
+`POST /api/reload` 重新读取并准备主配置。加载、解析和 Prepare 都在配置写锁外完成；只有替换生效状态时才短暂加写锁：
 
 ```text
 POST /api/reload
   │
-  ├─ LoadConfig(path)       读取最新 YAML（远程主配置 bypass / invalidate 缓存）
-  ├─ Prepare(config)        校验 + 编译正则 + 展开 @auto + 检测环路
+  ├─ reloadMu.TryLock()     已有重载在执行时，返回 429 reload_in_progress
+  ├─ readConfigBytes       读取 YAML；远程主配置先 Invalidate 对应缓存项
+  ├─ parseConfigYAML       解析配置
+  ├─ prepareAdminConfig    应用层检查 + config.Prepare
   │
   ├─ 失败？ ──► 返回错误，RuntimeConfig 不变
   │
   └─ 成功：
        WLock()
-       swap RuntimeConfig pointer + runtime config revision
+       替换配置指针、revision、生效 YAML 和重载状态
        WUnlock()
 ```
 
 关键保证：
 
 - 热重载校验失败时，旧 `RuntimeConfig` 保持不变，所有请求继续使用旧配置
-- `WLock` 仅保护指针替换，不包含 I/O 或计算
+- 配置写锁只保护上述内存状态的更新，文件读取、网络拉取、解析和 Prepare 均在锁外
 - 读请求只在读取 `*RuntimeConfig` 指针快照时短暂持有 `RLock`，随后释放锁再执行 Source / Filter / Group / Render 等可能耗时阶段
 - 已经取得快照的请求会继续使用旧配置完成；热重载成功后，新请求会读取新配置快照
+- 重载只验证主配置的静态内容，不拉取节点来源、不加载模板，也不执行 Build、Target 或 Render。要确认生成可用，需继续运行对应预览或生成请求
+
+例如，新配置中的地区组正则可以正常编译，但可能匹配不到实际节点。这次热重载可以成功，分组预览或生成时才会报告空组。缓存刷新范围见 [缓存设计](caching.md#热重载与预览如何使用缓存)。
 
 ---
 
@@ -88,9 +97,11 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 ## Stage 1: LoadConfig
 
+这里的 `LoadConfig` 是“读取并解析配置”的阶段名称。当前启动和热重载入口由 `app.Service` 的 `readConfigBytes`、`parseConfigYAML` 完成，再调用 `prepareAdminConfig`；`config.Load` 仍是配置包提供的加载函数，并非当前应用入口的调用链。
+
 职责：
 
-- 读取 YAML 文件（支持本地路径或 HTTP URL）
+- 读取 YAML 文件（支持本地路径或 HTTP(S) URL）
 - 反序列化为用户配置对象
 - 保留 `groups`、`routing`、`rulesets` 的书写顺序
 
@@ -119,7 +130,10 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 并发语义：
 
 - 启动时执行一次，热重载时重新执行
+- 草稿校验和草稿预览也执行 Prepare，生成只供本次请求使用的临时配置
 - 产出的 `RuntimeConfig` 在请求期按只读契约消费
+
+应用入口的 `prepareAdminConfig` 还要求至少有一个地区节点组；对 Admin API 的 JSON 配置，另行检查 `sources.fetch_order`。这两项应用层检查与 `config.Prepare` 的通用校验分开，见 [校验设计](validation.md#静态校验prepare-阶段)。
 
 ---
 
@@ -127,7 +141,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 职责：
 
-- 拉取所有远程来源
+- 按来源类型顺序、同类来源的声明顺序逐个拉取；单次 Build 内当前采用顺序拉取
 - 解析订阅节点（TXT / Clash YAML / Surge CONF）、Snell 节点、VLESS 节点
 - 将自定义代理转换为原始节点对象或链式模板
 - 按来源与声明顺序为每个原始节点分配非零、Build 内唯一的 `ProxyID`
@@ -304,31 +318,24 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 要求：
 
-- 两种输出的面板结构和路由语义保持一致
-- 差异仅体现在目标语法
+- 两种渲染器遵循相同的分组和路由规则，分别输出各自 Target 保留下来的内容
+- Target 过滤后，两种输出的节点、组和规则可以不同；Render 负责目标语法、协议字段输出和底版模板合并
 
 ---
 
 ## 并发模型
 
 ```text
-	                    RuntimeConfig
-	                         │
-	            ┌────────────┼────────────┐
-	            │            │            │
-	      /generate    /api/preview   /api/reload
-	     snapshot     snapshot       WLock()
-          │            │              │
-        Build        Source         swap ptr + revision
-        Target       Filter
-        Render       [Group/Route]
+运行时生成 / GET 预览             POST 草稿预览
+  RLock → 取配置指针 → RUnlock      解析草稿 → Prepare 临时配置
+              │                              │
+              └──────── 执行所需阶段 ──────────┘
+
+POST /api/reload
+  reloadMu.TryLock → 读取 / 解析 / Prepare → WLock → 替换状态 → Unlock
 ```
 
-- `app.Service` 内部持有 `sync.RWMutex` 保护 `*RuntimeConfig` 指针
-- 读请求（`/generate`、`/api/preview/*`）只在复制配置指针时短暂使用 `RLock`
-- 写请求（`/api/reload`）使用 `WLock`，互斥
-- `WLock` 仅保护指针替换，不包含 LoadConfig 或 Prepare 计算
-- 慢速订阅拉取、模板加载或渲染不持有配置锁，因此不会阻塞热重载获取写锁
+配置锁、重载互斥和文件保存的边界见 [app.Service 并发安全](app-service.md#并发安全)。请求各自构建结果，共享的 `RuntimeConfig` 按只读约定使用；远程资源缓存另由 `CachedFetcher` 的锁保护。
 
 ---
 

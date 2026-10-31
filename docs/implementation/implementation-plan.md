@@ -132,7 +132,7 @@ M7 + M8 -> M9 -> M10
 - `OrderedMap` 完整序列化：在现有 `UnmarshalYAML` 基础上新增 `MarshalJSON`、`UnmarshalJSON`、`MarshalYAML` 三个方法。`MarshalJSON` 输出 `[{key,value}]` 数组；`UnmarshalJSON` 从该数组恢复；`MarshalYAML` 用于 `PUT /api/config` 写回 YAML 时保持键序。四个方法 round-trip 幂等性测试必须在此阶段完成
 - `Config` 及嵌套结构体全部添加 `json` tag（与 `yaml` tag 保持同名 lowercase），使 `encoding/json` 序列化的 key 名与 API 契约一致
 - `Sources` JSON 序列化：添加 `FetchOrder` 的 `json:"fetch_order"` tag（替代当前 `yaml:"-"`），新增 `Sources.MarshalYAML` 按 `FetchOrder` 排列子键顺序。`fetch_order` 非空时必须完整包含 `subscriptions`、`snell`、`vless` 且三项各出现一次；重复、未知或缺项返回 `invalid_fetch_order`。详见 `config-schema.md` §sources 的 JSON 表示
-- `CachedFetcher` 新增 `Invalidate(rawURL string)` 方法，供 reload 在 `LoadConfig` 前失效远程主配置缓存。详见 `caching.md` §CachedFetcher API 扩展
+- `CachedFetcher` 新增 `Invalidate(rawURL string)` 方法，供 reload 读取远程主配置前清除对应缓存项。当前行为见 [缓存设计](../design/caching.md#热重载与预览如何使用缓存)
 - `ConfigError` 结构化路径：将 collector 的 `add(field, message)` 改为 `add(section, key, index, valuePath, message)`，使 `ConfigError` 携带结构化路径字段（`Section`、`Key`、`Index`、`ValuePath`），替代当前的 dot-separated `Field` 字符串。app 层基于此计算 `json_pointer`，组装 `DiagnosticItem`。详见 `app-service.md` §ConfigError → DiagnosticItem 翻译
 - 在 `internal/errtype` 新增 `ErrConfigSourceReadonly`、`ErrConfigFileNotWritable`、`ErrReloadInProgress` sentinel error，以及携带 `CurrentConfigRevision` 的 `RevisionConflictError`。详见 `app-service.md` §错误处理
 

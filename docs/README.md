@@ -34,7 +34,7 @@
 | `GET /healthz` | 当前可用 | v1.0 | 是 | 进程健康检查。 |
 | Snell / VLESS 来源、链式组、目标格式投影 | 当前可用 | v1.0 | 是 | 由当前 Go 后端实现并有测试覆盖。 |
 | `/api/auth/*` | 当前可用 | M6 | 是 | 管理后台登录、首次 setup、session 状态和注销；M9 已接入前端登录/setup/logout 闭环。 |
-| `GET/PUT /api/config` | 当前可用 | M6 | 是 | 配置 CRUD 与 JSON/YAML round-trip。 |
+| `GET/PUT /api/config` | 当前可用 | M6 | 是 | 读取和保存配置，保持 JSON/YAML 往返转换；保存后需独立热重载才能生效。 |
 | `POST /api/config/validate` | 当前可用 | M6 | 是 | 静态配置校验与结构化诊断。 |
 | `POST /api/reload` | 当前可用 | M6 | 是 | 运行时热重载与 `RuntimeConfig` 快照替换。 |
 | `GET/POST /api/preview/nodes` | 当前可用 | M7 | 是 | 节点预览 API，支持运行时与草稿双模式。 |

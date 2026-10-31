@@ -12,7 +12,7 @@
 
 当前正式工程位于 `web/src/`；历史高保真原型已从仓库中移除，不参与生产构建。
 
-## 目录建议
+## 当前主要目录
 
 ```text
 web/
@@ -35,14 +35,15 @@ web/
 
 ## 状态边界
 
-- 服务端状态由 React Query 管理。
-- 前端草稿由页面或 feature 级本地 state 管理。
+- React Query 保存从服务端读取的配置、状态和预览结果，负责请求与刷新。
+- `state/config.tsx` 中的 `ConfigProvider` 统一保存配置草稿、已加载基线和 `baseRevision`，让用户跨编辑页切换时保留草稿。页面只更新这份草稿，表单展开状态等界面状态由页面自己保存。
+- `features/useSaveWorkflow.ts` 负责校验草稿、保存确认、调用保存接口，以及独立的热重载操作。保存更新 YAML，热重载才更新生效配置；两者的版本字段见 [app.Service 契约](../../docs/design/app-service.md#statusresult)。
 - 管理后台登录态由服务端 `session_id` Cookie 管理；前端不保存密码、session id 或订阅访问 token。
 - URL 路由只表达当前页面，不把完整草稿塞入 URL。
 
 ## Query 与 mutation
 
-建议 query key：
+`app/queryKeys.ts` 集中定义 query key，即 React Query 区分各份缓存数据所用的键：
 
 - `status`
 - `authStatus`
@@ -68,8 +69,9 @@ API client 统一负责：
 - 对 `401 invalid_credentials` 和 `423 auth_locked` 交给登录页展示字段错误或锁定状态。
 - 对 `401 setup_token_required` / `401 setup_token_invalid` 交给 setup 模式展示 bootstrap token 错误。
 - 对 409 按 `code` 区分 revision 冲突、只读配置源和文件不可写。
-- 对 429 reload 响应执行短间隔退避策略。
 - 复制订阅链接使用 `GET /api/generate/link`，不得从前端状态拼接 `SUBCONVERTER_TOKEN`。
+
+重载的 429 退避由 `features/useSaveWorkflow.ts` 处理：提示用户已有重载在执行，等待 1.5 秒后重试一次。通用 API client 负责返回错误，保存流程根据操作决定如何处理。
 
 ## 构建与部署
 
