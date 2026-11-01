@@ -19,6 +19,7 @@ test.describe("filters page", () => {
 
     await page.goto("/filters");
     const input = page.locator("input.mono-input");
+    state.validate = { valid: false, errors: [{ severity: "error", code: "invalid_regex", message: "正则表达式无效：缺少右括号", locator: { json_pointer: "/config/filters/exclude" } }], warnings: [], infos: [] };
     await input.fill("[unterminated");
     await expect(page.locator(".field-error")).toBeVisible();
   });

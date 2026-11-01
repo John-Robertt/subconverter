@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -43,7 +43,7 @@ const sampleConfig = {
     templates: {
       clash: "configs/base_clash.yaml",
       surge: "configs/base_surge.conf",
-      loon: "configs/base_loon.conf"
+      loon: "configs/base_loon.lcf"
     }
   }
 };
@@ -90,11 +90,14 @@ interface MockBackendOptions {
   validateResult?: unknown;
   reloadErrors?: { status: number; code: string; message: string }[];
   groupPreviewValidationError?: boolean;
+  loginErrorOnce?: boolean;
+  uptimeSeconds?: number;
 }
 
 function mockBackend(options: MockBackendOptions = {}) {
   const calls: { path: string; init?: RequestInit }[] = [];
-  const authed = options.authed ?? true;
+  let authed = options.authed ?? true;
+  let failedLogin = false;
   const setupRequired = options.setupRequired ?? false;
   let configSnapshot = clone(sampleConfig);
   let configOverride = options.config;
@@ -114,10 +117,14 @@ function mockBackend(options: MockBackendOptions = {}) {
     if (path === "/api/auth/status") {
       return json({ authed, setup_required: setupRequired, setup_token_required: setupRequired, locked_until: "" });
     }
-    if (path === "/api/auth/login") return json({ redirect: "/sources" });
+    if (path === "/api/auth/login") {
+      if (options.loginErrorOnce && !failedLogin) { failedLogin = true; return json({error: {code: "invalid_credentials", message: "用户名或密码错误"}}, 401); }
+      authed = true;
+      return json({ redirect: "/sources" });
+    }
     if (path === "/api/auth/setup") return json({ redirect: "/sources" });
     if (path === "/api/auth/logout") return json({ success: true });
-    if (path === "/api/status") return json(status);
+    if (path === "/api/status") return json(options.uptimeSeconds === undefined ? status : { ...status, runtime_environment: { uptime_seconds: options.uptimeSeconds } });
     if (path === "/api/subscriptions/check") {
       const body = JSON.parse(String(init?.body)) as { location?: string; content?: string; format?: string };
       if (options.subscriptionCheck) return options.subscriptionCheck(body);
@@ -218,7 +225,7 @@ function mockBackend(options: MockBackendOptions = {}) {
       const url = new URL(path, "http://localhost");
       const includeToken = url.searchParams.get("include_token") !== "false";
       const format = url.searchParams.get("format") ?? "clash";
-      const filename = url.searchParams.get("filename") ?? `${format}.yaml`;
+      const filename = url.searchParams.get("filename") ?? (({ clash: "clash.yaml", surge: "surge.conf", loon: "loon.lcf" } as Record<string, string>)[format] ?? "clash.yaml");
       return json({
         url: `https://sub.example.com/generate?format=${format}${includeToken ? "&token=server-token" : ""}&filename=${filename}`,
         token_included: includeToken
@@ -444,6 +451,7 @@ describe("M10 frontend workflows", () => {
     const { container } = renderApp("/download");
 
     expect(await screen.findByRole("heading", { level: 1, name: "生成下载" })).toBeTruthy();
+    expect((await screen.findByRole("link", { name: "导出已保存配置" })).getAttribute("href")).toBe("/api/config/saved.zip");
     const exportLink = await screen.findByRole("link", { name: "导出生效配置" });
     expect(exportLink.getAttribute("href")).toBe("/api/config/effective.zip");
     expect(exportLink.getAttribute("download")).toBe("subconverter-config.zip");
@@ -463,7 +471,7 @@ describe("M10 frontend workflows", () => {
     });
   });
 
-  it("T-WEB-024 imports a config package as ZIP and confirms template copy", async () => {
+  it("T-WEB-024 imports ZIP bodies into the draft without saving files", async () => {
     localStorage.setItem("subconverter.firstSaveConfirmed", "true");
     const backend = mockBackend();
     const { container } = renderApp("/download");
@@ -474,8 +482,7 @@ describe("M10 frontend workflows", () => {
     const file = new File(["zip-bytes"], "subconverter-config.zip", { type: "application/zip" });
     fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
 
-    expect(await screen.findByRole("dialog", { name: "导入配置包并写入模板副本？" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "确认导入" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
 
     await waitFor(() => {
       const importCall = backend.calls.find((item) => item.path === "/api/config/import" && item.init?.method === "POST");
@@ -708,9 +715,9 @@ describe("Loon support", () => {
     const backend = mockBackend();
     renderApp("/settings");
     const input = await screen.findByLabelText("Loon 模板");
-    fireEvent.change(input, { target: { value: "configs/custom_loon.conf" } });
+    fireEvent.change(input, { target: { value: "configs/custom_loon.lcf" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(lastSavedConfig(backend.calls)?.templates.loon).toBe("configs/custom_loon.conf"));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.templates.loon).toBe("configs/custom_loon.lcf"));
   });
 
   // T-WEB-LOON-003: runtime previews expose the Loon output alongside existing formats.
@@ -718,6 +725,8 @@ describe("Loon support", () => {
     const backend = mockBackend();
     renderApp("/download");
     expect(await screen.findByRole("heading", { name: "Loon", level: 3 })).toBeTruthy();
+    expect(screen.getByText(/^loon\.lcf ·/)).toBeTruthy();
+    expect(await screen.findByText(/format=loon.*filename=loon\.lcf/)).toBeTruthy();
     await waitFor(() => {
       expect(backend.calls.some((call) => call.path === "/api/generate/preview?format=loon")).toBe(true);
       expect(backend.calls.some((call) => call.path.startsWith("/api/generate/link?format=loon"))).toBe(true);
@@ -1025,7 +1034,7 @@ describe("资源自动读取与正文展开", () => {
     const content = "[General]\ndns-server = system";
     fireEvent.change(screen.getByLabelText("Loon 模板正文"), { target: { value: content } });
     fireEvent.change(select, { target: { value: "location" } });
-    expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.conf");
+    expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.lcf");
     fireEvent.change(select, { target: { value: "content" } });
     expect((screen.getByLabelText("Loon 模板正文") as HTMLTextAreaElement).value).toBe(content);
   });
@@ -1055,7 +1064,7 @@ describe("资源自动读取与正文展开", () => {
     mockBackend({ resourceReadError: true });
     renderApp("/settings");
     await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(3));
-    expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.conf");
+    expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.lcf");
     expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getAllByRole("button", { name: "粘贴正文" })[2]);
     fireEvent.change(screen.getByLabelText("Loon 模板正文"), { target: { value: "[General]\nloglevel=notify" } });
@@ -1088,3 +1097,254 @@ async function finishSourceEdit() {
   await waitFor(() => expect(action().hasAttribute("disabled")).toBe(false));
   fireEvent.click(action());
 }
+
+describe("验收问题回归", () => {
+  it("T-WEB-UX-001 保存响应保留提交之后的新编辑，第二次保存使用新 revision", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const save = api.saveConfig;
+    vi.spyOn(api, "saveConfig").mockImplementation(async (...args) => {
+      const result = await save(...args);
+      await pending;
+      return result;
+    });
+    renderApp("/settings");
+    const input = await screen.findByDisplayValue("https://sub.example.com");
+    fireEvent.change(input, { target: { value: "https://saved.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.base_url).toBe("https://saved.example.com"));
+    fireEvent.change(input, { target: { value: "https://newer.example.com" } });
+    await act(async () => finish());
+    await screen.findByText("草稿已写入 YAML 文件");
+    expect(screen.getByDisplayValue("https://newer.example.com")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.base_url).toBe("https://newer.example.com"));
+    const calls = backend.calls.filter((call) => call.path === "/api/config" && call.init?.method === "PUT");
+    expect(JSON.parse(String(calls.at(-1)?.init?.body)).config_revision).toBe("sha256:next");
+  });
+
+  it("T-WEB-UX-002 空自定义代理不能应用，补齐后才进入草稿", async () => {
+    mockBackend();
+    renderApp("/sources");
+    fireEvent.click(await screen.findByRole("button", { name: "添加 自定义代理" }));
+    const dialog = await screen.findByRole("dialog", { name: "添加自定义代理" });
+    expect(within(dialog).getByText("请填写名称")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText(/名称/), { target: { value: "LOCAL" } });
+    fireEvent.change(within(dialog).getByLabelText(/^URL/), { target: { value: "socks5://localhost:1080" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "应用到草稿" }));
+    expect(await screen.findByTitle("LOCAL")).toBeTruthy();
+  });
+
+  it("T-WEB-UX-003 诊断跳转直接打开自定义代理并聚焦 URL 字段", async () => {
+    const config = clone(sampleConfig.config) as Record<string, unknown>;
+    config.sources = { ...sampleConfig.config.sources, custom_proxies: [{ name: "LOCAL", url: "" }] };
+    mockBackend({ config, validateResult: { valid: false, errors: [{ severity: "error", code: "required", message: "请补齐代理 URL", locator: { json_pointer: "/config/sources/custom_proxies/0/url" } }], warnings: [], infos: [] } });
+    renderApp("/validate");
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行静态校验" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "运行静态校验" }));
+    fireEvent.click(await screen.findByRole("button", { name: "跳转" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑自定义代理" });
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByLabelText(/^URL/)));
+    expect(screen.queryByRole("dialog", { name: "请补齐代理 URL" })).toBeNull();
+  });
+
+  it("T-WEB-UX-004 正则使用后端结果，修改后旧预览明确标记", async () => {
+    mockBackend();
+    vi.spyOn(api, "validateConfig").mockImplementation(async (config) => ({ valid: config.filters?.exclude !== "(?=HK)", errors: config.filters?.exclude === "(?=HK)" ? [{ severity: "error", code: "invalid_regex", message: "正则不支持前瞻", locator: { json_pointer: "/config/filters/exclude" } }] : [], warnings: [], infos: [] }));
+    renderApp("/filters");
+    fireEvent.click(await screen.findByRole("button", { name: "草稿节点预览" }));
+    await screen.findByText("HK-01");
+    fireEvent.change(screen.getByPlaceholderText("过期|剩余流量|到期"), { target: { value: "(?=HK)" } });
+    expect(await screen.findByText("草稿已修改，以下是上次预览结果，请重新预览。")).toBeTruthy();
+    expect(await screen.findByText("正则不支持前瞻")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "草稿节点预览" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("T-WEB-UX-005 预览失败不再同时显示尚未运行", async () => {
+    mockBackend();
+    vi.spyOn(api, "previewNodesDraft").mockRejectedValue(new Error("来源暂不可用"));
+    renderApp("/filters");
+    fireEvent.click(await screen.findByRole("button", { name: "草稿节点预览" }));
+    expect(await screen.findByText("来源暂不可用")).toBeTruthy();
+    expect(screen.queryByText("尚未运行预览")).toBeNull();
+  });
+
+  it("T-WEB-UX-006 分组重命名显示引用影响，并可同步更新引用", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    renderApp("/groups");
+    fireEvent.change(await screen.findByDisplayValue("HK"), { target: { value: "HK_NEW" } });
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("服务组 Proxy"));
+    fireEvent.click(screen.getByRole("button", { name: "同步修改引用" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.routing[0].value).toContain("HK_NEW"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("T-WEB-UX-007 路由成员只提供链式分组，普通自定义节点不单独出现", async () => {
+    const config = clone(sampleConfig.config) as Record<string, unknown>;
+    config.sources = { ...sampleConfig.config.sources, custom_proxies: [{ name: "LOCAL-EXIT", url: "socks5://localhost:1080" }, { name: "CHAIN", url: "socks5://localhost:1081", relay_through: { type: "all", strategy: "select" } }] };
+    mockBackend({ config });
+    renderApp("/routing");
+    expect(await screen.findByRole("button", { name: /CHAIN/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /LOCAL-EXIT/ })).toBeNull();
+  });
+
+  it("T-WEB-UX-008 搜索无结果有提示，并隐藏不属于结果的编辑器", async () => {
+    mockBackend();
+    renderApp("/rules");
+    fireEvent.change(await screen.findByPlaceholderText("搜索规则…"), { target: { value: "no-such-rule" } });
+    expect(screen.getByText("没有匹配的规则")).toBeTruthy();
+    expect(screen.getByText(/匹配 0 \/ 2 条/)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /编辑规则/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "清空搜索" }));
+    expect(screen.getByRole("heading", { name: "编辑规则 #1" })).toBeTruthy();
+  });
+
+  it("T-WEB-UX-009 未保存修改拦截离开，注销取消后保留草稿", async () => {
+    mockBackend();
+    renderApp("/settings");
+    fireEvent.change(await screen.findByDisplayValue("https://sub.example.com"), { target: { value: "https://unsaved.example.com" } });
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "注销" }));
+    expect(await screen.findByRole("dialog", { name: "丢弃未保存修改并注销？" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByDisplayValue("https://unsaved.example.com")).toBeTruthy();
+  });
+
+  it("T-WEB-UX-010 取消冲突恢复后操作按钮仍可用", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    mockBackend({ saveError: { status: 409, code: "config_revision_conflict", message: "外部修改" } });
+    renderApp("/settings");
+    fireEvent.change(await screen.findByDisplayValue("https://sub.example.com"), { target: { value: "https://unsaved.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(await screen.findByRole("button", { name: "重新加载配置" }));
+    fireEvent.click(await screen.findByRole("button", { name: "取消" }));
+    expect(screen.getByRole("button", { name: "重新加载配置" })).toBeTruthy();
+    expect(screen.getByDisplayValue("https://unsaved.example.com")).toBeTruthy();
+  });
+
+  it("T-WEB-UX-011 导入替换未保存草稿须确认，取消时不请求接口", async () => {
+    const backend = mockBackend();
+    const { container } = renderApp("/settings");
+    fireEvent.change(await screen.findByDisplayValue("https://sub.example.com"), { target: { value: "https://unsaved.example.com" } });
+    fireEvent.click(screen.getByRole("link", { name: /生成下载/ }));
+    await screen.findByRole("heading", { level: 1, name: "生成下载" });
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(["zip"], "config.zip", { type: "application/zip" })] } });
+    expect(await screen.findByRole("dialog", { name: "导入配置并替换当前草稿？" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(backend.calls.some((call) => call.path === "/api/config/import")).toBe(false);
+  });
+});
+
+
+describe("反馈与运行时信息回归", () => {
+  it("T-WEB-UX-012 登录成功清除同一次登录的失败反馈", async () => {
+    mockBackend({ authed: false, loginErrorOnce: true });
+    renderApp("/login");
+    fireEvent.change(await screen.findByLabelText("密码"), { target: { value: "bad-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByText("用户名或密码错误")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "correct-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    expect(screen.queryByText("用户名或密码错误")).toBeNull();
+  });
+
+  it("T-WEB-UX-013 服务运行时长使用进程 uptime，不使用配置加载时间", async () => {
+    mockBackend({ uptimeSeconds: 7265 });
+    renderApp("/status");
+    expect(await screen.findByText("已运行 2h 1m")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "热重载" }));
+    await screen.findByText("RuntimeConfig 已重新加载");
+    expect(screen.getByText("已运行 2h 1m")).toBeTruthy();
+  });
+});
+
+// JSDOM has no layout; sortable rows need distinct measured positions for keyboard movement.
+async function moveFirstRowDown(handle: HTMLElement, targetId: string) {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const row = this.closest(".sortable-row");
+    const index = row?.parentElement ? Array.from(row.parentElement.children).indexOf(row) : 0;
+    return new DOMRect(0, Math.max(0, index) * 100, 800, 80);
+  });
+  fireEvent.keyDown(handle, { key: " ", code: "Space" });
+  await waitFor(() => expect(document.querySelectorAll(".sortable-row.dragging")).toHaveLength(1));
+  fireEvent.keyDown(document, { key: "ArrowDown", code: "ArrowDown" });
+  await waitFor(() => expect(Array.from(document.querySelectorAll('[id^="DndLiveRegion-"]')).some(el => el.textContent?.includes(`moved over droppable area ${targetId}`))).toBe(true));
+  fireEvent.keyDown(document, { key: " ", code: "Space" });
+}
+
+describe("排序回归", () => {
+  it("T-WEB-UX-014 节点组重排保持选中分组，并写回新顺序", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const config = clone(sampleConfig.config);
+    config.groups.push({key: "SG", value: {match: "SG", strategy: "select"}});
+    const backend = mockBackend({config});
+    renderApp("/groups");
+    await screen.findByDisplayValue("HK");
+    await moveFirstRowDown(screen.getAllByRole("button", {name: "拖拽排序"})[0], "SG-1");
+    expect(screen.getByDisplayValue("HK")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "保存"}));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.groups.map(entry=>entry.key)).toEqual(["SG", "HK"]));
+  });
+
+  it("T-WEB-UX-015 内联规则重排保持编辑对象，并保存新顺序", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    renderApp("/rules");
+    await screen.findByRole("heading", {name: "编辑规则 #1"});
+    await moveFirstRowDown(screen.getAllByRole("button", {name: "拖拽排序"})[0], "rule:1");
+    expect(screen.getByRole("heading", {name: "编辑规则 #2"})).toBeTruthy();
+    expect(screen.getByDisplayValue(sampleConfig.config.rules[0])).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "保存"}));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.rules).toEqual([...sampleConfig.config.rules].reverse()));
+  });
+});
+
+
+describe("规则集排序与导入并发", () => {
+  it("T-WEB-UX-016 规则集绑定可重排并保存", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const config = clone(sampleConfig.config);
+    config.rulesets.push({key: "DIRECT", value: ["https://rules.example.com/direct.list"]});
+    const backend = mockBackend({config});
+    const {container} = renderApp("/rulesets");
+    await screen.findByText("共 2 个服务组绑定 · 拖拽保持 policy 与 URL 顺序");
+    await moveFirstRowDown(container.querySelector(".routing-card-header .drag-handle")!, "ruleset:1");
+    fireEvent.click(screen.getByRole("button", {name: "保存"}));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.rulesets.map(entry=>entry.key)).toEqual(["DIRECT", "Proxy"]));
+  });
+
+  it("T-WEB-UX-017 规则集 URL 可重排并保存", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    const {container} = renderApp("/rulesets");
+    await screen.findByDisplayValue("https://rules.example.com/a.list");
+    await moveFirstRowDown(container.querySelector(".ruleset-url-row .drag-handle")!, "url:1");
+    fireEvent.click(screen.getByRole("button", {name: "保存"}));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.rulesets[0].value).toEqual([...sampleConfig.config.rulesets[0].value].reverse()));
+  });
+
+  it("T-WEB-UX-018 导入期间在其他页面的新编辑须再次确认才被替换", async () => {
+    mockBackend();
+    let finish!: (value: Awaited<ReturnType<typeof api.importConfigArchive>>) => void;
+    vi.spyOn(api, "importConfigArchive").mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+    const {container} = renderApp("/download");
+    await waitFor(() => expect(screen.getByRole("button", {name: "导入配置"}).hasAttribute("disabled")).toBe(false));
+    fireEvent.change(container.querySelector('input[type="file"]')!, {target:{files:[new File(["zip"], "config.zip", {type:"application/zip"})]}});
+    await waitFor(() => expect(api.importConfigArchive).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("link", {name:/其他配置/}));
+    fireEvent.change(await screen.findByDisplayValue("https://sub.example.com"), {target:{value:"https://newer.example.com"}});
+    await act(async () => finish({config:{base_url:"https://import.example.com"}}));
+    expect(await screen.findByRole("dialog", {name:"替换导入期间的新修改？"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name:"取消"}));
+    expect(screen.getByDisplayValue("https://newer.example.com")).toBeTruthy();
+  });
+});

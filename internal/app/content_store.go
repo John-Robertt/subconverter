@@ -76,7 +76,11 @@ func (s *Service) persistEditableContent(cfg *config.Config) ([]string, error) {
 		if sub.Content == "" {
 			continue
 		}
-		path, writeErr := store("subscription", ".txt", sub.Content)
+		ext := ".txt"
+		if sub.Format == "loon" {
+			ext = ".lcf"
+		}
+		path, writeErr := store("subscription", ext, sub.Content)
 		if writeErr != nil {
 			return created, writeErr
 		}
@@ -87,11 +91,7 @@ func (s *Service) persistEditableContent(cfg *config.Config) ([]string, error) {
 		if !ok {
 			continue
 		}
-		ext := ".conf"
-		if format == "clash" {
-			ext = ".yaml"
-		}
-		path, writeErr := store("template-"+format, ext, content)
+		path, writeErr := store("template-"+format, templateExtension(format), content)
 		if writeErr != nil {
 			return created, writeErr
 		}
@@ -187,11 +187,7 @@ func (s *Service) isManagedTemplate(location, format string) bool {
 	if !ok {
 		return false
 	}
-	ext := ".conf"
-	if format == "clash" {
-		ext = ".yaml"
-	}
-	name, ok = strings.CutSuffix(name, ext)
+	name, ok = strings.CutSuffix(name, templateExtension(format))
 	if !ok {
 		return false
 	}
@@ -205,4 +201,15 @@ func (s *Service) isManagedTemplate(location, format string) bool {
 	return strings.IndexFunc(suffix, func(r rune) bool {
 		return (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z')
 	}) == -1
+}
+
+func templateExtension(format string) string {
+	switch format {
+	case "clash":
+		return ".yaml"
+	case "loon":
+		return ".lcf"
+	default:
+		return ".conf"
+	}
 }

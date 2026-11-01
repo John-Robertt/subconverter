@@ -1,5 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import { SortableList } from "../components/SortableList";
 import type { OrderedEntry } from "../api/types";
 import { Button, Chip, EmptyState, Field, IconButton, SelectInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
@@ -67,9 +68,9 @@ export function RulesetsPage() {
         <EmptyState title="暂无规则集绑定" message={isReadonly ? "只读模式下不可新增规则集。" : "为服务组绑定远端规则列表后，生成时会按顺序输出。"} />
       ) : (
         <div className="stack-list" style={{ gap: 14 }}>
-          {rulesets.map((entry, index) => (
-            <RulesetCard
-              key={`${entry.key || "ruleset"}-${index}`}
+          <SortableList items={rulesets} getId={(_entry, index) => `ruleset:${index}`} onReorder={setRulesets} disabled={isReadonly}
+            renderItem={(entry, index, handle) => <RulesetCard
+              handle={handle}
               entry={entry}
               index={index}
               readonly={isReadonly}
@@ -79,8 +80,8 @@ export function RulesetsPage() {
               onPatchUrls={(urls) => patchUrls(index, urls)}
               onDelete={() => void deleteRuleset(index)}
               onDeleteUrl={(urlIndex) => void deleteUrl(index, urlIndex)}
-            />
-          ))}
+            />}
+          />
         </div>
       )}
     </div>
@@ -88,6 +89,7 @@ export function RulesetsPage() {
 }
 
 function RulesetCard({
+  handle,
   entry,
   index,
   readonly,
@@ -98,6 +100,7 @@ function RulesetCard({
   onDelete,
   onDeleteUrl
 }: {
+  handle: ReactNode;
   entry: OrderedEntry<string[]>;
   index: number;
   readonly: boolean;
@@ -112,6 +115,7 @@ function RulesetCard({
     <article className={focusClassName(activePointer, [`/config/rulesets/${index}`], "content-panel")} style={{ padding: "18px 22px" }}>
       <div className="routing-card-header">
         <div className="row-title">
+          {handle}
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{entry.key || `规则集 #${index + 1}`}</h3>
           <Chip>{entry.value.length} 条 URL</Chip>
           <span className="muted" style={{ fontSize: 12 }}>{policyOptions.includes(entry.key) ? "已绑定服务组" : "未绑定"}</span>
@@ -124,7 +128,7 @@ function RulesetCard({
       </div>
 
       <Field label="绑定 Policy" hint="引用 A4 路由策略中的服务组">
-        <SelectInput value={entry.key} disabled={readonly} onChange={(event) => onPatchEntry({ key: event.target.value })}>
+        <SelectInput data-config-pointer={`/config/rulesets/${index}/key`} value={entry.key} disabled={readonly} onChange={(event) => onPatchEntry({ key: event.target.value })}>
           {entry.key && !policyOptions.includes(entry.key) ? <option value={entry.key}>{entry.key}（当前配置）</option> : null}
           <option value="">选择服务组</option>
           {policyOptions.map((policy) => (
@@ -137,13 +141,14 @@ function RulesetCard({
         <EmptyState title="该服务组未挂载任何规则集" message={readonly ? "只读模式下不可新增 URL。" : "添加规则集 URL 后再运行静态校验。"} />
       ) : (
         <div className="stack-list" style={{ gap: 6 }}>
-          {entry.value.map((url, urlIndex) => (
+          <SortableList items={entry.value} getId={(_url, urlIndex) => `url:${urlIndex}`} onReorder={onPatchUrls} disabled={readonly}
+            renderItem={(url, urlIndex, urlHandle) => (
             <div
-              key={`${urlIndex}-${url}`}
               className={focusClassName(activePointer, [`/config/rulesets/${index}/value/${urlIndex}`], "ruleset-url-row")}
             >
-              <span className="drag-handle static" aria-hidden="true">⠿</span>
+              {urlHandle}
               <input
+                data-config-pointer={`/config/rulesets/${index}/value/${urlIndex}`}
                 className="ruleset-url-input"
                 type="text"
                 value={url}
@@ -159,7 +164,7 @@ function RulesetCard({
                 <Trash2 size={13} aria-hidden="true" />
               </IconButton>
             </div>
-          ))}
+          )} />
         </div>
       )}
 

@@ -23,6 +23,7 @@
 | GET | `/api/config` | 读取当前配置与 revision | v2.0 |
 | PUT | `/api/config` | 条件保存配置（JSON → YAML 写回） | v2.0 |
 | GET | `/api/config/effective.yaml` | 下载当前生效的源 YAML 配置 | v2.0 |
+| GET | `/api/config/saved.zip` | 下载已保存的配置文件与正文模板包 | v2.0 |
 | GET | `/api/config/effective.zip` | 下载当前生效的源 YAML 配置与模板包 | v2.0 |
 | POST | `/api/subscriptions/check` | 检查订阅格式、节点数和适用输出 | v2.0 |
 | POST | `/api/resources/read` | 读取节点订阅或模板正文为编辑副本 | v2.0 |
@@ -50,7 +51,7 @@
 
 - `format=clash|surge|loon`（必填）
 - `token=<access-token>`（仅当服务端配置了订阅访问 token 且请求没有有效管理员 session 时必填）
-- `filename=<custom-name>`（可选；未传时默认 `clash.yaml` / `surge.conf` / `loon.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时自动补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式）
+- `filename=<custom-name>`（可选；未传时默认 `clash.yaml` / `surge.conf` / `loon.lcf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时自动补 `.yaml` / `.conf` / `.lcf`，已有扩展名必须匹配目标格式）
 
 说明：
 
@@ -212,7 +213,7 @@
   "config_revision": "sha256:7d9c...",
   "config": {
     "sources": {"subscriptions": [{"url": "https://example.com/sub.conf", "format": "loon"}]},
-    "templates": {"loon": "configs/base_loon.conf"},
+    "templates": {"loon": "configs/base_loon.lcf"},
     "groups": [],
     "routing": [],
     "rulesets": []
@@ -323,6 +324,12 @@ revision 冲突响应示例：
 - HTTP(S) 远程配置源同样导出上一次成功加载到运行时的远程 YAML 内容
 - 本接口不读取当前配置源、不写文件、不改变 `config_dirty`
 
+### `GET /api/config/saved.zip`
+
+用途：导出当前配置源已保存的配置，包含 Web 编辑后通过 `PUT /api/config` 保存的正文。需要管理员会话；本地与远程只读配置源均可导出。
+
+响应类型、文件名和包结构与 `GET /api/config/effective.zip` 相同。接口读取当前配置源，不导出浏览器中尚未保存的草稿；保存后无需热重载即可导出新内容。任一正文文件或模板读取失败时，整个导出失败。导出不写文件、不替换运行时配置。
+
 ### `GET /api/config/effective.zip`
 
 用途：下载当前正在生效的源 YAML 配置与全部已配置底版模板。
@@ -332,10 +339,10 @@ revision 冲突响应示例：
 - `200`，`Content-Type: application/zip`
 - `Content-Disposition: attachment; filename="subconverter-config.zip"; filename*=UTF-8''subconverter-config.zip`
 - ZIP 内容：
-  - `config.yaml`：当前生效配置。含服务管理的正文文件时，展开为 `content` / `templates.inline` 以便迁移；其他配置保持上次启动或 reload 的原始 YAML 字节
-  - `templates/clash.yaml`：当前生效 `templates.clash` 指向的模板内容（仅配置该字段时存在）
-  - `templates/surge.conf`：当前生效 `templates.surge` 指向的模板内容（仅配置该字段时存在）
-  - `templates/loon.conf`：当前生效 `templates.loon` 指向的模板内容（仅配置该字段时存在）
+  - `config.yaml`：当前生效配置的可迁移副本；订阅正文文件展开为 `content`，模板引用改为包内相对路径，不保留服务器绝对路径
+  - `templates/clash.yaml`：Clash 底版正文（引用模板或本地编辑正文配置后存在）
+  - `templates/surge.conf`：Surge 底版正文（引用模板或本地编辑正文配置后存在）
+  - `templates/loon.lcf`：Loon 底版正文（引用模板或本地编辑正文配置后存在）
 
 说明：
 
@@ -359,7 +366,7 @@ ZIP 请求体：
 - `Content-Type: application/zip`
 - Body：ZIP 字节，大小不超过 10 MiB
 - ZIP 必须包含非空 `config.yaml`
-- 可选包含 `templates/clash.yaml`、`templates/surge.conf` 和 `templates/loon.conf`
+- 可选包含 `templates/clash.yaml`、`templates/surge.conf` 和 `templates/loon.lcf`
 
 成功响应：
 
@@ -378,10 +385,11 @@ ZIP 请求体：
 
 - `config` 的 JSON 形状与 `GET /api/config` 相同，保序字段仍以 `[{key, value}]` 数组表示
 - YAML 导入解析配置并读取已有的本地正文引用以还原编辑内容；不写文件、不替换运行时配置
-- ZIP 导入会将包内模板写入本地配置文件旁的 `.imports/import-*/templates/` 独立目录，并把返回草稿中的 `templates.clash/surge/loon` 改为写入后的绝对路径
-- ZIP 导入不会覆盖既有模板文件；若模板副本写入失败，已存在的模板文件与当前 RuntimeConfig 不受影响
+- ZIP 导入将包内模板还原为 `templates.inline` 草稿正文，清除对应的模板路径；包内模板优先于配置内同格式正文
+- 导入不创建目录、不写任何文件。用户编辑草稿后，通过 `PUT /api/config` 统一校验并保存配置与正文文件；保存失败由保存流程回收本次新增文件
+- 既有 `.imports` 模板路径继续作为普通本地引用读取，新导入不再创建此目录
 - ZIP 导入只读取固定条目，不按 ZIP 内路径直接解压；缺少 `config.yaml` 或 ZIP 无效时返回 `400 invalid_archive`
-- HTTP(S) 远程配置源导入 ZIP 返回 `409 config_source_readonly`；模板文件不可写返回 `409 template_file_not_writable`
+- HTTP(S) 远程配置源导入 ZIP 返回 `409 config_source_readonly`；本地配置文件不可写返回 `409 config_file_not_writable`
 - 导入成功后，前端应只替换草稿；用户仍需显式保存和热重载才会生效
 
 ### `POST /api/config/validate`

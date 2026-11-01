@@ -39,6 +39,7 @@ test.describe("groups page", () => {
 
     await page.goto("/groups");
     await page.locator(".group-pill", { hasText: "GRP_HK" }).click();
+    state.validate = { valid: false, errors: [{ severity: "error", code: "invalid_regex", message: "正则表达式无效：缺少右括号", locator: { json_pointer: "/config/groups/0/value/match" } }], warnings: [], infos: [] };
     await page.getByLabel("匹配正则").fill("[bad-regex");
 
     await expect(page.locator(".field-error")).toBeVisible();

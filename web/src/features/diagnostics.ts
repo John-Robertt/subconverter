@@ -1,4 +1,5 @@
 import { useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import { isApiError } from "../api/errors";
 import type { Diagnostic, ValidateResult } from "../api/types";
 
@@ -71,7 +72,19 @@ export function targetForJsonPointer(pointer: string): DiagnosticTarget {
 export function useDiagnosticPointer(): string | undefined {
   const location = useLocation();
   const state = location.state as LocationState | null;
-  return typeof state?.diagnosticPointer === "string" ? state.diagnosticPointer : undefined;
+  const pointer = typeof state?.diagnosticPointer === "string" ? state.diagnosticPointer : undefined;
+  useEffect(() => {
+    if (!pointer) return;
+    const timer = window.setTimeout(() => {
+      const inputs = Array.from(document.querySelectorAll<HTMLElement>("[data-config-pointer]"));
+      const target = inputs.find((input) => input.dataset.configPointer === pointer)
+        ?? document.querySelector<HTMLElement>(".diagnostic-focus input, .diagnostic-focus textarea, .diagnostic-focus select");
+      target?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      target?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [pointer, location.key]);
+  return pointer;
 }
 
 export function focusClassName(activePointer: string | undefined, candidates: string[], baseClass = ""): string {

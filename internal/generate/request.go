@@ -45,7 +45,7 @@ func ResolveFilename(raw string, present bool, format string) (string, error) {
 		case "surge":
 			return "", errors.New("filename 参数无效：Surge 配置必须使用 .conf 扩展名")
 		case "loon":
-			return "", errors.New("filename 参数无效：Loon 配置必须使用 .conf 扩展名")
+			return "", errors.New("filename 参数无效：Loon 配置必须使用 .lcf 扩展名")
 		default:
 			return "", errors.New("filename 参数无效：扩展名不正确")
 		}
@@ -83,7 +83,7 @@ func DefaultFilename(format string) string {
 	case "surge":
 		return "surge.conf"
 	case "loon":
-		return "loon.conf"
+		return "loon.lcf"
 	default:
 		return "download"
 	}
@@ -93,8 +93,10 @@ func expectedExtension(format string) string {
 	switch format {
 	case "clash":
 		return ".yaml"
-	case "surge", "loon":
+	case "surge":
 		return ".conf"
+	case "loon":
+		return ".lcf"
 	default:
 		return ""
 	}

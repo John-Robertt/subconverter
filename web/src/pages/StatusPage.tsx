@@ -147,12 +147,8 @@ function formatVersionSub(status: ReturnType<typeof useConfigState>["status"]): 
 
 function formatServiceSub(unhealthy: boolean, status: ReturnType<typeof useConfigState>["status"]): string {
   if (unhealthy) return "/healthz 不可达";
-  if (status?.config_loaded_at) {
-    const loadedAt = new Date(status.config_loaded_at).getTime();
-    if (!Number.isNaN(loadedAt)) {
-      const seconds = Math.max(0, Math.round((Date.now() - loadedAt) / 1000));
-      return `已运行 ${formatDuration(seconds)}`;
-    }
+  if (status?.runtime_environment?.uptime_seconds !== undefined) {
+    return `已运行 ${formatDuration(status.runtime_environment.uptime_seconds)}`;
   }
   return "/healthz 200";
 }

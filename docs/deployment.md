@@ -55,7 +55,7 @@ Release 包内包含：
 - `configs/base_config.yaml`
 - `configs/base_clash.yaml`
 - `configs/base_surge.conf`
-- `configs/base_loon.conf`
+- `configs/base_loon.lcf`
 
 当前 GitHub Release 二进制仅发布 Linux 包。
 
@@ -65,7 +65,7 @@ Release 包内包含：
 templates:
   clash: "configs/base_clash.yaml"
   surge: "configs/base_surge.conf"
-  loon: "configs/base_loon.conf"
+  loon: "configs/base_loon.lcf"
 ```
 
 注意：这些相对路径是相对于进程工作目录解析的。最稳妥的用法是在解压目录下启动程序。
@@ -110,7 +110,7 @@ ghcr.io/john-robertt/subconverter
 templates:
   clash: "configs/base_clash.yaml"
   surge: "configs/base_surge.conf"
-  loon: "configs/base_loon.conf"
+  loon: "configs/base_loon.lcf"
 ```
 
 容器内也能正常解析到镜像内置模板。

@@ -56,11 +56,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleConfigEffectiveYAML(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/config/saved.zip":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleConfigArchive(w, r, false)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/config/effective.zip":
 		if !h.requireSession(w, r) {
 			return
 		}
-		h.handleConfigEffectiveArchive(w, r)
+		h.handleConfigArchive(w, r, true)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/config/import":
 		if !h.requireSession(w, r) {
 			return
@@ -253,8 +258,14 @@ func (h *Handler) handleConfigEffectiveYAML(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write(body) // #nosec G705 -- admin-only YAML export is downloaded as a non-HTML attachment.
 }
 
-func (h *Handler) handleConfigEffectiveArchive(w http.ResponseWriter, r *http.Request) {
-	result, err := h.app.EffectiveConfigArchive(r.Context())
+func (h *Handler) handleConfigArchive(w http.ResponseWriter, r *http.Request, effective bool) {
+	var result *app.ConfigArchiveResult
+	var err error
+	if effective {
+		result, err = h.app.EffectiveConfigArchive(r.Context())
+	} else {
+		result, err = h.app.SavedConfigArchive(r.Context())
+	}
 	if err != nil {
 		writeServiceError(w, err, false)
 		return
@@ -508,10 +519,6 @@ func writeServiceError(w http.ResponseWriter, err error, validationBody bool) {
 	}
 	if errors.Is(err, errtype.ErrConfigSourceReadonly) {
 		writeError(w, http.StatusConflict, "config_source_readonly", "当前配置源只读")
-		return
-	}
-	if errors.Is(err, errtype.ErrTemplateFileNotWritable) {
-		writeError(w, http.StatusConflict, "template_file_not_writable", "模板文件不可写")
 		return
 	}
 	if errors.Is(err, errtype.ErrConfigFileNotWritable) {

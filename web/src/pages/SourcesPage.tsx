@@ -1,5 +1,5 @@
 import { Link2, Pencil, Plus, Radio, Shield, Trash2 } from "lucide-react";
-import { useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Config, CustomProxy, FetchSource, FetchSourceKind, RelayThrough } from "../api/types";
 import { SubscriptionEditor, subscriptionFormatLabels, type SubscriptionEditorValue } from "../components/SubscriptionEditor";
 import { SortableList } from "../components/SortableList";
@@ -53,6 +53,19 @@ export function SourcesPage() {
   const sources = ensureSources(draft?.sources);
   const totalFetch = sources.subscriptions.length + sources.snell.length + sources.vless.length;
   const totalSources = totalFetch + sources.custom_proxies.length;
+  useEffect(() => {
+    const match = activePointer?.match(/^\/config\/sources\/(subscriptions|snell|vless|custom_proxies)\/(\d+)/);
+    if (!match) return;
+    const index = Number(match[2]);
+    if (match[1] === "custom_proxies") {
+      const proxy = sources.custom_proxies[index];
+      if (proxy) setEditor({ type: "custom", index, proxy });
+    } else {
+      const kind = match[1] as FetchSourceKind;
+      const source = sources[kind][index];
+      if (source) setEditor({ type: "fetch", kind, index, location: source.url ?? source.content_file ?? "", reference: source.content_file ? "file" : undefined, content: source.content, format: source.format });
+    }
+  }, [activePointer]);
 
   function patchSources(updater: (sources: ReturnType<typeof ensureSources>) => ReturnType<typeof ensureSources>) {
     updateDraft((config) => ({ ...config, sources: updater(ensureSources(config.sources)) }));
@@ -211,7 +224,7 @@ export function SourcesPage() {
 
       {totalSources === 0 ? <EmptyState title="配置中没有任何来源" message="A1 可先添加订阅或自定义代理；保存前仍可切换其他编辑页继续补齐配置。" /> : null}
 
-      <SourceEditorModal editor={editor} draft={draft} readonly={isReadonly} onChange={setEditor} onClose={() => setEditor(null)} onSave={saveEditor} />
+      <SourceEditorModal editor={editor} draft={draft} readonly={isReadonly} diagnosticPointer={activePointer} onChange={setEditor} onClose={() => setEditor(null)} onSave={saveEditor} />
     </div>
   );
 }
@@ -309,6 +322,7 @@ function SourceEditorModal({
   editor,
   draft,
   readonly,
+  diagnosticPointer,
   onChange,
   onClose,
   onSave
@@ -316,12 +330,19 @@ function SourceEditorModal({
   editor: SourceEditor;
   draft: Config | undefined;
   readonly: boolean;
+  diagnosticPointer?: string;
   onChange: Dispatch<SetStateAction<SourceEditor>>;
   onClose: () => void;
   onSave: () => void;
 }) {
   const groupNames = draft?.groups?.map((entry) => entry.key).filter(Boolean) ?? [];
   const isCustom = editor?.type === "custom";
+  const customNameError = editor?.type === "custom" && !editor.proxy.name.trim() ? "请填写名称" : undefined;
+  const customURLError = editor?.type === "custom" && !editor.proxy.url.trim() ? "请填写代理 URL" : undefined;
+  const focusCustomURL = editor?.type === "custom" && diagnosticPointer === `/config/sources/custom_proxies/${editor.index}/url`;
+  const canApply = editor?.type === "custom" ? !customNameError && !customURLError : editor?.type === "fetch"
+    && Boolean(editor.content !== undefined ? editor.content.trim() : editor.location.trim())
+    && (editor.kind !== "subscriptions" || editor.inspection?.status === "recognized");
   const sources = ensureSources(draft?.sources);
   const hasChanges = Boolean(editor && (editor.index === null || (editor.type === "fetch"
     ? !sameFetchSource(sourceFromEditor(editor), sources[editor.kind][editor.index])
@@ -348,7 +369,7 @@ function SourceEditorModal({
       footer={
         done ? <Button variant="primary" onClick={onClose}>完成</Button> : <>
           <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" disabled={!editor || (editor.type === "fetch" && (!(editor.content !== undefined ? editor.content.trim() : editor.location.trim()) || (editor.kind === "subscriptions" && editor.inspection?.status !== "recognized")))} onClick={onSave}>应用到草稿</Button>
+          <Button variant="primary" disabled={!canApply} onClick={onSave}>应用到草稿</Button>
         </>
       }
     >
@@ -356,20 +377,21 @@ function SourceEditorModal({
         <div className="form-stack">
           {editor.kind === "subscriptions" ? (
             <SubscriptionEditor key={`${editor.kind}:${editor.index}`} value={editor} fileReference={editor.reference === "file"} readonly={readonly}
+              pointer={`/config/sources/${editor.kind}/${editor.index}`}
               onChange={(patch) => onChange((current) => current?.type === "fetch" ? { ...current, ...patch } : current)} />
           ) : (
             <Field label="订阅 URL" hint="必须为 HTTP(S) URL">
-              <TextInput aria-label="订阅 URL" value={editor.location} disabled={readonly} onChange={(event) => onChange({ ...editor, location: event.target.value })} />
+              <TextInput data-config-pointer={`/config/sources/${editor.kind}/${editor.index}/url`} autoFocus aria-label="订阅 URL" value={editor.location} disabled={readonly} onChange={(event) => onChange({ ...editor, location: event.target.value })} />
             </Field>
           )}
         </div>
       ) : editor?.type === "custom" ? (
         <div className="form-stack">
-          <Field label="名称">
-            <TextInput value={editor.proxy.name} disabled={readonly} onChange={(event) => patchCustom({ name: event.target.value })} autoFocus />
+          <Field label="名称" error={customNameError}>
+            <TextInput data-config-pointer={`/config/sources/custom_proxies/${editor.index}/name`} value={editor.proxy.name} disabled={readonly} onChange={(event) => patchCustom({ name: event.target.value })} autoFocus={!focusCustomURL} />
           </Field>
-          <Field label="URL" hint={editor.proxy.url ? maskUrl(editor.proxy.url) : "ss://、socks5:// 或 http://"}>
-            <TextInput className="text-input mono-input" value={editor.proxy.url} disabled={readonly} onChange={(event) => patchCustom({ url: event.target.value })} />
+          <Field label="URL" error={customURLError} hint={editor.proxy.url ? maskUrl(editor.proxy.url) : "ss://、socks5:// 或 http://"}>
+            <TextInput data-config-pointer={`/config/sources/custom_proxies/${editor.index}/url`} autoFocus={focusCustomURL} className="text-input mono-input" value={editor.proxy.url} disabled={readonly} onChange={(event) => patchCustom({ url: event.target.value })} />
           </Field>
           <label className="checkbox-row">
             <input

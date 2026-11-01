@@ -58,8 +58,8 @@ export function GroupPreviewPage() {
           <section className="content-panel">
             <div className="section-heading row">
               <div>
-                <h3>服务组展开 / Expansion</h3>
-                <p>服务组成员展开到最终节点。</p>
+                <h3>服务组策略成员</h3>
+                <p>展开 @all 和 @auto 后的策略成员，包含节点、分组及 DIRECT / REJECT。</p>
               </div>
               <Chip>{result.service_groups.length}</Chip>
             </div>
@@ -129,11 +129,11 @@ function ServiceGroupRow({ group }: { group: PreviewGroup }) {
     <div className="service-group-row">
       <div className="service-group-meta">
         <strong>{group.name}</strong>
-        <small>{group.members.length} 成员 → {members.length} 节点</small>
+        <small>{group.members.length} 成员 → {members.length} 个策略成员</small>
       </div>
       <div className="member-chip-list">
         {members.slice(0, 6).map((member, index) => (
-          <Chip key={memberKey(member, index)} tone={memberOriginTone(member.origin)}>{member.name}</Chip>
+          <Chip key={memberKey(member, index)} tone={memberOriginTone(member.origin)}><span title={member.kind === "proxy" ? "节点" : (member.kind === "node_group" || member.kind === "route_group") ? "分组" : member.kind === "reserved" ? "内置策略" : "策略成员"}>{member.name}</span></Chip>
         ))}
         {members.length > 6 ? <Chip>+{members.length - 6}</Chip> : null}
       </div>

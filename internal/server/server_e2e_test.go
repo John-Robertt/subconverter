@@ -138,7 +138,7 @@ func TestE2E_GenerateLoon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusOK || !strings.Contains(resp.Header.Get("Content-Disposition"), "loon.conf") {
+	if resp.StatusCode != http.StatusOK || !strings.Contains(resp.Header.Get("Content-Disposition"), "loon.lcf") {
 		t.Fatalf("status=%d headers=%v body=%s", resp.StatusCode, resp.Header, body)
 	}
 	for _, want := range []string{"HK = select, HK-LOON", "[Remote Rule]", "https://example.com/rules.list,proxy", "FINAL,proxy"} {

@@ -58,6 +58,7 @@ export function RulesPage() {
     const policy = draft?.fallback || policyOptions[0] || "DIRECT";
     setRules([...rules, `DOMAIN-SUFFIX,example.com,${policy}`]);
     setSelectedIndex(rules.length);
+    setQuery("");
   }
 
   async function deleteRule(index: number) {
@@ -81,7 +82,7 @@ export function RulesPage() {
           </Field>
           <div className="group-toolbar">
             <Search size={15} aria-hidden="true" />
-            <span>共 {rules.length} 条 · 拖拽调整顺序</span>
+            <span>{query.trim() ? `匹配 ${filteredIndexes.length} / ${rules.length} 条 · 拖拽调整匹配规则顺序` : `共 ${rules.length} 条 · 拖拽调整顺序`}</span>
           </div>
           <Button variant="primary" icon={<Plus size={16} aria-hidden="true" />} disabled={isReadonly} onClick={addRule}>
             添加规则
@@ -93,20 +94,26 @@ export function RulesPage() {
         <EmptyState title="暂无内联规则" message={isReadonly ? "只读模式下不可新增规则。" : "添加内联规则后，渲染时会按 YAML 数组顺序直接透传。"} />
       ) : (
         <>
+          {filteredIndexes.length === 0 ? <EmptyState title="没有匹配的规则" message="换个关键词，或清空搜索查看全部规则。" action={<Button onClick={() => setQuery("")}>清空搜索</Button>} /> : null}
           <div className="rules-list">
-            {rules.map((rule, index) => {
+            <SortableList items={filteredIndexes} getId={(index) => `rule:${index}`} disabled={isReadonly}
+              onReorder={(indexes) => {
+                const next = [...rules];
+                filteredIndexes.forEach((slot, index) => { next[slot] = rules[indexes[index]]; });
+                const position = indexes.indexOf(activeIndex);
+                if (position >= 0) setSelectedIndex(filteredIndexes[position]);
+                setRules(next);
+              }} renderItem={(index, _position, handle) => {
+              const rule = rules[index];
               const parsed = splitRulePolicy(rule);
-              const visible = filteredIndexes.includes(index);
-              if (!visible) return null;
               const typeColor = TYPE_COLORS[parsed.type ?? ""] ?? "var(--text-muted)";
               const targetColor = TARGET_COLORS[parsed.policy ?? ""] ?? "var(--primary)";
               return (
                 <div
-                  key={`${index}-${rule}`}
                   className={focusClassName(activePointer, [`/config/rules/${index}`], index === activeIndex ? "rules-list-row active" : "rules-list-row")}
                   onClick={() => setSelectedIndex(index)}
                 >
-                  <span className="drag-handle static" aria-hidden="true">⠿</span>
+                  {handle}
                   <span className="row-number">{String(index + 1).padStart(2, "0")}</span>
                   <span className="rule-type-badge" style={{ background: `${typeColor}1a`, color: typeColor }}>
                     {parsed.type || "RAW"}
@@ -121,10 +128,10 @@ export function RulesPage() {
                   </IconButton>
                 </div>
               );
-            })}
+            }} />
           </div>
 
-          {activeIndex >= 0 && rules[activeIndex] ? (
+          {activeIndex >= 0 && filteredIndexes.includes(activeIndex) && rules[activeIndex] ? (
             <section className={focusClassName(activePointer, [`/config/rules/${activeIndex}`], "content-panel editor-panel")}>
               <div className="section-heading">
                 <h3>编辑规则 #{activeIndex + 1}</h3>
@@ -132,7 +139,7 @@ export function RulesPage() {
               </div>
               <div className="form-grid two">
                 <Field label="原始规则" hint="渲染时直接透传。">
-                  <TextArea className="mono-input" value={rules[activeIndex]} disabled={isReadonly} onChange={(event) => patchRule(activeIndex, event.target.value)} />
+                  <TextArea data-config-pointer={`/config/rules/${activeIndex}`} className="mono-input" value={rules[activeIndex]} disabled={isReadonly} onChange={(event) => patchRule(activeIndex, event.target.value)} />
                 </Field>
                 <Field label="Policy 选择器" hint={splitRulePolicy(rules[activeIndex]).parseable ? "替换最后逗号后的策略名。" : "当前规则缺少逗号。"}>
                   <SelectInput

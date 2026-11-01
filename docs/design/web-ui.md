@@ -10,7 +10,7 @@
 
 ## 设计原则
 
-- YAML 是真相源：UI 是 YAML 配置的可视化外壳，不存在"前端独有"状态
+- YAML 是真相源：UI 是 YAML 配置的可视化外壳，前端草稿承载尚未保存的编辑，保存后写回 YAML 和正文文件
 - 任何 UI 元素都能映射回 YAML 某个 key
 - 草稿与运行时分离：编辑页基于前端草稿调用 POST 预览；运行时预览页基于当前生效配置调用 GET 预览
 - 本地可写配置源：保存操作 = JSON → YAML 写回文件；热重载为独立显式操作
@@ -32,7 +32,7 @@
 | A2 过滤器 | `filters` | exclude 正则编辑 + 草稿匹配预览（调用 `POST /api/preview/nodes` 展示当前草稿会匹配/排除的节点）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
 | A3 节点分组 | `groups` | 分组卡片列表（拖拽排序，保序）；每组：名称 + match 正则 + strategy 选择器 + 草稿匹配预览（调用 `POST /api/preview/groups`）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
 | A4 路由策略 | `routing` | 服务组列表（拖拽排序，保序）；每组：名称 + 成员选择器（可引用节点组、服务组、DIRECT、REJECT、`@all`、`@auto`）；约束提示 |
-| A5 规则集 | `rulesets` | 按服务组分组展示 URL 列表；增删改 URL |
+| A5 规则集 | `rulesets` | 按服务组分组展示 URL 列表；增删改及拖拽调整绑定和 URL 顺序 |
 | A6 内联规则 | `rules` | 规则表格（拖拽排序）+ 语法提示 |
 | A7 其他配置 | `fallback` / `base_url` / `templates` | fallback 下拉（已定义服务组）；base_url 输入；templates 路径输入 |
 | A8 静态配置校验 | （全配置） | 调用 `POST /api/config/validate`；展示 errors / warnings / infos 三级；通过 `locator.json_pointer` 跳转到对应 A1–A7 页面的具体字段 |
@@ -45,7 +45,7 @@
 |------|---------|---------|
 | B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅 / Snell / VLESS / 自定义）；显示名称、类型、服务器、端口、Kind；标注可由类型判断的格式限定（Snell = 仅 Surge / VLESS = Clash / Loon（按传输过滤）） |
 | B2 分组预览 | `GET /api/preview/groups` | 当前运行时节点组、链式组和服务组结果；展示 `@all` / `@auto` 展开后的成员 |
-| B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` + `GET /api/config/effective.zip` + `POST /api/config/import` | 自动展示 Clash Meta / Surge / Loon 三种格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；导出当前生效配置与模板 ZIP；导入 ZIP 或 YAML 到前端草稿 |
+| B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` + `GET /api/config/saved.zip` + `GET /api/config/effective.zip` + `POST /api/config/import` | 自动展示 Clash Meta / Surge / Loon 三种格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；分别导出已保存配置与当前生效配置的可迁移 ZIP；导入 ZIP 或 YAML 到前端草稿 |
 
 ### C 区：系统状态
 
@@ -63,14 +63,27 @@
 | 场景 | 模式 | 说明 |
 |------|------|------|
 | 添加/编辑条目 | 居中 Modal | 表单编辑，确认后保存 |
-| 操作成功反馈 | 右下绿色 Toast | 4s 自动消失 |
-| 操作失败反馈 | 右下红色 Toast | 不自动消失，含错误详情，可点击跳转 |
+| 操作成功反馈 | 右下绿色 Toast | 约 4s 自动消失，并替换同一操作的旧反馈 |
+| 操作失败反馈 | 右下反馈 | 普通提示 8s 后消失；需恢复操作的错误持续显示，同一操作合并；反馈正文不拦截下方控件，取消恢复操作后保留按钮 |
 | 进行中状态 | 顶栏按钮 Spinner + 禁用 | 防止重复提交 |
 | 不可撤销操作 | 居中红色确认弹窗 | 删除、重置等需二次确认 |
 | 首次保存本地 YAML | 居中确认弹窗 | 提示注释、引号和格式风格可能丢失，用户确认后才发起 `PUT /api/config` |
-| 导入配置包 | 文件选择 + 确认弹窗 | B3 中选择 `.zip/.yaml/.yml` 后调用 `POST /api/config/import` 替换前端草稿；ZIP 导入会写入包内模板副本并更新草稿模板路径，导入前需确认；导入不保存配置、不 reload |
+| 导入配置包 | 文件选择 + 确认弹窗 | B3 中选择 `.zip/.yaml/.yml` 后调用 `POST /api/config/import` 替换前端草稿；两种导入都只还原草稿与正文，不创建文件；替换未保存草稿前确认；保存时统一生成正文文件并写回 YAML，再显式热重载 |
+| 导出已保存配置包 | 下载链接 | 调用 `GET /api/config/saved.zip`，读取保存后的配置和正文；未保存修改需先保存，导出新保存内容无需热重载 |
 | 导出生效配置包 | 下载链接 | B3 中调用 `GET /api/config/effective.zip` 下载当前 RuntimeConfig 对应的源 YAML 与模板；保存但未 reload 时仍导出旧生效配置包 |
-| 校验修复 | 右侧 Drawer | 展示静态诊断列表，点击后通过 `locator.json_pointer` 跳转到对应页面/字段 |
+| 校验修复 | 直接定位 + 详情 Drawer | “跳转”直接进入字段，来源诊断自动打开编辑弹窗并聚焦；“详情”单独展示定位信息 |
+
+---
+
+## 编辑与反馈约定
+
+- 保存记录提交时的草稿快照。响应返回时只推进已保存基线与 revision；请求期间的新编辑保留在草稿中，保存按钮继续可用。
+- 刷新或关闭页面时，有未保存草稿则触发浏览器离开提示；注销前确认丢弃草稿，站内切换页面保留草稿。
+- 过滤和分组正则通过防抖后的静态校验使用后端 Go 正则规则，不拉取订阅；草稿变化后，旧预览标记为需重新预览，错误与“尚未运行”不同时展示。
+- 节点组重排保留选中的编辑对象；重命名后展示仍使用旧名称的服务组与链式代理，并允许同步修改引用。
+- 路由成员提供节点组、服务组、链式组和内置策略；普通自定义节点通过 `@all` 参与。
+- 自定义代理名称或 URL 未填写时不能应用到草稿；内联规则搜索展示匹配数量和空结果，隐藏不在结果中的编辑器。搜索后的排序只调整匹配规则所在的位置，其他规则保持顺序。
+- 运行时服务组展示 `@all` / `@auto` 展开后的策略成员，成员可能是节点、分组或内置策略；服务运行时长使用 `runtime_environment.uptime_seconds`。
 
 ---
 

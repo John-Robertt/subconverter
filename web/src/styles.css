@@ -548,6 +548,20 @@ code {
   line-height: 1.25;
 }
 
+.filter-rule-heading {
+  flex-wrap: wrap;
+}
+
+.filter-rule-heading > div {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.filter-rule-heading > .button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .form-stack,
 .form-grid,
 .stack-list,
@@ -2291,6 +2305,7 @@ tr:last-child td {
 }
 
 .toast-region {
+  pointer-events: none;
   position: fixed;
   z-index: 40;
   right: 24px;
@@ -2312,6 +2327,8 @@ tr:last-child td {
   background: var(--surface);
   box-shadow: var(--shadow-md);
 }
+
+.toast button { pointer-events: auto; }
 
 .toast-icon {
   display: inline-grid;

@@ -8,6 +8,7 @@ import { useSaveWorkflow } from "../features/useSaveWorkflow";
 import { useConfigState } from "../state/config";
 import { useTheme, type ThemePreference } from "../state/theme";
 import { useToast } from "../state/toast";
+import { useConfirm } from "../state/confirm";
 import { Button, IconButton, LoadingState } from "../components/ui";
 
 const sidebarNavGroups: Array<{ label: string; sections: PageSection[] }> = [
@@ -24,6 +25,17 @@ export function AppShell() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { pushToast } = useToast();
+  const confirm = useConfirm();
+
+  async function logout() {
+    if (isSaving) return;
+    if (isDraftDirty && !(await confirm({
+      title: "丢弃未保存修改并注销？",
+      message: "当前草稿尚未保存。注销会丢弃这些修改；可取消后先保存。",
+      confirmLabel: "丢弃并注销", danger: true
+    }))) return;
+    await logoutMutation.mutateAsync();
+  }
 
   const logoutMutation = useMutation({
     mutationFn: api.logout,
@@ -49,7 +61,7 @@ export function AppShell() {
     routing: draft?.routing?.length ?? 0,
     rulesets: draft?.rulesets?.length ?? 0,
     rules: draft?.rules?.length ?? 0,
-    settings: [draft?.fallback, draft?.base_url, draft?.templates?.clash, draft?.templates?.surge].filter(Boolean).length
+    settings: [draft?.fallback, draft?.base_url, ...(["clash", "surge", "loon"] as const).map((format) => draft?.templates?.[format] || draft?.templates?.inline?.[format])].filter(Boolean).length
   };
 
   if (isLoading) {
@@ -136,7 +148,7 @@ export function AppShell() {
             >
               热重载
             </Button>
-            <IconButton label="注销" variant="ghost" onClick={() => void logoutMutation.mutateAsync()}>
+            <IconButton label="注销" variant="ghost" disabled={isSaving} onClick={() => void logout()}>
               <LogOut size={18} aria-hidden="true" />
             </IconButton>
           </div>

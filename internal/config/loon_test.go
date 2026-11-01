@@ -19,7 +19,7 @@ routing:
   OUT: [HK, DIRECT]
 fallback: OUT
 templates:
-  loon: configs/base_loon.conf
+  loon: configs/base_loon.lcf
 `
 	var cfg Config
 	if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
@@ -37,14 +37,14 @@ templates:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.SourceInput().Subscriptions[0].Format != "loon" || rt.Templates().Loon != "configs/base_loon.conf" {
+	if rt.SourceInput().Subscriptions[0].Format != "loon" || rt.Templates().Loon != "configs/base_loon.lcf" {
 		t.Fatalf("runtime lost Loon config: %+v %+v", rt.SourceInput(), rt.Templates())
 	}
 	back, err := yaml.Marshal(roundTrip)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(back), "format: loon") || !strings.Contains(string(back), "loon: configs/base_loon.conf") {
+	if !strings.Contains(string(back), "format: loon") || !strings.Contains(string(back), "loon: configs/base_loon.lcf") {
 		t.Fatalf("YAML lost Loon config:\n%s", back)
 	}
 	for _, format := range []string{"", "auto", "text", "clash", "surge", "loon", "invalid"} {

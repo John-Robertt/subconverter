@@ -35,7 +35,7 @@ export function SettingsPage() {
           <p>所有规则都不匹配时使用的兜底。建议指向「全球代理」类的服务组。</p>
         </div>
         <div className="setting-input-row">
-          <SelectInput value={fallback} disabled={isReadonly} onChange={(event) => patchConfig({ fallback: event.target.value })}>
+          <SelectInput aria-label="fallback 服务组" data-config-pointer="/config/fallback" value={fallback} disabled={isReadonly} onChange={(event) => patchConfig({ fallback: event.target.value })}>
             {fallback && !routingOptions.includes(fallback) ? <option value={fallback}>{fallback}（当前配置）</option> : null}
             <option value="">选择服务组</option>
             {routingOptions.map((policy) => (
@@ -51,7 +51,7 @@ export function SettingsPage() {
           <p>生成订阅链接时使用的基础地址，仅 scheme 和 host。Surge Managed Profile 会用到。</p>
         </div>
         <div className="setting-input-row">
-          <TextInput className="mono-input" value={baseURL} disabled={isReadonly} onChange={(event) => patchConfig({ base_url: event.target.value })} placeholder="https://sub.example.com" />
+          <TextInput aria-label="base_url" data-config-pointer="/config/base_url" className="mono-input" value={baseURL} disabled={isReadonly} onChange={(event) => patchConfig({ base_url: event.target.value })} placeholder="https://sub.example.com" />
         </div>
         {baseURLState.valid ? null : <div className="field-error">{baseURLState.message}</div>}
         {baseURLState.valid && baseURL ? (

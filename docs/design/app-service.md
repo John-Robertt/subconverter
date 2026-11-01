@@ -56,6 +56,11 @@ func (s *Service) EffectiveConfigYAML(ctx context.Context) ([]byte, error)
 // 用于 GET /api/config/effective.zip。
 func (s *Service) EffectiveConfigArchive(ctx context.Context) (*ConfigArchiveResult, error)
 
+// SavedConfigArchive 读取当前配置源，打包已保存的配置与正文，无需先 Reload。
+// 两种导出共用包结构：订阅正文内嵌、模板引用包内相对路径，读取失败即终止。
+// 用于 GET /api/config/saved.zip。
+func (s *Service) SavedConfigArchive(ctx context.Context) (*ConfigArchiveResult, error)
+
 // ImportConfigYAML 将上传 YAML 解析为 Config JSON，并读取已有本地正文引用。
 // 不写文件、不替换 RuntimeConfig、不执行 Prepare。
 // 用于 POST /api/config/import。
@@ -67,8 +72,8 @@ func (s *Service) ReadResource(ctx context.Context, location string) (*ResourceC
 // CheckSubscription 读取并检查节点，不保存配置或替换运行快照。
 func (s *Service) CheckSubscription(ctx context.Context, input CheckSubscriptionInput) (*CheckSubscriptionResult, error)
 
-// ImportConfigArchive 将上传 ZIP 包解析为 Config JSON，并写入包内模板副本。
-// 仅本地可写配置源支持；不写配置文件、不替换 RuntimeConfig、不执行 Prepare。
+// ImportConfigArchive 将上传 ZIP 包解析为 Config JSON，包内模板还原为草稿正文。
+// 仅本地可写配置源支持；不创建文件、不替换 RuntimeConfig、不执行 Prepare。
 // 用于 POST /api/config/import application/zip。
 func (s *Service) ImportConfigArchive(ctx context.Context, raw []byte) (*ImportConfigYAMLResult, error)
 
@@ -493,7 +498,7 @@ var (
 - 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
 - `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 由响应中的 `config_revision != runtime_config_revision` 计算
 - `EffectiveConfigYAML`：只在 `RLock` 内复制当前生效 YAML 字节；该快照只在启动成功和 `Reload` 成功时更新
-- `EffectiveConfigArchive`：只在 `RLock` 内复制当前生效 YAML 字节和模板位置；模板内容读取与 ZIP 编码在释放锁后执行
+- `EffectiveConfigArchive`：复用 `EffectiveConfigYAML` 取得生效 YAML 快照，再解析模板位置；正文读取与 ZIP 编码在释放锁后执行
 - 写路径（`Reload`）：先在锁外读取、解析和准备配置；校验成功后，短暂加写锁一起更新配置指针、revision、生效 YAML、加载时间和重载状态
 - 慢速订阅拉取、模板加载和渲染不持有配置锁
 
@@ -527,6 +532,6 @@ HTTP Request
 
 ## Loon 配置与生成
 
-`GenerateInput.Format`、`GenerateLinkInput.Format` 接受 `loon`，默认文件名为 `loon.conf`；现有运行时预览与草稿预览方法签名保持不变。配置 DTO 中的 `Config` JSON 保留 `sources.subscriptions[].format` 与 `templates.loon`，字段定义见 [配置规约](config-schema.md#subscriptions)。
+`GenerateInput.Format`、`GenerateLinkInput.Format` 接受 `loon`，默认文件名为 `loon.lcf`；现有运行时预览与草稿预览方法签名保持不变。配置 DTO 中的 `Config` JSON 保留 `sources.subscriptions[].format` 与 `templates.loon`，字段定义见 [配置规约](config-schema.md#subscriptions)。
 
-配置包增加可选条目 `templates/loon.conf`。导入后把模板副本路径放入返回草稿的 `templates.loon`；保存、重载和导出沿用现有流程。
+配置包增加可选条目 `templates/loon.lcf`。导入后把模板正文放入返回草稿的 `templates.inline.loon`；保存、重载和导出沿用现有流程。

@@ -331,6 +331,23 @@ func TestContentStore_SourceFormatSurvivesCopy(t *testing.T) {
 	if _, err := svc.SaveConfig(context.Background(), &SaveConfigInput{ConfigRevision: snapshot.ConfigRevision, Config: snapshot.Config}); err != nil {
 		t.Fatal(err)
 	}
+	savedRaw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture config is inside t.TempDir.
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored config.Config
+	if err := yaml.Unmarshal(savedRaw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{stored.Sources.Subscriptions[0].ContentFile, stored.Templates.Loon} {
+		if filepath.Ext(path) != ".lcf" {
+			t.Fatalf("Loon body filename = %q, want .lcf", path)
+		}
+	}
+	savedBody, err := os.ReadFile(stored.Sources.Subscriptions[0].ContentFile) // #nosec G304 -- service-managed body is inside t.TempDir.
+	if err != nil || string(savedBody) != body {
+		t.Fatalf("saved Loon body = %q err=%v, want %q", savedBody, err, body)
+	}
 	restarted, err := New(context.Background(), Options{ConfigLocation: svc.configLocation, DataDir: svc.dataDir})
 	if err != nil {
 		t.Fatal(err)
@@ -399,10 +416,10 @@ func TestContentStore_ManagedTemplateNames(t *testing.T) {
 		name    string
 		managed bool
 	}{
-		{"loon.conf", false},
-		{"template-loon-base.conf", false},
-		{"template-loon-20261101T123456.123456789Z-12345.conf", true},
-		{"template-loon-99999999T123456.123456789Z-12345.conf", false},
+		{"loon.lcf", false},
+		{"template-loon-base.lcf", false},
+		{"template-loon-20261101T123456.123456789Z-12345.lcf", true},
+		{"template-loon-99999999T123456.123456789Z-12345.lcf", false},
 		{"template-loon-20261101T123456.123456789Z-12345.yaml", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

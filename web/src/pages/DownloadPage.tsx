@@ -2,16 +2,17 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clipboard, FileDown, Upload } from "lucide-react";
 import { useMemo, useRef, type ChangeEvent, type ReactNode } from "react";
 import { queryKeys } from "../app/queryKeys";
-import { api, buildGeneratePath, effectiveConfigArchivePath } from "../api/client";
+import { api, buildGeneratePath, effectiveConfigArchivePath, savedConfigArchivePath } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import type { GenerateFormat } from "../api/types";
 import { Button, Chip, ErrorState, LoadingState, StatCard } from "../components/ui";
 import { useConfigState } from "../state/config";
 import { useConfirm } from "../state/confirm";
 import { useToast } from "../state/toast";
+import { isConfigChanged } from "../features/configModel";
 
 export function DownloadPage() {
-  const { draft, status, isDraftDirty, isReadonly, updateDraft } = useConfigState();
+  const { draft, status, isDraftDirty, isReadonly, updateDraft, getDraft } = useConfigState();
   const confirm = useConfirm();
   const { pushToast } = useToast();
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -83,17 +84,23 @@ export function DownloadPage() {
   });
 
   const importMutation = useMutation({
+    onMutate: () => ({ draft: getDraft() }),
     mutationFn: (input: ConfigImportInput) => (input.kind === "archive" ? api.importConfigArchive(input.file) : api.importConfigYAML(input.yaml)),
-    onSuccess: (result, input) => {
+    onSuccess: async (result, input, context) => {
+      if (context?.draft && isConfigChanged(context.draft, getDraft()) && !(await confirm({
+        title: "替换导入期间的新修改？",
+        message: "导入期间草稿又有变化。确认后用导入内容替换草稿；取消可保留当前编辑。",
+        confirmLabel: "替换草稿", danger: true
+      }))) return;
       updateDraft(() => result.config);
       pushToast({
         kind: "success",
-        title: input.kind === "archive" ? "配置包已导入草稿" : "配置已导入草稿",
-        message: input.kind === "archive" ? "模板副本已写入本地；请检查后保存并热重载。" : "请检查后保存；保存后需要热重载才会生效。"
+        scope: "import", title: input.kind === "archive" ? "配置包已导入草稿" : "配置已导入草稿",
+        message: input.kind === "archive" ? "正文已载入草稿；保存时统一写入配置和正文文件，再热重载生效。" : "请检查后保存；保存后需要热重载才会生效。"
       });
     },
     onError: (error) => {
-      pushToast({ kind: "error", title: "配置导入失败", message: getErrorMessage(error), persistent: true });
+      pushToast({ kind: "error", scope: "import", title: "配置导入失败", message: getErrorMessage(error), persistent: true });
     }
   });
 
@@ -107,18 +114,7 @@ export function DownloadPage() {
     importInputRef.current?.click();
   }
 
-  async function confirmImport(archive: boolean): Promise<boolean> {
-    if (archive) {
-      const accepted = await confirm({
-        title: "导入配置包并写入模板副本？",
-        message: isDraftDirty
-          ? "当前草稿包含未保存修改。导入后会替换草稿，并将配置包内模板写入新的本地副本。"
-          : "导入后会替换当前草稿，并将配置包内模板写入新的本地副本。",
-        confirmLabel: "确认导入",
-        danger: true
-      });
-      return accepted;
-    }
+  async function confirmImport(): Promise<boolean> {
     if (!isDraftDirty) return true;
     return confirm({
       title: "导入配置并替换当前草稿？",
@@ -134,7 +130,7 @@ export function DownloadPage() {
     if (!file) return;
 
     const archive = isArchiveFile(file);
-    if (!(await confirmImport(archive))) return;
+    if (!(await confirmImport())) return;
     if (archive) {
       try {
         await importMutation.mutateAsync({ kind: "archive", file });
@@ -150,7 +146,7 @@ export function DownloadPage() {
     } catch (error) {
       pushToast({
         kind: "error",
-        title: "配置导入失败",
+        scope: "import", title: "配置导入失败",
         message: error instanceof Error ? error.message : "读取文件失败",
         persistent: true
       });
@@ -172,11 +168,14 @@ export function DownloadPage() {
           variant="secondary"
           icon={<Upload size={15} aria-hidden="true" />}
           loading={importMutation.isPending}
-          disabled={isReadonly}
+          disabled={isReadonly || !draft}
           onClick={() => void openImportPicker()}
         >
           导入配置
         </Button>
+        {status?.config_revision ? <a className="button button-secondary" href={savedConfigArchivePath} download="subconverter-config.zip">
+          <FileDown size={15} aria-hidden="true" /><span>导出已保存配置</span>
+        </a> : null}
         {runtimeRevision ? (
           <a className="button button-secondary" href={effectiveConfigArchivePath} download="subconverter-config.zip">
             <FileDown size={15} aria-hidden="true" />
@@ -189,6 +188,7 @@ export function DownloadPage() {
         )}
       </div>
 
+      {isDraftDirty ? <section className="content-panel info-panel">当前草稿有未保存修改。导出已保存配置前，请先保存需要保留的修改。</section> : null}
       {status?.config_dirty ? (
         <section className="content-panel info-panel">
           当前预览基于运行时配置，已保存草稿尚未 reload；如需查看草稿生成结果，请先点击"热重载"。
@@ -236,11 +236,11 @@ export function DownloadPage() {
         <PreviewCard
           title="Loon"
           badge="conf"
-          filename="loon.conf"
+          filename="loon.lcf"
           format="loon"
           previewText={loonPreviewQuery.data ?? null}
-          downloadPath={buildGeneratePath("loon", "loon.conf")}
-          subUrl={loonLinkQuery.data?.url ?? buildGeneratePath("loon", "loon.conf")}
+          downloadPath={buildGeneratePath("loon", "loon.lcf")}
+          subUrl={loonLinkQuery.data?.url ?? buildGeneratePath("loon", "loon.lcf")}
           subUrlChip="SUB URL"
           onCopyLink={() => linkMutation.mutate("loon")}
           linkLoading={linkMutation.isPending && linkMutation.variables === "loon"}

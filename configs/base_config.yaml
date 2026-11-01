@@ -7,7 +7,7 @@
 # 自定义代理、节点分组、服务路由、远程规则集、内联规则和兜底策略。
 #
 # 工具读取此文件后，结合底版模板（templates），
-# 生成 Clash Meta (.yaml)、Surge (.conf) 或 Loon (.conf) 配置。
+# 生成 Clash Meta (.yaml)、Surge (.conf) 或 Loon (.lcf) 配置。
 #
 # 详细字段说明参见 docs/design/config-schema.md
 # ============================================================
@@ -43,7 +43,7 @@ base_url: "https://my-server.com"
 templates:
   clash: "configs/base_clash.yaml"
   surge: "configs/base_surge.conf"
-  loon: "configs/base_loon.conf"
+  loon: "configs/base_loon.lcf"
   # 也可用 inline: {loon: "正文"}；同一格式的路径与正文二选一。
 
 # ==================== 节点来源 ====================
@@ -60,7 +60,7 @@ sources:
   # SS 支持：ss://、QuanX shadowsocks 行、Surge ss 行。
   # AnyTLS 支持：anytls://、QuanX anytls 行、Surge anytls 行。
   # 支持多个订阅，节点按顺序合并；重名节点在各目标过滤后独立消歧（②③...）。
-  # format 可选 auto / text / clash / surge / loon，默认 auto；Loon 的 .conf 必须显式指定 loon。
+  # format 可选 auto / text / clash / surge / loon，默认 auto；.lcf 自动识别为 Loon，也可显式指定 loon。
   # 只导入节点；来源自带的组、规则、Host 和通用设置由本项目 YAML 与底版负责。
   # url / 非空 content / 本地 content_file 三选一；content 可在 Web 直接编辑。
   # 保存正文会在 /config 下生成带时间戳的版本文件，主配置改为 content_file 引用。
@@ -74,7 +74,7 @@ sources:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
     # - url: "https://sub2.example.com/profile.yaml?token=yyy"
     # - url: "https://sub3.example.com/profile.conf?token=zzz"
-    # - url: "https://sub4.example.com/loon.conf?token=xxx"
+    # - url: "https://sub4.example.com/loon.lcf?token=xxx"
     #   format: loon
 
   # ---------- Snell 来源（Surge 专属）----------

@@ -63,7 +63,7 @@ sources:
 - `content` 使用下述同一套解析规则，不访问上游，也不自动更新。显式 `format: surge` / `loon` 时可只粘贴节点声明；含 section 的完整文档仍只提取 `[Proxy]`
 - 支持多个订阅源
 - `format` 可选，接受 `auto`、`text`、`clash`、`surge`、`loon`，省略等同 `auto`。显式格式优先于 URL 后缀和内容识别
-- 自动识别时，`.yaml` / `.yml` 为 Clash，`.conf` 为 Surge，`.lcf` 为 Loon；忽略 query 和 fragment。Loon 的 `.conf` URL 应显式指定 `format: loon`，保留旧配置的 `.conf` 行为
+- 自动识别时，`.yaml` / `.yml` 为 Clash，`.conf` 为 Surge，`.lcf` 为 Loon；忽略 query 和 fragment。显式 `format: loon` 不依赖 URL 后缀
 - 无已知后缀时，依次检查 Clash 顶层 `proxies`、Loon 专属段（`[Remote Proxy]` / `[Remote Filter]` / `[Remote Rule]` / `[Proxy Chain]`）、Surge `[Proxy]`；均不匹配才进入 TXT/Base64
 - `text` 显式按 SS / AnyTLS 明文或 Base64 列表解析，忽略 URL 后缀；Web 检查节点列表后保存此值，避免 `.conf` 等地址被旧版 `auto` 规则改判
 - Web 检查与上述旧版 `auto` 相互独立：默认先检查内容，确认后把结果保存为明确的 `format`；已有 YAML 的 `auto` 优先级保持不变。复制已检查正文时保留确认的格式
@@ -360,7 +360,7 @@ base_url: "https://my-server.com"
 templates:
   clash: "configs/base_clash.yaml"
   surge: "https://example.com/base_surge.conf"
-  loon: "configs/base_loon.conf"
+  loon: "configs/base_loon.lcf"
 ```
 
 用途：
@@ -381,12 +381,13 @@ templates:
 正文存储规则：
 
 - 默认直接写入 `/config`，不增加子目录。可通过 `-data-dir` 或 `SUBCONVERTER_DATA_DIR` 指定本地开发或其他部署的目录，参数优先于环境变量
-- 每次保存的正文都生成新文件，例如 `subscription-20261101T123456.123456789Z-123456789.txt`、`template-loon-20261101T123456.123456789Z-987654321.conf`；时间戳使用 UTC，唯一后缀避免同时保存重名
+- Loon 节点正文与底版模板均以 `.lcf` 保存；其他节点正文使用 `.txt`，Clash 模板使用 `.yaml`，Surge 模板使用 `.conf`
+- 每次保存的正文都生成新文件，例如 `subscription-20261101T123456.123456789Z-123456789.txt`、`template-loon-20261101T123456.123456789Z-987654321.lcf`；时间戳使用 UTC，唯一后缀避免同时保存重名
 - 原订阅文件与模板不覆盖，旧版本保留。服务读取主配置中的版本引用，热重载前的运行快照继续使用旧版本；主配置提交失败时移除本次新增文件
 - 新建目录权限为 `0700`，正文文件为 `0600`。保存时实际探测目录写入权限，失败返回 `409 resource_content_write_failed`，消息包含目录位置和处理建议
 - `GET /api/config` 会把可读正文文件还原为编辑正文，revision 仍取主配置文件。无法读取的文件保留原引用，用户仍可在 Web 修改路径、重新输入正文或删除来源；读取错误显示在对应编辑器的读取状态中
 - 模板只有位于当前写入目录且完整匹配服务版本文件名时才自动还原正文。普通模板文件保持路径引用；更改写入目录不会移动已有版本，需要时可读取旧路径再保存副本
-- 导出 ZIP 时把正文放回包内 `config.yaml`，便于跨机器导入；正文读取失败则整个导出失败。单独导出生效 YAML 保留实际文件引用
+- 配置包中的订阅正文与模板存放方式见 [导出配置 API](api.md#get-apiconfigeffectivezip)。正文读取失败则整个导出失败；单独导出生效 YAML 保留实际文件引用
 - 旧版内联正文仍可加载，下次 Web 保存时转为上述版本文件。历史版本由部署者保留或清理；清理时保留主配置引用文件，并在停止服务后处理，避免影响运行快照
 
 Web 正文编辑对应的 YAML 示例（JSON 使用相同字段）：

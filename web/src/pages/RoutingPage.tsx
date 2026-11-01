@@ -43,7 +43,7 @@ export function RoutingPage() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const routing = draft?.routing ?? [];
   const groups = draft?.groups ?? [];
-  const customProxies = ensureSources(draft?.sources).custom_proxies;
+  const customProxies = ensureSources(draft?.sources).custom_proxies.filter((proxy) => proxy.relay_through);
   const chainNames = new Set(
     customProxies.filter((proxy) => Boolean(proxy.relay_through) && proxy.name).map((proxy) => proxy.name)
   );
@@ -191,9 +191,9 @@ export function RoutingPage() {
               </div>
 
               <div className="palette-section">
-                <span>自定义代理（{customProxies.length}）</span>
+                <span>链式分组（{customProxies.length}）</span>
                 <div className="palette-list">
-                  {customProxies.length === 0 ? <p className="muted">尚未配置自定义代理</p> : null}
+                  {customProxies.length === 0 ? <p className="muted">尚未配置链式分组；普通自定义节点通过 @all 引用</p> : null}
                   {customProxies.map((proxy) => {
                     if (!proxy.name) return null;
                     const selected = activeRoute.value.includes(proxy.name);

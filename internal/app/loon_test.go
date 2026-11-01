@@ -19,11 +19,11 @@ func TestApp_LoonArchiveRoundTrip(t *testing.T) {
 	if err := os.WriteFile(path, []byte(validConfigYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	svc, err := New(context.Background(), Options{ConfigLocation: path})
+	svc, err := New(context.Background(), Options{ConfigLocation: path, DataDir: filepath.Join(dir, "data")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	const raw = "sources:\n  subscriptions:\n    - {url: https://example.com/sub.conf, format: loon}\ngroups:\n  HK: {match: HK, strategy: select}\nrouting:\n  proxy: [HK, DIRECT]\nfallback: proxy\ntemplates:\n  loon: templates/loon.conf\n"
+	const raw = "sources:\n  subscriptions:\n    - {url: https://example.com/sub.conf, format: loon}\ngroups:\n  HK: {match: HK, strategy: select}\nrouting:\n  proxy: [HK, DIRECT]\nfallback: proxy\ntemplates:\n  loon: templates/loon.lcf\n"
 	const tmpl = "[General]\ndns-server = system\n"
 	archive, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: []byte(raw)}, {Name: archiveLoonTemplateEntry, Body: []byte(tmpl)}}, time.Now())
 	if err != nil {
@@ -37,7 +37,7 @@ func TestApp_LoonArchiveRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(imported.Config, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if !isImportedTemplatePath(cfg.Templates.Loon, dir, "loon.conf") || cfg.Sources.Subscriptions[0].Format != "loon" {
+	if cfg.Templates.Loon != "" || cfg.Templates.Inline["loon"] != tmpl || cfg.Sources.Subscriptions[0].Format != "loon" {
 		t.Fatalf("import lost Loon config: %+v", cfg)
 	}
 	snapshot, err := svc.ConfigSnapshot(context.Background())
@@ -55,7 +55,13 @@ func TestApp_LoonArchiveRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries := readArchiveEntriesForTest(t, exported.Body)
+	if _, ok := entries["templates/loon.conf"]; ok {
+		t.Fatal("archive used .conf for Loon template")
+	}
 	if string(entries[archiveLoonTemplateEntry].Body) != tmpl || !strings.Contains(string(entries[archiveConfigEntry].Body), "format: loon") {
 		t.Fatalf("archive lost Loon template or format: %+v", entries)
+	}
+	if !strings.Contains(string(entries[archiveConfigEntry].Body), "templates/loon.lcf") {
+		t.Fatalf("archive config lost .lcf reference: %s", entries[archiveConfigEntry].Body)
 	}
 }

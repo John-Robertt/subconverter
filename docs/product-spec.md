@@ -217,7 +217,7 @@ HK-03 → HK-ISP
 
 - Clash Meta 配置文件（.yaml）
 - Surge 配置文件（.conf）
-- Loon 配置文件（.conf）
+- Loon 配置文件（.lcf）
 
 各目标使用相同的分组和路由声明；Loon 的客户端规则来源优先级单独说明，见 [渲染设计](design/rendering.md#loon)。格式例外由 Target 阶段统一级联处理：Snell 和 Surge CONF 订阅节点只进入 Surge；Clash YAML 订阅节点只进入 Clash，Loon 原生节点只进入 Loon；规范化 VLESS 进入 Clash 及支持相应传输的 Loon。输出格式不在配置文件中指定，由请求参数决定。
 
@@ -225,7 +225,7 @@ HK-03 → HK-ISP
 
 - `format=clash|surge|loon`：必填，决定输出格式
 - `token=<access-token>`：当服务端启用了订阅访问 token 时，`/generate` 可通过 query 参数携带；该 token 只用于 Clash / Surge 等客户端自动更新订阅，不作为 Web 管理后台登录凭据
-- `filename=<custom-name>`：可选，自定义下载文件名；未传时默认使用 `clash.yaml` / `surge.conf` / `loon.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式；空值、空主体、路径字符、空格和非 ASCII 值会被拒绝
+- `filename=<custom-name>`：可选，自定义下载文件名；未传时默认使用 `clash.yaml` / `surge.conf` / `loon.lcf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf` / `.lcf`，已有扩展名必须匹配目标格式；空值、空主体、路径字符、空格和非 ASCII 值会被拒绝
 
 补充约束：
 
@@ -407,7 +407,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 输出目标           | Clash Meta + Surge + Loon                        | Shadowrocket/QuantumultX 暂不做  |
 | Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG`，使用服务端订阅访问 token（若启用）和最终 `filename` | 用户显式控制，无需依赖反向代理头；token 来源不依赖当前请求鉴权方式，见 `T-PRV-014` |
 | 访问控制边界       | `/api/*` 使用管理员登录态和 `session_id` Cookie；`/generate` 保留 query token 兼容订阅链接；订阅 token 不进入 YAML，也不作为后台登录凭据 | 将公网后台权限与客户端订阅更新密钥解耦 |
-| 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf`；Loon 默认 `loon.conf` | 客户端订阅与浏览器下载都需要稳定文件名 |
+| 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf`；Loon 默认 `loon.lcf` | 客户端订阅与浏览器下载都需要稳定文件名 |
 | Web 管理后台       | React SPA 由生产镜像嵌入 Go 二进制，单个 `subconverter` 服务同源托管 SPA、`/api/*`、`/generate` 和 `/healthz` | 单镜像单服务，部署路径更简单 |
 | 配置热重载         | RWMutex 保护 RuntimeConfig，写回 YAML + re-Prepare | 编辑后无需重启服务               |
 | YAML 真相源        | UI 是 YAML 的可视化外壳，无前端独有状态   | 数据一致性，任何修改可追溯到 YAML |

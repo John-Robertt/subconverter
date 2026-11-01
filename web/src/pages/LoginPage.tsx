@@ -13,7 +13,7 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { pushToast } = useToast();
+  const { pushToast, clearToasts } = useToast();
   const { resolvedTheme, setPreference } = useTheme();
   const next = searchParams.get("next") || "/sources";
   const [username, setUsername] = useState("admin");
@@ -58,7 +58,7 @@ export function LoginPage() {
     }
     if (networkErrorRef.current === authQuery.error) return;
     networkErrorRef.current = authQuery.error;
-    pushToast({
+    pushToast({ scope: "auth",
       kind: "error",
       title: "后端不可达",
       message: getErrorMessage(authQuery.error),
@@ -77,6 +77,7 @@ export function LoginPage() {
       return api.login({ username, password, remember });
     },
     onSuccess: async (result) => {
+      clearToasts("auth");
       await queryClient.invalidateQueries({ queryKey: queryKeys.authStatus });
       navigate(result.redirect || next, { replace: true });
     },
@@ -90,7 +91,7 @@ export function LoginPage() {
             : "";
         if (error.code === "auth_locked") {
           setLockedUntil(until);
-          pushToast({
+          pushToast({ scope: "auth",
             kind: "warning",
             title: "账号已临时锁定",
             message: until
@@ -107,15 +108,15 @@ export function LoginPage() {
             "remaining" in error.payload
               ? String(error.payload.remaining ?? "")
               : "";
-          pushToast({
+          pushToast({ scope: "auth",
             kind: "error",
             title: "用户名或密码错误",
-            message: remaining ? `还可尝试 ${remaining} 次。` : error.message,
+            message: remaining ? `还可尝试 ${remaining} 次。` : undefined,
             persistent: true,
           });
           return;
         }
-        pushToast({
+        pushToast({ scope: "auth",
           kind: "error",
           title: mode === "setup" ? "Setup 失败" : "登录失败",
           message: `${error.status} ${error.code}: ${error.message}`,
@@ -125,7 +126,7 @@ export function LoginPage() {
       }
 
       const message = error instanceof Error ? error.message : "登录失败";
-      pushToast({
+      pushToast({ scope: "auth",
         kind: "error",
         title: mode === "setup" ? "Setup 失败" : "登录失败",
         message,
@@ -196,7 +197,7 @@ export function LoginPage() {
           className="form-stack"
           onSubmit={(event) => {
             event.preventDefault();
-            void mutation.mutateAsync();
+            void mutation.mutateAsync().catch(() => undefined);
           }}
         >
           {mode === "setup" && authQuery.data?.setup_token_required ? (

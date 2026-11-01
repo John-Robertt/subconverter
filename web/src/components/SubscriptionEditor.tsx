@@ -15,10 +15,11 @@ export interface SubscriptionEditorValue {
 export const subscriptionFormatLabels = { text: "节点列表", clash: "Clash 配置", surge: "Surge 配置", loon: "Loon 配置" };
 const outputLabels = { clash: "Clash Meta", surge: "Surge", loon: "Loon" };
 
-export function SubscriptionEditor({ value, fileReference, readonly, onChange }: {
+export function SubscriptionEditor({ value, fileReference, readonly, onChange, pointer }: {
   value: SubscriptionEditorValue;
   fileReference: boolean;
   readonly: boolean;
+  pointer?: string;
   onChange: (patch: Partial<SubscriptionEditorValue>) => void;
 }) {
   const { location, content, inspection, format = "auto" } = value;
@@ -101,7 +102,7 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange }:
         <Button variant={inline ? "primary" : "ghost"} aria-pressed={inline} disabled={readonly || (!inline && resource.loading)} onClick={() => switchMode(true)}>本地正文</Button>
       </div>
       {!inline ? <Field label={fileReference ? "正文文件" : "订阅地址"} hint="按现有缓存策略读取；查看正文不会改变来源。">
-        <TextInput aria-label={fileReference ? "正文文件" : "订阅地址"} className="mono-input" value={location} disabled={readonly}
+        <TextInput data-config-pointer={pointer ? `${pointer}/${fileReference ? "content_file" : "url"}` : undefined} autoFocus aria-label={fileReference ? "正文文件" : "订阅地址"} className="mono-input" value={location} disabled={readonly}
           onChange={(event) => { previous.current.content = undefined; edit({ location: event.target.value }); }} />
       </Field> : <p className="field-hint">当前使用本地正文，由你手动维护，不再跟随原地址更新；原资源保持不变。</p>}
       <p className="field-hint">只导入节点，策略组和规则由当前配置生成。</p>
@@ -119,7 +120,7 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange }:
         </>}
       </div> : null}
       <Field label="按哪种格式解析">
-        <SelectInput aria-label="按哪种格式解析" value={format} disabled={readonly} onChange={(event) => edit({ format: event.target.value as SubscriptionFormat })}>
+        <SelectInput data-config-pointer={pointer ? `${pointer}/format` : undefined} aria-label="按哪种格式解析" value={format} disabled={readonly} onChange={(event) => edit({ format: event.target.value as SubscriptionFormat })}>
           <option value="auto">按内容识别</option>
           {Object.entries(subscriptionFormatLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
         </SelectInput>

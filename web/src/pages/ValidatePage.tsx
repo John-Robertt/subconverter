@@ -26,7 +26,7 @@ export function ValidatePage() {
     onSuccess: (data) => {
       setResult(data);
       const total = data.errors.length + data.warnings.length + data.infos.length;
-      pushToast({
+      pushToast({ scope: "validation",
         kind: data.valid ? "success" : "warning",
         title: data.valid ? "静态校验通过" : "静态校验发现问题",
         message: data.valid ? "当前草稿没有静态诊断项。" : `发现 ${total} 个诊断项。`
@@ -82,7 +82,7 @@ export function ValidatePage() {
         {validateMutation.isPending ? <LoadingState message="正在运行静态配置校验" /> : null}
         {validateMutation.error ? <ErrorState message={getErrorMessage(validateMutation.error)} action={<Button variant="secondary" onClick={() => validateMutation.mutate()}>重试校验</Button>} /> : null}
         {!result && !validateMutation.isPending && !validateMutation.error ? <EmptyState title="尚未运行校验" message="运行后会按 errors / warnings / infos 分级展示诊断，并可跳转到字段。" /> : null}
-        {result ? <ValidationResult result={result} onOpen={setSelectedDiagnostic} /> : null}
+        {result ? <ValidationResult result={result} onOpen={setSelectedDiagnostic} onLocate={locateDiagnostic} /> : null}
       </section>
 
       {selectedDiagnostic ? <DiagnosticDrawer diagnostic={selectedDiagnostic} onClose={() => setSelectedDiagnostic(null)} onLocate={locateDiagnostic} /> : null}
@@ -90,7 +90,7 @@ export function ValidatePage() {
   );
 }
 
-function ValidationResult({ result, onOpen }: { result: ValidateResult; onOpen: (diagnostic: Diagnostic) => void }) {
+function ValidationResult({ result, onOpen, onLocate }: { result: ValidateResult; onOpen: (diagnostic: Diagnostic) => void; onLocate: (diagnostic: Diagnostic) => void }) {
   if (result.valid && diagnosticsFromResult(result).length === 0) {
     return (
       <div className="validate-success">
@@ -103,9 +103,9 @@ function ValidationResult({ result, onOpen }: { result: ValidateResult; onOpen: 
 
   return (
     <div className="validate-groups">
-      <DiagnosticSection title="错误" tone="error" items={result.errors} onOpen={onOpen} />
-      <DiagnosticSection title="警告" tone="warning" items={result.warnings} onOpen={onOpen} />
-      <DiagnosticSection title="提示" tone="info" items={result.infos} onOpen={onOpen} />
+      <DiagnosticSection title="错误" tone="error" items={result.errors} onOpen={onOpen} onLocate={onLocate} />
+      <DiagnosticSection title="警告" tone="warning" items={result.warnings} onOpen={onOpen} onLocate={onLocate} />
+      <DiagnosticSection title="提示" tone="info" items={result.infos} onOpen={onOpen} onLocate={onLocate} />
     </div>
   );
 }
@@ -114,11 +114,13 @@ function DiagnosticSection({
   title,
   tone,
   items,
-  onOpen
+  onOpen,
+  onLocate
 }: {
   title: string;
   tone: "error" | "warning" | "info";
   items: Diagnostic[];
+  onLocate: (diagnostic: Diagnostic) => void;
   onOpen: (diagnostic: Diagnostic) => void;
 }) {
   if (items.length === 0) return null;
@@ -138,7 +140,8 @@ function DiagnosticSection({
               </div>
               {item.locator?.json_pointer ? <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{item.locator.json_pointer}</div> : null}
             </div>
-            <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onOpen(item); }}>跳转</Button>
+            <Button variant="ghost" onClick={(event) => { event.stopPropagation(); onOpen(item); }}>详情</Button>
+            {item.locator?.json_pointer ? <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onLocate(item); }}>跳转</Button> : null}
           </div>
         ))}
       </div>
@@ -183,7 +186,7 @@ function DiagnosticDrawer({
             <dd>{diagnostic.locator?.section ?? "未提供"}</dd>
           </div>
         </dl>
-        <p>跳转时仅使用 `locator.json_pointer` 映射页面和字段，`display_path` 只作为可读文案。</p>
+        <p>点击“跳转字段”可前往对应配置项进行修改。</p>
       </div>
       <footer className="diagnostic-drawer-footer">
         <Button variant="ghost" onClick={onClose}>关闭</Button>

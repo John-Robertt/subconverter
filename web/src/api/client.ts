@@ -146,7 +146,7 @@ export const api = {
   importConfigArchive: (archive: Blob) => apiBinaryRequest<ConfigImportResponse>("/api/config/import", archive, "application/zip"),
   saveConfig: (config_revision: string, config: Config) =>
     apiRequest<{ config_revision: string }>("/api/config", { method: "PUT", body: { config_revision, config } }),
-  validateConfig: (config: Config) => apiRequest<ValidateResult>("/api/config/validate", { method: "POST", body: { config } }),
+  validateConfig: (config: Config, signal?: AbortSignal) => apiRequest<ValidateResult>("/api/config/validate", { method: "POST", body: { config }, signal }),
   reload: () => apiRequest<ReloadResult>("/api/reload", { method: "POST" }),
   status: () => apiRequest<StatusResponse>("/api/status"),
   healthz: () => apiRequest<string>("/healthz"),
@@ -162,6 +162,7 @@ export const api = {
 };
 
 export const effectiveConfigYAMLPath = "/api/config/effective.yaml";
+export const savedConfigArchivePath = "/api/config/saved.zip";
 export const effectiveConfigArchivePath = "/api/config/effective.zip";
 
 export function buildGeneratePath(format: GenerateFormat, filename: string): string {

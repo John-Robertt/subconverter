@@ -31,7 +31,7 @@ subconverter/
 │   ├── base_config.yaml
 │   ├── base_clash.yaml
 │   ├── base_surge.conf
-│   └── base_loon.conf
+│   └── base_loon.lcf
 ├── testdata/
 └── docs/
 ```

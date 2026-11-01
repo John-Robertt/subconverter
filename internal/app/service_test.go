@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/fetch"
 	"github.com/John-Robertt/subconverter/internal/generate"
@@ -272,8 +273,12 @@ func TestEffectiveConfigArchiveIncludesTemplates(t *testing.T) {
 			t.Fatalf("archive entry %q modified time = %s, want %s", name, got, archiveModifiedAt)
 		}
 	}
-	if !bytes.Equal(entries[archiveConfigEntry].Body, raw) {
-		t.Fatalf("config archive entry differs\ngot:\n%s\nwant:\n%s", entries[archiveConfigEntry].Body, raw)
+	exported, err := parseConfigYAML(entries[archiveConfigEntry].Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exported.Templates.Clash != archiveClashTemplateEntry || exported.Templates.Surge != archiveSurgeTemplateEntry {
+		t.Fatalf("archive template references are not portable: %+v", exported.Templates)
 	}
 	if got := string(entries[archiveClashTemplateEntry].Body); got != "mixed-port: 7890\n" {
 		t.Fatalf("clash template = %q", got)
@@ -283,76 +288,76 @@ func TestEffectiveConfigArchiveIncludesTemplates(t *testing.T) {
 	}
 }
 
-// T-APP-015: config archive import writes local template copies and returns a draft config JSON
-func TestImportConfigArchiveWritesTemplates(t *testing.T) {
+// T-APP-015: archive import remains in memory; save owns publication and both exports round-trip.
+func TestImportConfigArchiveDraftSaveExport(t *testing.T) {
+	ctx := context.Background()
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte(validConfigYAML), 0o600); err != nil {
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(validConfigYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	existingTemplateDir := filepath.Join(dir, "templates")
-	if err := os.Mkdir(existingTemplateDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	existingClashPath := filepath.Join(existingTemplateDir, "clash.yaml")
-	if err := os.WriteFile(existingClashPath, []byte("old clash\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	existingSurgePath := filepath.Join(existingTemplateDir, "surge.conf")
-	if err := os.WriteFile(existingSurgePath, []byte("old surge\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	svc, err := New(context.Background(), Options{ConfigLocation: configPath})
+	svc, err := New(ctx, Options{ConfigLocation: path, DataDir: filepath.Join(dir, "data")})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatal(err)
 	}
-	archiveBody, err := buildConfigArchive([]archiveEntry{
+	archive, err := buildConfigArchive([]archiveEntry{
 		{Name: archiveConfigEntry, Body: []byte(validConfigYAML)},
 		{Name: archiveClashTemplateEntry, Body: []byte("mixed-port: 7890\n")},
 		{Name: archiveSurgeTemplateEntry, Body: []byte("[General]\nloglevel = notify\n")},
 	}, time.Now())
 	if err != nil {
-		t.Fatalf("build archive: %v", err)
+		t.Fatal(err)
 	}
-
-	result, err := svc.ImportConfigArchive(context.Background(), archiveBody)
-	if err != nil {
-		t.Fatalf("ImportConfigArchive: %v", err)
-	}
-	var body struct {
-		Templates struct {
-			Clash string `json:"clash"`
-			Surge string `json:"surge"`
-		} `json:"templates"`
-	}
-	if err := json.Unmarshal(result.Config, &body); err != nil {
-		t.Fatalf("unmarshal imported config: %v", err)
-	}
-	if !isImportedTemplatePath(body.Templates.Clash, dir, "clash.yaml") {
-		t.Fatalf("clash template path = %q", body.Templates.Clash)
-	}
-	if !isImportedTemplatePath(body.Templates.Surge, dir, "surge.conf") {
-		t.Fatalf("surge template path = %q", body.Templates.Surge)
-	}
-	clash, err := os.ReadFile(body.Templates.Clash) // #nosec G304 -- path returned by service under t.TempDir.
+	imported, err := svc.ImportConfigArchive(ctx, archive)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(clash) != "mixed-port: 7890\n" {
-		t.Fatalf("written clash template = %q", clash)
-	}
-	surge, err := os.ReadFile(body.Templates.Surge) // #nosec G304 -- path returned by service under t.TempDir.
+	cfg, err := parseConfigJSON(imported.Config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(surge) != "[General]\nloglevel = notify\n" {
-		t.Fatalf("written surge template = %q", surge)
+	if cfg.Templates.Clash != "" || cfg.Templates.Inline["clash"] != "mixed-port: 7890\n" {
+		t.Fatalf("imported templates = %+v", cfg.Templates)
 	}
-	if oldClash, err := os.ReadFile(existingClashPath); err != nil || string(oldClash) != "old clash\n" { // #nosec G304 -- path is built under t.TempDir in this test.
-		t.Fatalf("existing clash template = %q err=%v", oldClash, err)
+	files, err := os.ReadDir(dir)
+	if err != nil || len(files) != 1 {
+		t.Fatalf("import wrote files: %v err=%v", files, err)
 	}
-	if oldSurge, err := os.ReadFile(existingSurgePath); err != nil || string(oldSurge) != "old surge\n" { // #nosec G304 -- path is built under t.TempDir in this test.
-		t.Fatalf("existing surge template = %q err=%v", oldSurge, err)
+	// Edit the same body returned by import, then publish it through SaveConfig.
+	cfg.Templates.Inline["clash"] = "mixed-port: 17890\n"
+	cfg.Sources.Subscriptions = []config.Subscription{{Format: "text", Content: "anytls://pw@hk.example.com:443#HK"}}
+	edited, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SaveConfig(ctx, &SaveConfigInput{ConfigRevision: configRevision([]byte(validConfigYAML)), Config: edited}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := svc.SavedConfigArchive(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := readArchiveEntriesForTest(t, saved.Body)
+	if string(entries[archiveClashTemplateEntry].Body) != cfg.Templates.Inline["clash"] || strings.Contains(string(entries[archiveConfigEntry].Body), dir) {
+		t.Fatalf("saved archive lost content or portability: %+v", entries)
+	}
+	effective, err := svc.EffectiveConfigArchive(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := readArchiveEntriesForTest(t, effective.Body)[archiveClashTemplateEntry]; ok {
+		t.Fatal("save changed effective snapshot before reload")
+	}
+	back, err := svc.ImportConfigArchive(ctx, saved.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := parseConfigJSON(back.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Templates.Inline["clash"] != cfg.Templates.Inline["clash"] || restored.Sources.Subscriptions[0] != cfg.Sources.Subscriptions[0] {
+		t.Fatalf("round-trip changed draft: %+v", restored)
 	}
 }
 
@@ -403,42 +408,33 @@ func TestImportConfigArchiveRejectsReadonlyAndInvalidArchive(t *testing.T) {
 	}
 }
 
-// T-APP-017: config archive import does not overwrite existing templates on template write failures
-func TestImportConfigArchiveTemplateWriteFailureDoesNotOverwriteExistingTemplates(t *testing.T) {
+// T-APP-017: an obsolete import directory cannot affect draft import or existing files.
+func TestImportConfigArchiveDoesNotUseImportDirectory(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte(validConfigYAML), 0o600); err != nil {
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(validConfigYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	existingTemplateDir := filepath.Join(dir, "templates")
-	if err := os.Mkdir(existingTemplateDir, 0o700); err != nil {
+	blocked := filepath.Join(dir, ".imports")
+	if err := os.WriteFile(blocked, []byte("legacy sentinel"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	existingClashPath := filepath.Join(existingTemplateDir, "clash.yaml")
-	if err := os.WriteFile(existingClashPath, []byte("old clash\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, configImportsDirName), []byte("not a directory"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	svc, err := New(context.Background(), Options{ConfigLocation: configPath})
+	svc, err := New(context.Background(), Options{ConfigLocation: path})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatal(err)
 	}
-	archiveBody, err := buildConfigArchive([]archiveEntry{
-		{Name: archiveConfigEntry, Body: []byte(validConfigYAML)},
-		{Name: archiveClashTemplateEntry, Body: []byte("new clash\n")},
-	}, time.Now())
+	archive, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: []byte(validConfigYAML)}, {Name: archiveClashTemplateEntry, Body: []byte("new clash\n")}}, time.Now())
 	if err != nil {
-		t.Fatalf("build archive: %v", err)
+		t.Fatal(err)
 	}
-
-	_, err = svc.ImportConfigArchive(context.Background(), archiveBody)
-	if !errors.Is(err, errtype.ErrTemplateFileNotWritable) {
-		t.Fatalf("template write error = %T %[1]v, want ErrTemplateFileNotWritable", err)
+	if _, err := svc.ImportConfigArchive(context.Background(), archive); err != nil {
+		t.Fatal(err)
 	}
-	if oldClash, err := os.ReadFile(existingClashPath); err != nil || string(oldClash) != "old clash\n" { // #nosec G304 -- path is built under t.TempDir in this test.
-		t.Fatalf("existing clash template = %q err=%v", oldClash, err)
+	if got, err := os.ReadFile(blocked); err != nil || string(got) != "legacy sentinel" { // #nosec G304 -- path is created under t.TempDir in this test.
+		t.Fatalf("legacy file changed: %q err=%v", got, err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != validConfigYAML { // #nosec G304 -- path is created under t.TempDir in this test.
+		t.Fatalf("config changed during import: %q err=%v", got, err)
 	}
 }
 
@@ -889,15 +885,6 @@ func readArchiveEntriesForTest(t *testing.T, body []byte) map[string]archiveEntr
 		}
 	}
 	return entries
-}
-
-func isImportedTemplatePath(path, configDir, filename string) bool {
-	if !filepath.IsAbs(path) {
-		return false
-	}
-	prefix := filepath.Join(configDir, configImportsDirName, "import-")
-	suffix := filepath.Join("templates", filename)
-	return strings.HasPrefix(path, prefix) && strings.HasSuffix(path, suffix)
 }
 
 func buildDirectoryArchiveForTest(t *testing.T, name string) []byte {

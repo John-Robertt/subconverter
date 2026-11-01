@@ -317,7 +317,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 - Clash Meta YAML
 - Surge conf
-- Loon conf
+- Loon lcf
 
 要求：
 

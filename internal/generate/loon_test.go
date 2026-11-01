@@ -43,7 +43,7 @@ func TestService_LoonEndToEnd(t *testing.T) {
 						t.Errorf("Loon output missing %q:\n%s", want, body)
 					}
 				}
-				if result.Filename != "loon.conf" || result.ContentType != "text/plain; charset=utf-8" {
+				if result.Filename != "loon.lcf" || result.ContentType != "text/plain; charset=utf-8" {
 					t.Fatalf("metadata=%+v", result)
 				}
 			}
@@ -59,7 +59,9 @@ func TestGenerate_LoonRequest(t *testing.T) {
 		want    string
 		invalid bool
 	}{
-		{"", false, "loon.conf", false}, {"custom", true, "custom.conf", false}, {"custom.conf", true, "custom.conf", false}, {"custom.yaml", true, "", true},
+		{"", false, "loon.lcf", false}, {"custom", true, "custom.lcf", false},
+		{"custom.lcf", true, "custom.lcf", false}, {"custom.LCF", true, "custom.LCF", false},
+		{"custom.conf", true, "", true}, {"custom.yaml", true, "", true}, {".lcf", true, "", true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ResolveFilename(tt.name, tt.present, "loon")
@@ -69,7 +71,7 @@ func TestGenerate_LoonRequest(t *testing.T) {
 		})
 	}
 	url, err := BuildGenerateURL("https://example.com", "loon", DefaultFilename("loon"), "secret", true)
-	if err != nil || !strings.Contains(url, "format=loon") || !strings.Contains(url, "filename=loon.conf") || !strings.Contains(url, "token=secret") {
+	if err != nil || !strings.Contains(url, "format=loon") || !strings.Contains(url, "filename=loon.lcf") || !strings.Contains(url, "token=secret") {
 		t.Fatalf("url=%q error=%v", url, err)
 	}
 }

@@ -9,15 +9,17 @@ export interface Toast {
   title: string;
   message?: string;
   persistent?: boolean;
+  scope?: string;
   action?: {
     label: string;
-    onClick: () => void;
+    onClick: () => void | boolean | Promise<void | boolean>;
   };
 }
 
 interface ToastContextValue {
   pushToast: (toast: Omit<Toast, "id">) => void;
   dismissToast: (id: number) => void;
+  clearToasts: (scope: string) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
@@ -28,20 +30,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const dismissToast = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
+  const clearToasts = useCallback((scope: string) => {
+    setToasts((current) => current.filter((toast) => toast.scope !== scope));
+  }, []);
 
   const pushToast = useCallback(
     (toast: Omit<Toast, "id">) => {
       const id = Date.now() + Math.floor(Math.random() * 1000);
       const nextToast = { ...toast, id };
-      setToasts((current) => [nextToast, ...current].slice(0, 5));
-      if (!toast.persistent && toast.kind === "success") {
-        window.setTimeout(() => dismissToast(id), 3600);
+      setToasts((current) => [nextToast, ...current.filter((item) => toast.scope ? item.scope !== toast.scope : item.title !== toast.title)].slice(0, 3));
+      if (!toast.persistent) {
+        window.setTimeout(() => dismissToast(id), toast.kind === "success" ? 3600 : 8000);
       }
     },
     [dismissToast]
   );
 
-  const value = useMemo(() => ({ pushToast, dismissToast }), [dismissToast, pushToast]);
+  const value = useMemo(() => ({ pushToast, dismissToast, clearToasts }), [dismissToast, pushToast, clearToasts]);
 
   return (
     <ToastContext.Provider value={value}>
@@ -59,9 +64,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   className="toast-action"
-                  onClick={() => {
-                    toast.action?.onClick();
-                    dismissToast(toast.id);
+                  onClick={async () => {
+                    try {
+                      if (await toast.action?.onClick() !== false) dismissToast(toast.id);
+                    } catch {
+                      // Keep the recovery action available when the request fails.
+                    }
                   }}
                 >
                   {toast.action.label}

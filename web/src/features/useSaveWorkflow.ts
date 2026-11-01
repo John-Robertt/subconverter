@@ -25,7 +25,7 @@ export function useSaveWorkflow() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const { pushToast } = useToast();
-  const { draft, baseRevision, replaceDraft, forceReadonly, resetDraft } = useConfigState();
+  const { draft, baseRevision, recordSavedDraft, replaceDraft, forceReadonly, resetDraft } = useConfigState();
 
   const reloadMutation = useMutation({
     mutationFn: reloadWithBackoff,
@@ -65,10 +65,10 @@ export function useSaveWorkflow() {
       return { saved, savedDraft: savingDraft };
     },
     onSuccess: async ({ saved, savedDraft }) => {
-      replaceDraft(savedDraft, saved.config_revision);
+      recordSavedDraft(savedDraft, saved.config_revision);
       await queryClient.invalidateQueries({ queryKey: queryKeys.config });
       await queryClient.invalidateQueries({ queryKey: queryKeys.status });
-      pushToast({
+      pushToast({ scope: "save",
         kind: "success",
         title: "草稿已写入 YAML 文件",
         message: "如需立即生效，请点击右上角\"热重载\"。"
@@ -78,7 +78,7 @@ export function useSaveWorkflow() {
       if (error instanceof ValidationFailedError) {
         navigate("/validate", { state: { validateResult: error.result } });
         const total = error.result.errors.length + error.result.warnings.length + error.result.infos.length;
-        pushToast({
+        pushToast({ scope: "save",
           kind: "warning",
           title: "保存被阻断：静态校验未通过",
           message: `发现 ${total} 个诊断项，已跳转到校验页查看详情。`
@@ -90,16 +90,16 @@ export function useSaveWorkflow() {
         if (error.code === "config_source_readonly") {
           forceReadonly();
         }
-        pushToast(buildSaveErrorToast(error));
+        pushToast({ ...buildSaveErrorToast(error), scope: "save" });
         return;
       }
 
       if (error instanceof Error) {
-        pushToast({ kind: "error", title: "保存未完成", message: error.message, persistent: true });
+        pushToast({ scope: "save", kind: "error", title: "保存未完成", message: error.message, persistent: true });
         return;
       }
 
-      pushToast({ kind: "error", title: "保存失败", message: "保存请求失败", persistent: true });
+      pushToast({ scope: "save", kind: "error", title: "保存失败", message: "保存请求失败", persistent: true });
     }
   });
 
@@ -107,10 +107,10 @@ export function useSaveWorkflow() {
     try {
       await reloadMutation.mutateAsync();
       await queryClient.invalidateQueries({ queryKey: queryKeys.status });
-      pushToast({ kind: "success", title: "RuntimeConfig 已重新加载" });
+      pushToast({ scope: "reload", kind: "success", title: "RuntimeConfig 已重新加载" });
     } catch (error) {
       const message = isApiError(error) ? `${error.status} ${error.code}: ${error.message}` : error instanceof Error ? error.message : "reload 失败";
-      pushToast({ kind: "error", title: "Reload 失败", message, persistent: true });
+      pushToast({ scope: "reload", kind: "error", title: "Reload 失败", message, persistent: true });
     }
   }
 
@@ -122,7 +122,7 @@ export function useSaveWorkflow() {
         throw error;
       }
 
-      pushToast({
+      pushToast({ scope: "reload",
         kind: "info",
         title: "Reload 正在执行",
         message: `${reloadRetryDelayMs / 1000} 秒后自动重试一次；如果仍失败，可稍后手动触发。`
@@ -142,7 +142,7 @@ export function useSaveWorkflow() {
         persistent: true,
         action: {
           label: "重新加载配置",
-          onClick: () => void reloadConfigFromServer()
+          onClick: reloadConfigFromServer
         }
       };
     }
@@ -188,12 +188,13 @@ export function useSaveWorkflow() {
       confirmLabel: "重新加载",
       danger: true
     });
-    if (!accepted) return;
+    if (!accepted) return false;
 
     const snapshot = await queryClient.fetchQuery({ queryKey: queryKeys.config, queryFn: api.config });
     replaceDraft(snapshot.config, snapshot.config_revision);
     await queryClient.invalidateQueries({ queryKey: queryKeys.status });
-    pushToast({ kind: "info", title: "已重新加载配置源内容" });
+    pushToast({ scope: "save", kind: "info", title: "已重新加载配置源内容" });
+    return true;
   }
 
   return {

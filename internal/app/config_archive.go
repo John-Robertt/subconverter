@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,9 +25,7 @@ const (
 	archiveConfigEntry        = "config.yaml"
 	archiveClashTemplateEntry = "templates/clash.yaml"
 	archiveSurgeTemplateEntry = "templates/surge.conf"
-	archiveLoonTemplateEntry  = "templates/loon.conf"
-
-	configImportsDirName = ".imports"
+	archiveLoonTemplateEntry  = "templates/loon.lcf"
 )
 
 type ConfigArchiveResult struct {
@@ -39,53 +35,51 @@ type ConfigArchiveResult struct {
 }
 
 func (s *Service) EffectiveConfigArchive(ctx context.Context) (*ConfigArchiveResult, error) {
-	raw, templates, err := s.effectiveArchiveSnapshot()
+	raw, err := s.EffectiveConfigYAML(ctx)
 	if err != nil {
 		return nil, err
 	}
-	// Inline managed bodies in the archive so it can be moved without the data directory.
+	return s.configArchive(ctx, raw)
+}
+
+func (s *Service) SavedConfigArchive(ctx context.Context) (*ConfigArchiveResult, error) {
+	raw, err := s.readConfigBytes(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	return s.configArchive(ctx, raw)
+}
+
+func (s *Service) configArchive(ctx context.Context, raw []byte) (*ConfigArchiveResult, error) {
 	cfg, err := parseConfigYAML(raw)
 	if err != nil {
 		return nil, err
 	}
-	managed := s.isManagedTemplate(templates.Clash, "clash") || s.isManagedTemplate(templates.Surge, "surge") || s.isManagedTemplate(templates.Loon, "loon")
-	for _, sub := range cfg.Sources.Subscriptions {
-		managed = managed || sub.ContentFile != ""
+	if err := s.restoreEditableContent(ctx, cfg); err != nil {
+		return nil, err
 	}
-	if managed {
-		if err := s.restoreEditableContent(ctx, cfg); err != nil {
-			return nil, err
+	entries := []archiveEntry{}
+	for _, entry := range archiveTemplates(cfg) {
+		var body []byte
+		if content, ok := cfg.Templates.Inline[entry.format]; ok {
+			body = []byte(content)
+		} else if *entry.location != "" {
+			body, err = fetch.LoadResource(ctx, *entry.location, s.fetcher)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			continue
 		}
-		raw, err = yaml.Marshal(cfg)
-		if err != nil {
-			return nil, err
-		}
-		templates = cfg.Templates
+		entries = append(entries, archiveEntry{Name: entry.name, Body: body})
+		*entry.location = entry.name
+		delete(cfg.Templates.Inline, entry.format)
 	}
-
-	entries := []archiveEntry{{Name: archiveConfigEntry, Body: raw}}
-	if templates.Clash != "" {
-		body, err := fetch.LoadResource(ctx, templates.Clash, s.fetcher)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, archiveEntry{Name: archiveClashTemplateEntry, Body: body})
+	raw, err = yaml.Marshal(cfg)
+	if err != nil {
+		return nil, err
 	}
-	if templates.Surge != "" {
-		body, err := fetch.LoadResource(ctx, templates.Surge, s.fetcher)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, archiveEntry{Name: archiveSurgeTemplateEntry, Body: body})
-	}
-
-	if templates.Loon != "" {
-		body, err := fetch.LoadResource(ctx, templates.Loon, s.fetcher)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, archiveEntry{Name: archiveLoonTemplateEntry, Body: body})
-	}
+	entries = append([]archiveEntry{{Name: archiveConfigEntry, Body: raw}}, entries...)
 
 	body, err := buildConfigArchive(entries, s.now())
 	if err != nil {
@@ -128,22 +122,14 @@ func (s *Service) ImportConfigArchive(_ context.Context, raw []byte) (*ImportCon
 		return nil, err
 	}
 
-	importedTemplates, err := s.writeImportedTemplates(entries)
-	if err != nil {
-		return nil, err
+	if cfg.Templates.Inline == nil {
+		cfg.Templates.Inline = make(map[string]string)
 	}
-	if importedTemplates.Clash != "" {
-		cfg.Templates.Clash = importedTemplates.Clash
-		delete(cfg.Templates.Inline, "clash")
-	}
-	if importedTemplates.Surge != "" {
-		cfg.Templates.Surge = importedTemplates.Surge
-		delete(cfg.Templates.Inline, "surge")
-	}
-
-	if importedTemplates.Loon != "" {
-		cfg.Templates.Loon = importedTemplates.Loon
-		delete(cfg.Templates.Inline, "loon")
+	for _, entry := range archiveTemplates(cfg) {
+		if body, ok := entries[entry.name]; ok {
+			cfg.Templates.Inline[entry.format] = string(body)
+			*entry.location = ""
+		}
 	}
 
 	configJSON, err := json.Marshal(cfg)
@@ -153,91 +139,17 @@ func (s *Service) ImportConfigArchive(_ context.Context, raw []byte) (*ImportCon
 	return &ImportConfigYAMLResult{Config: configJSON}, nil
 }
 
-func (s *Service) effectiveArchiveSnapshot() ([]byte, config.Templates, error) {
-	s.mu.RLock()
-	raw := append([]byte(nil), s.effectiveConfigYAML...)
-	var templates config.Templates
-	if s.runtimeCfg != nil {
-		templates = s.runtimeCfg.Templates()
-	}
-	s.mu.RUnlock()
-	if len(raw) == 0 {
-		return nil, config.Templates{}, newBadRequestError("effective_config_unavailable", "当前生效配置不可用")
-	}
-	return raw, templates, nil
+type archiveTemplate struct {
+	format, name string
+	location     *string
 }
 
-func (s *Service) writeImportedTemplates(entries map[string][]byte) (config.Templates, error) {
-	templateEntries := make([]archiveEntry, 0, 3)
-	if body, ok := entries[archiveClashTemplateEntry]; ok {
-		templateEntries = append(templateEntries, archiveEntry{Name: "clash.yaml", Body: body})
+func archiveTemplates(cfg *config.Config) []archiveTemplate {
+	return []archiveTemplate{
+		{"clash", archiveClashTemplateEntry, &cfg.Templates.Clash},
+		{"surge", archiveSurgeTemplateEntry, &cfg.Templates.Surge},
+		{"loon", archiveLoonTemplateEntry, &cfg.Templates.Loon},
 	}
-	if body, ok := entries[archiveSurgeTemplateEntry]; ok {
-		templateEntries = append(templateEntries, archiveEntry{Name: "surge.conf", Body: body})
-	}
-	if body, ok := entries[archiveLoonTemplateEntry]; ok {
-		templateEntries = append(templateEntries, archiveEntry{Name: "loon.conf", Body: body})
-	}
-	if len(templateEntries) == 0 {
-		return config.Templates{}, nil
-	}
-
-	configDir, err := filepath.Abs(filepath.Dir(filepath.Clean(s.configLocation)))
-	if err != nil {
-		return config.Templates{}, fmt.Errorf("%w: %v", errtype.ErrTemplateFileNotWritable, err)
-	}
-	importsDir := filepath.Join(configDir, configImportsDirName)
-	if err := os.MkdirAll(importsDir, 0o700); err != nil {
-		return config.Templates{}, fmt.Errorf("%w: %v", errtype.ErrTemplateFileNotWritable, err)
-	}
-	stagingDir, err := os.MkdirTemp(importsDir, ".staging-*")
-	if err != nil {
-		return config.Templates{}, fmt.Errorf("%w: %v", errtype.ErrTemplateFileNotWritable, err)
-	}
-	published := false
-	defer func() {
-		if !published {
-			_ = os.RemoveAll(stagingDir)
-		}
-	}()
-
-	stagingTemplateDir := filepath.Join(stagingDir, "templates")
-	if err := os.Mkdir(stagingTemplateDir, 0o700); err != nil {
-		return config.Templates{}, fmt.Errorf("%w: %v", errtype.ErrTemplateFileNotWritable, err)
-	}
-	for _, entry := range templateEntries {
-		if err := writeImportedTemplateFile(filepath.Join(stagingTemplateDir, entry.Name), entry.Body); err != nil {
-			return config.Templates{}, err
-		}
-	}
-
-	importID := strings.TrimPrefix(filepath.Base(stagingDir), ".staging-")
-	finalDir := filepath.Join(importsDir, "import-"+importID)
-	if err := os.Rename(stagingDir, finalDir); err != nil {
-		return config.Templates{}, fmt.Errorf("%w: %v", errtype.ErrTemplateFileNotWritable, err)
-	}
-	published = true
-	syncDirBestEffort(importsDir)
-
-	imported := config.Templates{}
-	if _, ok := entries[archiveClashTemplateEntry]; ok {
-		imported.Clash = filepath.Join(finalDir, "templates", "clash.yaml")
-	}
-	if _, ok := entries[archiveSurgeTemplateEntry]; ok {
-		imported.Surge = filepath.Join(finalDir, "templates", "surge.conf")
-	}
-	if _, ok := entries[archiveLoonTemplateEntry]; ok {
-		imported.Loon = filepath.Join(finalDir, "templates", "loon.conf")
-	}
-	return imported, nil
-}
-
-func writeImportedTemplateFile(path string, body []byte) error {
-	if err := os.WriteFile(path, body, 0o600); err != nil { // #nosec G304 -- path is under a service-managed import staging directory.
-		return fmt.Errorf("%w: %v", errtype.ErrTemplateFileNotWritable, err)
-	}
-	syncDirBestEffort(filepath.Dir(path))
-	return nil
 }
 
 type archiveEntry struct {

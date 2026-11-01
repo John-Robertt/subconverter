@@ -1,14 +1,16 @@
 import { useMutation } from "@tanstack/react-query";
 import { Plus, Search, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import type { Diagnostic, GroupConfig, OrderedEntry, PreviewGroup } from "../api/types";
+import { useEffect, useState } from "react";
+import type { Config, Diagnostic, GroupConfig, OrderedEntry, PreviewGroup } from "../api/types";
 import { api } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import { DiagnosticList } from "../components/Diagnostics";
 import { SortableList } from "../components/SortableList";
-import { Button, Chip, EmptyState, ErrorState, Field, IconButton, LoadingState, RailPanel, SelectInput, SplitWorkbench, StatCard, TextInput } from "../components/ui";
+import { Button, Chip, EmptyState, ErrorState, Field, IconButton, LoadingState, RailPanel, SplitWorkbench, TextInput } from "../components/ui";
 import { focusClassName, getValidateResult, useDiagnosticPointer } from "../features/diagnostics";
 import { useConfigState } from "../state/config";
+import { isConfigChanged } from "../features/configModel";
+import { useRegexValidation } from "../features/useRegexValidation";
 import { useConfirm } from "../state/confirm";
 
 export function GroupsPage() {
@@ -19,23 +21,13 @@ export function GroupsPage() {
   const groups = draft?.groups ?? [];
   const activeIndex = groups.length === 0 ? -1 : Math.min(selectedIndex, groups.length - 1);
   const activeGroup = activeIndex >= 0 ? groups[activeIndex] : undefined;
-  const regexState = useMemo(() => {
-    const match = activeGroup?.value.match ?? "";
-    if (!match) return { valid: true, message: "" };
-    try {
-      new RegExp(match);
-      return { valid: true, message: "" };
-    } catch (error) {
-      return { valid: false, message: error instanceof Error ? error.message : "正则语法错误" };
-    }
-  }, [activeGroup?.value.match]);
-  const previewMutation = useMutation({
-    mutationFn: () => {
-      if (!draft) throw new Error("配置尚未加载");
-      return api.previewGroupsDraft(draft);
-    }
-  });
-
+  const regexState = useRegexValidation(draft, `/config/groups/${activeIndex}/value/match`, activeGroup?.value.match ?? "");
+  const previewMutation = useMutation({ mutationFn: (config: Config) => api.previewGroupsDraft(config) });
+  const [renameOrigin, setRenameOrigin] = useState<string | null>(null);
+  const references = renameOrigin && renameOrigin !== activeGroup?.key ? [
+    ...(draft?.routing ?? []).filter((entry) => entry.value.includes(renameOrigin)).map((entry) => `服务组 ${entry.key}`),
+    ...(draft?.sources?.custom_proxies ?? []).filter((proxy) => proxy.relay_through?.type === "group" && proxy.relay_through.name === renameOrigin).map((proxy) => `链式代理 ${proxy.name}`)
+  ] : [];
   useEffect(() => {
     const match = activePointer?.match(/^\/config\/groups\/(\d+)/);
     if (match) {
@@ -45,6 +37,26 @@ export function GroupsPage() {
 
   function setGroups(nextGroups: OrderedEntry<GroupConfig>[]) {
     updateDraft((config) => ({ ...config, groups: nextGroups }));
+  }
+
+  function reorderGroups(nextGroups: OrderedEntry<GroupConfig>[]) {
+    if (activeGroup) setSelectedIndex(nextGroups.indexOf(activeGroup));
+    setGroups(nextGroups);
+  }
+
+  function selectGroup(index: number) { setSelectedIndex(index); setRenameOrigin(null); }
+
+  function updateReferences() {
+    if (!renameOrigin || !activeGroup?.key.trim()) return;
+    const name = activeGroup.key;
+    updateDraft((config) => ({
+      ...config,
+      routing: config.routing?.map((entry) => ({ ...entry, value: entry.value.map((member) => member === renameOrigin ? name : member) })),
+      sources: { ...config.sources, custom_proxies: config.sources?.custom_proxies?.map((proxy) =>
+        proxy.relay_through?.type === "group" && proxy.relay_through.name === renameOrigin
+          ? { ...proxy, relay_through: { ...proxy.relay_through, name } } : proxy) }
+    }));
+    setRenameOrigin(null);
   }
 
   function patchGroup(index: number, patch: Partial<OrderedEntry<GroupConfig>>) {
@@ -69,6 +81,7 @@ export function GroupsPage() {
   }
 
   const preview = previewMutation.data;
+  const stale = Boolean(preview && isConfigChanged(draft, previewMutation.variables));
   const previewDiagnostics = getValidateResult(previewMutation.error);
   const activePreviewGroup = preview?.node_groups.find((group) => group.name === activeGroup?.key);
 
@@ -76,6 +89,7 @@ export function GroupsPage() {
     <SplitWorkbench
       rail={
         <RailPanel eyebrow="Preview" title="草稿分组预览">
+          {stale ? <p className="info-panel" role="status">草稿已修改，以下是上次预览结果，请重新预览。</p> : null}
           {previewMutation.isPending ? <LoadingState message="正在拉取订阅并计算草稿分组" /> : null}
           {previewMutation.error ? (
             previewDiagnostics ? (
@@ -100,14 +114,14 @@ export function GroupsPage() {
               <PreviewGroupList title="服务组" groups={preview.service_groups} />
             </div>
           ) : (
-            !previewMutation.isPending && <EmptyState title="尚未运行分组预览" message="点击草稿分组预览后，这里会展示 node_groups / chained_groups / service_groups。" />
+            !previewMutation.isPending && !previewMutation.error && <EmptyState title="尚未运行分组预览" message="点击草稿分组预览后，这里会展示 node_groups / chained_groups / service_groups。" />
           )}
         </RailPanel>
       }
     >
       <div className="page-stack">
         <div className="group-toolbar">
-          <Button variant="secondary" icon={<Search size={16} aria-hidden="true" />} loading={previewMutation.isPending} disabled={!draft} onClick={() => previewMutation.mutate()}>
+          <Button variant="secondary" icon={<Search size={16} aria-hidden="true" />} loading={previewMutation.isPending} disabled={!draft || regexState.pending || regexState.invalid} onClick={() => draft && previewMutation.mutate(draft)}>
             草稿分组预览
           </Button>
           <span>共 {groups.length} 个节点组 · 拖拽调整顺序</span>
@@ -127,14 +141,14 @@ export function GroupsPage() {
               items={groups}
               getId={(item, index) => `${item.key || "group"}-${index}`}
               disabled={isReadonly}
-              onReorder={setGroups}
+              onReorder={reorderGroups}
               renderItem={(group, index, handle) => (
                 <div
                   className={focusClassName(activePointer, [`/config/groups/${index}`], index === activeIndex ? "group-pill active" : "group-pill")}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setSelectedIndex(index)}
-                  onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && setSelectedIndex(index)}
+                  onClick={() => selectGroup(index)}
+                  onKeyDown={(event) => event.target === event.currentTarget && (event.key === "Enter" || event.key === " ") && selectGroup(index)}
                 >
                   {handle}
                   <span>{group.key || `节点组 #${index + 1}`}</span>
@@ -161,12 +175,17 @@ export function GroupsPage() {
               </IconButton>
             </div>
             <div className="form-grid two">
+              <div>
               <Field label="分组名称" hint="支持 emoji 前缀">
-                <TextInput value={activeGroup.key} disabled={isReadonly} onChange={(event) => patchGroup(activeIndex, { key: event.target.value })} />
+                <TextInput data-config-pointer={`/config/groups/${activeIndex}/key`} value={activeGroup.key} disabled={isReadonly} onChange={(event) => { setRenameOrigin((current) => current ?? activeGroup.key); patchGroup(activeIndex, { key: event.target.value }); }} />
               </Field>
-              <Field label="匹配正则" hint="本地校验语法；点击预览才会拉取订阅。" error={regexState.valid ? undefined : regexState.message}>
+                {references.length ? <span className="field-error" role="alert">{references.join("、")} 仍引用「{renameOrigin}」，请同步修改引用后再保存。</span> : null}
+                {references.length ? <Button disabled={isReadonly || !activeGroup.key.trim()} onClick={updateReferences}>同步修改引用</Button> : null}
+              </div>
+              <Field label="匹配正则" hint={regexState.pending ? "正在检查正则…" : "使用后端 Go 正则语法检查；点击预览才会拉取订阅。"} error={regexState.message}>
                 <TextInput
                   className="text-input mono-input"
+                  data-config-pointer={`/config/groups/${activeIndex}/value/match`}
                   value={activeGroup.value.match}
                   disabled={isReadonly}
                   onChange={(event) => patchGroup(activeIndex, { value: { ...activeGroup.value, match: event.target.value } })}

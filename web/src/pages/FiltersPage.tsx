@@ -1,6 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { useMemo } from "react";
+import type { Config } from "../api/types";
+import { isConfigChanged } from "../features/configModel";
+import { useRegexValidation } from "../features/useRegexValidation";
 import { api } from "../api/client";
 import { getErrorMessage } from "../api/errors";
 import { Button, Chip, EmptyState, ErrorState, Field, LoadingState, RailPanel, SplitWorkbench, TextInput } from "../components/ui";
@@ -19,23 +21,13 @@ export function FiltersPage() {
   const { draft, updateDraft, isReadonly } = useConfigState();
   const activePointer = useDiagnosticPointer();
   const exclude = draft?.filters?.exclude ?? "";
-  const regexState = useMemo(() => {
-    if (!exclude) return { valid: true, message: "" };
-    try {
-      new RegExp(exclude);
-      return { valid: true, message: "" };
-    } catch (error) {
-      return { valid: false, message: error instanceof Error ? error.message : "正则语法错误" };
-    }
-  }, [exclude]);
+  const regexState = useRegexValidation(draft, "/config/filters/exclude", exclude);
   const previewMutation = useMutation({
-    mutationFn: () => {
-      if (!draft) throw new Error("配置尚未加载");
-      return api.previewNodesDraft(draft);
-    }
+    mutationFn: (config: Config) => api.previewNodesDraft(config)
   });
 
   const preview = previewMutation.data;
+  const stale = Boolean(preview && isConfigChanged(draft, previewMutation.variables));
   const filtered = preview?.filtered_count ?? preview?.nodes.filter((node) => node.filtered).length ?? 0;
   const total = preview?.total ?? preview?.nodes.length ?? 0;
   const active = preview?.active_count ?? Math.max(0, total - filtered);
@@ -54,6 +46,7 @@ export function FiltersPage() {
     <SplitWorkbench
       rail={
         <RailPanel eyebrow="Preview" title="草稿节点预览">
+          {stale ? <p className="info-panel" role="status">草稿已修改，以下是上次预览结果，请重新预览。</p> : null}
           {previewMutation.isPending ? <LoadingState message="正在拉取订阅并应用草稿过滤器" /> : null}
           {previewMutation.error ? <ErrorState message={getErrorMessage(previewMutation.error)} /> : null}
           {preview ? (
@@ -66,14 +59,14 @@ export function FiltersPage() {
               ))}
             </div>
           ) : (
-            !previewMutation.isPending && <EmptyState title="尚未运行预览" message="点击草稿节点预览后，这里会展示后端返回的 active / filtered 节点。" />
+            !previewMutation.isPending && !previewMutation.error && <EmptyState title="尚未运行预览" message="点击草稿节点预览后，这里会展示后端返回的 active / filtered 节点。" />
           )}
         </RailPanel>
       }
     >
       <div className="page-stack">
         <section className={focusClassName(activePointer, ["/config/filters"], "content-panel editor-panel")}>
-          <div className="section-heading row">
+          <div className="section-heading row filter-rule-heading">
             <div>
               <h3>排除规则</h3>
               <p>用正则匹配会被剔除的节点名，比如流量信息、官网、套餐到期等占位条目。</p>
@@ -82,16 +75,17 @@ export function FiltersPage() {
               variant="secondary"
               icon={<Search size={16} aria-hidden="true" />}
               loading={previewMutation.isPending}
-              disabled={!draft}
-              onClick={() => previewMutation.mutate()}
+              disabled={!draft || regexState.pending || regexState.invalid}
+              onClick={() => draft && previewMutation.mutate(draft)}
             >
               草稿节点预览
             </Button>
           </div>
 
-          <Field label="exclude 正则" hint="本地校验正则语法；点击预览才会实际拉取订阅来源。" error={regexState.valid ? undefined : regexState.message}>
+          <Field label="exclude 正则" hint={regexState.pending ? "正在检查正则…" : "使用后端 Go 正则语法检查；点击预览才会拉取订阅。"} error={regexState.message}>
             <TextInput
               className="text-input mono-input"
+              data-config-pointer="/config/filters/exclude"
               value={exclude}
               disabled={isReadonly}
               onChange={(event) => updateDraft((config) => ({ ...config, filters: { ...config.filters, exclude: event.target.value } }))}

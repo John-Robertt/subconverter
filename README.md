@@ -2,20 +2,20 @@
 
 读取节点来源与 YAML 路由配置，生成 Clash Meta、Surge 和 Loon 配置的单二进制 HTTP 服务。
 
-SubConverter 根据 YAML 中的来源、过滤、分组和路由声明，拉取订阅、Snell 和 VLESS 节点，生成 Clash Meta YAML、Surge conf 或 Loon conf。订阅支持 TXT、Clash YAML、Surge CONF 和 Loon；TXT 支持 SS 与 AnyTLS 节点。生成时会先过滤目标格式不支持的节点，再整理组和路由，例如 Snell 仅进入 Surge，VLESS 进入 Clash 及支持相应传输的 Loon。
+SubConverter 根据 YAML 中的来源、过滤、分组和路由声明，拉取订阅、Snell 和 VLESS 节点，生成 Clash Meta YAML、Surge conf 或 Loon lcf。订阅支持 TXT、Clash YAML、Surge CONF 和 Loon；TXT 支持 SS 与 AnyTLS 节点。生成时会先过滤目标格式不支持的节点，再整理组和路由，例如 Snell 仅进入 Surge，VLESS 进入 Clash 及支持相应传输的 Loon。
 
 Loon 订阅沿用现有来源配置，只提取 `[Proxy]` 节点；地区组按 `groups.match` 筛选节点名称，服务组和规则仍由本项目 YAML 生成。例如：
 
 ```yaml
 sources:
   subscriptions:
-    - url: "https://example.com/subscription.conf"
+    - url: "https://example.com/subscription.lcf"
       format: loon
 templates:
-  loon: "configs/base_loon.conf"
+  loon: "configs/base_loon.lcf"
 ```
 
-通过 `/generate?format=loon` 下载，默认文件名 `loon.conf`。`format: loon` 用于区分同为 `.conf` 的 Surge/Loon 订阅；完整配置示例见 [`configs/base_config.yaml`](configs/base_config.yaml)。各客户端的协议与规则优先级差异见 [渲染设计](docs/design/rendering.md#loon)。
+通过 `/generate?format=loon` 下载，默认文件名 `loon.lcf`。`.lcf` 订阅可自动识别为 Loon，也可通过 `format: loon` 明确指定解析格式；完整配置示例见 [`configs/base_config.yaml`](configs/base_config.yaml)。各客户端的协议与规则优先级差异见 [渲染设计](docs/design/rendering.md#loon)。
 
 ## 功能特性
 
@@ -30,7 +30,7 @@ templates:
 - **服务路由** — 为每个服务定义出口偏好顺序（Telegram、Netflix、YouTube 等），`@auto` 自动补充节点组、包含 `@all` 的服务组和 `DIRECT`，`REJECT` 需手动声明
 - **远程规则集** — 将规则集 URL 绑定到路由组（URL 透传，由客户端运行时拉取）
 - **内联规则** — 直接编写路由规则，与远程规则集并用
-- **三种格式输出** — 同一份配置生成 Clash Meta YAML、Surge conf 和 Loon conf；格式不支持的协议按能力差异处理
+- **三种格式输出** — 同一份配置生成 Clash Meta YAML、Surge conf 和 Loon lcf；格式不支持的协议按能力差异处理
 - **Web 管理后台** — 通过同源 SPA 管理配置、预览节点/分组、生成订阅链接
 - **单镜像部署** — `pnpm web:embed` 生成并同步 Web 嵌入产物后，Docker 构建 Go 二进制并直接托管 Web、`/api/*`、`/generate` 和 `/healthz`
 - **模板合并** — 将生成内容注入底版模板，保留 DNS/TUN 等通用设置
@@ -241,8 +241,8 @@ curl "http://localhost:8080/healthz"
 生成代理配置文件。
 
 - **查询参数**：`format`（必填）— `clash`、`surge` 或 `loon`；`token`（当服务端配置 `-access-token` / `SUBCONVERTER_TOKEN` 时必填）；`filename`（可选，自定义下载文件名）
-- **默认文件名**：`clash.yaml`、`surge.conf`、`loon.conf`；未显式传入 `filename` 时也会作为下载文件名返回
-- **文件名约束**：`filename` 仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式；空值、空主体（如 `.yaml`）、路径字符、空格和非 ASCII 值都会返回 `400`
+- **默认文件名**：`clash.yaml`、`surge.conf`、`loon.lcf`；未显式传入 `filename` 时也会作为下载文件名返回
+- **文件名约束**：`filename` 仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf` / `.lcf`，已有扩展名必须匹配目标格式；空值、空主体（如 `.yaml`）、路径字符、空格和非 ASCII 值都会返回 `400`
 - **成功**：返回生成的配置文本
 - **响应头**：返回 `Content-Disposition: attachment; ...`，浏览器和下载器会使用最终文件名
 - **错误响应**：返回中文纯文本；已分类错误会直接说明问题，未分类内部错误统一返回 `内部错误`
@@ -346,7 +346,7 @@ LoadConfig --> Prepare (produces RuntimeConfig)
 
 请求期:
 Build(Source --> Filter --> Group --> Route --> ValidateGraph)
-  --> Target --> Render --> Clash Meta / Surge / Loon conf
+  --> Target --> Render --> Clash Meta / Surge / Loon lcf
 ```
 
 生产镜像在构建期嵌入 Web 静态资源，运行时由同一个 Go 进程托管 SPA、Admin API、订阅生成和健康检查。启动期通过 `Prepare` 完成静态校验、正则编译、URL 解析和 `@auto` 展开，产出不可变的 `RuntimeConfig`。请求期管道在此基础上拉取订阅、构建格式无关的中间表示（`model.Pipeline`），再由 Target/Render 投影为目标格式输出。
@@ -374,7 +374,7 @@ subconverter/
     model/               格式无关的中间表示
     pipeline/            处理阶段：source、filter、group、route、validate
     proxyparse/          自定义代理 URL 解析
-    render/              Clash Meta YAML、Surge conf 和 Loon conf 渲染器
+    render/              Clash Meta YAML、Surge conf 和 Loon lcf 渲染器
     server/              HTTP 处理器和错误映射
     ssparse/             Shadowsocks URI 解析
     target/              Clash / Surge 目标格式投影与级联过滤

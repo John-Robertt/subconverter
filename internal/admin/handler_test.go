@@ -90,6 +90,10 @@ func TestAuthSetupAndProtectedConfig(t *testing.T) {
 	if noCookieArchive.Code != http.StatusUnauthorized || !strings.Contains(noCookieArchive.Body.String(), "auth_required") {
 		t.Fatalf("no-cookie archive status = %d body = %s", noCookieArchive.Code, noCookieArchive.Body.String())
 	}
+	noCookieSavedArchive := serve(handler, http.MethodGet, "/api/config/saved.zip", "", nil)
+	if noCookieSavedArchive.Code != http.StatusUnauthorized {
+		t.Fatalf("no-cookie saved archive status = %d, want 401", noCookieSavedArchive.Code)
+	}
 	bearerOnly := serve(handler, http.MethodGet, "/api/config", "", map[string]string{"Authorization": "Bearer subscription-token"})
 	if bearerOnly.Code != http.StatusUnauthorized {
 		t.Fatalf("bearer-only status = %d body = %s", bearerOnly.Code, bearerOnly.Body.String())
@@ -186,11 +190,15 @@ func TestAuthSetupAndProtectedConfig(t *testing.T) {
 		t.Fatalf("import archive status = %d body = %s", importedArchive.Code, importedArchive.Body.String())
 	}
 	importedArchiveConfig := adminImportedArchiveConfig(t, importedArchive.Body.Bytes())
-	if !strings.HasPrefix(importedArchiveConfig.Templates.Clash, filepath.Join(dir, ".imports", "import-")) {
-		t.Fatalf("imported clash template path = %q", importedArchiveConfig.Templates.Clash)
+	if importedArchiveConfig.Templates.Clash != "" || importedArchiveConfig.Templates.Inline["clash"] != "mixed-port: 7890\n" {
+		t.Fatalf("imported templates = %+v", importedArchiveConfig.Templates)
 	}
-	if got, err := os.ReadFile(importedArchiveConfig.Templates.Clash); err != nil || string(got) != "mixed-port: 7890\n" {
-		t.Fatalf("imported clash template = %q err=%v", got, err)
+	if _, err := os.Stat(filepath.Join(dir, ".imports")); !os.IsNotExist(err) {
+		t.Fatalf("import created hidden directory: %v", err)
+	}
+	savedArchive := serve(handler, http.MethodGet, "/api/config/saved.zip", "", map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value})
+	if savedArchive.Code != http.StatusOK || savedArchive.Header().Get("Content-Type") != "application/zip" {
+		t.Fatalf("saved archive status=%d body=%s", savedArchive.Code, savedArchive.Body.String())
 	}
 	if got, err := os.ReadFile(filepath.Join(dir, "templates", "clash.yaml")); err != nil || string(got) != "old clash\n" { // #nosec G304 -- path is built under t.TempDir in this test.
 		t.Fatalf("existing clash template = %q err=%v", got, err)
@@ -201,8 +209,8 @@ func TestAuthSetupAndProtectedConfig(t *testing.T) {
 	}
 }
 
-// T-ADM-024: ZIP import template write failures return the template-specific conflict code
-func TestConfigArchiveImportTemplateWriteFailureReturnsTemplateError(t *testing.T) {
+// T-ADM-024: ZIP import keeps draft bodies in memory even if the obsolete import path is blocked.
+func TestConfigArchiveImportDoesNotWriteTemplateFiles(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(configPath, []byte(appTestConfigYAML), 0o600); err != nil {
@@ -238,8 +246,8 @@ func TestConfigArchiveImportTemplateWriteFailureReturnsTemplateError(t *testing.
 	})
 
 	resp := serve(handler, http.MethodPost, "/api/config/import", string(archiveBody), headers)
-	if resp.Code != http.StatusConflict || !strings.Contains(resp.Body.String(), "template_file_not_writable") {
-		t.Fatalf("template write failure status = %d body = %s", resp.Code, resp.Body.String())
+	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), `"inline"`) {
+		t.Fatalf("draft import status = %d body = %s", resp.Code, resp.Body.String())
 	}
 }
 
@@ -304,7 +312,7 @@ func TestM7EndpointsRequireSessionAndReturnExpectedShapes(t *testing.T) {
 		}
 	}
 	loonLink := serve(handler, http.MethodGet, "/api/generate/link?format=loon", "", headers)
-	if loonLink.Code != http.StatusOK || !strings.Contains(loonLink.Body.String(), "loon.conf") {
+	if loonLink.Code != http.StatusOK || !strings.Contains(loonLink.Body.String(), "loon.lcf") {
 		t.Fatalf("Loon link: status=%d body=%s", loonLink.Code, loonLink.Body.String())
 	}
 
@@ -473,16 +481,18 @@ func adminArchiveEntries(t *testing.T, body []byte) map[string][]byte {
 
 func adminImportedArchiveConfig(t *testing.T, body []byte) struct {
 	Templates struct {
-		Clash string `json:"clash"`
-		Surge string `json:"surge"`
+		Clash  string            `json:"clash"`
+		Inline map[string]string `json:"inline"`
+		Surge  string            `json:"surge"`
 	} `json:"templates"`
 } {
 	t.Helper()
 	var envelope struct {
 		Config struct {
 			Templates struct {
-				Clash string `json:"clash"`
-				Surge string `json:"surge"`
+				Clash  string            `json:"clash"`
+				Inline map[string]string `json:"inline"`
+				Surge  string            `json:"surge"`
 			} `json:"templates"`
 		} `json:"config"`
 	}

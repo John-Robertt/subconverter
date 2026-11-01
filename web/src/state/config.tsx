@@ -19,7 +19,9 @@ interface ConfigContextValue {
   configError: unknown;
   statusError: unknown;
   updateDraft: (updater: (draft: Config) => Config) => void;
+  getDraft: () => Config | undefined;
   replaceDraft: (config: Config, revision?: string) => void;
+  recordSavedDraft: (config: Config, revision: string) => void;
   resetDraft: () => void;
   forceReadonly: () => void;
 }
@@ -33,6 +35,8 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   const [baseRevision, setBaseRevision] = useState<string | undefined>();
   const [forcedReadonly, setForcedReadonly] = useState(false);
   const baseConfigRef = useRef<Config | undefined>(undefined);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
   const statusQuery = useQuery({
     queryKey: queryKeys.status,
@@ -49,20 +53,17 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     if (!configQuery.data) return;
     const nextConfig = ensureConfig(configQuery.data.config);
     const previousBase = baseConfigRef.current;
+    if (draftRef.current && previousBase && isConfigChanged(draftRef.current, previousBase)) return;
     baseConfigRef.current = nextConfig;
     setBaseConfig(nextConfig);
     setBaseRevision(configQuery.data.config_revision);
-    setDraft((current) => {
-      if (current && previousBase && isConfigChanged(current, previousBase)) {
-        return current;
-      }
-      return cloneConfig(nextConfig);
-    });
+    setDraft(cloneConfig(nextConfig));
   }, [configQuery.data]);
 
   const updateDraft = useCallback((updater: (draft: Config) => Config) => {
     setDraft((current) => ensureConfig(updater(ensureConfig(current))));
   }, []);
+  const getDraft = useCallback(() => draftRef.current, []);
 
   const replaceDraft = useCallback(
     (config: Config, revision?: string) => {
@@ -86,7 +87,24 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     }
   }, [baseConfig]);
 
+  const recordSavedDraft = useCallback((config: Config, revision: string) => {
+    const saved = ensureConfig(config);
+    baseConfigRef.current = saved;
+    setBaseConfig(saved);
+    setBaseRevision(revision);
+    // Advancing the saved baseline leaves any newer draft edits intact.
+  }, []);
+
   const isDraftDirty = isConfigChanged(draft, baseConfig);
+  useEffect(() => {
+    if (!isDraftDirty) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [isDraftDirty]);
   const status = statusQuery.data;
   const isReadonly = forcedReadonly || status?.capabilities.config_write === false || status?.config_source.writable === false;
   const externalRevisionChanged = Boolean(isDraftDirty && baseRevision && status?.config_revision && status.config_revision !== baseRevision);
@@ -106,7 +124,9 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       configError: configQuery.error,
       statusError: statusQuery.error,
       updateDraft,
+      getDraft,
       replaceDraft,
+      recordSavedDraft,
       resetDraft,
       forceReadonly: () => setForcedReadonly(true)
     }),
@@ -123,7 +143,9 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       statusQuery.error,
       statusQuery.isLoading,
       updateDraft,
+      getDraft,
       replaceDraft,
+      recordSavedDraft,
       resetDraft
     ]
   );

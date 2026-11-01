@@ -65,8 +65,8 @@ func TestApp_InlineSaveReloadArchive(t *testing.T) {
 	if strings.Contains(string(entries[archiveConfigEntry]), svc.dataDir) {
 		t.Fatal("archive retained machine-specific managed file references")
 	}
-	if len(entries) != 1 {
-		t.Fatalf("inline content should be stored only in config.yaml: entries=%d", len(entries))
+	if len(entries) != 2 || string(entries[archiveLoonTemplateEntry]) != cfg.Templates.Inline["loon"] {
+		t.Fatalf("archive should include the portable template: entries=%v", entries)
 	}
 	imported, err := svc.ImportConfigArchive(ctx, archive.Body)
 	if err != nil {
@@ -92,11 +92,8 @@ func TestApp_InlineSaveReloadArchive(t *testing.T) {
 	if err := json.Unmarshal(imported.Config, &back); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := back.Templates.Inline["loon"]; ok {
-		t.Fatal("packaged template did not clear inline body")
-	}
-	if back.Templates.Loon == "" {
-		t.Fatal("packaged template path missing")
+	if back.Templates.Inline["loon"] != "[General]\ndns-server = 1.1.1.1" || back.Templates.Loon != "" {
+		t.Fatalf("packaged template did not replace draft body: %+v", back.Templates)
 	}
 }
 

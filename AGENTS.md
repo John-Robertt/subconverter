@@ -298,4 +298,4 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 ### Loon 输入与输出
 
-Loon 订阅仍是 `KindSubscription`，仅提取 `[Proxy]`，不导入供应商组、规则、Host 或通用设置。`.conf` 默认仍按 Surge 识别，Loon 使用显式 `sources.subscriptions[].format: loon`；识别优先级以 `docs/design/config-schema.md` 为准。`templates.loon` 提供底版，分组按现有 `groups.match` 筛选名称。链路与辅助出口名由 Target 分配，渲染器只序列化；客户端规则优先级以 `docs/design/rendering.md` 为准。
+Loon 订阅仍是 `KindSubscription`，仅提取 `[Proxy]`，不导入供应商组、规则、Host 或通用设置。`.lcf` 默认按 Loon 识别，`.conf` 默认仍按 Surge 识别；也可显式指定 `sources.subscriptions[].format: loon`；识别优先级以 `docs/design/config-schema.md` 为准。`templates.loon` 提供底版，分组按现有 `groups.match` 筛选名称。链路与辅助出口名由 Target 分配，渲染器只序列化；客户端规则优先级以 `docs/design/rendering.md` 为准。
