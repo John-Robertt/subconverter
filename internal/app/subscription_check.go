@@ -12,9 +12,10 @@ import (
 )
 
 type CheckSubscriptionInput struct {
-	Location string `json:"location,omitempty"`
-	Content  string `json:"content,omitempty"`
-	Format   string `json:"format,omitempty"`
+	Location       string `json:"location,omitempty"`
+	Content        string `json:"content,omitempty"`
+	SourceLocation string `json:"source_location,omitempty"`
+	Format         string `json:"format,omitempty"`
 }
 
 type CheckSubscriptionResult struct {
@@ -38,7 +39,11 @@ func (s *Service) CheckSubscription(ctx context.Context, input CheckSubscription
 		return nil, newBadRequestError("invalid_request", "订阅格式无效")
 	}
 	body := []byte(input.Content)
-	inline := input.Location == "" || !isRemoteConfig(input.Location)
+	origin := input.Location
+	if origin == "" {
+		origin = strings.TrimSpace(input.SourceLocation)
+	}
+	inline := origin == "" || !isRemoteConfig(origin)
 	if input.Location != "" {
 		var err error
 		body, err = fetch.LoadResource(ctx, input.Location, s.fetcher)
@@ -63,7 +68,7 @@ func (s *Service) CheckSubscription(ctx context.Context, input CheckSubscription
 	if !utf8.Valid(body) || strings.ContainsRune(string(body), '\x00') {
 		return nil, newBadRequestError(string(errtype.CodeFetchSubscriptionFormatInvalid), "订阅必须为 UTF-8 文本")
 	}
-	inspection, err := pipeline.InspectSubscription(input.Location, body, input.Format, inline)
+	inspection, err := pipeline.InspectSubscription(origin, body, input.Format, inline)
 	if err != nil {
 		var parseErr *errtype.FetchError
 		if errors.As(err, &parseErr) {

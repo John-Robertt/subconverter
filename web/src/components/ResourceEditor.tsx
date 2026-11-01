@@ -1,73 +1,58 @@
-import { useEffect, useRef, useState } from "react";
-import { api } from "../api/client";
-import { Button, Field, SelectInput, TextArea, TextInput } from "./ui";
+import { useRef, useState } from "react";
+import { useResourceContent } from "../features/useResourceContent";
+import { ResourceBody } from "./ResourceBody";
+import { Button, Field, SelectInput, TextInput } from "./ui";
 
 interface ResourceValue {
   location: string;
   content?: string;
 }
 
-// Reads an editable draft copy without changing the referenced resource.
 export function ResourceEditor({ label, location, content, readonly, onChange }: ResourceValue & {
   label: string;
   readonly: boolean;
   onChange: (value: ResourceValue) => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const previous = useRef({ location, content: content ?? "" });
-  const request = useRef(0);
   const inline = content !== undefined;
-  useEffect(() => () => { request.current++; }, []);
+  const resource = useResourceContent(inline ? "" : location.trim());
+  const [expanded, setExpanded] = useState(false);
+  const previous = useRef({ location, content });
+  const body = inline ? content : resource.content;
 
-  async function readContent() {
-    const id = ++request.current;
-    setLoading(true);
-    setError("");
-    try {
-      const result = await api.readResource(location);
-      if (request.current === id) {
-        previous.current.location = location;
-        onChange({ location: "", content: result.content });
-      }
-    } catch (err) {
-      if (request.current === id) setError(err instanceof Error ? err.message : "读取失败");
-    } finally {
-      if (request.current === id) setLoading(false);
-    }
+  function useBody() {
+    previous.current.location = location;
+    onChange({ location: "", content: previous.current.content ?? resource.content ?? "" });
+    setExpanded(true);
   }
 
   return (
     <div className="form-stack">
       <Field label={`${label}来源`}>
-        <SelectInput aria-label={`${label}来源`} value={inline ? "content" : "location"} disabled={readonly || loading}
+        <SelectInput aria-label={`${label}来源`} value={inline ? "content" : "location"} disabled={readonly}
           onChange={(event) => {
-            setError("");
-            if (inline) previous.current.content = content;
-            else previous.current.location = location;
-            onChange(event.target.value === "content"
-              ? { location: "", content: previous.current.content }
-              : { location: previous.current.location });
+            if (event.target.value === "content") useBody();
+            else {
+              previous.current.content = content;
+              onChange({ location: previous.current.location });
+            }
           }}>
           <option value="location">URL / 文件路径</option>
-          <option value="content">直接编辑正文</option>
+          <option value="content">本地正文</option>
         </SelectInput>
       </Field>
-      {inline ? (
-        <Field label={`${label}正文`} hint="每次保存生成带时间戳的版本文件并保留旧版，热重载后生效。订阅正文副本不会自动更新。">
-          <TextArea aria-label={`${label}正文`} className="mono-input" rows={14} spellCheck={false}
-            value={content} disabled={readonly || loading} onChange={(event) => onChange({ location: "", content: event.target.value })} />
-        </Field>
-      ) : (
-        <Field label={label}>
-          <TextInput aria-label={label} className="mono-input" value={location} disabled={readonly || loading}
-            onChange={(event) => onChange({ location: event.target.value })} />
-          <Button disabled={readonly || loading || !location.trim()} onClick={() => void readContent()}>
-            {loading ? "读取中…" : "读取并编辑正文"}
-          </Button>
-        </Field>
-      )}
-      {error ? <div className="field-error" role="alert">{error}</div> : null}
+      {!inline ? <Field label={label}>
+        <TextInput aria-label={label} className="mono-input" value={location} disabled={readonly}
+          onChange={(event) => { previous.current.content = undefined; onChange({ location: event.target.value }); }} />
+      </Field> : null}
+      <p className="field-hint" role="status">{inline ? "当前使用本地正文，由你手动维护。" : resource.loading ? "正在读取模板…" : resource.error ? "模板读取失败" : body !== undefined ? "模板内容已读取" : "请填写模板地址，或选择本地正文。"}</p>
+      {resource.error && !inline ? <div className="field-error" role="alert">{resource.error}</div> : null}
+      <ResourceBody label={`${label}正文`} content={body} readOnly={readonly || !inline} expanded={expanded}
+        onToggle={() => setExpanded((current) => !current)} onChange={(text) => onChange({ location: "", content: text })}
+        actions={inline ? null : <>
+          <Button loading={resource.loading} disabled={!location.trim()} onClick={resource.reload}>重新读取</Button>
+          <Button disabled={readonly || resource.loading} onClick={useBody}>{body === undefined ? "粘贴正文" : "编辑为本地副本"}</Button>
+        </>} />
+      {inline ? <p className="field-hint">保存后使用本地正文，不再跟随原地址更新；原文件保持不变。保存并热重载后生效。</p> : null}
     </div>
   );
 }

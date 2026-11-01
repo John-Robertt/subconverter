@@ -1326,6 +1326,14 @@ tr:last-child td {
   background: var(--warning);
 }
 
+.source-card-meta.neutral {
+  color: var(--text-muted);
+}
+
+.source-card-meta.neutral::before {
+  background: var(--text-dim);
+}
+
 .source-card-actions {
   display: inline-flex;
   flex: 0 0 auto;
@@ -3570,6 +3578,19 @@ tr:last-child td {
   gap: 8px;
 }
 
+.resource-body {
+  display: grid;
+  gap: 12px;
+}
+
+.resource-body-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .subscription-result {
   display: grid;
   gap: 8px;
@@ -3582,8 +3603,4 @@ tr:last-child td {
 .subscription-result > span {
   color: var(--text-muted);
   font-size: 13px;
-}
-
-.subscription-correction .field {
-  margin-top: 8px;
 }

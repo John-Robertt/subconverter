@@ -81,7 +81,7 @@ function text(data: string, status = 200) {
 interface MockBackendOptions {
   authed?: boolean;
   resourceReadError?: boolean;
-  resourceRead?: () => Promise<Response>;
+  resourceRead?: (input: { location: string }) => Promise<Response>;
   subscriptionCheck?: (input: { location?: string; content?: string; format?: string }) => Promise<Response>;
   config?: unknown;
   setupRequired?: boolean;
@@ -124,9 +124,12 @@ function mockBackend(options: MockBackendOptions = {}) {
       const format = body.format && body.format !== "auto" ? body.format : "text";
       return json({ status: "recognized", format, node_count: 1, output_formats: format === "text" ? ["clash", "surge", "loon"] : [format], content: body.content ?? "anytls://pw@hk.example.com:443#HK" });
     }
-    if (path === "/api/resources/read" && options.resourceRead) return options.resourceRead();
+    if (path === "/api/resources/read" && options.resourceRead) return options.resourceRead(JSON.parse(String(init?.body)));
     if (path === "/api/resources/read" && options.resourceReadError) return json({ error: { code: "resource_local_read_failed", message: "模板文件不存在" } }, 400);
-    if (path === "/api/resources/read") return json({ content: "[General]\ndns-server = system\n" });
+    if (path === "/api/resources/read") {
+      const { location } = JSON.parse(String(init?.body)) as { location: string };
+      return json({ content: location.startsWith("configs/") ? "[General]\ndns-server = system\n" : "anytls://pw@hk.example.com:443#HK" });
+    }
     if (path === "/api/config") {
       if (init?.method === "PUT") {
         if (options.saveError) {
@@ -688,12 +691,10 @@ describe("Loon support", () => {
     renderApp("/sources");
     await screen.findByRole("heading", { level: 1, name: "订阅来源" });
     fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "更正格式" }));
     const select = screen.getByLabelText("按哪种格式解析");
     fireEvent.change(select, { target: { value: "loon" } });
     await finishSourceEdit();
     fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "更正格式" }));
     expect((screen.getByLabelText("按哪种格式解析") as HTMLSelectElement).value).toBe("loon");
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://example.com/loon.conf" } });
     await finishSourceEdit();
@@ -734,267 +735,299 @@ async function addSubscriptionDraft() {
 }
 
 
-describe("inline content editing", () => {
-  // T-WEB-CHECK-001: checking a link keeps automatic updates and exposes a separate copy action.
-  it("checks a link without replacing it with a body", async () => {
+describe("资源自动读取与正文展开", () => {
+  // T-WEB-CHECK-001: inspection reads once without replacing the URL or dirtying the draft.
+  it("打开订阅自动读取并检查，正文收起且来源保持引用", async () => {
     localStorage.setItem("subconverter.firstSaveConfirmed", "true");
-    const content = '[Proxy]\nHK = anytls, hk.example.com, 443, "pw"';
-    const backend = mockBackend({ subscriptionCheck: async () => json({ status: "recognized", format: "loon", node_count: 4, output_formats: ["loon"], content }) });
+    const backend = mockBackend();
     renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    expect(screen.queryByLabelText("按哪种格式解析")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
-    expect(await screen.findByText("已识别：Loon 配置 · 4 个节点")).toBeTruthy();
-    expect(screen.queryByLabelText("节点正文")).toBeNull();
+    await openSubscription();
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    expect(screen.getByRole("button", { name: "展开节点正文" }).getAttribute("aria-expanded")).toBe("false");
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toContain("anytls://");
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
+    expect(backend.calls.filter((c) => c.path === "/api/resources/read")).toHaveLength(1);
+    const check = backend.calls.find((c) => c.path === "/api/subscriptions/check");
+    expect(JSON.parse(String(check?.init?.body))).toEqual({ content: "anytls://pw@hk.example.com:443#HK", format: "auto", source_location: sampleConfig.config.sources.subscriptions[0].url });
     await finishSourceEdit();
+    expect(screen.getByText("节点列表 · 1 个节点")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ url: sampleConfig.config.sources.subscriptions[0].url, format: "loon" }));
-    expect(backend.calls.some((call) => call.path === "/api/resources/read")).toBe(false);
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ url: sampleConfig.config.sources.subscriptions[0].url, format: "text" }));
   });
 
-  // T-WEB-CHECK-002: shared INI syntax prompts for its original client and rechecks the selection.
-  it("asks for the client only when the INI source is ambiguous", async () => {
-    const backend = mockBackend({ subscriptionCheck: async (input) => json(input.format === "loon"
-      ? { status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content: "[Proxy]\nHK = http, hk.example.com, 80" }
-      : { status: "ambiguous", node_count: 1, output_formats: [], candidates: ["surge", "loon"], content: "[Proxy]\nHK = http, hk.example.com, 80" }) });
+  // T-WEB-BODY-001: toggling only hides the textarea, retains edits, and issues no requests.
+  it("展开收起只影响文本框，状态操作常驻且保留正文编辑", async () => {
+    const backend = mockBackend();
     renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
-    await screen.findByText("这份配置来自哪个客户端？");
-    expect(screen.getByRole("button", { name: "保存来源" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Loon" }));
-    await screen.findByText("已识别：Loon 配置 · 1 个节点");
-    expect(JSON.parse(String(backend.calls.filter((call) => call.path === "/api/subscriptions/check").at(-1)?.init?.body)).format).toBe("loon");
+    await openSubscription();
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    const requests = backend.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "展开节点正文" }));
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).readOnly).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "收起节点正文" }));
+    expect(screen.getByRole("button", { name: "重新读取" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "编辑为本地副本" })).toBeTruthy();
+    expect(screen.getByLabelText("按哪种格式解析")).toBeTruthy();
+    expect(screen.getByText("已识别：节点列表 · 1 个节点")).toBeTruthy();
+    expect(backend.calls).toHaveLength(requests);
+    fireEvent.click(screen.getByRole("button", { name: "编辑为本地副本" }));
+    const area = screen.getByLabelText("节点正文") as HTMLTextAreaElement;
+    expect(area.readOnly).toBe(false);
+    const body = "anytls://pw@sg.example.com:443#SG-EDITED";
+    fireEvent.change(area, { target: { value: body } });
+    fireEvent.click(screen.getByRole("button", { name: "收起节点正文" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开节点正文" }));
+    expect(area.value).toBe(body);
+    await screen.findByText("已识别：节点列表 · 1 个节点");
   });
 
-  // T-WEB-CHECK-003: an outdated response cannot overwrite a later correction or new input.
-  it("ignores an earlier check after the user corrects the format", async () => {
+  // T-WEB-CHECK-002: ambiguous content remains accessible and format corrections do not re-read.
+  it("格式待确认时仍能查看及编辑，确认格式不重复下载", async () => {
+    const content = "[Proxy]\nHK = http, hk.example.com, 80";
+    const backend = mockBackend({ resourceRead: async () => json({ content }), subscriptionCheck: async (input) => json(input.format === "loon"
+      ? { status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content }
+      : { status: "ambiguous", node_count: 1, output_formats: [], candidates: ["surge", "loon"], content }) });
+    renderApp("/sources");
+    await openSubscription();
+    await screen.findByText("发现 1 条节点声明，需要确认格式");
+    expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "编辑为本地副本" }));
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
+    fireEvent.click(await screen.findByRole("button", { name: "Loon" }));
+    await screen.findByText("已识别：Loon 配置 · 1 个节点");
+    expect(backend.calls.filter((c) => c.path === "/api/resources/read")).toHaveLength(1);
+  });
+
+  // T-WEB-CHECK-003: late checks cannot overwrite a corrected format.
+  it("忽略更正格式之前发出的检查响应", async () => {
     let finish!: (response: Response) => void;
     const pending = new Promise<Response>((resolve) => { finish = resolve; });
     let calls = 0;
-    mockBackend({ subscriptionCheck: async () => ++calls === 1 ? pending : json({ status: "recognized", format: "loon", node_count: 2, output_formats: ["loon"], content: "[Proxy]" }) });
+    mockBackend({ subscriptionCheck: async () => ++calls === 1 ? pending : json({ status: "recognized", format: "loon", node_count: 2, output_formats: ["loon"], content: "nodes" }) });
     renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
-    fireEvent.click(screen.getByRole("button", { name: "更正格式" }));
+    await openSubscription();
+    await waitFor(() => expect(calls).toBe(1));
     fireEvent.change(screen.getByLabelText("按哪种格式解析"), { target: { value: "loon" } });
     await screen.findByText("已识别：Loon 配置 · 2 个节点");
     finish(json({ status: "recognized", format: "surge", node_count: 9, output_formats: ["surge"], content: "old" }));
     await waitFor(() => expect(screen.queryByText("已识别：Surge 配置 · 9 个节点")).toBeNull());
     expect((screen.getByLabelText("按哪种格式解析") as HTMLSelectElement).value).toBe("loon");
-    fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "https://example.com/changed" } });
-    expect(screen.queryByText("已识别：Loon 配置 · 2 个节点")).toBeNull();
-    expect(screen.getByRole("button", { name: "保存来源" }).hasAttribute("disabled")).toBe(true);
   });
 
-  // T-WEB-CHECK-004: copying an inspected resource retains the checked bytes and format.
-  it("edits an inspected body copy explicitly", async () => {
-    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
-    const content = '[Proxy]\nHK = anytls, hk.example.com, 443, "pw"';
-    const backend = mockBackend({ subscriptionCheck: async () => json({ status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content }) });
+  // T-WEB-CHECK-004: a failed parser cannot hide or discard downloaded content.
+  it("解析失败时保留原文，允许编辑修复后重新检查", async () => {
+    const raw = "[Proxy]\ninvalid declaration";
+    const backend = mockBackend({ resourceRead: async () => json({ content: raw }), subscriptionCheck: async (input) => input.content === raw
+      ? json({ error: { code: "fetch_subscription_empty", message: "订阅未产生任何有效节点" } }, 400)
+      : json({ status: "recognized", format: "text", node_count: 1, output_formats: ["clash", "surge", "loon"], content: input.content }) });
     renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
-    fireEvent.click(await screen.findByRole("button", { name: "编辑正文副本" }));
-    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
-    await finishSourceEdit();
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ content, format: "loon" }));
-  });
-
-  // T-WEB-CHECK-005: parse failures keep input editable and prevent a successful result.
-  it("keeps failed body checks editable", async () => {
-    mockBackend({ subscriptionCheck: async () => json({ error: { code: "fetch_subscription_empty", message: "订阅未产生任何有效节点" } }, 400) });
-    renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
-    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: "invalid body" } });
+    await openSubscription();
     await screen.findByRole("alert");
-    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe("invalid body");
-    expect(screen.getByRole("button", { name: "保存来源" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.queryByText(/已识别：/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "展开节点正文" }));
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(raw);
+    fireEvent.click(screen.getByRole("button", { name: "编辑为本地副本" }));
+    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: "anytls://pw@hk.example.com:443#HK" } });
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    expect(backend.calls.filter((c) => c.path === "/api/resources/read")).toHaveLength(1);
   });
 
-  // T-WEB-CHECK-009: a node URI in the address field receives guidance instead of a local-file error.
-  it("directs node URIs to the body input", async () => {
-    const backend = mockBackend();
-    renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "anytls://pw@hk.example.com:443#HK" } });
-    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
-    expect(await screen.findByText("请输入 HTTP(S) 订阅地址；单个节点请粘贴到“节点正文”。")).toBeTruthy();
-    expect(backend.calls.some((call) => call.path === "/api/subscriptions/check")).toBe(false);
-  });
-
-  // T-WEB-CHECK-008: refreshing clears the previous result until the new check succeeds.
-  it("blocks copying or saving an earlier result during a refresh", async () => {
+  // T-WEB-CHECK-005: replacing a reference invalidates reads before they can publish stale bytes.
+  it("更换地址后旧读取响应不会覆盖新正文", async () => {
     let finish!: (response: Response) => void;
     const pending = new Promise<Response>((resolve) => { finish = resolve; });
-    let count = 0;
-    mockBackend({ subscriptionCheck: async () => ++count === 1
-      ? json({ status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content: "[Proxy]" }) : pending });
+    const backend = mockBackend({ resourceRead: async ({ location }) => location.includes("new.example.com") ? json({ content: "anytls://pw@new.example.com:443#NEW" }) : pending });
     renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
-    await screen.findByRole("button", { name: "编辑正文副本" });
-    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
-    expect(screen.queryByRole("button", { name: "编辑正文副本" })).toBeNull();
-    expect(screen.getByRole("button", { name: "保存来源" }).hasAttribute("disabled")).toBe(true);
-    finish(json({ status: "recognized", format: "loon", node_count: 3, output_formats: ["loon"], content: "[Proxy]" }));
-    await screen.findByText("已识别：Loon 配置 · 3 个节点");
+    await openSubscription();
+    await waitFor(() => expect(backend.calls.some((c) => c.path === "/api/resources/read")).toBe(true));
+    fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "https://new.example.com/sub" } });
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    finish(json({ content: "old stale bytes" }));
+    await waitFor(() => expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toContain("new.example.com"));
   });
 
-  // T-WEB-CHECK-006: a file that cannot be checked can still be replaced with pasted nodes.
-  it("repairs a missing subscription file without blocking other fields", async () => {
-    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
-    const backend = mockBackend({ config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources, subscriptions: [{ content_file: "/config/missing.txt", format: "loon" }] } },
-      subscriptionCheck: async (input) => input.location
-        ? json({ error: { code: "resource_local_read_failed", message: "正文文件不存在" } }, 500)
-        : json({ status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content: input.content })
-    });
+  // T-WEB-CHECK-006: failed reads permit pasted repairs without altering the source prematurely.
+  it("正文文件缺失时可以粘贴正文修复", async () => {
+    mockBackend({ resourceRead: async () => json({ error: { code: "resource_local_read_failed", message: "正文文件不存在" } }, 500), config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources, subscriptions: [{ content_file: "/config/missing.txt", format: "loon" }] } } });
     renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    expect((screen.getByLabelText("正文文件") as HTMLInputElement).value).toBe("/config/missing.txt");
-    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    await openSubscription();
     await screen.findByText("正文文件不存在");
-    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
-    const content = 'HK = anytls, hk.example.com, 443, "pw"';
-    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: content } });
-    await finishSourceEdit();
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ content, format: "loon" }));
+    fireEvent.click(screen.getByRole("button", { name: "本地正文" }));
+    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: '[Proxy]\nHK = http, hk.example.com, 80' } });
+    await screen.findByText("已识别：Loon 配置 · 1 个节点");
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).readOnly).toBe(false);
   });
 
-  // T-WEB-CHECK-007: body editing is checked automatically without a second user action.
-  it("checks pasted text automatically and preserves it when modes are switched", async () => {
-    const backend = mockBackend();
+  // T-WEB-CHECK-007: switching source modes retains pasted text and its format.
+  it("切换引用和本地正文时保留正文及格式", async () => {
+    mockBackend();
     renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
-    const content = "anytls://pw@hk.example.com:443#HK";
+    await openSubscription();
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    fireEvent.click(screen.getByRole("button", { name: "本地正文" }));
+    const content = "anytls://pw@hk.example.com:443#HK-EDITED";
     fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: content } });
     await screen.findByText("已识别：节点列表 · 1 个节点");
-    expect(backend.calls.filter((call) => call.path === "/api/subscriptions/check")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "订阅链接" }));
     expect((screen.getByLabelText("订阅地址") as HTMLInputElement).value).toBe(sampleConfig.config.sources.subscriptions[0].url);
-    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    fireEvent.click(screen.getByRole("button", { name: "本地正文" }));
     expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
   });
 
-  // T-WEB-STORE-001: a storage error keeps body edits and permits retry after permissions are fixed.
-  it("preserves body drafts on directory write errors and allows retry", async () => {
+  // T-WEB-CHECK-008: refresh invalidates an earlier successful inspection and leaves folding alone.
+  it("重新读取时阻止应用旧检查结果且不展开正文", async () => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { finish = resolve; });
+    let reads = 0;
+    mockBackend({ resourceRead: async () => ++reads === 1 ? json({ content: "anytls://pw@hk.example.com:443#HK" }) : pending });
+    renderApp("/sources");
+    await openSubscription();
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
+    expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "编辑为本地副本" }).hasAttribute("disabled")).toBe(true);
+    await waitFor(() => expect(reads).toBe(2));
+    finish(json({ content: "anytls://pw@new.example.com:443#NEW" }));
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    expect(screen.getByRole("button", { name: "展开节点正文" }).getAttribute("aria-expanded")).toBe("false");
+  });
+
+  // T-WEB-CHECK-009: protocol URIs do not trigger local file reads.
+  it("节点 URI 填入地址时提示粘贴正文", async () => {
+    const backend = mockBackend();
+    renderApp("/sources");
+    await openSubscription();
+    fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "anytls://pw@hk.example.com:443#HK" } });
+    await screen.findByText("请输入 HTTP(S) 订阅地址；单个节点请粘贴到“本地正文”。");
+    expect(backend.calls.filter((c) => c.path === "/api/resources/read").some((c) => String(c.init?.body).includes("anytls://"))).toBe(false);
+  });
+
+  // T-WEB-STORE-001: save failure preserves content across closing and reopening its editor.
+  it("正文保存失败后保留草稿并允许重试", async () => {
     localStorage.setItem("subconverter.firstSaveConfirmed", "true");
-    const options: MockBackendOptions = { saveError: { status: 409, code: "resource_content_write_failed", message: "正文保存失败：目录 /config 无法写入，请检查目录权限" } };
+    const options: MockBackendOptions = { saveError: { status: 409, code: "resource_content_write_failed", message: "正文目录无法写入" } };
     const backend = mockBackend(options);
     renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
+    await openSubscription();
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    fireEvent.click(screen.getByRole("button", { name: "编辑为本地副本" }));
     const content = "anytls://pw@hk.example.com:443#HK-EDITED";
     fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: content } });
     await finishSourceEdit();
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    expect(await screen.findByText("正文目录无法写入")).toBeTruthy();
-    expect(screen.getByText("正文保存失败：目录 /config 无法写入，请检查目录权限")).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    await screen.findByText("正文目录无法写入", { selector: "strong" });
+    await openSubscription();
     expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
     await finishSourceEdit();
     options.saveError = undefined;
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(backend.calls.filter((call) => call.path === "/api/config" && call.init?.method === "PUT")).toHaveLength(2));
     await screen.findByText("草稿已写入 YAML 文件");
+    expect(backend.calls.filter((c) => c.path === "/api/config" && c.init?.method === "PUT")).toHaveLength(2);
   });
 
-  // T-WEB-INLINE-005: failed reads leave the reference and draft unchanged.
-  it("shows read failures without replacing the template", async () => {
-    mockBackend({ resourceReadError: true });
+  // T-WEB-INLINE-001: templates read automatically and view-only folding cannot dirty config.
+  it("模板自动读取，收起时仍保留状态和操作", async () => {
+    const backend = mockBackend();
     renderApp("/settings");
-    await screen.findByLabelText("Loon 模板");
-    fireEvent.click(screen.getAllByRole("button", { name: "读取并编辑正文" })[2]);
-    expect(await screen.findByRole("alert")).toBeTruthy();
-    expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.conf");
-    expect(screen.queryByLabelText("Loon 模板正文")).toBeNull();
+    await waitFor(() => expect(screen.getAllByText("模板内容已读取")).toHaveLength(3));
+    expect(backend.calls.filter((c) => c.path === "/api/resources/read")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "展开Loon 模板正文" }));
+    expect((screen.getByLabelText("Loon 模板正文") as HTMLTextAreaElement).readOnly).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "收起Loon 模板正文" }));
+    expect(screen.getAllByRole("button", { name: "编辑为本地副本" })).toHaveLength(3);
     expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
+    expect(backend.calls.filter((c) => c.path === "/api/resources/read")).toHaveLength(3);
   });
 
-  // T-WEB-INLINE-001: switching a URL source to pasted nodes clears the old URL on save.
-  it("saves pasted subscription nodes", async () => {
-    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
-    const backend = mockBackend();
-    renderApp("/sources");
-    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
-    const content = 'HK = anytls, hk.example.com, 443, "pw"';
-    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: content } });
-    fireEvent.click(screen.getByRole("button", { name: "更正格式" }));
-    fireEvent.change(screen.getByLabelText("按哪种格式解析"), { target: { value: "loon" } });
-    await finishSourceEdit();
-    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
-    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
-    await finishSourceEdit();
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ content, format: "loon" }));
-  });
-
-  // T-WEB-INLINE-002: reading a referenced template creates an editable draft body.
-  it("reads and saves a template body without its old path", async () => {
+  // T-WEB-INLINE-002: editing a template copy writes body and removes the source path.
+  it("编辑模板副本后保存正文，取消引用而不覆盖原文件", async () => {
     localStorage.setItem("subconverter.firstSaveConfirmed", "true");
     const backend = mockBackend();
     renderApp("/settings");
-    await screen.findByLabelText("Loon 模板");
-    fireEvent.click(screen.getAllByRole("button", { name: "读取并编辑正文" })[2]);
-    const input = await screen.findByLabelText("Loon 模板正文");
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "编辑为本地副本" })).toHaveLength(3));
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑为本地副本" })[2]);
+    const input = screen.getByLabelText("Loon 模板正文");
     expect((input as HTMLTextAreaElement).value).toBe("[General]\ndns-server = system\n");
     const content = "[General]\ndns-server = 1.1.1.1\n";
     fireEvent.change(input, { target: { value: content } });
+    fireEvent.click(screen.getByRole("button", { name: "收起Loon 模板正文" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
-      const saved = lastSavedConfig(backend.calls) as { templates: { loon?: string; inline?: { loon?: string } } } | undefined;
+      const saved = lastSavedConfig(backend.calls) as { templates: { loon?: string; inline?: { loon?: string } } } | null;
       expect(saved?.templates.inline?.loon).toBe(content);
       expect(saved?.templates.loon).toBeUndefined();
     });
-    expect(JSON.parse(String(backend.calls.find((call) => call.path === "/api/resources/read")?.init?.body))).toEqual({ location: "configs/base_loon.conf" });
   });
 
-  // T-WEB-INLINE-003: mode switching preserves text until the draft is applied.
-  it("keeps unsaved template text while switching modes", async () => {
+  // T-WEB-INLINE-003: changing source modes cannot discard an unsaved local template.
+  it("模板切换来源时保留未保存的正文", async () => {
     mockBackend();
     renderApp("/settings");
-    const select = await screen.findByLabelText("Loon 模板来源");
+    await waitFor(() => expect(screen.getAllByText("模板内容已读取")).toHaveLength(3));
+    const select = screen.getByLabelText("Loon 模板来源");
     fireEvent.change(select, { target: { value: "content" } });
-    fireEvent.change(screen.getByLabelText("Loon 模板正文"), { target: { value: "[General]\ndns-server = system" } });
+    const content = "[General]\ndns-server = system";
+    fireEvent.change(screen.getByLabelText("Loon 模板正文"), { target: { value: content } });
     fireEvent.change(select, { target: { value: "location" } });
     expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.conf");
     fireEvent.change(select, { target: { value: "content" } });
-    expect((screen.getByLabelText("Loon 模板正文") as HTMLTextAreaElement).value).toBe("[General]\ndns-server = system");
+    expect((screen.getByLabelText("Loon 模板正文") as HTMLTextAreaElement).value).toBe(content);
   });
 
-  // T-WEB-INLINE-004: readonly capability prevents both mode changes and resource imports.
-  it("keeps content editors readonly", async () => {
+  // T-WEB-INLINE-004: readonly configuration still allows reading but cannot be mutated.
+  it("只读配置允许读取查看，禁止编辑副本和保存", async () => {
     mockBackend({ readonly: true });
     renderApp("/settings");
-    expect((await screen.findByLabelText("Loon 模板来源")).hasAttribute("disabled")).toBe(true);
-    for (const button of screen.getAllByRole("button", { name: "读取并编辑正文" })) expect(button.hasAttribute("disabled")).toBe(true);
+    await waitFor(() => expect(screen.getAllByText("模板内容已读取")).toHaveLength(3));
+    expect(screen.getByLabelText("Loon 模板来源").hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "展开Loon 模板正文" }));
+    expect((screen.getByLabelText("Loon 模板正文") as HTMLTextAreaElement).readOnly).toBe(true);
+    for (const button of screen.getAllByRole("button", { name: "编辑为本地副本" })) expect(button.hasAttribute("disabled")).toBe(true);
+    cleanup();
+    mockBackend({ readonly: true });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getByRole("button", { name: "查看来源" }));
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    expect(screen.getByRole("button", { name: "编辑为本地副本" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  // T-WEB-INLINE-005: a failed template read preserves its reference and can be repaired.
+  it("模板读取失败时保留原路径并允许粘贴修复", async () => {
+    mockBackend({ resourceReadError: true });
+    renderApp("/settings");
+    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(3));
+    expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.conf");
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getAllByRole("button", { name: "粘贴正文" })[2]);
+    fireEvent.change(screen.getByLabelText("Loon 模板正文"), { target: { value: "[General]\nloglevel=notify" } });
+    expect((screen.getByLabelText("Loon 模板正文") as HTMLTextAreaElement).readOnly).toBe(false);
+  });
+
+  // T-WEB-INLINE-006: switching to pasted text invalidates an in-flight template read.
+  it("晚到的模板响应不会覆盖手动正文或修改其他字段", async () => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { finish = resolve; });
+    const backend = mockBackend({ resourceRead: async ({ location }) => location.includes("loon") ? pending : json({ content: "mode: rule" }) });
+    renderApp("/settings");
+    await waitFor(() => expect(backend.calls.filter((c) => c.path === "/api/resources/read")).toHaveLength(3));
+    fireEvent.change(screen.getByLabelText("Loon 模板来源"), { target: { value: "content" } });
+    const content = "[General]\nloglevel=notify";
+    fireEvent.change(screen.getByLabelText("Loon 模板正文"), { target: { value: content } });
+    finish(json({ content: "stale template" }));
+    await waitFor(() => expect((screen.getByLabelText("Loon 模板正文") as HTMLTextAreaElement).value).toBe(content));
+    expect((screen.getByLabelText("Clash 模板") as HTMLInputElement).value).toBe("configs/base_clash.yaml");
   });
 });
 
+async function openSubscription() {
+  await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+  fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+}
 
 async function finishSourceEdit() {
-  const save = screen.getByRole("button", { name: "保存来源" });
-  if (save.hasAttribute("disabled")) {
-    const check = screen.queryByRole("button", { name: "检查订阅" }) ?? screen.getByRole("button", { name: "识别并检查" });
-    fireEvent.click(check);
-    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
-  }
+  const save = screen.getByRole("button", { name: "应用到草稿" });
+  await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
   fireEvent.click(save);
 }

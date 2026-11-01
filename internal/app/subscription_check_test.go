@@ -107,6 +107,32 @@ func TestApp_CheckSubscriptionFailures(t *testing.T) {
 
 type failedCheckFetcher struct{}
 
+// T-APP-CHECK-004: source hints retain URL detection without fetching already-read bodies.
+func TestApp_CheckSubscriptionSourceLocation(t *testing.T) {
+	svc := NewWithRuntime("", nil, failedCheckFetcher{}, generate.Options{})
+	for _, tt := range []struct {
+		name, source, body, want string
+		invalid                  bool
+	}{
+		{name: "Loon suffix", source: "https://example.com/sub.lcf?token=private", body: "[Proxy]\nHK = http, hk.example.com, 80", want: "loon"},
+		{name: "content evidence wins", source: "https://example.com/sub.conf", body: "[Proxy]\nHK = anytls, hk.example.com, 443, \"pw\"", want: "loon"},
+		{name: "remote fragments stay invalid", source: "https://example.com/sub.lcf", body: "HK = http, hk.example.com, 80", invalid: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := svc.CheckSubscription(context.Background(), CheckSubscriptionInput{Content: tt.body, SourceLocation: tt.source})
+			if tt.invalid {
+				if err == nil {
+					t.Fatal("remote fragment was accepted without a Proxy section")
+				}
+				return
+			}
+			if err != nil || got.Format != tt.want || got.NodeCount != 1 {
+				t.Fatalf("result=%+v err=%v want format=%q with one node", got, err, tt.want)
+			}
+		})
+	}
+}
+
 func (failedCheckFetcher) Fetch(_ context.Context, location string) ([]byte, error) {
 	return nil, &errtype.FetchError{Code: errtype.CodeFetchRequestFailed, URL: fetch.SanitizeURL(location), Message: "请求上游失败：" + location}
 }

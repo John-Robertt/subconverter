@@ -191,9 +191,10 @@ type ImportConfigYAMLResult struct {
 
 ```go
 type CheckSubscriptionInput struct {
-    Location string `json:"location,omitempty"`
-    Content  string `json:"content,omitempty"`
-    Format   string `json:"format,omitempty"`
+    Location       string `json:"location,omitempty"`
+    Content        string `json:"content,omitempty"`
+    SourceLocation string `json:"source_location,omitempty"`
+    Format         string `json:"format,omitempty"`
 }
 
 type CheckSubscriptionResult struct {
@@ -206,7 +207,7 @@ type CheckSubscriptionResult struct {
 }
 ```
 
-`subscription_check.go` 负责读取与 DTO 编排；`pipeline.InspectSubscription` 负责识别和提取，`generate.Service.CheckProxyFormats` 复用实际 Target/Render 检查输出兼容性。字段和错误契约见 [订阅检查 API](api.md#post-apisubscriptionscheck)。
+`SourceLocation` 仅为已读取的 `Content` 提供来源位置提示，不触发资源读取。`subscription_check.go` 负责读取与 DTO 编排；`pipeline.InspectSubscription` 负责识别和提取，`generate.Service.CheckProxyFormats` 复用实际 Target/Render 检查输出兼容性。字段和错误契约见 [订阅检查 API](api.md#post-apisubscriptionscheck)。
 
 ### ResourceContentResult
 

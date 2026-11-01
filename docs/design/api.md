@@ -942,9 +942,9 @@ AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscr
 {"content":"[Proxy]\nHK = anytls, hk.example.com, 443, \"example-password\"\n","format":"loon"}
 ```
 
-空 location 返回 `400 invalid_request`，非 UTF-8 或含 NUL 的资源返回 `400 invalid_resource`。远程和本地读取失败沿用既有 FetchError / ResourceError 映射。Web 在只读配置源下禁用导入编辑入口；直接调用该只读接口仍可读取，保存始终遵循 `PUT /api/config` 的可写性契约。
+空 location 返回 `400 invalid_request`，非 UTF-8 或含 NUL 的资源返回 `400 invalid_resource`。远程和本地读取失败沿用既有 FetchError / ResourceError 映射。Web 在只读配置源下仍允许读取和查看正文，禁用编辑副本与保存；保存始终遵循 `PUT /api/config` 的可写性契约。
 
-`format` 可选，表示按 Source 的自动识别规则会采用的结构化订阅格式，取 `clash`、`surge` 或 `loon`；TXT/Base64 不返回此字段。该提示仅表示旧版 Source 自动规则的选择，不表示节点检查成功。模板编辑器使用此接口读取正文；订阅编辑器使用下述专用检查接口。
+`format` 可选，表示按 Source 的自动识别规则会采用的结构化订阅格式，取 `clash`、`surge` 或 `loon`；TXT/Base64 不返回此字段。该提示仅表示旧版 Source 自动规则的选择，不表示节点检查成功。模板和订阅编辑器都使用此接口自动读取原文；订阅随后使用下述专用检查接口，格式提示不替代检查结果。
 
 `GET /api/config` 和 `PUT /api/config` 的配置 JSON 支持 `sources.subscriptions[].content` 与 `templates.inline`，字段及互斥约束见 [配置规约](config-schema.md#subscriptions)。例如：
 
@@ -982,6 +982,12 @@ AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscr
 {"content":"anytls://example-password@hk.example.com:443#HK"}
 ```
 
+已读取原文的检查可同时提供可选的 `source_location`，表示原文来自哪个 URL 或本地文件。它仅传给格式识别器，不触发读取，不改变 `location` 与 `content` 二选一的约束。使用 `content` 时，来源位置保留 `.lcf` 等现有识别提示，以及远程完整文档与本地节点片段的解析边界；直接提供 `location` 时以该实际读取位置为准。
+
+```json
+{"content":"[Proxy]\nHK = http, hk.example.com, 80","source_location":"https://example.com/nodes.lcf","format":"auto"}
+```
+
 成功识别响应 `200`：
 
 ```json
@@ -994,7 +1000,7 @@ AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscr
 }
 ```
 
-`content` 是本次检查的原文，用于用户明确选择“编辑正文副本”时复制；检查链接本身仍保留 URL。`format` 是确认后写入草稿的格式，节点列表使用 `text`。`output_formats` 表示全部提取节点通过现有 Target/Render 的输出格式，不代表全局配置或节点连通性已通过检查。
+`content` 是本次检查的原文；Web 的正文展示不依赖检查成功，读取后即可查看或编辑本地副本，引用只有用户明确切换并保存后才改变。`format` 是确认后写入草稿的格式，节点列表使用 `text`。`output_formats` 表示全部提取节点通过现有 Target/Render 的输出格式，不代表全局配置或节点连通性已通过检查。
 
 需要确认来源客户端时也返回 `200`，但不返回成功格式：
 

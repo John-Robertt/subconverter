@@ -20,6 +20,7 @@ export interface SubscriptionCheckResult {
 export interface SubscriptionCheckInput {
   location?: string;
   content?: string;
+  source_location?: string;
   format?: SubscriptionFormat;
 }
 

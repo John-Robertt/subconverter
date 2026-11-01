@@ -35,7 +35,7 @@ test.describe("sources page", () => {
     const modal = page.getByRole("dialog");
     await expect(modal.getByRole("heading", { name: "添加 SS / AnyTLS 订阅" })).toBeVisible();
     await modal.locator(".text-input").fill("https://provider-c.example.com/sub?token=new-token");
-    await modal.getByRole("button", { name: "保存来源" }).click();
+    await modal.getByRole("button", { name: "应用到草稿" }).click();
 
     await expect(page.getByText(/provider-c\.example\.com/)).toBeVisible();
     // SS / AnyTLS 订阅 section heading carries chip with the count.
@@ -93,7 +93,7 @@ test.describe("sources page", () => {
     await modal.getByLabel("类型").selectOption("select");
     await expect(modal.getByLabel("匹配正则")).toBeVisible();
 
-    await modal.getByRole("button", { name: "保存来源" }).click();
+    await modal.getByRole("button", { name: "应用到草稿" }).click();
     await expect(page.locator('.source-card[title="Office Relay"]')).toBeVisible();
   });
 
