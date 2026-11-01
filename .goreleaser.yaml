@@ -29,6 +29,7 @@ archives:
       - src: configs/base_config.yaml
       - src: configs/base_clash.yaml
       - src: configs/base_surge.conf
+      - src: configs/base_loon.conf
 
 checksum:
   name_template: checksums.txt

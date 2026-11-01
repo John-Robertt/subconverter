@@ -33,7 +33,7 @@ reload 只执行 `LoadConfig + Prepare`：
 
 - 不拉取订阅、Snell 或 VLESS 来源。
 - 不执行 Source / Filter / Group / Target / Render。
-- 不证明 Clash Meta 或 Surge 一定能生成。
+- 不证明 Clash Meta、Surge 或 Loon 一定能生成。
 
 生成可用性由 B1/B2/B3 预览或 `/generate` 验证。
 

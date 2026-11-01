@@ -1,14 +1,27 @@
 # SubConverter
 
-读取节点来源与 YAML 路由配置，生成 Clash Meta 和 Surge 配置的单二进制 HTTP 服务。
+读取节点来源与 YAML 路由配置，生成 Clash Meta、Surge 和 Loon 配置的单二进制 HTTP 服务。
 
-SubConverter 根据 YAML 中的来源、过滤、分组和路由声明，拉取订阅、Snell 和 VLESS 节点，生成 Clash Meta YAML 或 Surge conf。订阅支持 TXT、Clash YAML 和 Surge CONF；TXT 支持 SS 与 AnyTLS 节点。生成时会先过滤目标格式不支持的节点，再整理组和路由，例如 Snell 仅进入 Surge，VLESS 仅进入 Clash。
+SubConverter 根据 YAML 中的来源、过滤、分组和路由声明，拉取订阅、Snell 和 VLESS 节点，生成 Clash Meta YAML、Surge conf 或 Loon conf。订阅支持 TXT、Clash YAML、Surge CONF 和 Loon；TXT 支持 SS 与 AnyTLS 节点。生成时会先过滤目标格式不支持的节点，再整理组和路由，例如 Snell 仅进入 Surge，VLESS 进入 Clash 及支持相应传输的 Loon。
+
+Loon 订阅沿用现有来源配置，只提取 `[Proxy]` 节点；地区组按 `groups.match` 筛选节点名称，服务组和规则仍由本项目 YAML 生成。例如：
+
+```yaml
+sources:
+  subscriptions:
+    - url: "https://example.com/subscription.conf"
+      format: loon
+templates:
+  loon: "configs/base_loon.conf"
+```
+
+通过 `/generate?format=loon` 下载，默认文件名 `loon.conf`。`format: loon` 用于区分同为 `.conf` 的 Surge/Loon 订阅；完整配置示例见 [`configs/base_config.yaml`](configs/base_config.yaml)。各客户端的协议与规则优先级差异见 [渲染设计](docs/design/rendering.md#loon)。
 
 ## 功能特性
 
-- **多订阅源** — 支持 TXT/Base64 的 SS、AnyTLS 列表，以及 Clash YAML / Surge CONF 原生节点；原生节点只进入对应格式，同名节点在每种输出内分别分配唯一名称
-- **Snell 来源** — 支持拉取纯文本 Snell 节点清单；Snell 节点仅进入 Surge 输出，Clash 会做级联过滤
-- **VLESS 来源** — 支持拉取纯文本 VLESS URI 清单；VLESS 节点仅进入 Clash 输出，Surge 会做级联过滤；`type` 缺失或未知值回落到 `tcp`，`encryption` 非空时透传
+- **多订阅源** — 支持 TXT/Base64 的 SS、AnyTLS 列表，以及 Clash YAML / Surge CONF / Loon 原生节点；原生节点只进入对应格式，同名节点在每种输出内分别分配唯一名称
+- **Snell 来源** — 支持拉取纯文本 Snell 节点清单；Snell 节点仅进入 Surge 输出，Clash / Loon 会做级联过滤
+- **VLESS 来源** — 支持拉取纯文本 VLESS URI 清单；VLESS 节点进入 Clash；tcp/ws/http 传输也进入 Loon，Surge 会做级联过滤；`type` 缺失或未知值回落到 `tcp`，`encryption` 非空时透传
 - **SIP002 兼容** — 支持常见 SS URI 变体，包括 base64/plain userinfo、query 参数和 plugin 声明
 - **自定义代理** — 在订阅之外定义 socks5/http 代理节点（如专线、ISP 代理）
 - **链式代理** — 通过 `relay_through` 配置上游中转，支持三种选择模式：`group`、`select`、`all`
@@ -17,7 +30,7 @@ SubConverter 根据 YAML 中的来源、过滤、分组和路由声明，拉取�
 - **服务路由** — 为每个服务定义出口偏好顺序（Telegram、Netflix、YouTube 等），`@auto` 自动补充节点组、包含 `@all` 的服务组和 `DIRECT`，`REJECT` 需手动声明
 - **远程规则集** — 将规则集 URL 绑定到路由组（URL 透传，由客户端运行时拉取）
 - **内联规则** — 直接编写路由规则，与远程规则集并用
-- **双格式输出** — 同一份配置生成 Clash Meta YAML 和 Surge conf；格式不支持的协议按能力差异处理
+- **三种格式输出** — 同一份配置生成 Clash Meta YAML、Surge conf 和 Loon conf；格式不支持的协议按能力差异处理
 - **Web 管理后台** — 通过同源 SPA 管理配置、预览节点/分组、生成订阅链接
 - **单镜像部署** — `pnpm web:embed` 生成并同步 Web 嵌入产物后，Docker 构建 Go 二进制并直接托管 Web、`/api/*`、`/generate` 和 `/healthz`
 - **模板合并** — 将生成内容注入底版模板，保留 DNS/TUN 等通用设置
@@ -180,13 +193,16 @@ docker run -d \
 
 登录后可以在 Web 管理后台编辑配置、保存到挂载的 `./config/config.yaml`、预览节点和分组，并复制 Clash / Surge 订阅链接。
 
+Web 的“订阅来源”先检查链接或正文，展示格式、节点数和可用输出；无法区分时再选择客户端。检查链接保留自动更新，可显式编辑正文副本，也支持直接粘贴节点正文，“其他配置”支持编辑 Clash／Surge／Loon 模板正文，也可读取现有 URL 或文件后编辑副本。正文每次保存为 `/config` 下带时间戳的新文件，保留旧版本；目录无法写入时提示权限问题并保留草稿。保存并热重载后生效，无需单独上传节点文件和模板文件。字段与订阅更新边界见 [配置规约](docs/design/config-schema.md#subscriptions)。
+
 ### 订阅生成接口
 
-直接生成 Clash Meta 或 Surge 配置：
+直接生成 Clash Meta、Surge 或 Loon 配置：
 
 ```bash
 curl "http://localhost:8080/generate?format=clash"
 curl "http://localhost:8080/generate?format=surge"
+curl "http://localhost:8080/generate?format=loon"
 curl "http://localhost:8080/generate?format=surge&filename=my-profile"
 ```
 
@@ -211,6 +227,7 @@ curl "http://localhost:8080/healthz"
 | `-cache-ttl`    | `5m`         | 远程节点来源、模板和主配置的缓存 TTL                                                        |
 | `-timeout`      | `30s`        | 每次远程资源拉取的 HTTP 超时时间                                                            |
 | `-access-token` | _空_         | `/generate` 访问 token；未显式传入时可由 `SUBCONVERTER_TOKEN` 提供                          |
+| `-data-dir` | `/config` | 正文版本文件目录；覆盖 `SUBCONVERTER_DATA_DIR` |
 | `-auth-state`   | 系统配置目录 | 管理员密码哈希与 session 状态文件；未显式传入时可由 `SUBCONVERTER_AUTH_STATE` 提供          |
 | `-setup-token`  | 自动生成     | 首次 setup bootstrap token；未显式传入时可由 `SUBCONVERTER_SETUP_TOKEN` 提供                |
 | `-cors`         | `false`      | 仅本地开发调试使用；生产 Compose 由同一个 Go 服务同源托管 SPA 和 API，不需要 CORS           |
@@ -219,17 +236,17 @@ curl "http://localhost:8080/healthz"
 
 ## API
 
-### `GET /generate?format=clash|surge`
+### `GET /generate?format=clash|surge|loon`
 
 生成代理配置文件。
 
-- **查询参数**：`format`（必填）— `clash` 或 `surge`；`token`（当服务端配置 `-access-token` / `SUBCONVERTER_TOKEN` 时必填）；`filename`（可选，自定义下载文件名）
-- **默认文件名**：`clash.yaml`、`surge.conf`；未显式传入 `filename` 时也会作为下载文件名返回
+- **查询参数**：`format`（必填）— `clash`、`surge` 或 `loon`；`token`（当服务端配置 `-access-token` / `SUBCONVERTER_TOKEN` 时必填）；`filename`（可选，自定义下载文件名）
+- **默认文件名**：`clash.yaml`、`surge.conf`、`loon.conf`；未显式传入 `filename` 时也会作为下载文件名返回
 - **文件名约束**：`filename` 仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式；空值、空主体（如 `.yaml`）、路径字符、空格和非 ASCII 值都会返回 `400`
 - **成功**：返回生成的配置文本
 - **响应头**：返回 `Content-Disposition: attachment; ...`，浏览器和下载器会使用最终文件名
 - **错误响应**：返回中文纯文本；已分类错误会直接说明问题，未分类内部错误统一返回 `内部错误`
-- **SS plugin 支持**：Clash Meta 通用透传 SS plugin；Surge 仅支持可映射的 obfs 类 SS plugin，不支持的 plugin 会返回 `500`
+- **SS plugin 支持**：Clash Meta 通用透传 SS plugin；Surge / Loon 仅支持可映射的 obfs 类 SS plugin，不支持的 plugin 会返回 `500`
 - **错误码**：`400` — 参数无效，或配置语义 / 图校验失败；`401` — 缺少 token 或 token 不匹配；`502` — 远程资源拉取失败，或远程订阅内容无效（如 0 个有效节点）；`500` — 本地资源读取失败、内部处理或渲染错误
 
 如果配置了 `base_url`，Surge 输出中的 `#!MANAGED-CONFIG` 会使用服务端配置的订阅访问 token（若启用）和最终 `filename`，不依赖当前请求是 query token 还是后台 session，保证客户端后续自动更新仍能访问同一 URL。
@@ -299,7 +316,7 @@ fallback: 🐟 FINAL # 未匹配任何规则的流量走这里
 | 配置段      | 用途                                       | 必填 |
 | ----------- | ------------------------------------------ | ---- |
 | `base_url`  | 外部服务地址，用于 Surge 托管配置头        | 否   |
-| `templates` | Clash Meta / Surge 输出的底版模板          | 否   |
+| `templates` | Clash Meta / Surge / Loon 输出的底版模板          | 否   |
 | `sources`   | 订阅 URL、Snell/VLESS 来源和自定义代理定义 | 是   |
 | `filters`   | 正则排除节点                               | 否   |
 | `groups`    | 地区节点组，含匹配正则和策略               | 是   |
@@ -329,7 +346,7 @@ LoadConfig --> Prepare (produces RuntimeConfig)
 
 请求期:
 Build(Source --> Filter --> Group --> Route --> ValidateGraph)
-  --> Target --> Render --> Clash Meta / Surge conf
+  --> Target --> Render --> Clash Meta / Surge / Loon conf
 ```
 
 生产镜像在构建期嵌入 Web 静态资源，运行时由同一个 Go 进程托管 SPA、Admin API、订阅生成和健康检查。启动期通过 `Prepare` 完成静态校验、正则编译、URL 解析和 `@auto` 展开，产出不可变的 `RuntimeConfig`。请求期管道在此基础上拉取订阅、构建格式无关的中间表示（`model.Pipeline`），再由 Target/Render 投影为目标格式输出。
@@ -357,7 +374,7 @@ subconverter/
     model/               格式无关的中间表示
     pipeline/            处理阶段：source、filter、group、route、validate
     proxyparse/          自定义代理 URL 解析
-    render/              Clash Meta YAML 和 Surge conf 渲染器
+    render/              Clash Meta YAML、Surge conf 和 Loon conf 渲染器
     server/              HTTP 处理器和错误映射
     ssparse/             Shadowsocks URI 解析
     target/              Clash / Surge 目标格式投影与级联过滤
@@ -378,7 +395,7 @@ subconverter/
 | [配置 Schema](docs/design/config-schema.md) | 完整字段参考                     |
 | [领域模型](docs/design/domain-model.md)     | 核心实体和不变量                 |
 | [流水线](docs/design/pipeline.md)           | 逐阶段处理细节                   |
-| [渲染](docs/design/rendering.md)            | Clash Meta 和 Surge 输出映射     |
+| [渲染](docs/design/rendering.md)            | Clash Meta、Surge 和 Loon 输出映射     |
 | [API](docs/design/api.md)                   | HTTP 端点和错误语义              |
 | [校验](docs/design/validation.md)           | 配置校验和图校验规则             |
 | [缓存](docs/design/caching.md)              | 订阅和模板缓存行为               |

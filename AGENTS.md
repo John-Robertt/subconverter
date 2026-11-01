@@ -1,6 +1,6 @@
 # subconverter 项目协作指南
 
-**项目成功标准**：每次修改在保持管道不变量（代理 ID 唯一、目标输出名唯一、组名互斥、保序、链式上游约束、@all 语义）的前提下，正确扩展或修复功能，且两种输出格式（Clash Meta / Surge）的 golden 测试通过。
+**项目成功标准**：每次修改在保持管道不变量（代理 ID 唯一、目标输出名唯一、组名互斥、保序、链式上游约束、@all 语义）的前提下，正确扩展或修复功能，且三种输出格式（Clash Meta / Surge / Loon）的 golden 测试通过。
 
 本文件沉淀**本项目的具体语境**——架构边界、扩展模板、已知局限。
 
@@ -12,7 +12,7 @@
 
 ## 项目速读
 
-**定位**：Go 单二进制 HTTP 服务。读取一份 YAML 配置 → 拉取订阅 → 生成 Clash Meta / Surge 配置文件。v2.0 新增 Web 管理后台（React SPA via `go:embed`）、配置热重载和 Admin API。
+**定位**：Go 单二进制 HTTP 服务。读取一份 YAML 配置 → 拉取订阅 → 生成 Clash Meta / Surge / Loon 配置文件。v2.0 新增 Web 管理后台（React SPA via `go:embed`）、配置热重载和 Admin API。
 
 **管道阶段**：
 
@@ -57,7 +57,7 @@ internal/target → internal/{model,errtype}
 **关键不变量**（修改时必须维持）：
 
 - 每次 Build 内代理 ID 唯一；节点名只是显示名候选，不作为图引用或身份
-- Clash / Surge 在各自 Target 投影内、完成格式过滤后独立分配唯一输出名
+- Clash / Surge / Loon 在各自 Target 投影内、完成格式过滤后独立分配唯一输出名
 - 节点组名和服务组名共享命名空间，互斥
 - 链式节点上游只能是拉取类节点
 - `@all` 仅含原始节点，不含链式节点；带 `relay_through` 的 custom_proxy 仅派生 `KindChained` + 同名链式组，不产出 `KindCustom`，不进入 `@all`
@@ -95,7 +95,7 @@ internal/target → internal/{model,errtype}
 
 ### 新增 `Proxy.Type`（代理协议）
 
-因为协议字段决定渲染阶段的 switch 分派和格式兼容性判断，新增协议必须在**每个渲染器中明确其行为**（渲染 / 报错 / 过滤），并确保 golden 测试覆盖两种格式的输出确定性。
+因为协议字段决定渲染阶段的 switch 分派和格式兼容性判断，新增协议必须在**每个渲染器中明确其行为**（渲染 / 报错 / 过滤），并确保 golden 测试覆盖三种格式的输出确定性。
 
 1. `internal/render/clash.go` 的 `buildClashProxy` switch 加 case
 2. `internal/render/surge.go` 的 `renderSurgeProxy` switch 加 case
@@ -119,7 +119,7 @@ internal/target → internal/{model,errtype}
 - [ ] Group 阶段：混合 Kind 的 region regex 匹配用例
 - [ ] Surge 渲染：含 base template + 含 managed header 的共存测试
 - [ ] Clash 渲染：若做过滤，测级联 + fallback 清空 + 规则/ruleset 清理
-- [ ] Execute 端到端：`TestExecute_<Source>EndToEnd` 贯通管道 + 两种渲染器
+- [ ] Execute 端到端：`TestExecute_<Source>EndToEnd` 贯通管道 + 三种渲染器
 - [ ] ValidateGraph happy path：含新 Kind 的 GroupResult 通过校验
 - [ ] 配置校验：`sources.<new>[].url` 空 / 非 HTTP(S) 报错
 
@@ -220,7 +220,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - `docs/design/config-schema.md` — 用户 YAML 配置字段规约
 - `docs/design/domain-model.md` — 中间表示（Proxy / NodeGroup / RouteGroup / TargetPipeline）
 - `docs/design/pipeline.md` — 各阶段输入输出与不变量
-- `docs/design/rendering.md` — Clash Meta / Surge 渲染映射
+- `docs/design/rendering.md` — Clash Meta / Surge / Loon 渲染映射
 - `docs/design/validation.md` — 配置与图校验规则
 - `docs/design/web-ui.md` — Web 管理后台设计
 - `docs/design/api.md` — HTTP API 设计（含 Admin API）
@@ -249,7 +249,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 > **触及时行动**：考虑严格模式时 → 优先扩充 `xxxKeyOrder` 而非引入白名单拒绝；需同时改解析器 + 渲染器 + 错误码。
 
 - **现象**：规范化节点的 `Proxy.Params` 是 `map[string]string`，容纳任意键（如 Snell 的 `shadow-tls-*` 仅对 Surge 有意义）；结构化订阅的 `NativeProxy.Payload` 保留完整目标原生声明
-- **包容方式**：TXT/Snell/VLESS 解析阶段宽松存 Params，渲染阶段按固定列表（如 `surgeSnellKeyOrder`）输出，未知键静默丢弃；Clash YAML / Surge CONF 原生声明不走字段白名单，匹配目标格式时原样复制
+- **包容方式**：TXT/Snell/VLESS 解析阶段宽松存 Params，渲染阶段按固定列表（如 `surgeSnellKeyOrder`）输出，未知键静默丢弃；Clash YAML / Surge CONF / Loon 原生声明不走字段白名单，匹配目标格式时原样复制
 - **权衡**：好处是解析器不随目标格式版本迭代；代价是 Params typo 可能被静默丢弃，原生声明 typo 则会被透传给目标客户端
 - **如果你在考虑严格模式**：需同时改解析器 + 渲染器 + 错误码，以及决定向后兼容策略。优先扩充 `xxxKeyOrder` 而非引入白名单拒绝
 
@@ -257,7 +257,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 > **触及时行动**：新增格式专属协议或结构化来源 → 复用 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies` 过滤策略；同步补跨格式过滤测试（至少覆盖级联效应）。
 
-- **现象**：Snell / Surge CONF 订阅节点仅支持 Surge，VLESS / Clash YAML 订阅节点仅支持 Clash。不支持方在 Target 阶段做"视图过滤"（非 Build 阶段拒绝），导致只在特定输出格式下触发错误，而非 ValidateGraph 阶段
+- **现象**：Snell / Surge CONF 订阅节点仅支持 Surge，Clash YAML 订阅节点仅支持 Clash，Loon 原生节点仅支持 Loon；规范化 VLESS 进入 Clash 及支持其传输的 Loon。不支持方在 Target 阶段做"视图过滤"（非 Build 阶段拒绝），导致只在特定输出格式下触发错误，而非 ValidateGraph 阶段
 - **报错路径**：
   - Clash 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForClash`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetClashFallbackEmpty` 等错误
   - Surge 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForSurge`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetSurgeFallbackEmpty` 等错误
@@ -295,3 +295,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - [ ] **核心术语定义变更** → 见 §文档术语一致性：对变更术语全文搜索，确认所有出现处（含概要层文档）均已同步
 - [ ] **新增 API 端点或响应字段变更**：已同步 `api.md` 示例 JSON 和字段描述；若涉及 Go DTO，已同步 `design/app-service.md` 方法签名和 DTO 定义
 - [ ] **管道阶段输入输出变更**：已同步 `pipeline.md` 阶段职责表和 `domain-model.md` 实体属性；若涉及渲染层，已同步 `rendering.md` 映射表
+
+### Loon 输入与输出
+
+Loon 订阅仍是 `KindSubscription`，仅提取 `[Proxy]`，不导入供应商组、规则、Host 或通用设置。`.conf` 默认仍按 Surge 识别，Loon 使用显式 `sources.subscriptions[].format: loon`；识别优先级以 `docs/design/config-schema.md` 为准。`templates.loon` 提供底版，分组按现有 `groups.match` 筛选名称。链路与辅助出口名由 Target 分配，渲染器只序列化；客户端规则优先级以 `docs/design/rendering.md` 为准。

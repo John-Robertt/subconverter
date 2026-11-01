@@ -16,7 +16,7 @@
 - 预计算层（`RuntimeConfig`）：启动期由 `Prepare` 产出，含编译后正则、解析后自定义代理、展开后路由成员
 - 中间表示层（`Pipeline`）：使用 `ProxyID` 和类型化引用表达格式无关的节点、组和规则关系
 - 目标表示层（`TargetPipeline`）：完成格式过滤和目标内唯一命名，成员转换为最终输出名
-- 输出文本层：面向 Clash Meta 或 Surge 的最终序列化结果
+- 输出文本层：面向 Clash Meta、Surge 或 Loon 的最终序列化结果
 
 依赖关系：
 
@@ -47,9 +47,9 @@
 
 | Kind | 来源 | 示例 `Type` | 参与 region regex 匹配 | 可作为链式上游 | 进入 `@all` |
 |------|------|-----------|---------------------|----------------|-------------|
-| `KindSubscription` | 订阅拉取（TXT / Clash YAML / Surge CONF） | TXT: `ss`, `anytls`；结构化格式可为任意原生类型 | ✓ | ✓ | ✓ |
+| `KindSubscription` | 订阅拉取（TXT / Clash YAML / Surge CONF / Loon） | TXT: `ss`, `anytls`；结构化格式可为任意原生类型 | ✓ | ✓ | ✓ |
 | `KindSnell` | Snell 来源拉取（Surge 专属） | `snell` | ✓ | ✓ | ✓ |
-| `KindVLess` | VLESS 来源拉取（Clash 专属） | `vless` | ✓ | ✓ | ✓ |
+| `KindVLess` | VLESS 来源拉取（Clash / Loon） | `vless` | ✓ | ✓ | ✓ |
 | `KindCustom` | 用户手工声明，且**未**设 `relay_through` | `ss`, `socks5`, `http` | ✗（名字已显式） | ✗ | ✓ |
 | `KindChained` | `custom_proxy` 带 `relay_through` 派生 | 继承自 custom_proxy | ✗ | ✗ | ✗ |
 
@@ -77,7 +77,7 @@
 - `Params` 为 `map[string]string`，承载代理类型的核心参数（如 SS 的 `cipher/password`、AnyTLS 的 `password/sni`、socks5/http 的 `username/password`）
 - `Plugin` 为可选结构，承载 SS plugin 的名称与参数，避免把 plugin 语义混入 `Params` 的字符串 key 约定中
 - 渲染器按目标客户端能力解释 `Plugin`：Clash Meta 可通用透传，Surge 仅支持可映射的子集
-- `NativeProxy` 只用于已采用目标原生语法的结构化订阅节点：`Format` 为 `clash` 或 `surge`，`Payload` 保存一个 Clash 节点映射或一个 Surge `[Proxy]` 声明右值
+- `NativeProxy` 只用于已采用目标原生语法的结构化订阅节点：`Format` 为 `clash`、`surge` 或 `loon`，`Payload` 保存一个 Clash 节点映射或一个 Surge / Loon `[Proxy]` 声明右值
 - 带 `NativeProxy` 的节点仍是 `KindSubscription`，因此共享过滤、地区匹配、ID 引用、链式上游和 `@all` 语义；其 `server` / `port` 只作可选预览信息，不作为模型必填项
 - 目标格式投影只保留 `NativeProxy.Format` 与目标一致的节点；渲染时由目标内分配的 `TargetProxy.Name` 覆盖原生声明中的旧名称
 
@@ -164,9 +164,13 @@
 - fallback
 - `@all` 展开得到的 `[]ProxyID`
 
+### TargetChain
+
+Loon 的链路声明，包含最终唯一的 `Name` 和按连接顺序排列的 `Members []string`，以及链式出口的 `UDP` 开关。Target 为链式节点另分配出口辅助节点名，组成员继续引用链路名；Render 只输出 `[Proxy Chain]`。辅助节点与链路名在同一目标命名空间消歧。
+
 ### TargetPipeline
 
-表示单个目标格式完成能力过滤与命名投影后的渲染输入：
+表示单个目标格式完成能力过滤与命名投影后的渲染输入，额外包含 Loon 的 `ProxyChains []TargetChain`：
 
 - `TargetProxy.Name` 是最终输出名，链式节点的 `Dialer` 也是最终输出名
 - `TargetGroup.Members` 已从 ID / 类型化引用转换为最终字符串
@@ -224,7 +228,7 @@
 
 - HTTP 请求与响应细节
 - YAML 解析细节
-- Clash Meta / Surge 的具体文本格式
+- Clash Meta / Surge / Loon 的具体文本格式
 
 领域模型负责：
 

@@ -71,6 +71,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleConfigValidate(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/resources/read":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleResourceRead(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/subscriptions/check":
+		if !h.requireSession(w, r) {
+			return
+		}
+		h.handleSubscriptionCheck(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/reload":
 		if !h.requireSession(w, r) {
 			return
@@ -114,6 +124,34 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "接口不存在")
 	}
+}
+
+func (h *Handler) handleSubscriptionCheck(w http.ResponseWriter, r *http.Request) {
+	var input app.CheckSubscriptionInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	result, err := h.app.CheckSubscription(r.Context(), input)
+	if err != nil {
+		writeServiceError(w, err, false)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleResourceRead(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Location string `json:"location"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	result, err := h.app.ReadResource(r.Context(), input.Location)
+	if err != nil {
+		writeServiceError(w, err, false)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
@@ -511,7 +549,11 @@ func writeServiceError(w http.ResponseWriter, err error, validationBody bool) {
 	}
 	var resourceErr *errtype.ResourceError
 	if errors.As(err, &resourceErr) {
-		writeError(w, http.StatusInternalServerError, string(resourceErr.Code), resourceErr.Message)
+		status := http.StatusInternalServerError
+		if resourceErr.Code == errtype.CodeResourceContentWriteFailed {
+			status = http.StatusConflict
+		}
+		writeError(w, status, string(resourceErr.Code), resourceErr.Message)
 		return
 	}
 	var renderErr *errtype.RenderError
@@ -523,7 +565,7 @@ func writeServiceError(w http.ResponseWriter, err error, validationBody bool) {
 }
 
 func isUserFixableTargetError(err *errtype.TargetError) bool {
-	return err.Code == errtype.CodeTargetClashFallbackEmpty || err.Code == errtype.CodeTargetSurgeFallbackEmpty
+	return err.Code == errtype.CodeTargetClashFallbackEmpty || err.Code == errtype.CodeTargetSurgeFallbackEmpty || err.Code == errtype.CodeTargetLoonFallbackEmpty
 }
 
 func decodeConfigBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, bool) {

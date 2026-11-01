@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
 	"github.com/John-Robertt/subconverter/internal/model"
 )
@@ -49,11 +50,11 @@ proxies:
   - { name: SG-YAML, type: wireguard, ip: 172.16.0.2, private-key: private }
 `)
 
-	proxies, err := fetchSubscription(context.Background(), &fakeFetcher{
+	proxies, err := loadSubscription(context.Background(), &fakeFetcher{
 		responses: map[string][]byte{rawURL: body},
-	}, rawURL)
+	}, config.Subscription{URL: rawURL})
 	if err != nil {
-		t.Fatalf("fetchSubscription() error: %v", err)
+		t.Fatalf("loadSubscription() error: %v", err)
 	}
 	if len(proxies) != 2 {
 		t.Fatalf("proxies count = %d, want 2: %+v", len(proxies), proxies)
@@ -97,11 +98,11 @@ SG-CONF = external, exec="/opt/proxy,runner", args="--fast"
 SHOULD-NOT-BE-A-NODE = select, HK-CONF
 `)
 
-	proxies, err := fetchSubscription(context.Background(), &fakeFetcher{
+	proxies, err := loadSubscription(context.Background(), &fakeFetcher{
 		responses: map[string][]byte{rawURL: body},
-	}, rawURL)
+	}, config.Subscription{URL: rawURL})
 	if err != nil {
-		t.Fatalf("fetchSubscription() error: %v", err)
+		t.Fatalf("loadSubscription() error: %v", err)
 	}
 	if len(proxies) != 2 {
 		t.Fatalf("proxies count = %d, want 2: %+v", len(proxies), proxies)
@@ -154,9 +155,9 @@ func TestSource_SubscriptionStructuredSuffixOverridesTXT(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := fetchSubscription(context.Background(), &fakeFetcher{
+			_, err := loadSubscription(context.Background(), &fakeFetcher{
 				responses: map[string][]byte{tt.rawURL: tt.body},
-			}, tt.rawURL)
+			}, config.Subscription{URL: tt.rawURL})
 			if err == nil {
 				t.Fatal("expected structured-format error, got nil")
 			}

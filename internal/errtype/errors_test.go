@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+// T-ERR-LOON-001: Loon projection and rendering codes retain their stage and format.
+func TestErrors_LoonCodes(t *testing.T) {
+	for _, code := range []Code{CodeTargetLoonFallbackEmpty, CodeTargetLoonProjectionInvalid} {
+		e := &TargetError{Code: code, Format: "loon", Message: "输出不可用"}
+		if e.Code != code || e.Error() != "target error [loon]: 输出不可用" {
+			t.Fatalf("code=%q error=%q", e.Code, e.Error())
+		}
+	}
+	e := &RenderError{Code: CodeRenderLoonProxyInvalid, Format: "loon", Message: "代理无效"}
+	if e.Code != CodeRenderLoonProxyInvalid || e.Error() != "render error [loon]: 代理无效" {
+		t.Fatalf("code=%q error=%q", e.Code, e.Error())
+	}
+}
+
 // T-ERR-001: ConfigError formats with section/key/field
 func TestConfigError(t *testing.T) {
 	e := &ConfigError{Code: CodeConfigValidationFailed, Field: "groups.HK.strategy", Message: "必须为 select 或 url-test"}
@@ -231,5 +245,13 @@ func TestRenderErrorWithClashProxyInvalid(t *testing.T) {
 	}
 	if !strings.Contains(e.Error(), "原生节点无效") {
 		t.Fatalf("unexpected error string: %s", e.Error())
+	}
+}
+
+// T-ERR-STORE-001: content storage failures use the resource error contract.
+func TestResourceError_ContentWriteFailed(t *testing.T) {
+	e := &ResourceError{Code: CodeResourceContentWriteFailed, Location: "/config", Message: "正文目录无法写入"}
+	if e.Code != "resource_content_write_failed" || e.Error() != "resource error [/config]: 正文目录无法写入" {
+		t.Fatalf("unexpected storage error: %v", e)
 	}
 }

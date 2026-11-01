@@ -26,7 +26,7 @@
 
 重点规则：
 
-- `subscriptions[].url` 必填
+- 校验 `subscriptions[]` 的来源互斥、URL、正文和本地文件字段；完整约束见 [配置规约](config-schema.md#subscriptions)
 - `snell[].url` 必填，必须为 HTTP(S) URL
 - `vless[].url` 必填，必须为 HTTP(S) URL
 - `custom_proxies[].name` 必填；不带 `relay_through` 的节点允许重名，带 `relay_through` 的名称会成为链式组名，仍受组命名空间唯一性约束
@@ -231,3 +231,7 @@ HTTP 语义：
 
 - 前端在用户编辑时做格式级校验（正则语法、URL 格式、必填检查）
 - 深层校验（跨段引用、命名冲突、环路检测）始终走后端 `Prepare`
+
+## Loon 扩展校验
+
+Prepare 校验 `sources.subscriptions[].format` 枚举和 `templates.loon` 远程 URL。Loon 原生节点沿用 `KindSubscription` 的 ID、过滤、分组、链式上游与 `@all` 校验；其原生字段保留，具体语法由客户端验证。Target 过滤不兼容来源、Snell 和不支持的 VLESS 传输，fallback 清空返回 `target_loon_fallback_empty`，内部命名或投影异常返回 `target_loon_projection_invalid`。Render 的代理声明错误使用 `render_loon_proxy_invalid`。

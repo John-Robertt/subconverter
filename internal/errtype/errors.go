@@ -31,7 +31,8 @@ const (
 	CodeFetchSubscriptionFormatInvalid Code = "fetch_subscription_format_invalid"
 	CodeFetchSubscriptionEmpty         Code = "fetch_subscription_empty"
 
-	CodeResourceLocalReadFailed Code = "resource_local_read_failed"
+	CodeResourceLocalReadFailed    Code = "resource_local_read_failed"
+	CodeResourceContentWriteFailed Code = "resource_content_write_failed"
 
 	CodeBuildFilterRegexInvalid     Code = "build_filter_regex_invalid"
 	CodeBuildGroupRegexInvalid      Code = "build_group_regex_invalid"
@@ -53,11 +54,14 @@ const (
 	CodeRenderYAMLFinalizeFailed  Code = "render_yaml_finalize_failed"
 	CodeRenderClashProxyInvalid   Code = "render_clash_proxy_invalid"
 	CodeRenderSurgeProxyInvalid   Code = "render_surge_proxy_invalid"
+	CodeRenderLoonProxyInvalid    Code = "render_loon_proxy_invalid"
 
 	CodeTargetClashFallbackEmpty     Code = "target_clash_fallback_empty"
 	CodeTargetSurgeFallbackEmpty     Code = "target_surge_fallback_empty"
 	CodeTargetClashProjectionInvalid Code = "target_clash_projection_invalid"
 	CodeTargetSurgeProjectionInvalid Code = "target_surge_projection_invalid"
+	CodeTargetLoonFallbackEmpty      Code = "target_loon_fallback_empty"
+	CodeTargetLoonProjectionInvalid  Code = "target_loon_projection_invalid"
 )
 
 var (
@@ -138,7 +142,7 @@ func (e *FetchError) Unwrap() error {
 	return e.Cause
 }
 
-// ResourceError indicates a failure to read a local resource.
+// ResourceError indicates a failure to read or write a local resource.
 type ResourceError struct {
 	Code     Code
 	Location string
@@ -178,7 +182,7 @@ func (e *BuildError) Unwrap() error {
 // rendering starts.
 type TargetError struct {
 	Code    Code
-	Format  string // "clash" or "surge"
+	Format  string // "clash", "surge" or "loon"
 	Message string
 	Cause   error
 }
@@ -195,7 +199,7 @@ func (e *TargetError) Unwrap() error {
 // merging after target projection has already succeeded.
 type RenderError struct {
 	Code    Code
-	Format  string // "clash" or "surge"
+	Format  string // "clash", "surge" or "loon"
 	Message string
 	Cause   error
 }

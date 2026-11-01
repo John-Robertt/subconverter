@@ -27,7 +27,7 @@ const sampleConfig = {
   config_revision: "sha256:saved",
   config: {
     sources: {
-      subscriptions: [{ url: "https://sub.example.com/api?token=secret" }],
+      subscriptions: [{ url: "https://sub.example.com/api?token=secret", format: "auto" }],
       snell: [],
       vless: [],
       custom_proxies: [],
@@ -42,7 +42,8 @@ const sampleConfig = {
     base_url: "https://sub.example.com",
     templates: {
       clash: "configs/base_clash.yaml",
-      surge: "configs/base_surge.conf"
+      surge: "configs/base_surge.conf",
+      loon: "configs/base_loon.conf"
     }
   }
 };
@@ -79,6 +80,10 @@ function text(data: string, status = 200) {
 
 interface MockBackendOptions {
   authed?: boolean;
+  resourceReadError?: boolean;
+  resourceRead?: () => Promise<Response>;
+  subscriptionCheck?: (input: { location?: string; content?: string; format?: string }) => Promise<Response>;
+  config?: unknown;
   setupRequired?: boolean;
   readonly?: boolean;
   saveError?: { status: number; code: string; message: string };
@@ -92,6 +97,7 @@ function mockBackend(options: MockBackendOptions = {}) {
   const authed = options.authed ?? true;
   const setupRequired = options.setupRequired ?? false;
   let configSnapshot = clone(sampleConfig);
+  let configOverride = options.config;
   let status = options.readonly
     ? {
         ...sampleStatus,
@@ -112,6 +118,15 @@ function mockBackend(options: MockBackendOptions = {}) {
     if (path === "/api/auth/setup") return json({ redirect: "/sources" });
     if (path === "/api/auth/logout") return json({ success: true });
     if (path === "/api/status") return json(status);
+    if (path === "/api/subscriptions/check") {
+      const body = JSON.parse(String(init?.body)) as { location?: string; content?: string; format?: string };
+      if (options.subscriptionCheck) return options.subscriptionCheck(body);
+      const format = body.format && body.format !== "auto" ? body.format : "text";
+      return json({ status: "recognized", format, node_count: 1, output_formats: format === "text" ? ["clash", "surge", "loon"] : [format], content: body.content ?? "anytls://pw@hk.example.com:443#HK" });
+    }
+    if (path === "/api/resources/read" && options.resourceRead) return options.resourceRead();
+    if (path === "/api/resources/read" && options.resourceReadError) return json({ error: { code: "resource_local_read_failed", message: "模板文件不存在" } }, 400);
+    if (path === "/api/resources/read") return json({ content: "[General]\ndns-server = system\n" });
     if (path === "/api/config") {
       if (init?.method === "PUT") {
         if (options.saveError) {
@@ -119,10 +134,11 @@ function mockBackend(options: MockBackendOptions = {}) {
         }
         const body = JSON.parse(String(init.body)) as { config: typeof sampleConfig.config };
         configSnapshot = { config_revision: "sha256:next", config: body.config };
+        configOverride = undefined;
         status = { ...status, config_revision: "sha256:next", config_dirty: true };
         return json({ config_revision: "sha256:next" });
       }
-      return json(configSnapshot);
+      return json(configOverride === undefined ? configSnapshot : { ...configSnapshot, config: configOverride });
     }
     if (path === "/api/config/effective.yaml") return text("sources: {}\nfallback: Proxy\n");
     if (path === "/api/config/effective.zip") return text("zip");
@@ -517,10 +533,10 @@ describe("save workflow", () => {
     renderApp("/sources");
 
     await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-    fireEvent.click(screen.getByRole("button", { name: "添加 SS / AnyTLS 订阅" }));
-    expect(await screen.findByRole("dialog", { name: "添加 SS / AnyTLS 订阅" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "添加 节点订阅" }));
+    expect(await screen.findByRole("dialog", { name: "添加 节点订阅" })).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://sub.example.com/new?token=secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存来源" }));
+    await finishSourceEdit();
     await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -576,6 +592,11 @@ describe("save workflow", () => {
     {
       code: "config_file_not_writable",
       title: "配置文件不可写",
+      action: ""
+    },
+    {
+      code: "resource_content_write_failed",
+      title: "正文目录无法写入",
       action: ""
     },
     {
@@ -658,11 +679,322 @@ describe("API client", () => {
   });
 });
 
+
+describe("Loon support", () => {
+  // T-WEB-LOON-001: editing a subscription keeps its explicit format through the save workflow.
+  it("saves the selected subscription format", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "更正格式" }));
+    const select = screen.getByLabelText("按哪种格式解析");
+    fireEvent.change(select, { target: { value: "loon" } });
+    await finishSourceEdit();
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "更正格式" }));
+    expect((screen.getByLabelText("按哪种格式解析") as HTMLSelectElement).value).toBe("loon");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://example.com/loon.conf" } });
+    await finishSourceEdit();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ url: "https://example.com/loon.conf", format: "loon" }));
+  });
+
+  // T-WEB-LOON-002: template editing survives config JSON writeback.
+  it("saves the Loon template", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    renderApp("/settings");
+    const input = await screen.findByLabelText("Loon 模板");
+    fireEvent.change(input, { target: { value: "configs/custom_loon.conf" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.templates.loon).toBe("configs/custom_loon.conf"));
+  });
+
+  // T-WEB-LOON-003: runtime previews expose the Loon output alongside existing formats.
+  it("loads the Loon preview and subscription link", async () => {
+    const backend = mockBackend();
+    renderApp("/download");
+    expect(await screen.findByRole("heading", { name: "Loon", level: 3 })).toBeTruthy();
+    await waitFor(() => {
+      expect(backend.calls.some((call) => call.path === "/api/generate/preview?format=loon")).toBe(true);
+      expect(backend.calls.some((call) => call.path.startsWith("/api/generate/link?format=loon"))).toBe(true);
+    });
+  });
+});
+
 async function addSubscriptionDraft() {
   await screen.findByRole("heading", { level: 1, name: "订阅来源" });
-  fireEvent.click(screen.getByRole("button", { name: "添加 SS / AnyTLS 订阅" }));
-  expect(await screen.findByRole("dialog", { name: "添加 SS / AnyTLS 订阅" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "添加 节点订阅" }));
+  expect(await screen.findByRole("dialog", { name: "添加 节点订阅" })).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://sub.example.com/new?token=secret" } });
-  fireEvent.click(screen.getByRole("button", { name: "保存来源" }));
+  await finishSourceEdit();
   await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
+}
+
+
+describe("inline content editing", () => {
+  // T-WEB-CHECK-001: checking a link keeps automatic updates and exposes a separate copy action.
+  it("checks a link without replacing it with a body", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const content = '[Proxy]\nHK = anytls, hk.example.com, 443, "pw"';
+    const backend = mockBackend({ subscriptionCheck: async () => json({ status: "recognized", format: "loon", node_count: 4, output_formats: ["loon"], content }) });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    expect(screen.queryByLabelText("按哪种格式解析")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    expect(await screen.findByText("已识别：Loon 配置 · 4 个节点")).toBeTruthy();
+    expect(screen.queryByLabelText("节点正文")).toBeNull();
+    await finishSourceEdit();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ url: sampleConfig.config.sources.subscriptions[0].url, format: "loon" }));
+    expect(backend.calls.some((call) => call.path === "/api/resources/read")).toBe(false);
+  });
+
+  // T-WEB-CHECK-002: shared INI syntax prompts for its original client and rechecks the selection.
+  it("asks for the client only when the INI source is ambiguous", async () => {
+    const backend = mockBackend({ subscriptionCheck: async (input) => json(input.format === "loon"
+      ? { status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content: "[Proxy]\nHK = http, hk.example.com, 80" }
+      : { status: "ambiguous", node_count: 1, output_formats: [], candidates: ["surge", "loon"], content: "[Proxy]\nHK = http, hk.example.com, 80" }) });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    await screen.findByText("这份配置来自哪个客户端？");
+    expect(screen.getByRole("button", { name: "保存来源" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Loon" }));
+    await screen.findByText("已识别：Loon 配置 · 1 个节点");
+    expect(JSON.parse(String(backend.calls.filter((call) => call.path === "/api/subscriptions/check").at(-1)?.init?.body)).format).toBe("loon");
+  });
+
+  // T-WEB-CHECK-003: an outdated response cannot overwrite a later correction or new input.
+  it("ignores an earlier check after the user corrects the format", async () => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { finish = resolve; });
+    let calls = 0;
+    mockBackend({ subscriptionCheck: async () => ++calls === 1 ? pending : json({ status: "recognized", format: "loon", node_count: 2, output_formats: ["loon"], content: "[Proxy]" }) });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "更正格式" }));
+    fireEvent.change(screen.getByLabelText("按哪种格式解析"), { target: { value: "loon" } });
+    await screen.findByText("已识别：Loon 配置 · 2 个节点");
+    finish(json({ status: "recognized", format: "surge", node_count: 9, output_formats: ["surge"], content: "old" }));
+    await waitFor(() => expect(screen.queryByText("已识别：Surge 配置 · 9 个节点")).toBeNull());
+    expect((screen.getByLabelText("按哪种格式解析") as HTMLSelectElement).value).toBe("loon");
+    fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "https://example.com/changed" } });
+    expect(screen.queryByText("已识别：Loon 配置 · 2 个节点")).toBeNull();
+    expect(screen.getByRole("button", { name: "保存来源" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  // T-WEB-CHECK-004: copying an inspected resource retains the checked bytes and format.
+  it("edits an inspected body copy explicitly", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const content = '[Proxy]\nHK = anytls, hk.example.com, 443, "pw"';
+    const backend = mockBackend({ subscriptionCheck: async () => json({ status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content }) });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑正文副本" }));
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
+    await finishSourceEdit();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ content, format: "loon" }));
+  });
+
+  // T-WEB-CHECK-005: parse failures keep input editable and prevent a successful result.
+  it("keeps failed body checks editable", async () => {
+    mockBackend({ subscriptionCheck: async () => json({ error: { code: "fetch_subscription_empty", message: "订阅未产生任何有效节点" } }, 400) });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
+    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: "invalid body" } });
+    await screen.findByRole("alert");
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe("invalid body");
+    expect(screen.getByRole("button", { name: "保存来源" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByText(/已识别：/)).toBeNull();
+  });
+
+  // T-WEB-CHECK-009: a node URI in the address field receives guidance instead of a local-file error.
+  it("directs node URIs to the body input", async () => {
+    const backend = mockBackend();
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "anytls://pw@hk.example.com:443#HK" } });
+    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    expect(await screen.findByText("请输入 HTTP(S) 订阅地址；单个节点请粘贴到“节点正文”。")).toBeTruthy();
+    expect(backend.calls.some((call) => call.path === "/api/subscriptions/check")).toBe(false);
+  });
+
+  // T-WEB-CHECK-008: refreshing clears the previous result until the new check succeeds.
+  it("blocks copying or saving an earlier result during a refresh", async () => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { finish = resolve; });
+    let count = 0;
+    mockBackend({ subscriptionCheck: async () => ++count === 1
+      ? json({ status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content: "[Proxy]" }) : pending });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    await screen.findByRole("button", { name: "编辑正文副本" });
+    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    expect(screen.queryByRole("button", { name: "编辑正文副本" })).toBeNull();
+    expect(screen.getByRole("button", { name: "保存来源" }).hasAttribute("disabled")).toBe(true);
+    finish(json({ status: "recognized", format: "loon", node_count: 3, output_formats: ["loon"], content: "[Proxy]" }));
+    await screen.findByText("已识别：Loon 配置 · 3 个节点");
+  });
+
+  // T-WEB-CHECK-006: a file that cannot be checked can still be replaced with pasted nodes.
+  it("repairs a missing subscription file without blocking other fields", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend({ config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources, subscriptions: [{ content_file: "/config/missing.txt", format: "loon" }] } },
+      subscriptionCheck: async (input) => input.location
+        ? json({ error: { code: "resource_local_read_failed", message: "正文文件不存在" } }, 500)
+        : json({ status: "recognized", format: "loon", node_count: 1, output_formats: ["loon"], content: input.content })
+    });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    expect((screen.getByLabelText("正文文件") as HTMLInputElement).value).toBe("/config/missing.txt");
+    fireEvent.click(screen.getByRole("button", { name: "检查订阅" }));
+    await screen.findByText("正文文件不存在");
+    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
+    const content = 'HK = anytls, hk.example.com, 443, "pw"';
+    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: content } });
+    await finishSourceEdit();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ content, format: "loon" }));
+  });
+
+  // T-WEB-CHECK-007: body editing is checked automatically without a second user action.
+  it("checks pasted text automatically and preserves it when modes are switched", async () => {
+    const backend = mockBackend();
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
+    const content = "anytls://pw@hk.example.com:443#HK";
+    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: content } });
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    expect(backend.calls.filter((call) => call.path === "/api/subscriptions/check")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "订阅链接" }));
+    expect((screen.getByLabelText("订阅地址") as HTMLInputElement).value).toBe(sampleConfig.config.sources.subscriptions[0].url);
+    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
+  });
+
+  // T-WEB-STORE-001: a storage error keeps body edits and permits retry after permissions are fixed.
+  it("preserves body drafts on directory write errors and allows retry", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const options: MockBackendOptions = { saveError: { status: 409, code: "resource_content_write_failed", message: "正文保存失败：目录 /config 无法写入，请检查目录权限" } };
+    const backend = mockBackend(options);
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
+    const content = "anytls://pw@hk.example.com:443#HK-EDITED";
+    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: content } });
+    await finishSourceEdit();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByText("正文目录无法写入")).toBeTruthy();
+    expect(screen.getByText("正文保存失败：目录 /config 无法写入，请检查目录权限")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
+    await finishSourceEdit();
+    options.saveError = undefined;
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(backend.calls.filter((call) => call.path === "/api/config" && call.init?.method === "PUT")).toHaveLength(2));
+    await screen.findByText("草稿已写入 YAML 文件");
+  });
+
+  // T-WEB-INLINE-005: failed reads leave the reference and draft unchanged.
+  it("shows read failures without replacing the template", async () => {
+    mockBackend({ resourceReadError: true });
+    renderApp("/settings");
+    await screen.findByLabelText("Loon 模板");
+    fireEvent.click(screen.getAllByRole("button", { name: "读取并编辑正文" })[2]);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.conf");
+    expect(screen.queryByLabelText("Loon 模板正文")).toBeNull();
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  // T-WEB-INLINE-001: switching a URL source to pasted nodes clears the old URL on save.
+  it("saves pasted subscription nodes", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "节点正文" }));
+    const content = 'HK = anytls, hk.example.com, 443, "pw"';
+    fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: content } });
+    fireEvent.click(screen.getByRole("button", { name: "更正格式" }));
+    fireEvent.change(screen.getByLabelText("按哪种格式解析"), { target: { value: "loon" } });
+    await finishSourceEdit();
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
+    expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
+    await finishSourceEdit();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ content, format: "loon" }));
+  });
+
+  // T-WEB-INLINE-002: reading a referenced template creates an editable draft body.
+  it("reads and saves a template body without its old path", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend();
+    renderApp("/settings");
+    await screen.findByLabelText("Loon 模板");
+    fireEvent.click(screen.getAllByRole("button", { name: "读取并编辑正文" })[2]);
+    const input = await screen.findByLabelText("Loon 模板正文");
+    expect((input as HTMLTextAreaElement).value).toBe("[General]\ndns-server = system\n");
+    const content = "[General]\ndns-server = 1.1.1.1\n";
+    fireEvent.change(input, { target: { value: content } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      const saved = lastSavedConfig(backend.calls) as { templates: { loon?: string; inline?: { loon?: string } } } | undefined;
+      expect(saved?.templates.inline?.loon).toBe(content);
+      expect(saved?.templates.loon).toBeUndefined();
+    });
+    expect(JSON.parse(String(backend.calls.find((call) => call.path === "/api/resources/read")?.init?.body))).toEqual({ location: "configs/base_loon.conf" });
+  });
+
+  // T-WEB-INLINE-003: mode switching preserves text until the draft is applied.
+  it("keeps unsaved template text while switching modes", async () => {
+    mockBackend();
+    renderApp("/settings");
+    const select = await screen.findByLabelText("Loon 模板来源");
+    fireEvent.change(select, { target: { value: "content" } });
+    fireEvent.change(screen.getByLabelText("Loon 模板正文"), { target: { value: "[General]\ndns-server = system" } });
+    fireEvent.change(select, { target: { value: "location" } });
+    expect((screen.getByLabelText("Loon 模板") as HTMLInputElement).value).toBe("configs/base_loon.conf");
+    fireEvent.change(select, { target: { value: "content" } });
+    expect((screen.getByLabelText("Loon 模板正文") as HTMLTextAreaElement).value).toBe("[General]\ndns-server = system");
+  });
+
+  // T-WEB-INLINE-004: readonly capability prevents both mode changes and resource imports.
+  it("keeps content editors readonly", async () => {
+    mockBackend({ readonly: true });
+    renderApp("/settings");
+    expect((await screen.findByLabelText("Loon 模板来源")).hasAttribute("disabled")).toBe(true);
+    for (const button of screen.getAllByRole("button", { name: "读取并编辑正文" })) expect(button.hasAttribute("disabled")).toBe(true);
+  });
+});
+
+
+async function finishSourceEdit() {
+  const save = screen.getByRole("button", { name: "保存来源" });
+  if (save.hasAttribute("disabled")) {
+    const check = screen.queryByRole("button", { name: "检查订阅" }) ?? screen.getByRole("button", { name: "识别并检查" });
+    fireEvent.click(check);
+    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
+  }
+  fireEvent.click(save);
 }

@@ -25,7 +25,7 @@ templates:
 各段职责：
 
 - `base_url`：声明服务的外部可访问地址（可选）
-- `sources`：声明订阅源（TXT / Clash YAML / Surge CONF）、Snell 来源、VLESS 来源和自定义代理
+- `sources`：声明订阅源（TXT / Clash YAML / Surge CONF / Loon）、Snell 来源、VLESS 来源和自定义代理
 - `filters`：定义拉取类节点过滤规则
 - `groups`：声明地区节点组
 - `routing`：声明服务组和出口优先级
@@ -59,20 +59,24 @@ sources:
 
 ### subscriptions
 
-- `url` 必填，必须为 HTTP(S) URL
+- `url`、`content`、`content_file` 三选一：`url` 为 HTTP(S) URL；`content` 为非空节点正文；`content_file` 为本地正文文件路径。Web 编辑请求使用 `content`，保存后主配置改为 `content_file` 引用
+- `content` 使用下述同一套解析规则，不访问上游，也不自动更新。显式 `format: surge` / `loon` 时可只粘贴节点声明；含 section 的完整文档仍只提取 `[Proxy]`
 - 支持多个订阅源
-- 每个订阅源支持三类响应，识别优先级固定为 **Clash YAML → Surge CONF → 旧版 TXT/Base64**
-- URL 路径以 `.yaml` / `.yml` 结尾时强制按 Clash YAML 解析；以 `.conf` 结尾时强制按 Surge CONF 解析。扩展名判断忽略 query 和 fragment
-- URL 没有上述扩展名时按内容识别：顶层存在 `proxies` 的 YAML 视为 Clash YAML；存在 `[Proxy]` 段的文本视为 Surge CONF；两者都不匹配才进入旧版 TXT/Base64 解析
+- `format` 可选，接受 `auto`、`text`、`clash`、`surge`、`loon`，省略等同 `auto`。显式格式优先于 URL 后缀和内容识别
+- 自动识别时，`.yaml` / `.yml` 为 Clash，`.conf` 为 Surge，`.lcf` 为 Loon；忽略 query 和 fragment。Loon 的 `.conf` URL 应显式指定 `format: loon`，保留旧配置的 `.conf` 行为
+- 无已知后缀时，依次检查 Clash 顶层 `proxies`、Loon 专属段（`[Remote Proxy]` / `[Remote Filter]` / `[Remote Rule]` / `[Proxy Chain]`）、Surge `[Proxy]`；均不匹配才进入 TXT/Base64
+- `text` 显式按 SS / AnyTLS 明文或 Base64 列表解析，忽略 URL 后缀；Web 检查节点列表后保存此值，避免 `.conf` 等地址被旧版 `auto` 规则改判
+- Web 检查与上述旧版 `auto` 相互独立：默认先检查内容，确认后把结果保存为明确的 `format`；已有 YAML 的 `auto` 优先级保持不变。复制已检查正文时保留确认的格式
 - Clash YAML 复制顶层 `proxies` 序列中的每个节点映射：
   - 每项必须是映射，且 `name` / `type` 必须是非空标量
   - 节点的完整映射（包括未知协议和嵌套字段）保留到 Clash Render；Clash 目标内分配的最终名称会覆盖映射中的原 `name`
-  - 节点只进入 Clash 输出；Surge Target 投影会连同依赖它的链式节点、空组和规则一起级联剔除
+  - 节点只进入 Clash 输出；其他 Target 投影会连同依赖它的链式节点、空组和规则一起级联剔除
 - Surge CONF 复制 `[Proxy]` 段中每条非注释 `NAME = VALUE` 声明：
   - `[Proxy]` 之后遇到下一个 section 即停止读取
   - 精确名称 `DIRECT` / `REJECT` 是本项目内置策略，不作为代理节点导入
   - 完整 `VALUE` 保留到 Surge Render；Surge 目标内分配的最终名称会覆盖原 `NAME`
-  - 节点只进入 Surge 输出；Clash Target 投影会执行对称的级联剔除
+  - 节点只进入 Surge 输出；Clash / Loon Target 投影会执行对称的级联剔除
+- Loon 与 Surge 一样只复制 `[Proxy]` 中的 `NAME = VALUE`，记录为 Loon 原生节点，仅进入 Loon 输出。密码位置参数、`tls-name` 等原始字段保留；来源的策略组、规则、Host 和通用设置由本项目 YAML 与底版负责
 - 结构化文档语法错误、缺少目标字段/section 或节点声明无效时整源报错；错误 URL 会移除 query 与 fragment
 - 旧版 TXT 响应体可以是 Base64 编码后的 SS / AnyTLS URI 列表，也可以是明文列表
 - SS 支持三种行格式：SIP002 `ss://...#节点名`、Quantumult X `shadowsocks = host:port, method=..., password=..., tag=...`、Surge `<节点名> = ss, host, port, encrypt-method=..., password=...`
@@ -87,6 +91,20 @@ sources:
 - AnyTLS URI 的 `PORT` 缺失时默认使用 `443`；`insecure=1` 映射为 `skip-cert-verify=true`；`group` 等元信息 query 会被忽略
 - AnyTLS 的 Surge / Quantumult X 输入按兼容方言解析；`tls=true` / `over-tls=true` 只用于识别输入形态，不进入通用渲染契约
 - TXT 中的空行和以 `#` / `//` 开头的注释行会被跳过；单行解析失败会静默跳过，最终 0 个有效节点时报错
+
+### Web 订阅检查
+
+订阅编辑先提供链接或节点正文，再检查解析结果；确认后才允许“保存来源”进入草稿。检查不保存配置、不改变运行快照，也不将链接自动转成副本。
+
+自动检查按以下顺序判断：
+
+1. Clash 顶层 `proxies` 使用 Clash 解析器；声明错误直接报错。
+2. 无 INI 段落且能解析成 SS / AnyTLS 列表时，采用 `text`。
+3. INI 订阅结合段落和节点声明判断：Loon 专属段、位置参数凭证、`Shadowsocks` 类型是 Loon 线索；`ss` / `snell` 类型和键值形式的凭证是 Surge 线索。
+4. 有一致线索时使用对应解析器；没有线索时可使用 `.lcf` 提示。共享写法或线索冲突返回 Surge / Loon 候选，由用户选择原客户端后重新检查。`.conf` 本身不能在 Web 检查中消除歧义。
+5. 用户更正格式后使用该解析器；成功检查必须提取至少一个节点。原生声明与 TXT 的校验、容错范围沿用既有 Source 规则。
+
+检查结果包含节点数和能完整保留这些节点的输出格式。输出兼容性复用 Target 和 Render，不应用全局过滤、分组或模板，也不测试节点连通性。接口见 [订阅检查](api.md#post-apisubscriptionscheck)。
 
 ### snell
 
@@ -119,7 +137,7 @@ sources:
 - 单行解析失败的错误消息会附带脱敏后的来源 URL 与 1-based 物理行号；原始解析根因保留在 `BuildError.Cause`
 - 节点名是显示名候选；同名节点保留独立 ID，最终输出名在各目标格式投影内独立消歧
 - 当前 URI 模型仅承接本节列出的 query；像 `packet-encoding`、`support-x25519mlkem768` 等 Mihomo 代理字段本次不接入，避免在未定义稳定 query 契约前产生隐式支持承诺
-- VLESS 节点**只进入 Clash Meta 输出**；Surge 输出会过滤掉这些节点及级联清理的空组、失效链式节点、空规则（与 Snell 在 Clash 侧的处理对称）。详见 `rendering.md`
+- VLESS 节点进入 Clash；Loon 支持 `tcp` / `ws` / `http` 传输，其余传输在 Loon Target 级联过滤；Surge 过滤全部 VLESS。详见 `rendering.md`
 
 ### custom_proxies
 
@@ -342,21 +360,49 @@ base_url: "https://my-server.com"
 templates:
   clash: "configs/base_clash.yaml"
   surge: "https://example.com/base_surge.conf"
+  loon: "configs/base_loon.conf"
 ```
 
 用途：
 
-- 声明 Clash Meta 和 Surge 的底版配置模板
+- 声明 Clash Meta、Surge 和 Loon 的底版配置模板
 - 渲染时将生成的节点、分组和规则注入底版，保留底版中的通用设置（如 `port`、`dns`、`[General]` 等）
-- 无底版时仅输出生成段（proxies / proxy-groups / rule-providers / rules）
+- 无底版时仅输出目标格式的生成段，见 [渲染设计](rendering.md#底版模板合并)
 
 约束：
 
-- 两个字段均可选
-- 值可为本地文件路径或 HTTP(S) URL
+- `clash`、`surge`、`loon` 均可选，值可为本地文件路径或 HTTP(S) URL
+- `inline` 可选，为格式名到非空正文的映射，仅接受 `clash`、`surge`、`loon`。同一格式的路径与 `inline` 正文只能选一个
+- Web 保存时将 `inline` 正文写为版本文件，把对应 `clash` / `surge` / `loon` 改为该文件路径；生成阶段对正文和外部模板使用相同的合并规则
 - 若为 HTTP(S) URL，必须满足基本 URL 格式要求
 - 若为本地路径，不做格式校验（加载时由 OS 报错）
 - 远程模板与订阅共享同一缓存机制（CachedFetcher + TTL）
+
+正文存储规则：
+
+- 默认直接写入 `/config`，不增加子目录。可通过 `-data-dir` 或 `SUBCONVERTER_DATA_DIR` 指定本地开发或其他部署的目录，参数优先于环境变量
+- 每次保存的正文都生成新文件，例如 `subscription-20261101T123456.123456789Z-123456789.txt`、`template-loon-20261101T123456.123456789Z-987654321.conf`；时间戳使用 UTC，唯一后缀避免同时保存重名
+- 原订阅文件与模板不覆盖，旧版本保留。服务读取主配置中的版本引用，热重载前的运行快照继续使用旧版本；主配置提交失败时移除本次新增文件
+- 新建目录权限为 `0700`，正文文件为 `0600`。保存时实际探测目录写入权限，失败返回 `409 resource_content_write_failed`，消息包含目录位置和处理建议
+- `GET /api/config` 会把可读正文文件还原为编辑正文，revision 仍取主配置文件。无法读取的文件保留原引用，用户仍可在 Web 修改路径、重新输入正文或删除来源；读取错误显示在对应的“读取并编辑正文”入口
+- 模板只有位于当前写入目录且完整匹配服务版本文件名时才自动还原正文。普通模板文件保持路径引用；更改写入目录不会移动已有版本，需要时可读取旧路径再保存副本
+- 导出 ZIP 时把正文放回包内 `config.yaml`，便于跨机器导入；正文读取失败则整个导出失败。单独导出生效 YAML 保留实际文件引用
+- 旧版内联正文仍可加载，下次 Web 保存时转为上述版本文件。历史版本由部署者保留或清理；清理时保留主配置引用文件，并在停止服务后处理，避免影响运行快照
+
+Web 正文编辑对应的 YAML 示例（JSON 使用相同字段）：
+
+```yaml
+sources:
+  subscriptions:
+    - format: loon
+      content: |
+        HK = anytls, hk.example.com, 443, "example-password"
+templates:
+  inline:
+    loon: |
+      [General]
+      dns-server = system
+```
 
 注：配置文件本身（`-config` 参数）也支持 HTTP(S) URL，加载时同样经过 `LoadResource` 和 `CachedFetcher`。
 

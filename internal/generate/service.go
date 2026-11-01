@@ -52,63 +52,80 @@ func (s *Service) Generate(ctx context.Context, cfg *config.RuntimeConfig, req R
 		return nil, err
 	}
 
+	projected, err := projectPipeline(p, req.Format)
+	if err != nil {
+		return nil, err
+	}
+	return s.renderPipeline(ctx, cfg, projected, req)
+}
+
+func projectPipeline(p *model.Pipeline, format string) (*model.TargetPipeline, error) {
+	switch format {
+	case "clash":
+		return target.ForClash(p)
+	case "surge":
+		return target.ForSurge(p)
+	case "loon":
+		return target.ForLoon(p)
+	default:
+		return nil, fmt.Errorf("unsupported format %q", format)
+	}
+}
+
+func (s *Service) renderPipeline(ctx context.Context, cfg *config.RuntimeConfig, p *model.TargetPipeline, req Request) (*Result, error) {
+	templates := cfg.Templates()
+	var location string
 	switch req.Format {
 	case "clash":
-		return s.generateClash(ctx, cfg, p, req)
+		location = templates.Clash
 	case "surge":
-		return s.generateSurge(ctx, cfg, p, req)
+		location = templates.Surge
+	case "loon":
+		location = templates.Loon
+	}
+	tmpl, err := s.loadTemplate(ctx, location, templates.Inline[req.Format])
+	if err != nil {
+		return nil, err
+	}
+	var body []byte
+	contentType := "text/plain; charset=utf-8"
+	switch req.Format {
+	case "clash":
+		body, err = render.Clash(p, tmpl)
+		contentType = "text/yaml; charset=utf-8"
+	case "surge":
+		body, err = render.Surge(p, buildManagedURL(cfg.BaseURL(), req.Filename, s.opts.AccessToken), tmpl)
+	case "loon":
+		body, err = render.Loon(p, tmpl)
 	default:
 		return nil, fmt.Errorf("unsupported format %q", req.Format)
 	}
+	if err != nil {
+		return nil, err
+	}
+	return &Result{Filename: req.Filename, ContentType: contentType, Body: body}, nil
 }
 
-func (s *Service) generateClash(ctx context.Context, cfg *config.RuntimeConfig, p *model.Pipeline, req Request) (*Result, error) {
-	projected, err := target.ForClash(p)
-	if err != nil {
-		return nil, err
+// CheckProxyFormats checks complete node preservation and rendering without templates or network access.
+func (s *Service) CheckProxyFormats(ctx context.Context, proxies []model.Proxy) []string {
+	formats := make([]string, 0, 3)
+	p := &model.Pipeline{Proxies: proxies, Fallback: "DIRECT"}
+	for _, format := range []string{"clash", "surge", "loon"} {
+		projected, err := projectPipeline(p, format)
+		if err != nil || len(projected.Proxies) != len(proxies) {
+			continue
+		}
+		if _, err := s.renderPipeline(ctx, nil, projected, Request{Format: format, Filename: DefaultFilename(format)}); err == nil {
+			formats = append(formats, format)
+		}
 	}
-
-	templates := cfg.Templates()
-	tmpl, err := s.loadTemplate(ctx, templates.Clash)
-	if err != nil {
-		return nil, err
-	}
-	body, err := render.Clash(projected, tmpl)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Result{
-		Filename:    req.Filename,
-		ContentType: "text/yaml; charset=utf-8",
-		Body:        body,
-	}, nil
+	return formats
 }
 
-func (s *Service) generateSurge(ctx context.Context, cfg *config.RuntimeConfig, p *model.Pipeline, req Request) (*Result, error) {
-	projected, err := target.ForSurge(p)
-	if err != nil {
-		return nil, err
+func (s *Service) loadTemplate(ctx context.Context, location, content string) ([]byte, error) {
+	if content != "" {
+		return []byte(content), nil
 	}
-
-	templates := cfg.Templates()
-	tmpl, err := s.loadTemplate(ctx, templates.Surge)
-	if err != nil {
-		return nil, err
-	}
-	body, err := render.Surge(projected, buildManagedURL(cfg.BaseURL(), req.Filename, s.opts.AccessToken), tmpl)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Result{
-		Filename:    req.Filename,
-		ContentType: "text/plain; charset=utf-8",
-		Body:        body,
-	}, nil
-}
-
-func (s *Service) loadTemplate(ctx context.Context, location string) ([]byte, error) {
 	if location == "" {
 		return nil, nil
 	}

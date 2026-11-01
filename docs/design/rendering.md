@@ -4,15 +4,15 @@
 
 ## 目标
 
-本文件定义统一中间表示如何映射到 Clash Meta 与 Surge。它关注语义对齐，不描述具体代码组织。
+本文件定义统一中间表示如何映射到 Clash Meta、Surge 与 Loon。它关注语义对齐，不描述具体代码组织。
 
 ---
 
 ## 渲染原则
 
-- 两种输出共享同一套中间表示
+- 三种输出共享同一套中间表示
 - 面板结构保持一致
-- 路由行为保持一致
+- 使用共同的路由声明，客户端匹配优先级差异在对应格式中说明
 - 仅在目标语法上分叉
 
 ---
@@ -102,7 +102,7 @@ Parser 会校验 `security` 只接受 `none`/`tls`/`reality`；`encryption` 在�
 
 ### SS 渲染
 
-SS（Shadowsocks）节点同时支持 Clash Meta 和 Surge 输出。字段按固定顺序输出：
+SS（Shadowsocks）节点支持三种输出；本节列 Clash / Surge，Loon 见对应章节。字段按固定顺序输出：
 
 **Clash Meta**：
 
@@ -134,7 +134,7 @@ Plugin 限制：
 
 ### AnyTLS 渲染
 
-AnyTLS 节点来自 `sources.subscriptions`，同时支持 Clash Meta 和 Surge 输出，不做目标格式过滤。
+AnyTLS 节点来自 `sources.subscriptions`，规范化节点支持三种输出，Loon 字段见对应章节；原生声明按所属格式过滤。
 
 **Clash Meta**：
 
@@ -242,15 +242,45 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 ---
 
+## Loon
+
+Loon 使用与 Clash / Surge 相同的 YAML 来源、过滤、分组和路由声明。订阅只导入 `[Proxy]`；底版通过 `templates.loon` 单独加载。Loon 原生声明仅进入 Loon，不自动转换为其他协议方言。
+
+节点字段与组参数分别对照 [Loon 官方节点语法](https://nsloon.app/en/docs/Node/) 和 [策略组说明](https://nsloon.app/en/docs/Policy/policygroup/)。
+
+| 输入 | Loon 输出 |
+|------|-----------|
+| SS `cipher/password` | `Shadowsocks,server,port,cipher,"password"` |
+| SS Simple Obfs | `obfs-name` / `obfs-host` / `obfs-uri`；不支持的插件返回 RenderError |
+| AnyTLS `password/sni` | `anytls,server,port,"password",sni=...` |
+| AnyTLS `server-cert-fingerprint-sha256` | `tls-cert-sha256` |
+| `tfo` / `udp-relay` | `fast-open` / `udp`；规范化 AnyTLS/VLESS 未声明 UDP 时输出 `udp=true` |
+| HTTP / SOCKS5 账号密码 | 端口后的两个位置参数 |
+| VLESS UUID / network | `vless,server,port,"UUID",transport=tcp|ws|http` |
+| VLESS TLS / Reality | `over-tls`、`sni`、`flow`、`public-key`、`short-id` |
+| VLESS ws/http path / host | `path` / `host` |
+| 节点组、服务组 | `[Proxy Group]`；复用配置中的顺序与成员 |
+| 链式节点 | Target 分配出口辅助节点，`[Proxy Chain]` 写 `链路名 = 上游名, 出口名`；出口启用 UDP 时附加 `udp=true` |
+| rulesets | `[Remote Rule]` 按声明顺序写 `URL,策略` |
+| rules / fallback | `[Rule]` 原样规则及 `FINAL,<fallback>` |
+
+`ForLoon` 复用格式过滤和级联清理，剔除 Snell、其他目标原生节点及 `tcp/ws/http` 以外的规范化 VLESS 传输，以及未适配的 VLESS encryption / flow。fallback 清空返回 `target_loon_fallback_empty`；内部投影失败返回 `target_loon_projection_invalid`。继续由 Target 做格式相关校验，Build 保留格式无关图。
+
+Loon 底版整体替换上述五个生成段，保留 `[General]`、`[Host]`、`[Rewrite]`、`[Script]`、`[MITM]` 等用户设置；清除底版中的 Surge managed header。供应商 Host 映射需要用户放进底版，不随节点来源自动导入。
+
+Loon 3.0.3+ 的域名请求先匹配域名规则，再解析 DNS 匹配 IP；来源优先级是本地规则 > 插件规则 > 订阅规则，最后使用 FINAL。系统分别保留 `rules` 和 `rulesets` 内部顺序，但不会把 Surge 中的跨来源排列当作 Loon 的匹配顺序。使用有冲突的规则时，应按 [Loon 官方规则说明](https://nsloon.app/docs/Rule/) 检查实际行为。
+
+---
+
 ## 结构化订阅原生声明
 
-`sources.subscriptions` 中识别出的 Clash YAML / Surge CONF 节点不经过协议字段归一化，而是保留目标原生声明：
+`sources.subscriptions` 中识别出的 Clash YAML / Surge CONF / Loon 节点不经过协议字段归一化，而是保留目标原生声明：
 
 - Clash YAML：`NativeProxy.Payload` 保存 `proxies` 中的单个 YAML 映射。Clash Render 重新解析该映射、用 `TargetProxy.Name` 覆盖 `name`，然后把其余字段（包括未知协议字段和嵌套结构）写入输出
-- Surge CONF：`NativeProxy.Payload` 保存 `[Proxy]` 声明中 `=` 右侧的完整内容。Surge Render 输出 `<TargetProxy.Name> = <Payload>`
+- Surge CONF / Loon：`NativeProxy.Payload` 保存 `[Proxy]` 声明中 `=` 右侧的完整内容。对应 Render 输出 `<TargetProxy.Name> = <Payload>`
 - Surge `[Proxy]` 中精确名称为 `DIRECT` / `REJECT` 的声明对应项目内置策略，Source 阶段跳过，不进入 IR 或 `@all`
-- Source 保留原生候选名和独立 ID；Clash / Surge 分别在格式过滤后分配目标内唯一名称。若两个同名节点各自只支持一个目标，两边都保留原名；同一目标内冲突才追加 `②③...`
-- Clash YAML 节点只进入 Clash 视图；Surge CONF 节点只进入 Surge 视图。目标不匹配时复用协议过滤的 cascade 引擎，原生根节点分别标记为 `NAME(Clash YAML 专属)` / `NAME(Surge CONF 专属)`
+- Source 保留原生候选名和独立 ID；Clash / Surge / Loon 分别在格式过滤后分配目标内唯一名称。若两个同名节点各自只支持一个目标，两边都保留原名；同一目标内冲突才追加 `②③...`
+- Clash YAML、Surge CONF、Loon 节点各自只进入对应目标视图。目标不匹配时复用协议过滤的 cascade 引擎，原生根节点分别标记为 `NAME(Clash YAML 专属)` / `NAME(Surge CONF 专属)`
 - 若格式专属原生节点是链式上游，另一格式会同时剔除依赖它的链式节点；若进一步清空 fallback，TargetError 的清空路径会保留完整根因链
 
 结构化订阅只复制节点声明，不复制来源文档中的组、规则、DNS 或通用设置；这些部分仍由本项目配置和 `templates` 负责。
@@ -259,7 +289,7 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 ## 规则排列顺序
 
-最终输出的规则按以下顺序排列：
+Clash / Surge 输出的规则按以下顺序排列；Loon 的段落与来源优先级见下节：
 
 1. `rulesets`（按 `rulesets` 段书写顺序，同一服务组的多条 URL 按声明顺序排列）
 2. `rules`（按 `rules` 段书写顺序）
@@ -297,23 +327,25 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 ## 一致性要求
 
-在剔除目标格式专属节点及其级联影响后，两种输出对共同存活的实体必须保证：
+在剔除目标格式专属节点及其级联影响后，各输出对共同存活的实体保持配置声明的顺序：
 
 - 节点组相对顺序一致
 - 服务组相对顺序一致
 - ruleset 相对顺序一致
 - 规则相对顺序一致
-- 同样的 fallback 语义
+- 均使用 fallback 作为未匹配规则时的出口；Loon 的规则匹配优先级以其客户端为准
 - 同样的 `@auto` 和 `@all` 展开结果
-- 对目标格式不支持的协议或原生订阅格式做显式处理：Snell / Surge CONF 节点为 Surge-only，VLESS / Clash YAML 节点为 Clash-only；两种方向由同一个共享 cascade 引擎（`internal/target/filter_cascade.go`）实现
+- 原生节点仅进入声明所属格式；Snell 仅 Surge；规范化 VLESS 进入 Clash 及支持相应传输的 Loon。所有方向复用 `internal/target/filter_cascade.go`
 
 ---
 
 ## 底版模板合并
 
+模板加载支持 `templates.inline` 正文与已有路径／URL；正文直接交给对应渲染器，合并规则相同。保存形式及互斥约束见 [配置规约](config-schema.md#templates)。
+
 渲染器支持可选的底版模板（base template），用于保留用户自定义的通用设置。
 
-模板来源：由用户在 `templates.clash` / `templates.surge` 中声明，值可为本地路径或 HTTP(S) URL。
+模板来源：由用户在 `templates.clash` / `templates.surge` / `templates.loon` 中声明，值可为本地路径或 HTTP(S) URL。
 
 ### Clash Meta 合并策略
 
@@ -334,6 +366,7 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 - Clash Meta：仅输出 `proxies` / `proxy-groups` / `rule-providers` / `rules` 四个段
 - Surge：仅输出 `[Proxy]` / `[Proxy Group]` / `[Rule]` 三个段（加可选的 managed header）
+- Loon：输出 `[Proxy]` / `[Proxy Chain]` / `[Proxy Group]` / `[Rule]` / `[Remote Rule]`，不生成 Surge managed header
 
 ---
 
@@ -349,9 +382,9 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 
 ## 预览模式（v2.0）
 
-`GET /api/generate/preview?format=clash|surge` 基于当前运行时配置返回与 `/generate` 完全相同的渲染结果。
+`GET /api/generate/preview?format=clash|surge|loon` 基于当前运行时配置返回与 `/generate` 完全相同的渲染结果。
 
-`POST /api/generate/preview?format=clash|surge` 接收 `{config}` 草稿配置，先执行临时 `Prepare`，再复用同一套渲染逻辑返回草稿生成结果；它不写文件、不替换 `RuntimeConfig`。
+`POST /api/generate/preview?format=clash|surge|loon` 接收 `{config}` 草稿配置，先执行临时 `Prepare`，再复用同一套渲染逻辑返回草稿生成结果；它不写文件、不替换 `RuntimeConfig`。
 
 区别：
 

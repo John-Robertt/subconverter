@@ -71,7 +71,8 @@ func presentError(err error) (statusCode int, message string) {
 func isUserFixableTargetError(err *errtype.TargetError) bool {
 	switch err.Code {
 	case errtype.CodeTargetClashFallbackEmpty,
-		errtype.CodeTargetSurgeFallbackEmpty:
+		errtype.CodeTargetSurgeFallbackEmpty,
+		errtype.CodeTargetLoonFallbackEmpty:
 		return true
 	default:
 		return false

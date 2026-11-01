@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
@@ -51,7 +53,7 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 	rt := newEmptyRuntimeConfig(cfg)
 	registry := newRegistry()
 
-	prepareSourceURLs(&c, cfg)
+	prepareSourceInputs(&c, cfg)
 	prepareFilters(&c, rt, cfg)
 	groupNames := prepareGroups(&c, rt, registry, cfg)
 	cp := prepareCustomProxies(&c, rt, registry, cfg)
@@ -79,7 +81,7 @@ func newEmptyRuntimeConfig(cfg *Config) *RuntimeConfig {
 		},
 		fallback:  cfg.Fallback,
 		baseURL:   cfg.BaseURL,
-		templates: cfg.Templates,
+		templates: cloneTemplates(cfg.Templates),
 	}
 }
 
@@ -90,14 +92,40 @@ func newRegistry() map[string]staticDecl {
 	}
 }
 
-func prepareSourceURLs(c *collector, cfg *Config) {
+func prepareSourceInputs(c *collector, cfg *Config) {
 	for i, sub := range cfg.Sources.Subscriptions {
+		switch sub.Format {
+		case "", "auto", "text", "clash", "surge", "loon":
+		default:
+			c.addCode(valuePath("sources", fmt.Sprintf("subscriptions[%d].format", i)), errtype.CodeConfigInvalidEnum, "必须为 auto、text、clash、surge 或 loon")
+		}
 		loc := valuePath("sources", fmt.Sprintf("subscriptions[%d].url", i))
-		if sub.URL == "" {
-			c.addCode(loc, errtype.CodeConfigRequired, "必填")
+		selected := 0
+		for _, value := range []string{sub.URL, sub.Content, sub.ContentFile} {
+			if value != "" {
+				selected++
+			}
+		}
+		if selected == 0 {
+			c.addCode(loc, errtype.CodeConfigRequired, "url、content、content_file 必须填写一个")
 			continue
 		}
-		c.validateHTTPURL(loc, sub.URL)
+		if selected > 1 {
+			c.add(loc, "url、content、content_file 只能填写一个")
+			continue
+		}
+		if sub.Content != "" {
+			if strings.TrimSpace(sub.Content) == "" {
+				c.addCode(valuePath("sources", fmt.Sprintf("subscriptions[%d].content", i)), errtype.CodeConfigRequired, "节点正文不能为空")
+			}
+		} else if sub.ContentFile != "" {
+			if strings.TrimSpace(sub.ContentFile) == "" || strings.Contains(sub.ContentFile, "://") {
+				c.add(valuePath("sources", fmt.Sprintf("subscriptions[%d].content_file", i)), "content_file 必须为本地文件路径")
+			}
+		} else {
+			c.validateHTTPURL(loc, sub.URL)
+		}
+
 	}
 
 	for i, s := range cfg.Sources.Snell {
@@ -344,11 +372,36 @@ func prepareBaseURL(c *collector, cfg *Config) {
 }
 
 func prepareTemplates(c *collector, cfg *Config) {
+	if cfg.Templates.Loon != "" {
+		c.validateTemplatePath(valuePath("templates", "loon"), cfg.Templates.Loon)
+	}
 	if cfg.Templates.Clash != "" {
 		c.validateTemplatePath(valuePath("templates", "clash"), cfg.Templates.Clash)
 	}
 	if cfg.Templates.Surge != "" {
 		c.validateTemplatePath(valuePath("templates", "surge"), cfg.Templates.Surge)
+	}
+	for _, format := range slices.Sorted(maps.Keys(cfg.Templates.Inline)) {
+		content := cfg.Templates.Inline[format]
+		loc := valuePath("templates", "inline."+format)
+		var location string
+		switch format {
+		case "clash":
+			location = cfg.Templates.Clash
+		case "surge":
+			location = cfg.Templates.Surge
+		case "loon":
+			location = cfg.Templates.Loon
+		default:
+			c.addCode(loc, errtype.CodeConfigInvalidEnum, "仅支持 clash、surge 或 loon")
+			continue
+		}
+		if strings.TrimSpace(content) == "" {
+			c.addCode(loc, errtype.CodeConfigRequired, "模板正文不能为空")
+		}
+		if location != "" {
+			c.add(loc, "同一格式的模板路径与正文只能填写一个")
+		}
 	}
 }
 

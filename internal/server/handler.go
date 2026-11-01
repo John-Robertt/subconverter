@@ -16,7 +16,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	format := query.Get("format")
 	if !generate.ValidFormat(format) {
-		writeError(w, http.StatusBadRequest, "format 参数无效：必须为 clash 或 surge")
+		writeError(w, http.StatusBadRequest, "format 参数无效：必须为 clash、surge 或 loon")
 		return
 	}
 

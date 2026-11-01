@@ -11,6 +11,9 @@ import type {
   LoginResponse,
   NodePreviewResponse,
   ReloadResult,
+  ResourceContent,
+  SubscriptionCheckInput,
+  SubscriptionCheckResult,
   SetupRequest,
   StatusResponse,
   ValidateResult
@@ -135,6 +138,9 @@ export const api = {
   login: (body: LoginRequest) => apiRequest<LoginResponse>("/api/auth/login", { method: "POST", body, skipAuthRedirect: true }),
   setup: (body: SetupRequest) => apiRequest<LoginResponse>("/api/auth/setup", { method: "POST", body, skipAuthRedirect: true }),
   logout: () => apiRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", skipAuthRedirect: true }),
+  readResource: (location: string) => apiRequest<ResourceContent>("/api/resources/read", { method: "POST", body: { location } }),
+  checkSubscription: (body: SubscriptionCheckInput, signal?: AbortSignal) =>
+    apiRequest<SubscriptionCheckResult>("/api/subscriptions/check", { method: "POST", body, signal }),
   config: () => apiRequest<ConfigSnapshot>("/api/config"),
   importConfigYAML: (yaml: string) => apiRequest<ConfigImportResponse>("/api/config/import", { method: "POST", body: { yaml } }),
   importConfigArchive: (archive: Blob) => apiBinaryRequest<ConfigImportResponse>("/api/config/import", archive, "application/zip"),

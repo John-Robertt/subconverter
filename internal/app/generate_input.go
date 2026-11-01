@@ -7,7 +7,7 @@ type GenerateResult = generate.Result
 
 func NewGenerateInput(format, rawFilename string, filenamePresent bool) (GenerateInput, error) {
 	if !generate.ValidFormat(format) {
-		return GenerateInput{}, newBadRequestError("invalid_request", "format 参数无效：必须为 clash 或 surge")
+		return GenerateInput{}, newBadRequestError("invalid_request", "format 参数无效：必须为 clash、surge 或 loon")
 	}
 	filename, err := generate.ResolveFilename(rawFilename, filenamePresent, format)
 	if err != nil {

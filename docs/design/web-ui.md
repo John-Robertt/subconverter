@@ -28,7 +28,7 @@
 
 | 页面 | 对应 YAML 段 | 核心功能 |
 |------|-------------|---------|
-| A1 订阅来源 | `sources` | 四类来源（subscriptions / snell / vless / custom_proxies）的卡片式管理，每类来源独立区块；自定义代理含 `relay_through` 子表单 |
+| A1 订阅来源 | `sources` | 四类来源（subscriptions / snell / vless / custom_proxies）的卡片式管理；节点订阅支持 URL 或正文编辑，每类来源独立区块；自定义代理含 `relay_through` 子表单 |
 | A2 过滤器 | `filters` | exclude 正则编辑 + 草稿匹配预览（调用 `POST /api/preview/nodes` 展示当前草稿会匹配/排除的节点）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
 | A3 节点分组 | `groups` | 分组卡片列表（拖拽排序，保序）；每组：名称 + match 正则 + strategy 选择器 + 草稿匹配预览（调用 `POST /api/preview/groups`）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
 | A4 路由策略 | `routing` | 服务组列表（拖拽排序，保序）；每组：名称 + 成员选择器（可引用节点组、服务组、DIRECT、REJECT、`@all`、`@auto`）；约束提示 |
@@ -43,9 +43,9 @@
 
 | 页面 | 数据来源 | 核心功能 |
 |------|---------|---------|
-| B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅 / Snell / VLESS / 自定义）；显示名称、类型、服务器、端口、Kind；标注可由类型判断的格式限定（Snell = 仅 Surge / VLESS = 仅 Clash） |
+| B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅 / Snell / VLESS / 自定义）；显示名称、类型、服务器、端口、Kind；标注可由类型判断的格式限定（Snell = 仅 Surge / VLESS = Clash / Loon（按传输过滤）） |
 | B2 分组预览 | `GET /api/preview/groups` | 当前运行时节点组、链式组和服务组结果；展示 `@all` / `@auto` 展开后的成员 |
-| B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` + `GET /api/config/effective.zip` + `POST /api/config/import` | 自动展示 Clash Meta / Surge 双格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；导出当前生效配置与模板 ZIP；导入 ZIP 或 YAML 到前端草稿 |
+| B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` + `GET /api/config/effective.zip` + `POST /api/config/import` | 自动展示 Clash Meta / Surge / Loon 三种格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；导出当前生效配置与模板 ZIP；导入 ZIP 或 YAML 到前端草稿 |
 
 ### C 区：系统状态
 
@@ -164,7 +164,7 @@ SPA 使用以下路由结构（React Router），与 Go 服务的 SPA fallback �
 
 中间态处理：`PUT /api/config` 成功但 `POST /api/reload` 失败时（如远程主配置源读取失败，或新配置未通过 `Prepare` 静态校验），配置文件已更新但 RuntimeConfig 仍为旧版。此时 UI 应保留 `config_dirty = true` 提示，并允许用户重新触发 reload。若用户在保存后、reload 前离开页面（浏览器崩溃或关闭标签页），下次打开时 `GET /api/status` 会返回 `config_dirty = true`，UI 应提示用户执行 reload 使配置生效。
 
-其中 A8 和 reload 都只覆盖 `Prepare` 阶段的静态配置校验；生成可用性需要通过 B1/B2/B3 预览确认，尤其是订阅（TXT / Clash YAML / Surge CONF）/Snell/VLESS 来源拉取、过滤后空组、目标格式级联过滤和渲染错误。
+其中 A8 和 reload 都只覆盖 `Prepare` 阶段的静态配置校验；生成可用性需要通过 B1/B2/B3 预览确认，尤其是订阅（TXT / Clash YAML / Surge CONF / Loon）/Snell/VLESS 来源拉取、过滤后空组、目标格式级联过滤和渲染错误。
 
 B2 分组预览执行到 ValidateGraph：若后端返回图级错误，页面显示结构化诊断并保留草稿，不展示部分成功的分组结果。
 
@@ -204,3 +204,14 @@ YAML 配置中 `groups` / `routing` / `rulesets` 使用 OrderedMap 保序。JSON
 - 静态校验不依赖外部网络（前端格式级校验 + 后端 Prepare 校验）；运行时预览和生成预览可能访问远程订阅与模板
 - 页面加载后可离线操作配置编辑（保存/预览需网络）
 - 当后端 API 不可用时（网络错误或 `api` 容器宕机），SPA 应显示明确的连接错误提示，而非空白页面或静默失败
+
+
+### 节点与模板正文编辑
+
+`/sources` 的节点订阅采用“订阅链接 / 节点正文”两种来源方式。链接由用户点击“检查订阅”后读取，保留自动更新；正文在停止输入后自动检查，也可手动触发。成功后展示格式、节点数和适用输出，“更正格式”默认折叠。无法区分的 INI 配置才询问原客户端，选择后重新检查。来源检查成功后才能保存到草稿；修改输入会清除旧结果，过期异步响应不会覆盖新输入。
+
+“检查订阅”与“编辑正文副本”是两个操作：后者明确切换为本次已检查的静态原文，保留确认格式。模板编辑仍通过 `POST /api/resources/read` 读取正文，不使用订阅检查。
+
+保存与热重载沿用全局流程。正文每次保存生成版本文件；目录错误提示位置并保留草稿。正文缺失时保留文件引用，允许重填正文或删除来源。配置只读时禁用编辑；节点订阅仍只提供节点，分组和规则由对应编辑页管理。
+
+解析、保存及更新规则见 [配置规约](config-schema.md#web-订阅检查)，接口见 [订阅检查 API](api.md#post-apisubscriptionscheck)。

@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+// T-MDL-LOON-001: native Loon declarations use subscription invariants without normalized params.
+func TestModel_LoonNativeInvariant(t *testing.T) {
+	proxy := Proxy{ID: 1, Name: "HK", Type: "anytls", Kind: KindSubscription,
+		Native: &NativeProxy{Format: NativeProxyFormatLoon, Payload: `anytls, node.example.com, 443, "pw"`}}
+	if err := ValidateProxyInvariant(proxy); err != nil {
+		t.Fatalf("native Loon invariant: %v", err)
+	}
+}
+
 // T-MDL-004: valid proxy invariant cases pass validation
 func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 	tests := []struct {

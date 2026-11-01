@@ -54,6 +54,7 @@ type lastReloadState struct {
 
 type Options struct {
 	ConfigLocation string
+	DataDir        string
 	ListenAddr     string
 	Fetcher        fetch.Fetcher
 	Generate       generate.Options
@@ -65,6 +66,7 @@ type Options struct {
 
 type Service struct {
 	configLocation string
+	dataDir        string
 	listenAddr     string
 	startedAt      time.Time
 	fetcher        fetch.Fetcher
@@ -86,6 +88,7 @@ type Service struct {
 	lastReload             lastReloadState
 
 	reloadMu sync.Mutex
+	saveMu   sync.Mutex
 }
 
 // IncrementRequestCount records an inbound request for the runtime environment
@@ -101,6 +104,7 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 	}
 	s := &Service{
 		configLocation: opts.ConfigLocation,
+		dataDir:        opts.DataDir,
 		listenAddr:     opts.ListenAddr,
 		startedAt:      now(),
 		fetcher:        opts.Fetcher,
@@ -110,6 +114,9 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 		commit:         opts.Commit,
 		buildDate:      opts.BuildDate,
 		accessToken:    opts.Generate.AccessToken,
+	}
+	if s.dataDir == "" {
+		s.dataDir = DefaultDataDir
 	}
 
 	raw, err := s.readConfigBytes(ctx, false)
@@ -157,6 +164,8 @@ func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, er
 	if err != nil {
 		return nil, err
 	}
+	// A missing body must remain repairable through the config editor.
+	_ = s.restoreEditableContent(ctx, cfg)
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, err
@@ -170,6 +179,8 @@ func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, er
 }
 
 func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*SaveConfigResult, error) {
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
 	if input == nil || input.ConfigRevision == "" {
 		return nil, newBadRequestError("config_revision_required", "缺少 config_revision")
 	}
@@ -196,6 +207,18 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 	if _, err := prepareAdminConfig(cfg, true); err != nil {
 		return nil, err
 	}
+	created, err := s.persistEditableContent(cfg)
+	committed := false
+	defer func() {
+		if !committed {
+			for _, path := range created {
+				_ = os.Remove(path)
+			}
+		}
+	}()
+	if err != nil {
+		return nil, err
+	}
 
 	yamlBytes, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -204,10 +227,11 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 	if err := writeFileAtomically(s.configLocation, yamlBytes); err != nil {
 		return nil, err
 	}
+	committed = true
 	return &SaveConfigResult{ConfigRevision: configRevision(yamlBytes)}, nil
 }
 
-func (s *Service) ImportConfigYAML(_ context.Context, raw []byte) (*ImportConfigYAMLResult, error) {
+func (s *Service) ImportConfigYAML(ctx context.Context, raw []byte) (*ImportConfigYAMLResult, error) {
 	if len(strings.TrimSpace(string(raw))) == 0 {
 		return nil, newBadRequestError("invalid_request", "缺少 yaml")
 	}
@@ -215,6 +239,8 @@ func (s *Service) ImportConfigYAML(_ context.Context, raw []byte) (*ImportConfig
 	if err != nil {
 		return nil, err
 	}
+	// Import keeps unreadable local references so the draft can repair them.
+	_ = s.restoreEditableContent(ctx, cfg)
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, err

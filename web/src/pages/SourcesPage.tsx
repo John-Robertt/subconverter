@@ -1,6 +1,7 @@
 import { Link2, Pencil, Plus, Radio, Shield, Trash2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Config, CustomProxy, FetchSource, FetchSourceKind, RelayThrough } from "../api/types";
+import { SubscriptionEditor, subscriptionFormatLabels, type SubscriptionEditorValue } from "../components/SubscriptionEditor";
 import { SortableList } from "../components/SortableList";
 import { Button, Chip, EmptyState, Field, IconButton, Modal, SelectInput, StatCard, TextInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
@@ -9,13 +10,13 @@ import { useConfigState } from "../state/config";
 import { useConfirm } from "../state/confirm";
 
 const sourceLabels: Record<FetchSourceKind, string> = {
-  subscriptions: "SS / AnyTLS 订阅",
+  subscriptions: "节点订阅",
   snell: "Snell 节点池",
   vless: "VLESS 节点池"
 };
 
 const sourceDescriptions: Record<FetchSourceKind, string> = {
-  subscriptions: "Shadowsocks / AnyTLS · 同时输出到 Clash 和 Surge",
+  subscriptions: "SS / AnyTLS 文本订阅，或 Clash / Surge / Loon 原生配置",
   snell: "Surge 专属代理协议",
   vless: "Reality / Vision 等高级特性"
 };
@@ -27,7 +28,7 @@ const sourceIcons: Record<FetchSourceKind, ReactNode> = {
 };
 
 type SourceEditor =
-  | { type: "fetch"; kind: FetchSourceKind; index: number | null; url: string }
+  | ({ type: "fetch"; kind: FetchSourceKind; index: number | null; reference?: "file" } & SubscriptionEditorValue)
   | { type: "custom"; index: number | null; proxy: CustomProxy }
   | null;
 
@@ -47,12 +48,20 @@ export function SourcesPage() {
   function saveEditor() {
     if (!editor) return;
     if (editor.type === "fetch") {
+      const source: FetchSource = editor.content !== undefined
+        ? { content: editor.content }
+        : editor.reference === "file" && !/^https?:\/\//.test(editor.location)
+          ? { content_file: editor.location }
+          : { url: editor.location.trim() };
+      if (editor.kind === "subscriptions" && editor.format) {
+        source.format = editor.format;
+      }
       patchSources((current) => ({
         ...current,
         [editor.kind]:
           editor.index === null
-            ? [...current[editor.kind], { url: editor.url }]
-            : current[editor.kind].map((item, index) => (index === editor.index ? { url: editor.url } : item))
+            ? [...current[editor.kind], source]
+            : current[editor.kind].map((item, index) => (index === editor.index ? source : item))
       }));
       setEditor(null);
       return;
@@ -102,9 +111,9 @@ export function SourcesPage() {
     <div className="page-stack">
       <div className="stats-grid">
         <StatCard label="订阅总数" value={totalSources} sub={`${sources.fetch_order.length} 类拉取顺序`} />
-        <StatCard label="订阅来源" value={totalFetch} sub="SS/AnyTLS / snell / vless" />
+        <StatCard label="订阅来源" value={totalFetch} sub="订阅 / snell / vless" />
         <StatCard label="Surge-only" value={sources.snell.length} sub="Snell" />
-        <StatCard label="Clash-only" value={sources.vless.length} sub="VLESS" />
+        <StatCard label="Clash / Loon" value={sources.vless.length} sub="VLESS" />
       </div>
 
       <section className={focusClassName(activePointer, ["/config/sources/fetch_order"], "content-panel source-order-panel")}>
@@ -136,11 +145,11 @@ export function SourcesPage() {
           title={sourceLabels[kind]}
           subtitle={sourceDescriptions[kind]}
           count={sources[kind].length}
-          tag={kind === "snell" ? "仅 Surge" : kind === "vless" ? "仅 Clash" : undefined}
+          tag={kind === "snell" ? "仅 Surge" : kind === "vless" ? "Clash / Loon" : undefined}
           icon={sourceIcons[kind]}
           readonly={isReadonly}
           className={focusClassName(activePointer, [`/config/sources/${kind}`], "source-section")}
-          onAdd={() => setEditor({ type: "fetch", kind, index: null, url: "" })}
+          onAdd={() => setEditor({ type: "fetch", kind, index: null, location: "" })}
         >
           <SortableList
             items={sources[kind]}
@@ -150,12 +159,12 @@ export function SourcesPage() {
             renderItem={(source, index, handle) => (
               <SourceCard
                 title={`${sourceLabels[kind]} #${index + 1}`}
-                subtitle={maskUrl(source.url) || "未设置 URL"}
-                meta={kind}
-                tag={source.url ? "已配置" : "待补齐"}
+                subtitle={source.content !== undefined ? `正文 · ${source.content.split("\n").length} 行` : source.content_file ? `正文文件 · ${source.content_file}` : maskUrl(source.url ?? "") || "未设置 URL"}
+                meta={kind === "subscriptions" ? source.format && source.format !== "auto" ? subscriptionFormatLabels[source.format] : "自动识别" : kind}
+                tag={source.url || source.content_file || source.content?.trim() ? "已配置" : "待补齐"}
                 readonly={isReadonly}
                 dragHandle={handle}
-                onEdit={() => setEditor({ type: "fetch", kind, index, url: source.url })}
+                onEdit={() => setEditor({ type: "fetch", kind, index, location: source.url ?? source.content_file ?? "", reference: source.content_file ? "file" : undefined, content: source.content, format: source.format })}
                 onDelete={() => void deleteFetchSource(kind, index)}
               />
             )}
@@ -295,7 +304,7 @@ function SourceEditorModal({
   editor: SourceEditor;
   draft: Config | undefined;
   readonly: boolean;
-  onChange: (editor: SourceEditor) => void;
+  onChange: Dispatch<SetStateAction<SourceEditor>>;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -317,19 +326,26 @@ function SourceEditorModal({
     <Modal
       open={Boolean(editor)}
       title={title}
-      description={isCustom ? "支持单节点 URL 与 relay_through 中转配置。" : "URL 会在列表中脱敏展示，原始值只保存在草稿里。"}
+      description={isCustom ? "支持单节点 URL 与 relay_through 中转配置。" : "来源修改先进入草稿，保存并热重载后生效。"}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" disabled={readonly || !editor} onClick={onSave}>保存来源</Button>
+          <Button variant="primary" disabled={readonly || !editor || (editor.type === "fetch" && (!(editor.content !== undefined ? editor.content.trim() : editor.location.trim()) || (editor.kind === "subscriptions" && editor.inspection?.status !== "recognized")))} onClick={onSave}>保存来源</Button>
         </>
       }
     >
       {editor?.type === "fetch" ? (
-        <Field label="订阅 URL" hint={editor.url ? maskUrl(editor.url) : "必须为 HTTP(S) URL"}>
-          <TextInput className="text-input mono-input" value={editor.url} disabled={readonly} onChange={(event) => onChange({ ...editor, url: event.target.value })} autoFocus />
-        </Field>
+        <div className="form-stack">
+          {editor.kind === "subscriptions" ? (
+            <SubscriptionEditor key={`${editor.kind}:${editor.index}`} value={editor} fileReference={editor.reference === "file"} readonly={readonly}
+              onChange={(patch) => onChange((current) => current?.type === "fetch" ? { ...current, ...patch } : current)} />
+          ) : (
+            <Field label="订阅 URL" hint="必须为 HTTP(S) URL">
+              <TextInput aria-label="订阅 URL" value={editor.location} disabled={readonly} onChange={(event) => onChange({ ...editor, location: event.target.value })} />
+            </Field>
+          )}
+        </div>
       ) : editor?.type === "custom" ? (
         <div className="form-stack">
           <Field label="名称">

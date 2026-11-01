@@ -5,10 +5,34 @@ export interface OrderedEntry<TValue> {
 
 export type ProxyStrategy = "select" | "url-test";
 export type FetchSourceKind = "subscriptions" | "snell" | "vless";
-export type GenerateFormat = "clash" | "surge";
+export type GenerateFormat = "clash" | "surge" | "loon";
+export type SubscriptionFormat = "auto" | "text" | GenerateFormat;
+
+export interface SubscriptionCheckResult {
+  status: "recognized" | "ambiguous";
+  format?: Exclude<SubscriptionFormat, "auto">;
+  node_count: number;
+  output_formats: GenerateFormat[];
+  candidates?: GenerateFormat[];
+  content: string;
+}
+
+export interface SubscriptionCheckInput {
+  location?: string;
+  content?: string;
+  format?: SubscriptionFormat;
+}
+
+export interface ResourceContent {
+  content: string;
+  format?: GenerateFormat;
+}
 
 export interface FetchSource {
-  url: string;
+  url?: string;
+  content?: string;
+  content_file?: string;
+  format?: SubscriptionFormat;
 }
 
 export interface RelayThrough {
@@ -42,8 +66,10 @@ export interface GroupConfig {
 }
 
 export interface TemplatesConfig {
+  inline?: Partial<Record<GenerateFormat, string>>;
   clash?: string;
   surge?: string;
+  loon?: string;
 }
 
 export interface Config {

@@ -35,6 +35,18 @@ export function DownloadPage() {
     enabled: Boolean(runtimeRevision)
   });
 
+  const loonPreviewQuery = useQuery({
+    queryKey: queryKeys.generatePreview(runtimeRevision, "loon"),
+    queryFn: () => api.generatePreview("loon"),
+    enabled: Boolean(runtimeRevision)
+  });
+
+  const loonLinkQuery = useQuery({
+    queryKey: ["generateLink", "loon", runtimeRevision],
+    queryFn: () => api.generateLink("loon", "", false),
+    enabled: Boolean(runtimeRevision)
+  });
+
   const clashLinkQuery = useQuery({
     queryKey: ["generateLink", "clash", runtimeRevision],
     queryFn: () => api.generateLink("clash", "", false),
@@ -87,8 +99,8 @@ export function DownloadPage() {
 
   const stats = useMemo(() => deriveStats(draft, nodesQuery.data), [draft, nodesQuery.data]);
   const hasBaseURL = Boolean(draft?.base_url?.trim());
-  const previewError = clashPreviewQuery.error ?? surgePreviewQuery.error;
-  const previewLoading = clashPreviewQuery.isLoading || surgePreviewQuery.isLoading;
+  const previewError = clashPreviewQuery.error ?? surgePreviewQuery.error ?? loonPreviewQuery.error;
+  const previewLoading = clashPreviewQuery.isLoading || surgePreviewQuery.isLoading || loonPreviewQuery.isLoading;
 
   async function openImportPicker() {
     if (isReadonly) return;
@@ -191,10 +203,10 @@ export function DownloadPage() {
       </div>
 
       {previewError ? (
-        <ErrorState message={getErrorMessage(previewError)} action={<Button variant="secondary" onClick={() => { void clashPreviewQuery.refetch(); void surgePreviewQuery.refetch(); }}>重试生成</Button>} />
+        <ErrorState message={getErrorMessage(previewError)} action={<Button variant="secondary" onClick={() => { void clashPreviewQuery.refetch(); void surgePreviewQuery.refetch(); void loonPreviewQuery.refetch(); }}>重试生成</Button>} />
       ) : null}
 
-      {previewLoading && !previewError ? <LoadingState message="正在生成双格式预览" /> : null}
+      {previewLoading && !previewError ? <LoadingState message="正在生成三种格式预览" /> : null}
 
       <div className="preview-grid">
         <PreviewCard
@@ -220,6 +232,18 @@ export function DownloadPage() {
           subUrlChip={hasBaseURL ? "MANAGED" : "SUB URL"}
           onCopyLink={() => linkMutation.mutate("surge")}
           linkLoading={linkMutation.isPending && linkMutation.variables === "surge"}
+        />
+        <PreviewCard
+          title="Loon"
+          badge="conf"
+          filename="loon.conf"
+          format="loon"
+          previewText={loonPreviewQuery.data ?? null}
+          downloadPath={buildGeneratePath("loon", "loon.conf")}
+          subUrl={loonLinkQuery.data?.url ?? buildGeneratePath("loon", "loon.conf")}
+          subUrlChip="SUB URL"
+          onCopyLink={() => linkMutation.mutate("loon")}
+          linkLoading={linkMutation.isPending && linkMutation.variables === "loon"}
         />
       </div>
     </div>
@@ -287,7 +311,7 @@ function CodePreview({ text, format }: { text: string; format: GenerateFormat })
 
 function highlightLine(line: string, format: GenerateFormat): ReactNode {
   if (line.length === 0) return null;
-  return format === "clash" ? highlightYAML(line) : highlightSurge(line);
+  return format === "clash" ? highlightYAML(line) : highlightINI(line);
 }
 
 function highlightYAML(line: string): ReactNode {
@@ -306,7 +330,7 @@ function highlightYAML(line: string): ReactNode {
   return <span>{line}</span>;
 }
 
-function highlightSurge(line: string): ReactNode {
+function highlightINI(line: string): ReactNode {
   if (/^\s*(#|\/\/)/.test(line)) return <span className="hl-comment">{line}</span>;
   const section = line.match(/^(\s*\[)([^\]]+)(\])\s*$/);
   if (section) {

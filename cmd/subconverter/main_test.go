@@ -137,3 +137,17 @@ func TestHealthcheckURLRejectsInvalidListenAddress(t *testing.T) {
 		t.Fatal("healthcheckURL() error = nil, want non-nil")
 	}
 }
+
+// T-CLI-STORE-001: flags override environment and the default is /config.
+func TestResolveDataDir(t *testing.T) {
+	for _, tt := range []struct{ name, flag, env, want string }{
+		{"default", "", "", "/config"}, {"environment", "", "custom/config", "custom/config"}, {"flag", "local/config", "other/config", "local/config"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(dataDirEnvVar, tt.env)
+			if got := resolveDataDir(tt.flag); got != tt.want {
+				t.Fatalf("got %q want %q", got, tt.want)
+			}
+		})
+	}
+}

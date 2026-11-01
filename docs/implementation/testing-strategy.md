@@ -18,13 +18,13 @@
 - VLESS URI 解析（valid / invalid / transport fallback / encryption 透传 / transport query dispatch）
 - SIP002 明文 `userinfo`
 - SS plugin query 解析与转义处理
-- 拉取类节点过滤（订阅（TXT / Clash YAML / Surge CONF）+ Snell + VLESS）
-- 地区节点组匹配（订阅（TXT / Clash YAML / Surge CONF）+ Snell + VLESS）
+- 拉取类节点过滤（订阅（TXT / Clash YAML / Surge CONF / Loon）+ Snell + VLESS）
+- 地区节点组匹配（订阅（TXT / Clash YAML / Surge CONF / Loon）+ Snell + VLESS）
 - `relay_through` 三种模式展开
 - Snell 节点可作为 `relay_through` 上游
 - VLESS 节点可作为 `relay_through` 上游
 - `@all` 不包含链式节点
-- `@all` 包含全部原始节点（订阅（TXT / Clash YAML / Surge CONF）+ Snell + VLESS + 不带 `relay_through` 的自定义）
+- `@all` 包含全部原始节点（订阅（TXT / Clash YAML / Surge CONF / Loon）+ Snell + VLESS + 不带 `relay_through` 的自定义）
 - `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT，去重且排除自身
 - `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
 - 同一 entry 内重复 `@auto` 会被静态校验拒绝
@@ -45,9 +45,10 @@
 
 - Clash Meta 输出快照
 - Surge 输出快照
+- Loon 输出快照、底版五个生成段替换、链式辅助名称冲突、原生声明隔离、VLESS 传输过滤及错误根因链
 - 链式节点渲染字段
 - Clash 的 Snell 级联过滤与 fallback 清空路径
-- Clash YAML / Surge CONF 原生节点的跨格式过滤、链式依赖级联与 fallback 清空路径
+- Clash YAML / Surge CONF / Loon 原生节点的跨格式过滤、链式依赖级联与 fallback 清空路径
 - 结构化原生声明保留未知/嵌套字段，Target 分配最终输出名后覆盖原名称
 - Clash 的 VLESS 节点渲染（含 encryption 透传、transport fallback、transport opts）
 - Surge 的 VLESS 级联过滤与 fallback 清空路径
@@ -124,7 +125,7 @@
 - `T-RLD-006`：reload 成功后 `GET /api/status` 的 `runtime_config_revision` 更新，`config_dirty` 变为 `false`
 - `T-RLD-007`：远程主配置源读取失败时 reload 返回 502，旧 RuntimeConfig 不变，`config_dirty` 不被错误清除
 - `T-RLD-008`：reload 429 后锁状态可恢复——当前 reload 完成后，后续重试可以成功进入 reload 流程
-- `T-RLD-009`：reload 不拉取订阅（TXT / Clash YAML / Surge CONF）/Snell/VLESS 来源；订阅源不可用不影响 reload 成功，但会由预览或生成路径返回对应错误
+- `T-RLD-009`：reload 不拉取订阅（TXT / Clash YAML / Surge CONF / Loon）/Snell/VLESS 来源；订阅源不可用不影响 reload 成功，但会由预览或生成路径返回对应错误
 
 ---
 
@@ -230,3 +231,7 @@
   - 测试入口：正式前端 E2E runner；后端使用临时 auth state 和 fake 订阅访问 token
   - 操作步骤：首次打开 `/login` setup → 输入 setup token 并创建管理员 → 进入 `/sources` → logout → 登录 → 进入 B3 → 调用复制订阅链接
   - 预期结果：缺少或错误 setup token 时无法创建管理员；setup 成功后写入 session Cookie；logout 后受保护页面跳回登录；复制链接经 `GET /api/generate/link` 返回 URL，含 token 时先确认
+
+## Loon 验证入口
+
+`T-SRC-LOON-*` 覆盖显式格式、后缀与内容识别、节点保留及配置分组；`T-TGT-LOON-*` 覆盖跨格式级联与链式命名；`T-RND-LOON-*` 覆盖 golden、参数映射和底版；`T-GEN-LOON-*`、`T-E2E-LOON-*` 覆盖生成入口；`T-APP-LOON-*` 覆盖配置包往返；`T-WEB-LOON-*` 覆盖来源格式、底版保存与预览入口。所有样本使用合成凭据，不依赖私有供应商文件。

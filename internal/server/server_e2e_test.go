@@ -121,6 +121,36 @@ func startTestServerWithOptions(t *testing.T, cfg *config.Config, f *fakeFetcher
 
 // --- E2E tests ---
 
+// T-E2E-LOON-001: HTTP generation accepts Loon, applies configured groups and uses its default filename.
+func TestE2E_GenerateLoon(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.Sources.Subscriptions[0].Format = "loon"
+	f := &fakeFetcher{responses: map[string][]byte{
+		subURL: []byte("[Proxy]\nHK-LOON = anytls, node.example.com, 443, \"pw\", tls-name=edge.example.com\n[Proxy Group]\nPROVIDER = select, MISSING\n"),
+	}}
+	ts := startTestServer(t, cfg, f)
+	resp, err := ts.Client().Get(ts.URL + "/generate?format=loon")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || !strings.Contains(resp.Header.Get("Content-Disposition"), "loon.conf") {
+		t.Fatalf("status=%d headers=%v body=%s", resp.StatusCode, resp.Header, body)
+	}
+	for _, want := range []string{"HK = select, HK-LOON", "[Remote Rule]", "https://example.com/rules.list,proxy", "FINAL,proxy"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("Loon output missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(string(body), "PROVIDER") || strings.Contains(string(body), "MANAGED-CONFIG") {
+		t.Fatalf("Loon output includes provider graph or Surge header:\n%s", body)
+	}
+}
+
 // T-E2E-001: HTTP generate Clash success
 func TestE2E_GenerateClash(t *testing.T) {
 	ts := startTestServer(t, validConfig(t), validFetcher())

@@ -2,12 +2,12 @@
 # subconverter 用户配置文件
 # ============================================================
 #
-# 本文件声明系统的全部输入：订阅源（TXT / Clash YAML / Surge CONF）、
+# 本文件声明系统的全部输入：订阅源（TXT / Clash YAML / Surge CONF / Loon）、
 # Snell/VLESS 来源、
 # 自定义代理、节点分组、服务路由、远程规则集、内联规则和兜底策略。
 #
 # 工具读取此文件后，结合底版模板（templates），
-# 生成 Clash Meta (.yaml) 或 Surge (.conf) 配置。
+# 生成 Clash Meta (.yaml)、Surge (.conf) 或 Loon (.conf) 配置。
 #
 # 详细字段说明参见 docs/design/config-schema.md
 # ============================================================
@@ -43,6 +43,8 @@ base_url: "https://my-server.com"
 templates:
   clash: "configs/base_clash.yaml"
   surge: "configs/base_surge.conf"
+  loon: "configs/base_loon.conf"
+  # 也可用 inline: {loon: "正文"}；同一格式的路径与正文二选一。
 
 # ==================== 节点来源 ====================
 
@@ -53,12 +55,16 @@ sources:
   #      中的节点映射，只进入 Clash 输出。
   #   2. Surge CONF（.conf，或内容含 [Proxy]）：复制 [Proxy] 中的节点
   #      声明，只进入 Surge 输出。
-  #   3. TXT：base64 编码或明文 SS / AnyTLS 节点列表。
+  #   3. Loon（.lcf，或显式 format: loon）：复制 [Proxy] 中的节点，只进入 Loon。
+  #   4. TXT：base64 编码或明文 SS / AnyTLS 节点列表。
   # SS 支持：ss://、QuanX shadowsocks 行、Surge ss 行。
   # AnyTLS 支持：anytls://、QuanX anytls 行、Surge anytls 行。
-  # 支持多个订阅，节点按顺序合并。重名节点保留独立身份，并在 Clash /
-  # Surge 各自完成格式过滤后独立追加输出后缀（②③...）。
-  # url 必填，必须为 http:// 或 https:// 开头。
+  # 支持多个订阅，节点按顺序合并；重名节点在各目标过滤后独立消歧（②③...）。
+  # format 可选 auto / text / clash / surge / loon，默认 auto；Loon 的 .conf 必须显式指定 loon。
+  # 只导入节点；来源自带的组、规则、Host 和通用设置由本项目 YAML 与底版负责。
+  # url / 非空 content / 本地 content_file 三选一；content 可在 Web 直接编辑。
+  # 保存正文会在 /config 下生成带时间戳的版本文件，主配置改为 content_file 引用。
+  # content 不自动更新；正文示例见 docs/design/config-schema.md。
   # 这里的 token 是上游订阅服务自己的 token，和本服务 `/generate`
   # 的访问 token 是两回事。
   # TXT 单行解析失败会静默跳过；结构化文档字段/声明错误会整源报错
@@ -68,6 +74,8 @@ sources:
     - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx"
     # - url: "https://sub2.example.com/profile.yaml?token=yyy"
     # - url: "https://sub3.example.com/profile.conf?token=zzz"
+    # - url: "https://sub4.example.com/loon.conf?token=xxx"
+    #   format: loon
 
   # ---------- Snell 来源（Surge 专属）----------
   # 每行一条 Surge 风格的 Snell 节点声明：
@@ -77,19 +85,19 @@ sources:
   # 空行与 # / // 注释行跳过；单行解析失败整源报错（与 subscriptions 静默跳过策略不同，
   # 原因：Snell 清单通常是小规模手工维护，严格报错更利于发现拼写问题）。
   # 与其他来源的同名节点保留独立身份；可作为 relay_through 的链式上游。
-  # Snell 节点仅进入 Surge 输出；Clash 输出会级联过滤掉这些节点及依赖它们的组/规则。
+  # Snell 节点仅进入 Surge 输出；Clash / Loon 输出会级联过滤掉这些节点及依赖它们的组/规则。
   #
   snell:
     - url: "https://my-server.com/snell-nodes.txt"
 
-  # ---------- VLESS 来源（Clash Meta 专属）----------
+  # ---------- VLESS 来源（Clash Meta / Loon）----------
   # 每行一条标准 VLESS URI：
   #   vless://UUID@SERVER:PORT?security=...&sni=...&type=...#NODE_NAME
   # 支持的 query：security（none/tls/reality）/ encryption / flow / type /
   #              sni / fp / alpn / pbk / sid / spx
   # 空行与 # / // 注释行跳过；单行解析失败整源报错（策略与 Snell 一致）。
   # 与其他来源的同名节点保留独立身份；可作为 relay_through 的链式上游。
-  # VLESS 节点仅进入 Clash Meta 输出；Surge 输出会级联过滤掉这些节点及依赖它们的组/规则。
+  # VLESS 节点进入 Clash；Loon 接受 tcp/ws/http 传输；Surge 级联过滤这些节点及其引用。
   #
   vless:
     - url: "https://my-server.com/vless-nodes.txt"
@@ -274,9 +282,9 @@ rulesets:
 
 # ==================== 内联规则 ====================
 #
-# 直接写入的路由规则，排在远程规则集之后、兜底规则之前。
+# 直接写入的路由规则；Clash / Surge 排在规则集后，Loon 受客户端来源优先级影响。
 # 系统只提取最后一个逗号后的策略名做引用校验，不解析规则语义。
-# 渲染时原样透传——Clash Meta 和 Surge 的内联规则语法兼容。
+# 渲染时原样透传——各客户端的规则语法与优先级见 docs/design/rendering.md。
 #
 # 常用格式：
 #   GEOIP,CN,<策略>          → 中国 IP 走指定策略
@@ -290,6 +298,6 @@ rules:
 #
 # 未匹配任何规则集和内联规则的流量走这里。
 # 必填，必须引用 routing 中已定义的服务组。
-# 渲染为: Clash Meta → MATCH,<fallback> | Surge → FINAL,<fallback>
+# 渲染为: Clash Meta → MATCH,<fallback> | Surge / Loon → FINAL,<fallback>
 
 fallback: 🐟 FINAL

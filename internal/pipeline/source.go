@@ -66,9 +66,17 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, fetcher
 	for _, kind := range order {
 		switch kind {
 		case "subscriptions":
-			for _, sub := range sources.Subscriptions {
-				proxies, err := fetchSubscription(ctx, fetcher, sub.URL)
+			for index, sub := range sources.Subscriptions {
+				proxies, err := loadSubscription(ctx, fetcher, sub)
 				if err != nil {
+					if sub.Content != "" {
+						var sourceErr *errtype.FetchError
+						if errors.As(err, &sourceErr) {
+							located := *sourceErr
+							located.Message = fmt.Sprintf("sources.subscriptions[%d].content：%s", index, sourceErr.Message)
+							return nil, &located
+						}
+					}
 					return nil, err
 				}
 				fetchedProxies = append(fetchedProxies, proxies...)
@@ -128,19 +136,42 @@ func assignProxyIDs(proxies []model.Proxy) []model.Proxy {
 	return result
 }
 
-// fetchSubscription fetches one subscription URL. Structured Clash YAML and
-// Surge CONF documents are recognized before the legacy Base64/plain-text
+// loadSubscription reads inline/local content or fetches a subscription URL. Structured Clash YAML and
+// Surge CONF / Loon documents are recognized before the legacy Base64/plain-text
 // subscription list formats.
-func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string) ([]model.Proxy, error) {
-	body, err := fetcher.Fetch(ctx, rawURL)
-	if err != nil {
-		return nil, err
+func loadSubscription(ctx context.Context, fetcher fetch.Fetcher, sub config.Subscription) ([]model.Proxy, error) {
+	rawURL := sub.URL
+	body := []byte(sub.Content)
+	if sub.ContentFile != "" {
+		var err error
+		body, err = fetch.LoadResource(ctx, sub.ContentFile, fetcher)
+		if err != nil {
+			return nil, err
+		}
+		rawURL = sub.ContentFile
+	} else if strings.TrimSpace(sub.Content) == "" {
+		var err error
+		body, err = fetcher.Fetch(ctx, rawURL)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		rawURL = "inline:subscription"
+	}
+	proxies, _, err := parseSubscriptionBody(rawURL, body, sub.Format, sub.Content != "" || sub.ContentFile != "")
+	return proxies, err
+}
+
+func parseSubscriptionBody(rawURL string, body []byte, format string, allowFragment bool) ([]model.Proxy, string, error) {
+	// Pasted INI node declarations need no document wrapper, including saved copies.
+	if allowFragment && (format == "loon" || format == "surge") && !hasINISection(string(body)) {
+		body = append([]byte("[Proxy]\n"), body...)
 	}
 
-	document, err := parseSubscriptionDocument(rawURL, body)
+	document, err := parseSubscriptionDocument(rawURL, body, format)
 	if document != nil {
 		if err != nil {
-			return nil, &errtype.FetchError{
+			return nil, "", &errtype.FetchError{
 				Code:    errtype.CodeFetchSubscriptionFormatInvalid,
 				URL:     fetch.SanitizeURL(rawURL),
 				Message: subscriptionDocumentFormatLabel(document.Format) + " 订阅格式无效：" + err.Error(),
@@ -148,21 +179,21 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 			}
 		}
 		if len(document.Proxies) == 0 {
-			return nil, &errtype.FetchError{
+			return nil, "", &errtype.FetchError{
 				Code:    errtype.CodeFetchSubscriptionEmpty,
 				URL:     fetch.SanitizeURL(rawURL),
 				Message: subscriptionDocumentFormatLabel(document.Format) + " 订阅未产生任何有效节点",
 			}
 		}
-		return document.Proxies, nil
+		return document.Proxies, string(document.Format), nil
 	}
 
 	text, err := subscriptionBodyText(body)
 	if err != nil {
-		return nil, &errtype.FetchError{
+		return nil, "", &errtype.FetchError{
 			Code:    errtype.CodeFetchSubscriptionBase64Invalid,
 			URL:     fetch.SanitizeURL(rawURL),
-			Message: "订阅内容不是合法的 Clash YAML、Surge CONF、Base64，也不是明文 SS/AnyTLS 订阅列表",
+			Message: "订阅内容不是合法的 Clash YAML、Surge CONF、Loon CONF、Base64，也不是明文 SS/AnyTLS 订阅列表",
 			Cause:   err,
 		}
 	}
@@ -179,14 +210,14 @@ func fetchSubscription(ctx context.Context, fetcher fetch.Fetcher, rawURL string
 	}
 
 	if len(proxies) == 0 {
-		return nil, &errtype.FetchError{
+		return nil, "", &errtype.FetchError{
 			Code:    errtype.CodeFetchSubscriptionEmpty,
 			URL:     fetch.SanitizeURL(rawURL),
 			Message: "订阅未产生任何有效节点",
 		}
 	}
 
-	return proxies, nil
+	return proxies, "text", nil
 }
 
 func subscriptionDocumentFormatLabel(format model.NativeProxyFormat) string {
@@ -195,6 +226,8 @@ func subscriptionDocumentFormatLabel(format model.NativeProxyFormat) string {
 		return "Clash YAML"
 	case model.NativeProxyFormatSurge:
 		return "Surge CONF"
+	case model.NativeProxyFormatLoon:
+		return "Loon CONF"
 	default:
 		return "结构化"
 	}
@@ -428,4 +461,13 @@ func convertPluginSpec(src *proxyparse.PluginSpec) *model.Plugin {
 		}
 	}
 	return dst
+}
+
+func hasINISection(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if isINISectionHeader(strings.TrimPrefix(strings.TrimSpace(line), "\ufeff")) {
+			return true
+		}
+	}
+	return false
 }

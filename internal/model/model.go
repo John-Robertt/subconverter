@@ -24,11 +24,12 @@ type NativeProxyFormat string
 const (
 	NativeProxyFormatClash NativeProxyFormat = "clash"
 	NativeProxyFormatSurge NativeProxyFormat = "surge"
+	NativeProxyFormatLoon  NativeProxyFormat = "loon"
 )
 
 // NativeProxy preserves a proxy declaration that is already expressed in one
 // target's native syntax. Payload contains one Clash YAML proxy mapping or the
-// right-hand side of one Surge [Proxy] declaration.
+// right-hand side of one Surge or Loon [Proxy] declaration.
 type NativeProxy struct {
 	Format  NativeProxyFormat
 	Payload string
@@ -133,8 +134,16 @@ type TargetGroup struct {
 	Members  []string
 }
 
+// TargetChain is a target-native chain with final policy names in hop order.
+type TargetChain struct {
+	Name    string
+	Members []string
+	UDP     bool
+}
+
 // TargetPipeline is the renderer-facing projection of Pipeline.
 type TargetPipeline struct {
+	ProxyChains []TargetChain
 	Proxies     []TargetProxy
 	NodeGroups  []TargetGroup
 	RouteGroups []TargetGroup

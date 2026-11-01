@@ -142,7 +142,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 职责：
 
 - 按来源类型顺序、同类来源的声明顺序逐个拉取；单次 Build 内当前采用顺序拉取
-- 解析订阅节点（TXT / Clash YAML / Surge CONF）、Snell 节点、VLESS 节点
+- 解析订阅节点（TXT / Clash YAML / Surge CONF / Loon）、Snell 节点、VLESS 节点
 - 将自定义代理转换为原始节点对象或链式模板
 - 按来源与声明顺序为每个原始节点分配非零、Build 内唯一的 `ProxyID`
 
@@ -156,10 +156,12 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 说明：
 
+- 正文订阅直接读取 `sources.subscriptions[].content` 或其保存后的本地 `content_file`，跳过远程 Fetcher；解析规则与 URL 订阅相同，输入约束见 [配置规约](config-schema.md#subscriptions)
 - 本阶段不生成链式节点
 - 同名节点保留各自候选显示名和独立 ID；本阶段不修改节点名
-- 订阅格式按 `Clash YAML → Surge CONF → TXT/Base64` 的优先级识别；`.yaml` / `.yml` / `.conf` URL 后缀会强制对应格式，其他 URL 再按顶层 `proxies` 或 `[Proxy]` 内容识别
-- Clash YAML 复制 `proxies` 中的完整节点映射；Surge CONF 复制 `[Proxy]` 中每条声明的完整右值。两类节点都保留为 `KindSubscription`，并用 `NativeProxy.Format` 记录其唯一目标格式
+- `InspectSubscription` 复用 Source 正文解析以检查单个来源，按内容提供识别结果或候选，不改变 Build 中的旧版自动识别；规则见 [配置规约](config-schema.md#web-订阅检查)
+- 订阅格式由 `format`、URL 后缀及内容识别决定，规则以 [配置规约](config-schema.md#subscriptions) 为准
+- Clash YAML 复制 `proxies` 中的完整节点映射；Surge CONF / Loon 复制 `[Proxy]` 中每条声明的完整右值。这些节点都保留为 `KindSubscription`，并用 `NativeProxy.Format` 记录其唯一目标格式
 - TXT 响应体支持 Base64 编码列表和明文列表；明文列表兼容 SS（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`）和 AnyTLS（`anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）行格式
 - AnyTLS 输入按“宽进严出”归一化：Surge / Quantumult X 方言字段可被接受，但只有目标客户端官方支持字段会在 Render 阶段输出
 - TXT 订阅中的空行、整行注释和单行解析失败会被跳过；结构化订阅声明错误整源报错；任一格式最终 0 个有效节点都报错
@@ -192,7 +194,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 说明：
 
-- 过滤对象是拉取类节点（`KindSubscription`，含 TXT / Clash YAML / Surge CONF；加上 `KindSnell` + `KindVLess`）
+- 过滤对象是拉取类节点（`KindSubscription`，含 TXT / Clash YAML / Surge CONF / Loon；加上 `KindSnell` + `KindVLess`）
 - 自定义代理和链式节点不参与过滤
 - 生成管道只消费 `FilterResult.Included`
 - `/api/preview/nodes` 同时返回 `Included` 与 `Excluded` 的合并视图，并用 `filtered` 字段标记节点是否被排除
@@ -226,7 +228,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 - `@all` 只包含原始节点
 - 地区组、链式组和 `@all` 都保存 `ProxyID`，不保存节点名
-- 原始节点 = 订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
+- 原始节点 = 订阅节点（TXT / Clash YAML / Surge CONF / Loon）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
 - 链式展开的上游只来自拉取类节点，并通过 `DialerID` 引用
 
 ---
@@ -309,17 +311,18 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 职责：
 
-- 将已投影的目标格式视图序列化为目标客户端格式
+- 将已投影的目标格式视图序列化为目标客户端格式；Loon 的规则来源优先级见 [渲染设计](rendering.md#loon)
 
 输出目标：
 
 - Clash Meta YAML
 - Surge conf
+- Loon conf
 
 要求：
 
-- 两种渲染器遵循相同的分组和路由规则，分别输出各自 Target 保留下来的内容
-- Target 过滤后，两种输出的节点、组和规则可以不同；Render 负责目标语法、协议字段输出和底版模板合并
+- 三种渲染器使用相同的分组和路由声明，分别输出各自 Target 保留下来的内容
+- Target 过滤后，各目标输出的节点、组和规则可以不同；Render 负责目标语法、协议字段输出和底版模板合并
 
 ---
 

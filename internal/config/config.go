@@ -21,10 +21,12 @@ type Config struct {
 }
 
 // Templates declares optional base config templates per output format.
-// Each value may be a local file path or an HTTP(S) URL.
+// Locations may be local paths or HTTP(S) URLs; Inline stores editable bodies.
 type Templates struct {
-	Clash string `yaml:"clash,omitempty" json:"clash,omitempty"`
-	Surge string `yaml:"surge,omitempty" json:"surge,omitempty"`
+	Clash  string            `yaml:"clash,omitempty" json:"clash,omitempty"`
+	Surge  string            `yaml:"surge,omitempty" json:"surge,omitempty"`
+	Loon   string            `yaml:"loon,omitempty" json:"loon,omitempty"`
+	Inline map[string]string `yaml:"inline,omitempty" json:"inline,omitempty"`
 }
 
 // Sources declares subscription and custom proxy inputs.
@@ -46,7 +48,10 @@ type Sources struct {
 
 // Subscription is a single subscription source.
 type Subscription struct {
-	URL string `yaml:"url" json:"url"`
+	URL         string `yaml:"url,omitempty" json:"url,omitempty"`
+	Content     string `yaml:"content,omitempty" json:"content,omitempty"`
+	ContentFile string `yaml:"content_file,omitempty" json:"content_file,omitempty"`
+	Format      string `yaml:"format,omitempty" json:"format,omitempty"`
 }
 
 // SnellSource is a single Snell node source. The URL is fetched as plain text;

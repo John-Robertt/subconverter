@@ -31,7 +31,8 @@ internal/admin ──► internal/app ──► internal/config
 ### 配置管理
 
 ```go
-// ConfigSnapshot 读取配置源中的已保存配置，返回 Config JSON + revision。
+// ConfigSnapshot 读取已保存配置，还原可读正文；无法读取的文件保留引用供修复。
+// revision 仍取主配置文件。
 // 用于 GET /api/config。
 func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, error)
 
@@ -39,6 +40,8 @@ func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, er
 // 仅本地可写配置源支持；HTTP(S) 配置源返回 ErrConfigSourceReadonly(409)。
 // 本地文件或所在目录不可写返回 ErrConfigFileNotWritable(409)。
 // revision 冲突返回 RevisionConflictError(409)，并携带当前 revision。
+// 正文写入带时间戳的版本文件后，主配置原子写回引用；失败时回收本次新增文件。
+// 正文目录错误使用 ResourceError(CodeResourceContentWriteFailed)，HTTP 映射为 409。
 // 写回成功后不自动 reload。
 // 用于 PUT /api/config。
 func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*SaveConfigResult, error)
@@ -48,15 +51,21 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 // 用于 GET /api/config/effective.yaml。
 func (s *Service) EffectiveConfigYAML(ctx context.Context) ([]byte, error)
 
-// EffectiveConfigArchive 返回当前 RuntimeConfig 对应的源 YAML 与模板 ZIP 包。
+// EffectiveConfigArchive 返回当前 RuntimeConfig 对应的源 YAML 与模板 ZIP 包（含已配置的 Clash / Surge / Loon 底版）。
 // 启动成功与 Reload 成功时更新配置快照；模板按当前生效 templates 位置读取。
 // 用于 GET /api/config/effective.zip。
 func (s *Service) EffectiveConfigArchive(ctx context.Context) (*ConfigArchiveResult, error)
 
-// ImportConfigYAML 将上传 YAML 解析为 Config JSON。
+// ImportConfigYAML 将上传 YAML 解析为 Config JSON，并读取已有本地正文引用。
 // 不写文件、不替换 RuntimeConfig、不执行 Prepare。
 // 用于 POST /api/config/import。
 func (s *Service) ImportConfigYAML(ctx context.Context, raw []byte) (*ImportConfigYAMLResult, error)
+
+// ReadResource 读取节点订阅或模板的文本副本，不修改资源和配置。
+func (s *Service) ReadResource(ctx context.Context, location string) (*ResourceContentResult, error)
+
+// CheckSubscription 读取并检查节点，不保存配置或替换运行快照。
+func (s *Service) CheckSubscription(ctx context.Context, input CheckSubscriptionInput) (*CheckSubscriptionResult, error)
 
 // ImportConfigArchive 将上传 ZIP 包解析为 Config JSON，并写入包内模板副本。
 // 仅本地可写配置源支持；不写配置文件、不替换 RuntimeConfig、不执行 Prepare。
@@ -177,6 +186,40 @@ type ImportConfigYAMLResult struct {
     Config json.RawMessage `json:"config"`
 }
 ```
+
+### CheckSubscriptionInput / CheckSubscriptionResult
+
+```go
+type CheckSubscriptionInput struct {
+    Location string `json:"location,omitempty"`
+    Content  string `json:"content,omitempty"`
+    Format   string `json:"format,omitempty"`
+}
+
+type CheckSubscriptionResult struct {
+    Status        string   `json:"status"`
+    Format        string   `json:"format,omitempty"`
+    NodeCount     int      `json:"node_count"`
+    OutputFormats []string `json:"output_formats"`
+    Candidates    []string `json:"candidates,omitempty"`
+    Content       string   `json:"content"`
+}
+```
+
+`subscription_check.go` 负责读取与 DTO 编排；`pipeline.InspectSubscription` 负责识别和提取，`generate.Service.CheckProxyFormats` 复用实际 Target/Render 检查输出兼容性。字段和错误契约见 [订阅检查 API](api.md#post-apisubscriptionscheck)。
+
+### ResourceContentResult
+
+```go
+type ResourceContentResult struct {
+    Content string `json:"content"`
+    Format  string `json:"format,omitempty"`
+}
+```
+
+`Options.DataDir` 指定正文文件目录，省略时为 `/config`。`content_store.go` 负责版本文件发布、失败回收和正文还原；SaveConfig 串行执行 revision 检查、正文写入和主配置提交，避免并发保存互相覆盖。
+
+`Format` 是复用 Source 识别规则得到的订阅格式提示；复制正文时仅为自动识别来源固定格式，用户显式选择优先。模板编辑忽略此提示。配置字段约束见 [配置规约](config-schema.md#subscriptions)。
 
 ### ConfigArchiveResult
 
@@ -457,13 +500,13 @@ var (
 
 `reloadMu` 只负责重载互斥：入口调用 `TryLock`，已有重载在执行时立即返回 `ErrReloadInProgress`，由 `admin` 映射为 429。它不会让普通生成请求排队。
 
-`SaveConfig` 只负责写回配置文件，保持生效快照不变：
+`SaveConfig` 用 `saveMu` 串行执行同一服务实例内的保存，保持生效快照不变：
 
 - 先读取文件并计算 `config_revision`，与调用方传入的版本比较；不匹配时返回冲突，保留文件原样
-- 校验通过后，把完整 YAML 写入同目录临时文件，再用 `os.Rename` 替换原文件；读文件的请求不会看到本次写入了一半的 YAML
+- 校验通过后发布正文版本文件，再把引用写入完整 YAML 的同目录临时文件，用 `os.Rename` 替换原配置；主配置提交失败时回收本次新增正文，旧版本不覆盖
 - 成功时根据写出的字节计算并返回新 revision。下一次本地 `Status` 会重新读文件并计算 revision，生效 revision 仍要等成功重载才更新
 
-版本比较和文件替换是两个步骤，当前没有锁把它们合成一次操作。外部进程或另一个保存请求若恰好在两步之间写入，仍可能被覆盖。原子 rename 保证文件完整替换，并不保证多写者的版本检查与替换不可分割；当前仍保持单用户写入边界。
+`saveMu` 覆盖本实例的 revision 检查、正文写入和主配置提交；相同 revision 的并发保存只有一次成功，其余返回版本冲突。外部进程仍不受该锁约束，若它在版本比较与替换之间写入，仍可能被覆盖。
 
 ---
 
@@ -480,3 +523,9 @@ HTTP Request
 2. 调用对应的 `app.Service` 方法
 3. 将 DTO 序列化为 JSON 响应
 4. 将 `error` 按类型映射为 HTTP 状态码 + JSON 错误体
+
+## Loon 配置与生成
+
+`GenerateInput.Format`、`GenerateLinkInput.Format` 接受 `loon`，默认文件名为 `loon.conf`；现有运行时预览与草稿预览方法签名保持不变。配置 DTO 中的 `Config` JSON 保留 `sources.subscriptions[].format` 与 `templates.loon`，字段定义见 [配置规约](config-schema.md#subscriptions)。
+
+配置包增加可选条目 `templates/loon.conf`。导入后把模板副本路径放入返回草稿的 `templates.loon`；保存、重载和导出沿用现有流程。

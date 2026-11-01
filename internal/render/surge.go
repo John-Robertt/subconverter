@@ -3,8 +3,6 @@ package render
 import (
 	"bytes"
 	"fmt"
-	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/John-Robertt/subconverter/internal/errtype"
@@ -12,8 +10,7 @@ import (
 )
 
 const (
-	surgeURLTestTolerance = 100
-	surgeManagedInterval  = 86400
+	surgeManagedInterval = 86400
 )
 
 // surgeSnellKeyOrder fixes the order in which Snell parameters are emitted
@@ -49,9 +46,6 @@ var surgeAnyTLSKeyOrder = []string{
 	"server-cert-fingerprint-sha256",
 }
 
-// sectionHeaderRe matches INI-style section headers like [Proxy].
-var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
-
 // Surge renders a target-projected pipeline into Surge conf format.
 // managedURL is used for the #!MANAGED-CONFIG header (empty = omit header).
 // If baseTemplate is non-nil, generated sections replace corresponding sections in the template.
@@ -60,7 +54,7 @@ func Surge(p *model.TargetPipeline, managedURL string, baseTemplate []byte) ([]b
 	if err != nil {
 		return nil, err
 	}
-	groupSection := buildSurgeGroups(p.NodeGroups, p.RouteGroups)
+	groupSection := buildINIGroups(p.NodeGroups, p.RouteGroups)
 	ruleSection := buildSurgeRules(p.Rulesets, p.Rules, p.Fallback)
 
 	var buf bytes.Buffer
@@ -118,19 +112,19 @@ func renderSurgeProxy(px model.TargetProxy) (string, error) {
 	case "ss":
 		parts = append(parts, px.Name+" = ss", px.Server, fmt.Sprintf("%d", px.Port))
 		if v := px.Params["cipher"]; v != "" {
-			parts = append(parts, renderSurgeKeyValue("encrypt-method", v))
+			parts = append(parts, renderINIKeyValue("encrypt-method", v))
 		}
 		if v := px.Params["password"]; v != "" {
-			parts = append(parts, renderSurgeKeyValue("password", v))
+			parts = append(parts, renderINIKeyValue("password", v))
 		}
-		pluginParams, err := renderSurgeSSPlugin(px.Plugin)
+		pluginParams, err := renderSimpleObfsPlugin(px.Plugin, "obfs")
 		if err != nil {
 			return "", err
 		}
 		parts = append(parts, pluginParams...)
 		for _, k := range surgeSSKeyOrder {
 			if v := px.Params[k]; v != "" {
-				parts = append(parts, renderSurgeKeyValue(k, v))
+				parts = append(parts, renderINIKeyValue(k, v))
 			}
 		}
 	case "socks5", "http":
@@ -144,17 +138,17 @@ func renderSurgeProxy(px model.TargetProxy) (string, error) {
 		parts = append(parts, px.Name+" = snell", px.Server, fmt.Sprintf("%d", px.Port))
 		for _, k := range surgeSnellKeyOrder {
 			if v := px.Params[k]; v != "" {
-				parts = append(parts, renderSurgeKeyValue(k, v))
+				parts = append(parts, renderINIKeyValue(k, v))
 			}
 		}
 	case "anytls":
 		parts = append(parts, px.Name+" = anytls", px.Server, fmt.Sprintf("%d", px.Port))
 		if v := px.Params["password"]; v != "" {
-			parts = append(parts, renderSurgeKeyValue("password", v))
+			parts = append(parts, renderINIKeyValue("password", v))
 		}
 		for _, k := range surgeAnyTLSKeyOrder {
 			if v := px.Params[k]; v != "" {
-				parts = append(parts, renderSurgeKeyValue(k, v))
+				parts = append(parts, renderINIKeyValue(k, v))
 			}
 		}
 	default:
@@ -162,102 +156,10 @@ func renderSurgeProxy(px model.TargetProxy) (string, error) {
 	}
 
 	if px.Dialer != "" {
-		parts = append(parts, renderSurgeKeyValue("underlying-proxy", px.Dialer))
+		parts = append(parts, renderINIKeyValue("underlying-proxy", px.Dialer))
 	}
 
 	return strings.Join(parts, ", "), nil
-}
-
-func renderSurgeKeyValue(key, value string) string {
-	return key + "=" + quoteSurgeValueIfNeeded(value)
-}
-
-func quoteSurgeValueIfNeeded(value string) string {
-	if !surgeValueNeedsQuote(value) {
-		return value
-	}
-	escaped := strings.ReplaceAll(value, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-	return `"` + escaped + `"`
-}
-
-func surgeValueNeedsQuote(value string) bool {
-	return strings.TrimSpace(value) != value || strings.ContainsAny(value, `,"\`)
-}
-
-func renderSurgeSSPlugin(plugin *model.Plugin) ([]string, error) {
-	if plugin == nil {
-		return nil, nil
-	}
-
-	if !isSurgeSSObfsPlugin(plugin.Name) {
-		return nil, fmt.Errorf("不支持的 ss plugin %q", plugin.Name)
-	}
-
-	allowed := map[string]bool{
-		"obfs":      true,
-		"obfs-host": true,
-		"obfs-uri":  true,
-	}
-	keys := make([]string, 0, len(plugin.Opts))
-	for key := range plugin.Opts {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		if !allowed[key] {
-			return nil, fmt.Errorf("ss plugin %q 不支持选项 %q", plugin.Name, key)
-		}
-	}
-
-	mode := plugin.Opts["obfs"]
-	if mode != "http" && mode != "tls" {
-		return nil, fmt.Errorf("ss plugin %q 要求 obfs=http 或 obfs=tls", plugin.Name)
-	}
-
-	parts := []string{"obfs=" + mode}
-	if host := plugin.Opts["obfs-host"]; host != "" {
-		parts = append(parts, renderSurgeKeyValue("obfs-host", host))
-	}
-	if uri := plugin.Opts["obfs-uri"]; uri != "" {
-		parts = append(parts, renderSurgeKeyValue("obfs-uri", uri))
-	}
-
-	return parts, nil
-}
-
-func isSurgeSSObfsPlugin(name string) bool {
-	switch name {
-	case "simple-obfs", "obfs-local", "obfs":
-		return true
-	default:
-		return false
-	}
-}
-
-func buildSurgeGroups(nodeGroups, routeGroups []model.TargetGroup) string {
-	var sb strings.Builder
-	allGroups := append(routeGroups, nodeGroups...)
-	for _, g := range allGroups {
-		sb.WriteString(renderSurgeGroup(g))
-		sb.WriteByte('\n')
-	}
-	return sb.String()
-}
-
-func renderSurgeGroup(g model.TargetGroup) string {
-	parts := []string{g.Name + " = " + g.Strategy}
-	parts = append(parts, g.Members...)
-
-	if g.Strategy == "url-test" {
-		parts = append(parts,
-			"url="+urlTestURL,
-			fmt.Sprintf("interval=%d", urlTestInterval),
-			fmt.Sprintf("tolerance=%d", surgeURLTestTolerance),
-		)
-	}
-
-	return strings.Join(parts, ", ")
 }
 
 func buildSurgeRules(rulesets []model.Ruleset, rules []model.Rule, fallback string) string {
@@ -285,96 +187,9 @@ func buildSurgeRules(rulesets []model.Ruleset, rules []model.Rule, fallback stri
 // mergeSurgeTemplate replaces [Proxy], [Proxy Group], and [Rule] sections
 // in the template with generated content, preserving all other sections.
 func mergeSurgeTemplate(template []byte, proxySection, groupSection, ruleSection string) string {
-	sections := parseSurgeSections(string(template))
-
-	// Strip any existing managed-config line from the preamble to avoid
-	// duplicating the header that Surge() generates.
-	if len(sections) > 0 && sections[0].header == "" {
-		sections[0].body = stripManagedConfigLine(sections[0].body)
-	}
-
-	replacements := map[string]string{
+	return mergeINISections(template, map[string]string{
 		"[Proxy]":       proxySection,
 		"[Proxy Group]": groupSection,
 		"[Rule]":        ruleSection,
-	}
-
-	// Replace existing sections.
-	replaced := make(map[string]bool)
-	for i, sec := range sections {
-		if content, ok := replacements[sec.header]; ok {
-			sections[i].body = content
-			replaced[sec.header] = true
-		}
-	}
-
-	// Append sections that were not found in the template.
-	order := []string{"[Proxy]", "[Proxy Group]", "[Rule]"}
-	for _, header := range order {
-		if !replaced[header] {
-			sections = append(sections, surgeSection{header: header, body: replacements[header]})
-		}
-	}
-
-	var sb strings.Builder
-	for i, sec := range sections {
-		if sec.header != "" {
-			if i > 0 {
-				sb.WriteByte('\n')
-			}
-			sb.WriteString(sec.header)
-			sb.WriteByte('\n')
-		}
-		sb.WriteString(sec.body)
-	}
-
-	return sb.String()
-}
-
-type surgeSection struct {
-	header string // e.g. "[Proxy]", or "" for preamble text before any header
-	body   string
-}
-
-// parseSurgeSections splits a Surge config into sections by [Header] lines.
-func parseSurgeSections(text string) []surgeSection {
-	lines := strings.Split(text, "\n")
-	var sections []surgeSection
-	current := surgeSection{}
-	var bodyLines []string
-
-	for _, line := range lines {
-		if sectionHeaderRe.MatchString(line) {
-			// Flush current section.
-			current.body = strings.Join(bodyLines, "\n")
-			sections = append(sections, current)
-			current = surgeSection{header: strings.TrimSpace(line)}
-			bodyLines = nil
-		} else {
-			bodyLines = append(bodyLines, line)
-		}
-	}
-	// Flush last section.
-	current.body = strings.Join(bodyLines, "\n")
-	sections = append(sections, current)
-
-	// Remove leading empty preamble if header and body are both empty.
-	if len(sections) > 0 && sections[0].header == "" && strings.TrimSpace(sections[0].body) == "" {
-		sections = sections[1:]
-	}
-
-	return sections
-}
-
-// stripManagedConfigLine removes any #!MANAGED-CONFIG line from the preamble
-// so that mergeSurgeTemplate does not produce a duplicate header.
-func stripManagedConfigLine(body string) string {
-	lines := strings.Split(body, "\n")
-	filtered := lines[:0]
-	for _, line := range lines {
-		if !strings.HasPrefix(line, "#!MANAGED-CONFIG") {
-			filtered = append(filtered, line)
-		}
-	}
-	return strings.Join(filtered, "\n")
+	}, []string{"[Proxy]", "[Proxy Group]", "[Rule]"})
 }

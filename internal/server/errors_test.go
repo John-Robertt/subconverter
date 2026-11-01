@@ -10,6 +10,22 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
+// T-SRV-LOON-001: an empty Loon fallback is user-fixable; projection invariants remain server errors.
+func TestServer_LoonTargetErrors(t *testing.T) {
+	for _, tt := range []struct {
+		code   errtype.Code
+		status int
+	}{
+		{errtype.CodeTargetLoonFallbackEmpty, http.StatusBadRequest},
+		{errtype.CodeTargetLoonProjectionInvalid, http.StatusInternalServerError},
+	} {
+		status, message := presentError(&errtype.TargetError{Code: tt.code, Format: "loon", Message: "输出不可用"})
+		if status != tt.status || !strings.Contains(message, "[loon]") {
+			t.Fatalf("code=%s status=%d message=%q, want status=%d", tt.code, status, message, tt.status)
+		}
+	}
+}
+
 // T-SRV-004: presentError formats multiple fetch errors as 502
 func TestPresentError_MultipleFetchErrors(t *testing.T) {
 	err := errors.Join(

@@ -7,7 +7,7 @@
 - A1-A8、B1-B3、C 全部路由可访问。
 - `/login` 可访问，未登录访问受保护路由会跳转 `/login?next=<原路径>`。
 - B3 页面路由为 `/download`，刷新 `/download` 由 SPA fallback 返回页面。
-- `/generate?format=clash|surge` 继续作为后端生成接口，不被 SPA 路由接管。
+- `/generate?format=clash|surge|loon` 继续作为后端生成接口，不被 SPA 路由接管。
 - 1280x800 下无文本重叠、按钮溢出或关键内容不可见。
 - 所有页面具备 loading、empty、error、readonly 状态。
 - 长 URL、长正则、长节点名和 emoji key 显示稳定。
@@ -40,7 +40,7 @@
 - `PUT /api/config` 成功后仍需 reload 才生效。
 - reload 失败后保持 dirty 提示。
 - reload 成功后刷新 `status`，当前运行时预览使用新的 `runtime_config_revision` 重新加载。
-- B1/B2 GET 预览使用当前运行时配置，B3 自动加载 Clash / Surge 双格式运行时生成预览。
+- B1/B2 GET 预览使用当前运行时配置，B3 自动加载 Clash / Surge / Loon 三种格式运行时生成预览。
 - B1 节点预览提供手动“重新拉取”入口；B2/B3 依赖进入页面、query key 变化或错误重试重新请求。
 - 当前运行时预览不做后台轮询；远程订阅或模板在 TTL 过期后的变化由用户手动刷新或重新进入页面触发观测。
 - A2/A3 POST 预览使用草稿配置。

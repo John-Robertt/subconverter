@@ -41,8 +41,8 @@
 | 路由 | `/sources` |
 | 所属里程碑 | M9 |
 | 字段 / JSON pointer 根 | `/config/sources`、`/config/sources/subscriptions`、`/config/sources/snell`、`/config/sources/vless`、`/config/sources/custom_proxies`、`/config/sources/fetch_order` |
-| 主要动作 | 新增、编辑、删除、排序拉取类来源；SS 与 AnyTLS 共用 `subscriptions`；编辑 custom proxy 与 `relay_through` |
-| 调用 API | 启动加载用 `GET /api/config`；保存工作流用 `POST /api/config/validate`、`PUT /api/config`；热重载由全局按钮单独调用 `POST /api/reload` |
+| 主要动作 | 新增、编辑、删除、排序拉取类来源；订阅链接/正文检查、歧义确认、显式编辑副本；SS 与 AnyTLS 共用 `subscriptions`；编辑 custom proxy 与 `relay_through` |
+| 调用 API | 启动加载用 `GET /api/config`；订阅检查用 `POST /api/subscriptions/check`；保存工作流用 `POST /api/config/validate`、`PUT /api/config`；热重载由全局按钮单独调用 `POST /api/reload` |
 | 只读行为 | 禁用新增、编辑、删除、排序和保存；URL 脱敏展示仍可查看 |
 | dirty 行为 | 顶栏提示 reload；离开页面前不自动覆盖草稿 |
 | loading / empty / error | config 加载显示骨架；四类来源均为空时显示新增入口；保存失败按 `error.code` 展示 |
@@ -130,13 +130,13 @@
 |------|------|
 | 路由 | `/settings` |
 | 所属里程碑 | M10 |
-| 字段 / JSON pointer 根 | `/config/fallback`、`/config/base_url`、`/config/templates`、`/config/templates/clash`、`/config/templates/surge` |
-| 主要动作 | 编辑 fallback、base_url、模板路径 |
+| 字段 / JSON pointer 根 | `/config/fallback`、`/config/base_url`、`/config/templates`、`/config/templates/clash`、`/config/templates/surge`、`/config/templates/loon` |
+| 主要动作 | 编辑 fallback、base_url、模板路径或正文 |
 | 调用 API | 保存工作流同 A1 |
 | 只读行为 | 禁用编辑和保存 |
 | dirty 行为 | 显示 reload 提示 |
 | loading / empty / error | fallback 为空或不可引用时提示；模板读取错误由生成预览或 `/generate` 展示 |
-| 诊断定位 | 定位到 fallback、base_url 或模板路径字段 |
+| 诊断定位 | 定位到 fallback、base_url、模板路径或正文字段 |
 | 对应测试 | `T-WEB-013`、`T-WEB-017`、`T-WEB-019` |
 
 ### A8 静态配置校验
@@ -193,7 +193,7 @@
 | 路由 | `/download` |
 | 所属里程碑 | M10 |
 | 数据来源 | 当前运行时生成预览 |
-| 主要动作 | 自动展示 Clash/Surge 双格式运行时预览；下载；复制订阅链接 |
+| 主要动作 | 自动展示 Clash/Surge/Loon 三种格式运行时预览；下载；复制订阅链接 |
 | 调用 API | `GET /api/generate/preview?format=...`、`/generate?format=...`、`GET /api/generate/link?format=...` |
 | 只读行为 | 允许预览、下载和复制链接；不提供保存入口 |
 | dirty 行为 | dirty 时提示当前预览基于运行时配置，已保存草稿尚未 reload |
@@ -217,3 +217,6 @@
 | loading / empty / error | status 加载显示骨架；healthz 失败显示连接错误；429 reload 展示短间隔退避或可重试提示 |
 | 远程配置边界 | 不把 `GET /api/status` 解释为远程配置源实时探测；HTTP(S) 配置源 revision 基于最近观测结果 |
 | 对应测试 | `T-WEB-007`、`T-WEB-009`、`T-WEB-010`、`T-WEB-018`、`T-WEB-020` |
+
+
+节点订阅和模板的正文编辑交互以 [Web UI 设计](../../docs/design/web-ui.md#节点与模板正文编辑) 为准。现有引用可读取为正文副本，随后使用全局保存、热重载流程。

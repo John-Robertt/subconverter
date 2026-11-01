@@ -16,7 +16,7 @@ func ForSurge(p *model.Pipeline) (*model.TargetPipeline, error) {
 		rootLabel:         "vless",
 		emptyCode:         errtype.CodeTargetSurgeFallbackEmpty,
 		internalCode:      errtype.CodeTargetSurgeProjectionInvalid,
-		emptyReasonClause: "被 vless 过滤级联清空，或被 Clash YAML 专属节点级联清空",
+		emptyReasonClause: "被不兼容协议或其他格式的原生节点级联清空",
 	}
 	filtered, err := filterUnsupportedProxies(p, []string{"vless"}, opts)
 	if err != nil {

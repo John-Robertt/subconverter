@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 
 	"github.com/John-Robertt/subconverter/internal/proxyparse"
@@ -141,7 +142,7 @@ func (rt *RuntimeConfig) Templates() Templates {
 	if rt == nil {
 		return Templates{}
 	}
-	return rt.templates
+	return cloneTemplates(rt.templates)
 }
 
 // IsReservedPolicyName reports whether name is a built-in policy name.
@@ -201,4 +202,9 @@ func DetectRouteCycle(adj map[string][]string, order []string) string {
 		}
 	}
 	return ""
+}
+
+func cloneTemplates(t Templates) Templates {
+	t.Inline = maps.Clone(t.Inline)
+	return t
 }

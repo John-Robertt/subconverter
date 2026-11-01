@@ -86,7 +86,7 @@ func validateNativeProxyInvariant(p Proxy) error {
 		return fmt.Errorf("原生目标声明仅允许 kind=subscription")
 	}
 	switch p.Native.Format {
-	case NativeProxyFormatClash, NativeProxyFormatSurge:
+	case NativeProxyFormatClash, NativeProxyFormatSurge, NativeProxyFormatLoon:
 	default:
 		return fmt.Errorf("原生目标格式 %q 不受支持", p.Native.Format)
 	}

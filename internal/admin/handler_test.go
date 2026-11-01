@@ -95,6 +95,43 @@ func TestAuthSetupAndProtectedConfig(t *testing.T) {
 		t.Fatalf("bearer-only status = %d body = %s", bearerOnly.Code, bearerOnly.Body.String())
 	}
 
+	// T-ADM-INLINE-001: resource reads require session and same-origin requests.
+	resourceRequest, err := json.Marshal(map[string]string{"location": configPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	denied := serve(handler, http.MethodPost, "/api/resources/read", string(resourceRequest), nil)
+	if denied.Code != http.StatusUnauthorized {
+		t.Fatalf("resource read without session: %d", denied.Code)
+	}
+	resource := serve(handler, http.MethodPost, "/api/resources/read", string(resourceRequest), map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value})
+	if resource.Code != http.StatusOK || !strings.Contains(resource.Body.String(), "content") {
+		t.Fatalf("resource read: %d %s", resource.Code, resource.Body.String())
+	}
+	crossOrigin := serve(handler, http.MethodPost, "/api/resources/read", string(resourceRequest), map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value, "Origin": "https://untrusted.example"})
+	if crossOrigin.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin resource read: %d", crossOrigin.Code)
+	}
+	// T-ADM-CHECK-001: subscription checks require session, obey CSRF protection, and expose parse results.
+	checkBody := `{"content":"anytls://pw@hk.example.com:443#HK"}`
+	checkDenied := serve(handler, http.MethodPost, "/api/subscriptions/check", checkBody, nil)
+	if checkDenied.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous check=%d", checkDenied.Code)
+	}
+	checkHeaders := map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value}
+	checked := serve(handler, http.MethodPost, "/api/subscriptions/check", checkBody, checkHeaders)
+	if checked.Code != http.StatusOK || !strings.Contains(checked.Body.String(), `"node_count":1`) || !strings.Contains(checked.Body.String(), `"format":"text"`) {
+		t.Fatalf("check=%d %s", checked.Code, checked.Body.String())
+	}
+	checkInvalid := serve(handler, http.MethodPost, "/api/subscriptions/check", `{"content":"<html>expired</html>"}`, checkHeaders)
+	if checkInvalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid check=%d %s", checkInvalid.Code, checkInvalid.Body.String())
+	}
+	checkHeaders["Origin"] = "https://untrusted.example"
+	checkCross := serve(handler, http.MethodPost, "/api/subscriptions/check", checkBody, checkHeaders)
+	if checkCross.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin check=%d", checkCross.Code)
+	}
 	withCookie := serve(handler, http.MethodGet, "/api/config", "", map[string]string{"Cookie": auth.SessionCookieName + "=" + cookies[0].Value})
 	if withCookie.Code != http.StatusOK || !strings.Contains(withCookie.Body.String(), `"config_revision"`) {
 		t.Fatalf("with cookie status = %d body = %s", withCookie.Code, withCookie.Body.String())
@@ -250,6 +287,26 @@ func TestM7EndpointsRequireSessionAndReturnExpectedShapes(t *testing.T) {
 	}
 	cookie := setup.Result().Cookies()[0]
 	headers := map[string]string{"Cookie": auth.SessionCookieName + "=" + cookie.Value}
+
+	// T-ADM-LOON-001: authenticated runtime/draft previews and subscription links accept Loon.
+	snapshot, err := appSvc.ConfigSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		body := ""
+		if method == http.MethodPost {
+			body = `{"config":` + string(snapshot.Config) + `}`
+		}
+		preview := serve(handler, method, "/api/generate/preview?format=loon", body, headers)
+		if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), "[Remote Rule]") || preview.Header().Get("Content-Disposition") != "" {
+			t.Fatalf("Loon %s preview: status=%d body=%s", method, preview.Code, preview.Body.String())
+		}
+	}
+	loonLink := serve(handler, http.MethodGet, "/api/generate/link?format=loon", "", headers)
+	if loonLink.Code != http.StatusOK || !strings.Contains(loonLink.Body.String(), "loon.conf") {
+		t.Fatalf("Loon link: status=%d body=%s", loonLink.Code, loonLink.Body.String())
+	}
 
 	status := serve(handler, http.MethodGet, "/api/status", "", headers)
 	if status.Code != http.StatusOK || !strings.Contains(status.Body.String(), `"version":"2.0.0"`) || !strings.Contains(status.Body.String(), `"config_write":true`) {

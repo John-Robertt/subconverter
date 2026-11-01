@@ -42,6 +42,7 @@ const (
 	listenEnvVar      = "SUBCONVERTER_LISTEN"
 	//nolint:gosec // This is an environment variable name, not an embedded credential.
 	accessTokenEnvVar = "SUBCONVERTER_TOKEN"
+	dataDirEnvVar     = "SUBCONVERTER_DATA_DIR"
 	authStateEnvVar   = "SUBCONVERTER_AUTH_STATE"
 	//nolint:gosec // This is an environment variable name, not an embedded credential.
 	setupTokenEnvVar = "SUBCONVERTER_SETUP_TOKEN"
@@ -55,6 +56,7 @@ func main() {
 	configPath := flag.String("config", "", "path to YAML config file (required)")
 	listen := flag.String("listen", "", "listen address (overrides SUBCONVERTER_LISTEN)")
 	accessToken := flag.String("access-token", "", "access token for /generate (overrides SUBCONVERTER_TOKEN)")
+	dataDir := flag.String("data-dir", "", "directory for editable content (overrides SUBCONVERTER_DATA_DIR; default /config)")
 	authState := flag.String("auth-state", "", "path to admin auth state (overrides SUBCONVERTER_AUTH_STATE)")
 	setupToken := flag.String("setup-token", "", "bootstrap token for first admin setup (overrides SUBCONVERTER_SETUP_TOKEN)")
 	enableCORS := flag.Bool("cors", false, "enable localhost-only development CORS (overrides SUBCONVERTER_CORS)")
@@ -97,6 +99,7 @@ func main() {
 	// Load and validate config at startup (fail-fast).
 	appSvc, err := app.New(context.Background(), app.Options{
 		ConfigLocation: *configPath,
+		DataDir:        resolveDataDir(*dataDir),
 		ListenAddr:     listenAddr,
 		Fetcher:        cachedFetcher,
 		Generate:       generate.Options{AccessToken: resolvedAccessToken},
@@ -261,4 +264,14 @@ func healthcheckHost(host string) string {
 	default:
 		return host
 	}
+}
+
+func resolveDataDir(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if value := os.Getenv(dataDirEnvVar); value != "" {
+		return value
+	}
+	return app.DefaultDataDir
 }

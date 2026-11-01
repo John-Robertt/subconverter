@@ -18,18 +18,43 @@ type subscriptionDocument struct {
 	Proxies []model.Proxy
 }
 
-func parseSubscriptionDocument(rawURL string, body []byte) (*subscriptionDocument, error) {
-	switch subscriptionDocumentFormatFromURL(rawURL) {
+// DetectSubscriptionFormat uses the same precedence as Source before a document is copied.
+// An empty result denotes the legacy text/Base64 subscription formats.
+func DetectSubscriptionFormat(location string, body []byte) string {
+	document, _ := parseSubscriptionDocument(location, body, "auto")
+	if document == nil {
+		return ""
+	}
+	return string(document.Format)
+}
+
+func parseSubscriptionDocument(rawURL string, body []byte, format string) (*subscriptionDocument, error) {
+	selected := model.NativeProxyFormat(format)
+	if format == "" || format == "auto" {
+		selected = subscriptionDocumentFormatFromURL(rawURL)
+	}
+	switch selected {
+	case "text":
+		return nil, nil
 	case model.NativeProxyFormatClash:
 		return parseClashSubscriptionDocument(body, true)
-	case model.NativeProxyFormatSurge:
-		return parseSurgeSubscriptionDocument(body, true)
+	case model.NativeProxyFormatSurge, model.NativeProxyFormatLoon:
+		return parseINIProxySubscription(body, true, selected)
+	case "":
+	default:
+		return &subscriptionDocument{Format: selected}, fmt.Errorf("不支持的订阅格式 %q", format)
 	}
 
 	if document, err := parseClashSubscriptionDocument(body, false); document != nil {
 		return document, err
 	}
-	return parseSurgeSubscriptionDocument(body, false)
+	for _, rawLine := range strings.Split(string(body), "\n") {
+		switch strings.ToLower(strings.TrimSpace(rawLine)) {
+		case "[remote proxy]", "[remote filter]", "[remote rule]", "[proxy chain]":
+			return parseINIProxySubscription(body, true, model.NativeProxyFormatLoon)
+		}
+	}
+	return parseINIProxySubscription(body, false, model.NativeProxyFormatSurge)
 }
 
 func subscriptionDocumentFormatFromURL(rawURL string) model.NativeProxyFormat {
@@ -40,6 +65,8 @@ func subscriptionDocumentFormatFromURL(rawURL string) model.NativeProxyFormat {
 	switch strings.ToLower(path.Ext(parsed.Path)) {
 	case ".yaml", ".yml":
 		return model.NativeProxyFormatClash
+	case ".lcf":
+		return model.NativeProxyFormatLoon
 	case ".conf":
 		return model.NativeProxyFormatSurge
 	default:
@@ -178,14 +205,14 @@ func dereferenceYAMLAlias(node *yaml.Node) *yaml.Node {
 	return node
 }
 
-func parseSurgeSubscriptionDocument(body []byte, required bool) (*subscriptionDocument, error) {
-	document := &subscriptionDocument{Format: model.NativeProxyFormatSurge}
+func parseINIProxySubscription(body []byte, required bool, format model.NativeProxyFormat) (*subscriptionDocument, error) {
+	document := &subscriptionDocument{Format: format}
 	inProxySection := false
 	foundProxySection := false
 
 	for lineIndex, rawLine := range strings.Split(string(body), "\n") {
 		line := strings.TrimPrefix(strings.TrimSpace(strings.TrimSuffix(rawLine, "\r")), "\ufeff")
-		if isSurgeSectionHeader(line) {
+		if isINISectionHeader(line) {
 			if strings.EqualFold(line, "[Proxy]") {
 				inProxySection = true
 				foundProxySection = true
@@ -200,7 +227,7 @@ func parseSurgeSubscriptionDocument(body []byte, required bool) (*subscriptionDo
 			continue
 		}
 
-		proxy, err := parseSurgeNativeProxy(line)
+		proxy, err := parseININativeProxy(line, format)
 		if err != nil {
 			return document, fmt.Errorf("[Proxy] 第 %d 行无效：%w", lineIndex+1, err)
 		}
@@ -219,7 +246,7 @@ func parseSurgeSubscriptionDocument(body []byte, required bool) (*subscriptionDo
 	return document, nil
 }
 
-func isSurgeSectionHeader(line string) bool {
+func isINISectionHeader(line string) bool {
 	return len(line) >= 3 && strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]")
 }
 
@@ -230,7 +257,7 @@ func isSubscriptionDocumentComment(line string) bool {
 		strings.HasPrefix(line, "//")
 }
 
-func parseSurgeNativeProxy(line string) (model.Proxy, error) {
+func parseININativeProxy(line string, format model.NativeProxyFormat) (model.Proxy, error) {
 	name, payload, found := strings.Cut(line, "=")
 	name = strings.TrimSpace(name)
 	payload = strings.TrimSpace(payload)
@@ -241,7 +268,7 @@ func parseSurgeNativeProxy(line string) (model.Proxy, error) {
 		return model.Proxy{}, fmt.Errorf("代理 %q 的声明内容为空", name)
 	}
 
-	proxyType, server, port := surgeNativeProxyIdentity(payload)
+	proxyType, server, port := iniNativeProxyIdentity(payload)
 	if proxyType == "" {
 		return model.Proxy{}, fmt.Errorf("代理 %q 缺少类型", name)
 	}
@@ -252,20 +279,20 @@ func parseSurgeNativeProxy(line string) (model.Proxy, error) {
 		Port:   port,
 		Kind:   model.KindSubscription,
 		Native: &model.NativeProxy{
-			Format:  model.NativeProxyFormatSurge,
+			Format:  format,
 			Payload: payload,
 		},
 	}, nil
 }
 
-func surgeNativeProxyIdentity(payload string) (proxyType, server string, port int) {
+func iniNativeProxyIdentity(payload string) (proxyType, server string, port int) {
 	parts := strings.SplitN(payload, ",", 4)
-	proxyType = trimSurgeNativeAtom(parts[0])
+	proxyType = trimININativeAtom(parts[0])
 	if len(parts) > 1 {
-		server = trimSurgeNativeAtom(parts[1])
+		server = trimININativeAtom(parts[1])
 	}
 	if len(parts) > 2 {
-		parsed, err := strconv.Atoi(trimSurgeNativeAtom(parts[2]))
+		parsed, err := strconv.Atoi(trimININativeAtom(parts[2]))
 		if err == nil {
 			port = parsed
 		}
@@ -273,7 +300,7 @@ func surgeNativeProxyIdentity(payload string) (proxyType, server string, port in
 	return proxyType, server, port
 }
 
-func trimSurgeNativeAtom(value string) string {
+func trimININativeAtom(value string) string {
 	value = strings.TrimSpace(value)
 	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
 		unquoted, err := strconv.Unquote(value)

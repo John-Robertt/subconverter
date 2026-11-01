@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { ResourceEditor } from "../components/ResourceEditor";
 import { SelectInput, TextInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
 import { getPolicyOptions } from "../features/configModel";
@@ -17,8 +18,13 @@ export function SettingsPage() {
     updateDraft((config) => ({ ...config, ...patch }));
   }
 
-  function patchTemplate(key: "clash" | "surge", value: string) {
-    updateDraft((config) => ({ ...config, templates: { ...config.templates, [key]: value } }));
+  function patchTemplate(key: "clash" | "surge" | "loon", location: string, content?: string) {
+    updateDraft((config) => {
+      const inline = { ...config.templates?.inline };
+      if (content === undefined) delete inline[key];
+      else inline[key] = content;
+      return { ...config, templates: { ...config.templates, [key]: location || undefined, inline } };
+    });
   }
 
   return (
@@ -56,25 +62,19 @@ export function SettingsPage() {
         ) : null}
       </section>
 
-      <section className={focusClassName(activePointer, ["/config/templates/clash"], "setting-block")}>
-        <div className="setting-copy">
-          <h3>Clash 模板</h3>
-          <p>生成 Clash Meta 配置时使用的基础模板。可填本地路径或 HTTP URL。</p>
-        </div>
-        <div className="setting-input-row">
-          <TextInput className="mono-input" value={templates.clash ?? ""} disabled={isReadonly} onChange={(event) => patchTemplate("clash", event.target.value)} placeholder="./templates/clash.yaml" />
-        </div>
-      </section>
-
-      <section className={focusClassName(activePointer, ["/config/templates/surge"], "setting-block")}>
-        <div className="setting-copy">
-          <h3>Surge 模板</h3>
-          <p>生成 Surge 配置时使用的基础模板。</p>
-        </div>
-        <div className="setting-input-row">
-          <TextInput className="mono-input" value={templates.surge ?? ""} disabled={isReadonly} onChange={(event) => patchTemplate("surge", event.target.value)} placeholder="./templates/surge.conf" />
-        </div>
-      </section>
+      {(["clash", "surge", "loon"] as const).map((format) => {
+        const label = `${format === "clash" ? "Clash" : format === "surge" ? "Surge" : "Loon"} 模板`;
+        return (
+          <section key={format} className={focusClassName(activePointer, [`/config/templates/${format}`, `/config/templates/inline/${format}`], "setting-block")}>
+            <div className="setting-copy">
+              <h3>{label}</h3>
+              <p>编辑基础配置。节点、策略组和规则由当前配置生成。</p>
+            </div>
+            <ResourceEditor label={label} location={templates[format] ?? ""} content={templates.inline?.[format]} readonly={isReadonly}
+              onChange={({ location, content }) => patchTemplate(format, location, content)} />
+          </section>
+        );
+      })}
     </div>
   );
 }

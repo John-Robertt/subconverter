@@ -55,6 +55,7 @@ Release 包内包含：
 - `configs/base_config.yaml`
 - `configs/base_clash.yaml`
 - `configs/base_surge.conf`
+- `configs/base_loon.conf`
 
 当前 GitHub Release 二进制仅发布 Linux 包。
 
@@ -64,6 +65,7 @@ Release 包内包含：
 templates:
   clash: "configs/base_clash.yaml"
   surge: "configs/base_surge.conf"
+  loon: "configs/base_loon.conf"
 ```
 
 注意：这些相对路径是相对于进程工作目录解析的。最稳妥的用法是在解压目录下启动程序。
@@ -108,6 +110,7 @@ ghcr.io/john-robertt/subconverter
 templates:
   clash: "configs/base_clash.yaml"
   surge: "configs/base_surge.conf"
+  loon: "configs/base_loon.conf"
 ```
 
 容器内也能正常解析到镜像内置模板。
@@ -174,6 +177,7 @@ services:
       SUBCONVERTER_LISTEN: ":8080"
       SUBCONVERTER_TOKEN: your-token
       SUBCONVERTER_AUTH_STATE: /auth/auth.json
+      SUBCONVERTER_DATA_DIR: /config
       SUBCONVERTER_SETUP_TOKEN: change-this-bootstrap-token
     volumes:
       - ./config:/config
@@ -331,3 +335,12 @@ Docker Compose 只启动一个 `subconverter` 服务。默认 Go 二进制构建
 Vite 配置已把 `/api/*`、`/generate`、`/healthz` 代理到 Go 后端。Cookie session 依赖同源语义，本地调试后台登录也应优先使用 Vite proxy；正式生产 Compose 部署不需要 CORS。
 
 本地开发若不想预先准备管理员凭据，可删除临时 auth state 后重新走 `/login` setup，并从启动日志读取自动生成的 setup token；不要在公网部署中使用临时或弱密码。
+
+
+## Web 正文版本文件
+
+正文默认直接写入 `/config`，复用配置目录挂载，不额外创建正文子目录。每次保存生成带 UTC 时间戳的新文件并保留旧版，主配置记录引用。容器运行用户需要对 `/config` 有创建、写入和删除文件的权限；目录写入失败时 Web 提示具体路径并保留草稿。文件格式、权限及版本清理规则见 [配置规约](design/config-schema.md#templates)。
+
+本地开发可用 `-data-dir ./bin/acceptance`，或设置 `SUBCONVERTER_DATA_DIR`；命令行参数优先，默认值为 `/config`。该目录需要随主配置一起持久化。导出 ZIP 会嵌入当前正文，适合跨机器迁移；单独的生效 YAML 仍引用版本文件。
+
+主配置可写性契约保持原样：HTTP(S) 主配置只读，本地配置文件或其目录不可写时 Web 禁用编辑。仅正文存储目录不可写而主配置可写时，保存返回 `409 resource_content_write_failed`，修复目录权限后重试。

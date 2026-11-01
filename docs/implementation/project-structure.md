@@ -30,7 +30,8 @@ subconverter/
 ├── configs/
 │   ├── base_config.yaml
 │   ├── base_clash.yaml
-│   └── base_surge.conf
+│   ├── base_surge.conf
+│   └── base_loon.conf
 ├── testdata/
 └── docs/
 ```
@@ -65,7 +66,7 @@ subconverter/
 
 `internal/pipeline`
 
-- 订阅（TXT / Clash YAML / Surge CONF）/ Snell / VLESS 来源解析、各阶段转换
+- 订阅（TXT / Clash YAML / Surge CONF / Loon）/ Snell / VLESS 来源解析、各阶段转换
 - 图级校验
 - `Build` 编排（格式无关 IR）
 
@@ -77,14 +78,14 @@ subconverter/
 
 `internal/render`
 
-- Clash Meta / Surge 序列化
+- Clash Meta / Surge / Loon 序列化
 - 底版模板合并
 - 不承担协议级裁剪与图改写
 
 `internal/target`
 
-- Clash / Surge 目标格式投影
-- 协议支持过滤（Snell / VLESS）
+- Clash / Surge / Loon 目标格式投影
+- 协议支持过滤（Snell / VLESS / 目标原生格式）；Loon 在 Target 分配链路和出口辅助节点名
 - fallback 清空等格式相关级联校验
 - 在格式过滤后独立分配目标输出名
 - 产出 Render 唯一接受的 `TargetPipeline`
@@ -92,6 +93,7 @@ subconverter/
 `internal/generate`
 
 - 单一”生成配置”服务
+- 订阅检查通过同一 Target/Render 机制检查节点的完整输出兼容性
 - 统一承接 `Build -> Target -> Render`
 - 装配模板加载与 Surge managed URL
 - v2.0 起改为无状态设计：`Generate` 方法接收 `*config.RuntimeConfig` 参数，不通过结构体字段持有配置指针；`app.Service` 在每次请求时取快照后传入
@@ -252,3 +254,5 @@ subconverter/
 - 不承担管道或渲染逻辑；不直接依赖 `internal/pipeline` 或 `internal/model`
 
 依赖方向以本文 §依赖方向 的单一图为准。`admin` 通过 `app.Service` 间接访问 `RuntimeConfig`（RWMutex 保护），不直接持有配置引用，也不直接编排管道阶段。
+
+Loon 的实现入口为 `pipeline/subscription_document.go`（订阅节点提取）、`target/loon.go`（格式过滤与链路命名）、`render/loon.go`（序列化）。`render/ini.go` 维护 Surge / Loon 共用的分段、字段转义、Simple Obfs 与组声明规则。包间依赖方向保持不变。

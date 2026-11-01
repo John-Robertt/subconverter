@@ -22,7 +22,7 @@ func (s *Service) GenerateLink(_ context.Context, input *GenerateLinkInput) (*Ge
 		return nil, newBadRequestError("invalid_request", "请求参数无效")
 	}
 	if !generate.ValidFormat(input.Format) {
-		return nil, newBadRequestError("invalid_request", "format 参数无效：必须为 clash 或 surge")
+		return nil, newBadRequestError("invalid_request", "format 参数无效：必须为 clash、surge 或 loon")
 	}
 	filename, err := generate.ResolveFilename(input.Filename, input.Filename != "", input.Format)
 	if err != nil {

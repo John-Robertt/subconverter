@@ -6,7 +6,7 @@
 
 ## 概述
 
-本系统是一个使用 Go 实现的单用户 HTTP 服务。用户在 YAML 中声明节点来源、分组和路由，服务拉取节点后，把这些声明转换为 Clash Meta 或 Surge 配置文件。远程规则集只写入 URL，正文由客户端自行拉取。
+本系统是一个使用 Go 实现的单用户 HTTP 服务。用户在 YAML 中声明节点来源、分组和路由，服务拉取节点后，把这些声明转换为 Clash Meta、Surge 或 Loon 配置文件。远程规则集只写入 URL，正文由客户端自行拉取。
 
 程序分三步完成转换：`pipeline` 先构建节点与组之间的引用关系，`target` 再根据目标格式删除不支持的节点并整理引用，`render` 最后输出文本。Web 后台通过应用服务调用同一套转换逻辑。
 
@@ -19,7 +19,7 @@ v2.0 在 v1.0 核心管道基础上新增：
 系统目标：
 
 - 将用户关注点拆分为来源、节点组、服务组、规则集和兜底策略
-- 用统一中间表示支撑 Clash Meta 与 Surge 两种输出
+- 用统一中间表示支撑 Clash Meta、Surge 与 Loon 三种输出
 - 保持单二进制、低依赖部署；Web 前端在生产镜像中作为嵌入式静态资源发布
 - 让配置书写顺序稳定映射到客户端面板顺序
 - 提供 Web 管理后台，降低配置编辑门槛
@@ -86,7 +86,7 @@ config.yaml + remote sources
         ▼
    subconverter
         │
-        ├─► /generate?format=clash|surge    （生成配置）
+        ├─► /generate?format=clash|surge|loon    （生成配置）
         ├─► /api/config                     （配置管理）
         ├─► /api/preview/*                  （运行时预览）
         ├─► /api/reload                     （热重载）
@@ -113,7 +113,7 @@ subconverter (Go)
 
 系统围绕三类对象组织：
 
-- 节点：订阅节点（TXT 双格式、Clash YAML 仅 Clash、Surge CONF 仅 Surge）、Snell 节点（仅 Surge 输出）、VLESS 节点（仅 Clash 输出）、自定义节点、链式节点
+- 节点：订阅节点（TXT 三种输出、Clash YAML 仅 Clash、Surge CONF 仅 Surge、Loon 仅 Loon）、Snell 节点（仅 Surge 输出）、VLESS 节点（Clash / Loon 输出）、自定义节点、链式节点
 - 组：节点组、服务组
 - 路由规则：远程规则集、内联规则、fallback
 
@@ -150,7 +150,7 @@ RUnlock()
 - `Prepare`：校验字段合法性、编译正则、解析自定义代理 URL、展开 `@auto`、检测命名冲突与路由环路，产出 `RuntimeConfig`
 - `Build`：把来源、过滤和路由声明变成格式无关的节点图，即中间表示（IR）。图内用 `ProxyID` 引用代理，节点显示名可以重复
 - `Target`：过滤目标格式不支持的节点，清理因此失效的链式节点、组和规则，再分配本格式内唯一的输出名
-- `Render`：只接收已整理好的 `TargetPipeline`，将其与可选底版模板合并，输出 Clash Meta 或 Surge 文本
+- `Render`：只接收已整理好的 `TargetPipeline`，将其与可选底版模板合并，输出 Clash Meta、Surge 或 Loon 文本
 
 例如，两个来源都声明了 `HK` 节点，Build 会保留两个不同 ID。Clash 和 Surge 各自过滤后再分配名称；最终只剩一个时可保留 `HK`，两个都保留时则用后缀区分。组成员始终通过 ID 跟随对应节点，直到 Target 将引用转换为最终名称。
 
@@ -175,7 +175,7 @@ RUnlock()
 - `proxyparse`：自定义代理 URL 解析
 - `pipeline`：Build 内的 Source / Filter / Group / Route / ValidateGraph 编排
 - `target`：目标格式投影与格式相关级联校验
-- `render`：Clash Meta 与 Surge 渲染器，只做序列化
+- `render`：Clash Meta、Surge 与 Loon 渲染器，只做序列化
 - `generate`：单一"生成配置"服务，承接 `Build -> Target -> Render`。v2.0 起改为无状态设计：`Generate` 方法接收 `*RuntimeConfig` 参数，不再通过结构体字段持有配置指针；`app.Service` 在每次请求时取快照后传入
 - `app`：应用服务入口，承接配置快照、保存、导入导出、热重载、预览、订阅链接和状态查询；将内部节点图转换为 API 所需数据，让 HTTP 层无需理解管道细节
 - `auth`：v2.0 管理后台认证层，承接 bootstrap setup token、管理员 PBKDF2 密码哈希、auth state 文件、session 创建/校验/注销和登录失败锁定；不依赖配置生成管道
@@ -285,7 +285,7 @@ POST /api/reload
     ├─► rules        ──► 内联规则
     └─► fallback     ──► 兜底出口
 
-订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 自定义节点
+订阅节点（TXT / Clash YAML / Surge CONF / Loon）+ Snell 节点 + VLESS 节点 + 自定义节点
     │
     ▼
 统一中间表示
@@ -308,9 +308,9 @@ Web 管理后台
 
 - `groups`、`routing`、`rulesets` 都要保留书写顺序
 - 格式无关管道用 `ProxyID` 表达节点身份；候选节点名不承担图引用职责
-- Clash / Surge 在完成各自格式过滤后独立分配唯一输出名
+- Clash / Surge / Loon 在完成各自格式过滤后独立分配唯一输出名
 - `@all` 只展开原始节点，不包含链式节点
-- 原始节点 = 订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
+- 原始节点 = 订阅节点（TXT / Clash YAML / Surge CONF / Loon）+ Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义节点
 - `@auto` 展开为自动补充池（节点组 → 包含 `@all` 的服务组 → DIRECT），自动去重且排除自身
 - `REJECT` 不在 `@auto` 补充池中；如需使用，必须显式声明
 - 链式组由自定义代理派生，但在节点组层中与地区组平级
@@ -324,7 +324,7 @@ Web 管理后台
 | 部署模型 | 单用户、单配置文件 | 与产品草案一致，运行模型最简单 |
 | 用户配置风格 | 声明式分层 YAML | 关注点分离，便于维护 |
 | 核心架构 | 管道模型 | 阶段清晰，易测试和调试 |
-| 输出目标 | Clash Meta + Surge | 满足当前目标，避免过早扩展 |
+| 输出目标 | Clash Meta + Surge + Loon | 满足当前目标，避免过早扩展 |
 | 规则集策略 | 仅透传 URL | 客户端运行时自行拉取 |
 | 节点组策略 | 所有节点组必须显式声明策略 | 面板行为一致，避免隐式默认值 |
 | 链式组建模 | 属于节点组，由 `relay_through` 派生 | 与用户心智一致 |
@@ -332,7 +332,7 @@ Web 管理后台
 | `@auto` 语义 | 自动补充节点组 + 包含 `@all` 的服务组 + DIRECT | 消除 routing 冗余 |
 | 缓存范围 | 缓存节点来源、模板和主配置的远程响应 | 缓存行为与刷新边界见 [缓存设计](design/caching.md) |
 | 资源加载模型 | 配置文件和模板均支持本地路径或 HTTP(S) URL | 统一 `LoadResource` |
-| 渲染器合并策略 | Clash 用 yaml.Node 替换；Surge 用 section 切分替换 | 保留底版用户设置 |
+| 渲染器合并策略 | Clash 用 yaml.Node 替换；Surge / Loon 用 section 切分替换 | 保留底版用户设置 |
 | 结构化订阅表示 | `KindSubscription` + 可选 `NativeProxy` | 复用统一过滤/分组语义，同时完整保留目标原生节点字段 |
 | 节点身份 | Build 内唯一 `ProxyID`；节点名只是显示名候选 | 同名节点可安全共存，过滤/分组/链式关系不依赖可变名称 |
 | 输出命名 | 每个目标在格式过滤后独立消歧 | Clash-only / Surge-only 同名节点都可保留原名，目标内仍满足唯一性 |
@@ -362,13 +362,13 @@ Web 管理后台
 > **触及时行动**：考虑严格模式时 → 优先扩充 `xxxKeyOrder` 而非引入白名单拒绝。
 
 - **现象**：规范化节点的 `Proxy.Params` 是 `map[string]string`，容纳任意键；结构化订阅的 `NativeProxy.Payload` 则保留完整目标原生声明
-- **权衡**：TXT/Snell/VLESS 的规范化解析器不随目标格式版本迭代，但未知 Params 键可能被固定列表渲染器丢弃；Clash YAML / Surge CONF 原生声明不做字段白名单校验，用户 typo 会被原样带到目标客户端
+- **权衡**：TXT/Snell/VLESS 的规范化解析器不随目标格式版本迭代，但未知 Params 键可能被固定列表渲染器丢弃；Clash YAML / Surge CONF / Loon 原生声明不做字段白名单校验，用户 typo 会被原样带到目标客户端
 
 ### 3. 协议或来源格式专属性导致 Target 阶段级联过滤
 
 > **触及时行动**：新增格式专属协议或结构化来源 → 复用共享 cascade 策略；同步补跨格式过滤测试。
 
-- **现象**：Snell / Surge CONF 节点仅支持 Surge，VLESS / Clash YAML 节点仅支持 Clash；不支持方在 Target 阶段做级联过滤
+- **现象**：Snell / Surge CONF 节点仅支持 Surge，Clash YAML 节点仅支持 Clash，Loon 原生节点仅支持 Loon；规范化 VLESS 进入 Clash 及支持其传输的 Loon；不支持方在 Target 阶段做级联过滤
 
 ### 4. RuntimeConfig 快照一致性
 
@@ -407,10 +407,14 @@ Web 管理后台
 - `docs/design/domain-model.md`：领域模型与中间表示
 - `docs/design/pipeline.md`：各阶段职责与数据约束
 - `docs/design/api.md`：HTTP 接口约定
-- `docs/design/rendering.md`：Clash Meta / Surge 渲染映射
+- `docs/design/rendering.md`：Clash Meta / Surge / Loon 渲染映射
 - `docs/design/validation.md`：配置与图校验规则
 - `docs/design/caching.md`：订阅拉取与缓存策略
 - `docs/design/web-ui.md`：Web 管理后台设计
 - `docs/implementation/project-structure.md`：代码目录与包边界
 - `docs/implementation/implementation-plan.md`：v2.0 开发计划
 - `docs/implementation/testing-strategy.md`：测试与验收策略
+
+### Loon 目标投影与校验边界
+
+新增 Loon 后继续保持 Build 格式无关、Target 负责格式过滤的边界；生成或预览指定格式时才报告该格式的级联清空错误。Loon 复用已有级联引擎，并在 Target 分配 `[Proxy Chain]` 名称与出口辅助节点名。各目标支持范围及客户端规则优先级以 [渲染设计](design/rendering.md#loon) 为准。

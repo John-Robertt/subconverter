@@ -22,6 +22,7 @@ type proxyDropReason struct {
 }
 
 type cascadeOptions struct {
+	unsupportedProxy  func(model.Proxy) (string, bool)
 	formatName        string
 	formatDisplayName string
 	nativeFormat      model.NativeProxyFormat
@@ -102,6 +103,11 @@ func rootProxyDropLabel(proxy model.Proxy, droppedTypes []string, opts cascadeOp
 	if proxy.Native != nil && proxy.Native.Format != opts.nativeFormat {
 		return subscriptionFormatDropLabel(proxy.Native.Format), true
 	}
+	if proxy.Native == nil && opts.unsupportedProxy != nil {
+		if label, drop := opts.unsupportedProxy(proxy); drop {
+			return label, true
+		}
+	}
 	for _, droppedType := range droppedTypes {
 		if proxy.Type == droppedType {
 			return opts.rootLabel, true
@@ -116,6 +122,8 @@ func subscriptionFormatDropLabel(format model.NativeProxyFormat) string {
 		return "Clash YAML 专属"
 	case model.NativeProxyFormatSurge:
 		return "Surge CONF 专属"
+	case model.NativeProxyFormatLoon:
+		return "Loon CONF 专属"
 	default:
 		return "目标格式不兼容"
 	}

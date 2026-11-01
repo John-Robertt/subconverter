@@ -18,9 +18,10 @@ anytls://password@hk.example.com:443/?sni=edge.example.com&insecure=1#HK-AnyTLS
 
 - **Clash YAML（`.yaml` / `.yml`）**：复制顶层 `proxies` 节点，只进入 Clash 输出
 - **Surge CONF（`.conf`）**：复制 `[Proxy]` 段节点，只进入 Surge 输出
-- **TXT / Base64**：支持 SS / AnyTLS 的 URI、Surge 行和 Quantumult X 行，同时进入两种输出
+- **Loon（`.lcf` 或显式 `format: loon`）**：复制 `[Proxy]` 段节点，只进入 Loon 输出，分组和规则由本项目配置生成
+- **TXT / Base64**：支持 SS / AnyTLS 的 URI、Surge 行和 Quantumult X 行，同时进入三种输出
 
-结构化格式优先于 TXT；即使 URL 没有扩展名，也会先按顶层 `proxies` 和 `[Proxy]` 内容识别。节点名称用于过滤、分组和显示，但不承担身份职责；节点在创建阶段获得独立 ID（原始节点由 Source 分配，链式节点由 Group 分配），Clash / Surge 在完成各自格式过滤后独立分配唯一输出名。
+结构化格式优先于 TXT；即使 URL 没有扩展名，也会先按顶层 `proxies` 和 `[Proxy]` 内容识别。节点名称用于过滤、分组和显示，但不承担身份职责；节点在创建阶段获得独立 ID（原始节点由 Source 分配，链式节点由 Group 分配），Clash / Surge / Loon 在完成各自格式过滤后独立分配唯一输出名。
 
 ### 1.1b Snell 来源（Surge 专属）
 
@@ -41,13 +42,13 @@ JP-Snell = snell, 9.10.11.12, 443, psk=zzz, version=4, shadow-tls-password=sss, 
 
 关键特性：
 
-- **只进入 Surge 输出**：Clash Meta 主线不支持 Snell v4/v5（jinqians 默认版本），Clash 目标格式投影阶段会过滤 Snell 节点并级联清理空组/规则
+- **只进入 Surge 输出**：Clash Meta / Loon 不支持 Snell v4/v5（jinqians 默认版本），Clash / Loon 目标格式投影阶段会过滤 Snell 节点并级联清理空组/规则
 - **全字段支持**：包括 ShadowTLS（Surge 独有）、reuse、tfo、obfs、udp-relay 等
 - 同名节点保留独立 ID；参与 `filters.exclude` 过滤和区域组 regex 匹配
 - 可作为 `relay_through` 的链式上游
 - **失败可定位**：单行解析失败会报整源错误，消息附带脱敏后的来源 URL 和 1-based 物理行号；原始解析根因保留在错误链中
 
-### 1.1c VLESS 来源（Clash 专属）
+### 1.1c VLESS 来源（Clash / Loon）
 
 VLESS 来源通过独立的 `sources.vless` 段接入，接受纯文本 URL；URL 返回内容为"一行一个标准 VLESS URI"：
 
@@ -66,7 +67,7 @@ vless://11111111-2222-3333-4444-555555555555@sg.example.com:443?security=reality
 
 关键特性：
 
-- **只进入 Clash 输出**：Surge 不原生支持 VLESS，Surge 目标格式投影阶段会过滤 VLESS 节点并级联清理空组/规则
+- **进入 Clash 与部分 Loon 传输**：Loon 接受 tcp/ws/http；Surge 不原生支持 VLESS，Surge 目标格式投影阶段会过滤 VLESS 节点并级联清理空组/规则
 - `type` 缺失或未知值回落到 `tcp`；`encryption` 非空时透传
 - 同名节点保留独立 ID；参与 `filters.exclude` 过滤和区域组 regex 匹配
 - 可作为 `relay_through` 的链式上游
@@ -216,14 +217,15 @@ HK-03 → HK-ISP
 
 - Clash Meta 配置文件（.yaml）
 - Surge 配置文件（.conf）
+- Loon 配置文件（.conf）
 
-两者的面板结构、路由行为在共同支持的节点范围内保持一致，只是语法不同。格式例外由 Target 阶段统一级联处理：Snell 和 Surge CONF 订阅节点只进入 Surge；VLESS 和 Clash YAML 订阅节点只进入 Clash。输出格式不在配置文件中指定，由请求参数决定。
+各目标使用相同的分组和路由声明；Loon 的客户端规则来源优先级单独说明，见 [渲染设计](design/rendering.md#loon)。格式例外由 Target 阶段统一级联处理：Snell 和 Surge CONF 订阅节点只进入 Surge；Clash YAML 订阅节点只进入 Clash，Loon 原生节点只进入 Loon；规范化 VLESS 进入 Clash 及支持相应传输的 Loon。输出格式不在配置文件中指定，由请求参数决定。
 
 请求参数语义：
 
-- `format=clash|surge`：必填，决定输出格式
+- `format=clash|surge|loon`：必填，决定输出格式
 - `token=<access-token>`：当服务端启用了订阅访问 token 时，`/generate` 可通过 query 参数携带；该 token 只用于 Clash / Surge 等客户端自动更新订阅，不作为 Web 管理后台登录凭据
-- `filename=<custom-name>`：可选，自定义下载文件名；未传时默认使用 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式；空值、空主体、路径字符、空格和非 ASCII 值会被拒绝
+- `filename=<custom-name>`：可选，自定义下载文件名；未传时默认使用 `clash.yaml` / `surge.conf` / `loon.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时按格式补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式；空值、空主体、路径字符、空格和非 ASCII 值会被拒绝
 
 补充约束：
 
@@ -286,7 +288,7 @@ A8 静态配置校验只覆盖字段、引用、命名和环路等 `Prepare` 阶
 
 ## 五、用户配置文件草案
 
-用户编写一个 YAML 配置文件，工具读取后生成 Clash Meta / Surge 配置。
+用户编写一个 YAML 配置文件，工具读取后生成 Clash Meta / Surge / Loon 配置。
 
 ```yaml
 base_url: "https://my-server.com"
@@ -381,7 +383,7 @@ fallback: 🐟 FINAL # 未匹配任何规则的流量走这里（Clash 生成 MA
 ```
 配置段落                         →    客户端面板
 ────────                             ────────
-sources                         →    节点池（订阅节点（TXT / Clash YAML / Surge CONF）+ Snell 节点 + VLESS 节点 + 自定义节点 + 链式节点）
+sources                         →    节点池（订阅节点（TXT / Clash YAML / Surge CONF / Loon）+ Snell 节点 + VLESS 节点 + 自定义节点 + 链式节点）
 groups                          →    节点组层：🇭🇰 Hong Kong, 🔗 HK-ISP, ...
 routing                         →    服务组层：📺 Netflix, 📲 Telegram, ...
 rulesets + rules + fallback     →    自动路由（用户无感）
@@ -402,10 +404,10 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 链式节点组使用方式 | 与地区组完全一致，可被服务组引用          | 无特殊限制                       |
 | 路由自动补充       | `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT | 消除 routing 冗余，链式组自动可用 |
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
-| 输出目标           | Clash Meta + Surge                        | Shadowrocket/QuantumultX 暂不做  |
+| 输出目标           | Clash Meta + Surge + Loon                        | Shadowrocket/QuantumultX 暂不做  |
 | Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG`，使用服务端订阅访问 token（若启用）和最终 `filename` | 用户显式控制，无需依赖反向代理头；token 来源不依赖当前请求鉴权方式，见 `T-PRV-014` |
 | 访问控制边界       | `/api/*` 使用管理员登录态和 `session_id` Cookie；`/generate` 保留 query token 兼容订阅链接；订阅 token 不进入 YAML，也不作为后台登录凭据 | 将公网后台权限与客户端订阅更新密钥解耦 |
-| 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf` | 客户端订阅与浏览器下载都需要稳定文件名 |
+| 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf`；Loon 默认 `loon.conf` | 客户端订阅与浏览器下载都需要稳定文件名 |
 | Web 管理后台       | React SPA 由生产镜像嵌入 Go 二进制，单个 `subconverter` 服务同源托管 SPA、`/api/*`、`/generate` 和 `/healthz` | 单镜像单服务，部署路径更简单 |
 | 配置热重载         | RWMutex 保护 RuntimeConfig，写回 YAML + re-Prepare | 编辑后无需重启服务               |
 | YAML 真相源        | UI 是 YAML 的可视化外壳，无前端独有状态   | 数据一致性，任何修改可追溯到 YAML |

@@ -162,6 +162,9 @@ export function useSaveWorkflow() {
         persistent: true
       };
     }
+    if (error.code === "resource_content_write_failed") {
+      return { kind: "error" as const, title: "正文目录无法写入", message: error.message, persistent: true };
+    }
     if (error.status === 409) {
       return {
         kind: "error" as const,

@@ -24,6 +24,8 @@
 | PUT | `/api/config` | 条件保存配置（JSON → YAML 写回） | v2.0 |
 | GET | `/api/config/effective.yaml` | 下载当前生效的源 YAML 配置 | v2.0 |
 | GET | `/api/config/effective.zip` | 下载当前生效的源 YAML 配置与模板包 | v2.0 |
+| POST | `/api/subscriptions/check` | 检查订阅格式、节点数和适用输出 | v2.0 |
+| POST | `/api/resources/read` | 读取节点订阅或模板正文为编辑副本 | v2.0 |
 | POST | `/api/config/import` | 导入 YAML 或配置模板 ZIP 包为草稿配置 JSON | v2.0 |
 | POST | `/api/config/validate` | 静态校验配置（Prepare 阶段） | v2.0 |
 | POST | `/api/reload` | 触发配置热重载 | v2.0 |
@@ -46,20 +48,20 @@
 
 查询参数：
 
-- `format=clash|surge`（必填）
+- `format=clash|surge|loon`（必填）
 - `token=<access-token>`（仅当服务端配置了订阅访问 token 且请求没有有效管理员 session 时必填）
-- `filename=<custom-name>`（可选；未传时默认 `clash.yaml` / `surge.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时自动补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式）
+- `filename=<custom-name>`（可选；未传时默认 `clash.yaml` / `surge.conf` / `loon.conf`；仅允许 ASCII 字母、数字、`.`、`-`、`_`，长度不超过 255；未带扩展名时自动补 `.yaml` / `.conf`，已有扩展名必须匹配目标格式）
 
 说明：
 
-- Clash / Surge 等客户端自动更新订阅时通过 query token 访问 `/generate`
+- Clash / Surge / Loon 等客户端自动更新订阅时通过 query token 访问 `/generate`
 - Web 管理后台内的下载按钮可通过同源 `session_id` Cookie 访问 `/generate`，不需要把订阅 token 暴露给前端代码
 
 成功响应：
 
 - Clash Meta：`Content-Type: text/yaml; charset=utf-8`
-- Surge：`Content-Type: text/plain; charset=utf-8`
-- 两种格式都输出 `Content-Disposition: attachment; ...`
+- Surge / Loon：`Content-Type: text/plain; charset=utf-8`
+- 三种格式都输出 `Content-Disposition: attachment; ...`
 
 ### `GET /healthz`
 
@@ -209,7 +211,8 @@
 {
   "config_revision": "sha256:7d9c...",
   "config": {
-    "sources": {},
+    "sources": {"subscriptions": [{"url": "https://example.com/sub.conf", "format": "loon"}]},
+    "templates": {"loon": "configs/base_loon.conf"},
     "groups": [],
     "routing": [],
     "rulesets": []
@@ -219,6 +222,7 @@
 
 说明：
 
+- `sources.subscriptions[].format` 和 `templates.loon` 随 JSON/YAML 往返保留；字段约束见 [配置规约](config-schema.md#subscriptions)
 - `GET /api/config` 读取配置源内容，不等同于当前生效的 `RuntimeConfig`
 - 本地配置通过 `PUT /api/config` 保存后，若尚未调用 `POST /api/reload`，保存配置与运行时配置可能短暂不同步
 - 当前生效配置的加载时间、配置源能力和 dirty 状态通过 `GET /api/status` 查看
@@ -328,9 +332,10 @@ revision 冲突响应示例：
 - `200`，`Content-Type: application/zip`
 - `Content-Disposition: attachment; filename="subconverter-config.zip"; filename*=UTF-8''subconverter-config.zip`
 - ZIP 内容：
-  - `config.yaml`：上一次成功启动或 `POST /api/reload` 时进入 `RuntimeConfig` 的原始 YAML 字节
+  - `config.yaml`：当前生效配置。含服务管理的正文文件时，展开为 `content` / `templates.inline` 以便迁移；其他配置保持上次启动或 reload 的原始 YAML 字节
   - `templates/clash.yaml`：当前生效 `templates.clash` 指向的模板内容（仅配置该字段时存在）
   - `templates/surge.conf`：当前生效 `templates.surge` 指向的模板内容（仅配置该字段时存在）
+  - `templates/loon.conf`：当前生效 `templates.loon` 指向的模板内容（仅配置该字段时存在）
 
 说明：
 
@@ -354,7 +359,7 @@ ZIP 请求体：
 - `Content-Type: application/zip`
 - Body：ZIP 字节，大小不超过 10 MiB
 - ZIP 必须包含非空 `config.yaml`
-- 可选包含 `templates/clash.yaml` 与 `templates/surge.conf`
+- 可选包含 `templates/clash.yaml`、`templates/surge.conf` 和 `templates/loon.conf`
 
 成功响应：
 
@@ -372,8 +377,8 @@ ZIP 请求体：
 说明：
 
 - `config` 的 JSON 形状与 `GET /api/config` 相同，保序字段仍以 `[{key, value}]` 数组表示
-- YAML 导入只做 YAML 解析与结构转换；不写文件、不替换运行时配置
-- ZIP 导入会将包内模板写入本地配置文件旁的 `.imports/import-*/templates/` 独立目录，并把返回草稿中的 `templates.clash/surge` 改为写入后的绝对路径
+- YAML 导入解析配置并读取已有的本地正文引用以还原编辑内容；不写文件、不替换运行时配置
+- ZIP 导入会将包内模板写入本地配置文件旁的 `.imports/import-*/templates/` 独立目录，并把返回草稿中的 `templates.clash/surge/loon` 改为写入后的绝对路径
 - ZIP 导入不会覆盖既有模板文件；若模板副本写入失败，已存在的模板文件与当前 RuntimeConfig 不受影响
 - ZIP 导入只读取固定条目，不按 ZIP 内路径直接解压；缺少 `config.yaml` 或 ZIP 无效时返回 `400 invalid_archive`
 - HTTP(S) 远程配置源导入 ZIP 返回 `409 config_source_readonly`；模板文件不可写返回 `409 template_file_not_writable`
@@ -388,7 +393,7 @@ ZIP 请求体：
 - 本接口只执行 JSON 反序列化、Admin API JSON 层校验（如 `sources.fetch_order`）与 `Prepare` 阶段校验
 - 本接口不拉取订阅、不执行 Source / Filter / Group / Route / Target / Render
 - 因此它能提前发现字段、正则、URL 基本格式、命名冲突、跨段引用和环路等静态问题
-- 它不能发现订阅（TXT / Clash YAML / Surge CONF）/Snell/VLESS 来源不可用、远程来源为空、过滤后组为空、目标格式级联过滤后 fallback 清空等生成期问题
+- 它不能发现订阅（TXT / Clash YAML / Surge CONF / Loon）/Snell/VLESS 来源不可用、远程来源为空、过滤后组为空、目标格式级联过滤后 fallback 清空等生成期问题
 - 生成可用性由 `POST /api/preview/nodes`、`POST /api/preview/groups` 和 `POST /api/generate/preview?format=...` 覆盖
 
 请求体：
@@ -495,7 +500,7 @@ ZIP 请求体：
 }
 ```
 
-边界：reload 只执行 `LoadConfig + Prepare`，不拉取订阅（TXT / Clash YAML / Surge CONF）/Snell/VLESS 来源，不执行 Source / Filter / Group / Target / Render，因此不证明生成一定可用。订阅源不可用、过滤后空组、目标格式级联过滤和渲染错误由预览或生成路径发现。
+边界：reload 只执行 `LoadConfig + Prepare`，不拉取订阅（TXT / Clash YAML / Surge CONF / Loon）/Snell/VLESS 来源，不执行 Source / Filter / Group / Target / Render，因此不证明生成一定可用。订阅源不可用、过滤后空组、目标格式级联过滤和渲染错误由预览或生成路径发现。
 
 并发行为：同一时刻只允许一次 reload 操作。若 reload 正在执行时收到第二个 `POST /api/reload` 请求，立即返回 `429 Too Many Requests`，不排队等待。429 响应不携带 `Retry-After` header；客户端应短间隔退避后重试，避免循环重放请求。
 
@@ -651,7 +656,7 @@ ZIP 请求体：
 
 查询参数：
 
-- `format=clash|surge`（必填）
+- `format=clash|surge|loon`（必填）
 
 成功响应：
 
@@ -666,7 +671,7 @@ ZIP 请求体：
 
 查询参数：
 
-- `format=clash|surge`（必填）
+- `format=clash|surge|loon`（必填）
 
 请求体：
 
@@ -684,7 +689,7 @@ ZIP 请求体：
 
 查询参数：
 
-- `format=clash|surge`（必填）
+- `format=clash|surge|loon`（必填）
 - `filename=<custom-name>`（可选；校验、自动补扩展名和默认值规则与 `/generate` 相同）
 - `include_token=true|false`（可选，默认 `true`；为 `false` 时返回不含 token 的链接）
 
@@ -919,3 +924,90 @@ AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscr
 2. 执行 `Prepare` 得到临时 `RuntimeConfig`
 3. 使用临时配置执行对应预览阶段
 4. 返回 JSON，不写文件，不替换服务当前配置
+
+
+## POST /api/resources/read
+
+管理员读取现有订阅 URL 或模板路径后，在 Web 编辑副本。此接口要求有效 session 并执行同源检查；只读取，不保存配置、不写回资源，也不 reload。与已有模板引用相同，路径相对于服务进程工作目录，URL 使用共享 Fetcher 缓存。
+
+请求：
+
+```json
+{"location":"https://example.com/nodes.lcf"}
+```
+
+响应 `200`：
+
+```json
+{"content":"[Proxy]\nHK = anytls, hk.example.com, 443, \"example-password\"\n","format":"loon"}
+```
+
+空 location 返回 `400 invalid_request`，非 UTF-8 或含 NUL 的资源返回 `400 invalid_resource`。远程和本地读取失败沿用既有 FetchError / ResourceError 映射。Web 在只读配置源下禁用导入编辑入口；直接调用该只读接口仍可读取，保存始终遵循 `PUT /api/config` 的可写性契约。
+
+`format` 可选，表示按 Source 的自动识别规则会采用的结构化订阅格式，取 `clash`、`surge` 或 `loon`；TXT/Base64 不返回此字段。该提示仅表示旧版 Source 自动规则的选择，不表示节点检查成功。模板编辑器使用此接口读取正文；订阅编辑器使用下述专用检查接口。
+
+`GET /api/config` 和 `PUT /api/config` 的配置 JSON 支持 `sources.subscriptions[].content` 与 `templates.inline`，字段及互斥约束见 [配置规约](config-schema.md#subscriptions)。例如：
+
+```json
+{
+  "sources": {"subscriptions": [{"format":"loon", "content":"HK = anytls, hk.example.com, 443, \"example-password\""}]},
+  "templates": {"inline": {"loon":"[General]\ndns-server = system\n"}}
+}
+```
+
+保存正文时生成带时间戳的文件，默认直接放在 `/config`，主配置保存文件引用；`GET /api/config` 还原可读正文。单个文件读取失败时保留原引用，配置编辑仍可使用；ZIP 导出保持严格检查，避免生成缺少正文的迁移包。存储规则与文件名示例见 [配置规约](config-schema.md#templates)。
+
+正文目录无法创建或写入时，`PUT /api/config` 返回 `409`：
+
+```json
+{"error":{"code":"resource_content_write_failed","message":"正文保存失败：目录 \"/config\" 无法写入。请检查目录权限、容器挂载和运行用户；当前草稿已保留。原因：permission denied"}}
+```
+
+失败不修改主配置和运行快照；修复目录权限后可用同一 revision 重试。此错误不改变主配置的 `config_source.writable` 或 `capabilities.config_write`；主配置自身只读时仍遵守原有 `config_file_not_writable` / `config_source_readonly` 契约。
+
+正文在配置包的 `config.yaml` 内保存；导入包若同时提供对应的 `templates/*` 文件，则用该文件副本替换同格式正文。YAML 导入会读取其中已有的本地正文引用以还原编辑内容；跨机器迁移使用 ZIP 包。
+
+
+## POST /api/subscriptions/check
+
+检查订阅链接、本地正文文件或粘贴内容，不保存配置、不创建版本文件、不 reload。要求管理员 session，并执行同源检查。远程地址沿用共享 Fetcher 和缓存；只读配置源也可通过此只读接口检查。
+
+请求的 `location` 与非空 `content` 二选一。`format` 可省略或为 `auto`，也可指定 `text`、`clash`、`surge`、`loon` 更正解析器：
+
+```json
+{"location":"https://example.com/sub.conf","format":"auto"}
+```
+
+```json
+{"content":"anytls://example-password@hk.example.com:443#HK"}
+```
+
+成功识别响应 `200`：
+
+```json
+{
+  "status":"recognized",
+  "format":"loon",
+  "node_count":1,
+  "output_formats":["loon"],
+  "content":"[Proxy]\nHK = anytls, hk.example.com, 443, \"example-password\"\n"
+}
+```
+
+`content` 是本次检查的原文，用于用户明确选择“编辑正文副本”时复制；检查链接本身仍保留 URL。`format` 是确认后写入草稿的格式，节点列表使用 `text`。`output_formats` 表示全部提取节点通过现有 Target/Render 的输出格式，不代表全局配置或节点连通性已通过检查。
+
+需要确认来源客户端时也返回 `200`，但不返回成功格式：
+
+```json
+{
+  "status":"ambiguous",
+  "node_count":1,
+  "output_formats":[],
+  "candidates":["surge","loon"],
+  "content":"[Proxy]\nHK = http, hk.example.com, 80\n"
+}
+```
+
+此时前端显示候选客户端，选择后携带明确 `format` 再检查。解析规则的权威定义见 [配置规约](config-schema.md#web-订阅检查)。
+
+请求字段非法返回 `400 invalid_request`；无法提取节点、结构化声明错误或非 UTF-8 文本返回 `400`，沿用 `fetch_subscription_empty`、`fetch_subscription_format_invalid`、`fetch_subscription_base64_invalid` 等 Source 错误码。上游读取失败仍返回 `502`，本地文件读取失败仍返回 `500 resource_local_read_failed`；错误不包含订阅原文或 URL token。

@@ -12,7 +12,7 @@ const MaxFilenameLength = 255
 // ValidFormat reports whether format is one of the supported generation
 // targets.
 func ValidFormat(format string) bool {
-	return format == "clash" || format == "surge"
+	return format == "clash" || format == "surge" || format == "loon"
 }
 
 // ResolveFilename normalizes the optional filename query parameter.
@@ -44,6 +44,8 @@ func ResolveFilename(raw string, present bool, format string) (string, error) {
 			return "", errors.New("filename 参数无效：Clash 配置必须使用 .yaml 扩展名")
 		case "surge":
 			return "", errors.New("filename 参数无效：Surge 配置必须使用 .conf 扩展名")
+		case "loon":
+			return "", errors.New("filename 参数无效：Loon 配置必须使用 .conf 扩展名")
 		default:
 			return "", errors.New("filename 参数无效：扩展名不正确")
 		}
@@ -80,6 +82,8 @@ func DefaultFilename(format string) string {
 		return "clash.yaml"
 	case "surge":
 		return "surge.conf"
+	case "loon":
+		return "loon.conf"
 	default:
 		return "download"
 	}
@@ -89,7 +93,7 @@ func expectedExtension(format string) string {
 	switch format {
 	case "clash":
 		return ".yaml"
-	case "surge":
+	case "surge", "loon":
 		return ".conf"
 	default:
 		return ""
