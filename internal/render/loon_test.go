@@ -125,3 +125,61 @@ func TestLoon_InvalidProxy(t *testing.T) {
 		})
 	}
 }
+
+// T-RND-LOON-005: 普通用户名直接输出，需要转义时才加引号，密码保留引号。
+func TestLoon_ProxyCredentials(t *testing.T) {
+	for _, protocol := range []string{"socks5", "http"} {
+		for _, tt := range []struct {
+			name     string
+			username string
+			password string
+			want     string
+		}{
+			{"普通账号", "user-name", "pass", `, user-name, "pass"`},
+			{"逗号", "user,name", "p,ass", `, "user,name", "p,ass"`},
+			{"引号与反斜杠", `user"\name`, `p"\ass`, `, "user\"\\name", "p\"\\ass"`},
+			{"首尾空格", " user ", " pass ", `, " user ", " pass "`},
+			{"控制字符", "user\nname\x00", "pass", `, "user\nname\x00", "pass"`},
+			{"空用户名", "", "pass", `, "", "pass"`},
+			{"无密码", "user", "", `, user, ""`},
+			{"无需认证", "", "", ""},
+		} {
+			t.Run(protocol+"/"+tt.name, func(t *testing.T) {
+				got, err := renderLoonProxy(model.TargetProxy{
+					Name: "EXIT", Type: protocol, Server: "exit.example.com", Port: 1080,
+					Params: map[string]string{"username": tt.username, "password": tt.password},
+				})
+				want := "EXIT = " + protocol + ", exit.example.com, 1080" + tt.want
+				if err != nil || got != want {
+					t.Fatalf("渲染结果=%q，错误=%v，期望=%q", got, err, want)
+				}
+			})
+		}
+	}
+}
+
+// T-RND-LOON-006: TLS/Reality 保留指定的客户端指纹，未指定时使用客户端默认值。
+func TestLoon_VLessTLSProfile(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		security    string
+		fingerprint string
+		want        string
+	}{
+		{"Reality", "reality", "chrome", ", over-tls=true, tls-profile=chrome"},
+		{"TLS", "tls", "safari-ios18", ", over-tls=true, tls-profile=safari-ios18"},
+		{"未指定指纹", "reality", "", ", over-tls=true"},
+		{"明文传输", "none", "chrome", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := renderLoonProxy(model.TargetProxy{
+				Name: "VL", Type: "vless", Server: "vless.example.com", Port: 443,
+				Params: map[string]string{"uuid": "uuid", "network": "tcp", "security": tt.security, "client-fingerprint": tt.fingerprint},
+			})
+			want := `VL = vless, vless.example.com, 443, "uuid", transport=tcp` + tt.want + ", udp=true"
+			if err != nil || got != want {
+				t.Fatalf("渲染结果=%q，错误=%v，期望=%q", got, err, want)
+			}
+		})
+	}
+}

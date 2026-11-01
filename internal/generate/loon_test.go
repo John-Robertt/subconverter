@@ -75,3 +75,31 @@ func TestGenerate_LoonRequest(t *testing.T) {
 		t.Fatalf("url=%q error=%v", url, err)
 	}
 }
+
+// T-GEN-LOON-003: 来源 URI 的指纹和链式出口账号完整保留到最终 Loon 配置。
+func TestService_LoonChainCredentialsAndVLessFingerprint(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt"}}
+	cfg.Sources.CustomProxies = []config.CustomProxy{{
+		Name: "EXIT", URL: "socks5://user:pass@exit.example.com:1080",
+		RelayThrough: &config.RelayThrough{Type: "group", Name: "HK", Strategy: "select"},
+	}}
+	cfg.Routing = mustRoutingMap(t, `"proxy": ["HK", "EXIT", "DIRECT"]`)
+	f := validFetcher()
+	f.responses["https://example.com/vless.txt"] = []byte("vless://11111111-2222-3333-4444-555555555555@vless.example.com:443?security=reality&type=tcp&flow=xtls-rprx-vision&sni=edge.example.com&fp=chrome&pbk=example-public-key&sid=ab#HK-VLESS")
+	result, err := New(f, Options{}).Generate(context.Background(), mustRuntimeConfig(t, cfg), Request{Format: "loon", Filename: DefaultFilename("loon")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(result.Body)
+	for _, want := range []string{
+		`HK-VLESS = vless, vless.example.com, 443, "11111111-2222-3333-4444-555555555555", transport=tcp, flow=xtls-rprx-vision, sni=edge.example.com, public-key=example-public-key, short-id=ab, over-tls=true, tls-profile=chrome, udp=true`,
+		`HK-01→EXIT-exit = socks5, exit.example.com, 1080, user, "pass"`,
+		`HK-VLESS→EXIT-exit = socks5, exit.example.com, 1080, user, "pass"`,
+		"[Proxy Chain]\nHK-01→EXIT = HK-01, HK-01→EXIT-exit\nHK-VLESS→EXIT = HK-VLESS, HK-VLESS→EXIT-exit",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Loon 配置缺少 %q：\n%s", want, body)
+		}
+	}
+}

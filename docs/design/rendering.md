@@ -255,9 +255,10 @@ Loon 使用与 Clash / Surge 相同的 YAML 来源、过滤、分组和路由声
 | AnyTLS `password/sni` | `anytls,server,port,"password",sni=...` |
 | AnyTLS `server-cert-fingerprint-sha256` | `tls-cert-sha256` |
 | `tfo` / `udp-relay` | `fast-open` / `udp`；规范化 AnyTLS/VLESS 未声明 UDP 时输出 `udp=true` |
-| HTTP / SOCKS5 账号密码 | 端口后的两个位置参数 |
+| HTTP / SOCKS5 账号密码 | 端口后的两个位置参数；普通用户名直接输出，含逗号等需转义字符、首尾空白或为空时加引号并转义，密码始终加引号 |
 | VLESS UUID / network | `vless,server,port,"UUID",transport=tcp|ws|http` |
 | VLESS TLS / Reality | `over-tls`、`sni`、`flow`、`public-key`、`short-id` |
+| VLESS `client-fingerprint`（URI 的 `fp`） | 启用 TLS / Reality 时输出 `tls-profile`；未指定时省略，由客户端选择默认值 |
 | VLESS ws/http path / host | `path` / `host` |
 | 节点组、服务组 | `[Proxy Group]`；复用配置中的顺序与成员 |
 | 链式节点 | Target 分配出口辅助节点，`[Proxy Chain]` 写 `链路名 = 上游名, 出口名`；出口启用 UDP 时附加 `udp=true` |

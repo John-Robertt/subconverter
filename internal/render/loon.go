@@ -79,7 +79,11 @@ func renderLoonProxy(proxy model.TargetProxy) (string, error) {
 		})
 	case "socks5", "http":
 		if proxy.Params["username"] != "" || proxy.Params["password"] != "" {
-			parts = append(parts, strconv.Quote(proxy.Params["username"]), strconv.Quote(proxy.Params["password"]))
+			username := proxy.Params["username"]
+			if username == "" || iniValueNeedsQuote(username) || !strconv.CanBackquote(username) {
+				username = strconv.Quote(username)
+			}
+			parts = append(parts, username, strconv.Quote(proxy.Params["password"]))
 		}
 	case "vless":
 		parts = append(parts, strconv.Quote(proxy.Params["uuid"]))
@@ -91,6 +95,7 @@ func renderLoonProxy(proxy model.TargetProxy) (string, error) {
 		})
 		if security := proxy.Params["security"]; security == "tls" || security == "reality" {
 			parts = append(parts, "over-tls=true")
+			parts = appendLoonParams(parts, proxy.Params, [][2]string{{"client-fingerprint", "tls-profile"}})
 		}
 		switch proxy.Params["network"] {
 		case "ws":
