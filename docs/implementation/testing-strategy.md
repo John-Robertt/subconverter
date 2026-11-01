@@ -111,6 +111,8 @@
 - `T-ADM-023`：`GET /api/config/effective.yaml` 返回当前 RuntimeConfig 对应的源 YAML；保存但未 reload 时仍返回旧生效 YAML；`POST /api/config/import` 将 YAML 转为 Config JSON；两个端点均要求管理员 session
 - `T-ADM-024`：`GET /api/config/effective.zip` 返回当前 RuntimeConfig 对应的源 YAML 与模板 ZIP；`GET /api/config/saved.zip` 返回已保存配置包；`POST /api/config/import` 以 `application/zip` 导入配置包为内存正文草稿，不创建文件；两个端点均要求管理员 session
 
+- `T-APP-STORE-001`–`016`：正文保存与重启还原、未变引用复用、按资源生成新版本、订阅重排、普通文件副本边界、缺失文件修复、失败回收和运行快照保持
+
 ---
 
 ## 热重载测试（v2.0）

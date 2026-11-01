@@ -224,7 +224,7 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 ### 验收项
 
 - `GET /api/config` 返回与配置源中已保存 YAML 等价的 JSON，并包含 `config_revision`
-- `PUT /api/config` → `GET /api/config` round-trip 幂等（JSON → YAML → JSON 内容一致），成功后返回新的 `config_revision`
+- `PUT /api/config` → `GET /api/config` round-trip 幂等（JSON → YAML → JSON 内容一致），成功后返回保存后的 `config_revision`
 - `PUT /api/config` 缺少 revision 返回 400；revision 与当前文件不一致返回 `409 config_revision_conflict` 且不写入
 - `PUT /api/config` 成功响应仅返回 `{config_revision}`；YAML 注释/格式丢失提示由 Web UI 首次保存确认承担，后端不自动创建 `.bak` 文件，也不返回 warning 字段
 - HTTP(S) 配置源下 `PUT /api/config` 返回 409，且不尝试写回远端

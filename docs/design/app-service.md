@@ -40,7 +40,7 @@ func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, er
 // 仅本地可写配置源支持；HTTP(S) 配置源返回 ErrConfigSourceReadonly(409)。
 // 本地文件或所在目录不可写返回 ErrConfigFileNotWritable(409)。
 // revision 冲突返回 RevisionConflictError(409)，并携带当前 revision。
-// 正文写入带时间戳的版本文件后，主配置原子写回引用；失败时回收本次新增文件。
+// 未变正文复用已保存引用，新增或变化正文写入带时间戳的版本文件；失败回收本次新增文件。
 // 正文目录错误使用 ResourceError(CodeResourceContentWriteFailed)，HTTP 映射为 409。
 // 写回成功后不自动 reload。
 // 用于 PUT /api/config。
@@ -223,7 +223,7 @@ type ResourceContentResult struct {
 }
 ```
 
-`Options.DataDir` 指定正文文件目录，省略时为 `/config`。`content_store.go` 负责版本文件发布、失败回收和正文还原；SaveConfig 串行执行 revision 检查、正文写入和主配置提交，避免并发保存互相覆盖。
+`Options.DataDir` 指定正文文件目录，省略时为 `/config`。`content_store.go` 负责未变正文引用复用、新版本文件发布、失败回收和正文还原；SaveConfig 串行执行 revision 检查、正文写入和主配置提交，避免并发保存互相覆盖。
 
 `Format` 是复用 Source 识别规则得到的订阅格式提示；复制正文时仅为自动识别来源固定格式，用户显式选择优先。模板编辑忽略此提示。配置字段约束见 [配置规约](config-schema.md#subscriptions)。
 
@@ -509,10 +509,11 @@ var (
 `SaveConfig` 用 `saveMu` 串行执行同一服务实例内的保存，保持生效快照不变：
 
 - 先读取文件并计算 `config_revision`，与调用方传入的版本比较；不匹配时返回冲突，保留文件原样
-- 校验通过后发布正文版本文件，再把引用写入完整 YAML 的同目录临时文件，用 `os.Rename` 替换原配置；主配置提交失败时回收本次新增正文，旧版本不覆盖
+- 校验通过后按当前已保存配置的服务正文文件比较内容，复用未变引用，仅为新增或变化的正文发布版本文件。再把引用写入完整 YAML 的同目录临时文件，用 `os.Rename` 替换原配置；主配置提交失败时只回收本次新增正文，复用文件与旧版本不覆盖
+- 若序列化结果与当前文件完全相同，直接返回原 revision，不重写配置文件
 - 成功时根据写出的字节计算并返回新 revision。下一次本地 `Status` 会重新读文件并计算 revision，生效 revision 仍要等成功重载才更新
 
-`saveMu` 覆盖本实例的 revision 检查、正文写入和主配置提交；相同 revision 的并发保存只有一次成功，其余返回版本冲突。外部进程仍不受该锁约束，若它在版本比较与替换之间写入，仍可能被覆盖。
+`saveMu` 覆盖本实例的 revision 检查、正文写入和主配置提交；产生新 revision 后，仍携带旧 revision 的保存返回版本冲突；完全相同的重复保存保持原 revision。外部进程仍不受该锁约束，若它在版本比较与替换之间写入，仍可能被覆盖。
 
 ---
 

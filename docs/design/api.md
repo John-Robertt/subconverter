@@ -246,7 +246,8 @@
 3. 请求中的 `config_revision` 与当前 revision 不一致 → 不写入，返回 `409 config_revision_conflict`
 4. JSON 反序列化为 `Config`
 5. 执行 `Prepare` 校验
-6. 校验通过 → 序列化为 YAML → 写入同目录临时文件 → 原子 rename 覆盖原配置文件 → 根据写出的字节计算并返回新的 `config_revision`
+6. 校验通过后复用未变正文，仅为新增或变化的正文生成版本文件
+7. 序列化为 YAML；字节与现有文件相同则直接返回原 revision，否则写入同目录临时文件并原子 rename 覆盖原配置，返回保存后的 `config_revision`
 7. 校验失败 → 不写入，返回 `400` + `ValidateResult`（`valid=false`）
 
 成功响应：
@@ -300,10 +301,10 @@ revision 冲突响应示例：
 - 仅本地文件配置源支持 `PUT /api/config`
 - 当 `-config` 是 HTTP(S) URL，返回 `409 config_source_readonly`，不尝试写入
 - 当本地文件或所在目录不可写时，返回 `409 config_file_not_writable`，不尝试写入
-- `PUT /api/config` 仅写回文件，不自动触发热重载
+- `PUT /api/config` 仅写回文件，不自动触发热重载；配置和正文均未变化时不重写文件，返回原 `config_revision`
 - 前端需在保存后显式调用 `POST /api/reload` 使新配置生效
 - YAML 写回可能改变格式细节并丢失原始文件中的注释
-- 本地可写配置源首次保存前，Web UI 必须弹出确认，提示注释、引号和格式风格可能丢失；`PUT /api/config` 成功响应只返回新的 `config_revision`
+- 本地可写配置源首次保存前，Web UI 必须弹出确认，提示注释、引号和格式风格可能丢失；`PUT /api/config` 成功响应只返回保存后的 `config_revision`（未变化时保留原值）
 - `config_revision` 是乐观并发令牌，用于防止旧页面或旧 revision 静默覆盖已观测到的新配置；它不提供外部多写者的线性一致性保证
 - 多标签页、外部编辑器或 GitOps 进程在保存前已改写配置时，revision 校验会拒绝陈旧请求；若外部进程恰好在 revision 比对和 `rename` 之间改写文件，当前单用户设计不额外加文件锁或备份
 
@@ -963,7 +964,7 @@ AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscr
 }
 ```
 
-保存正文时生成带时间戳的文件，默认直接放在 `/config`，主配置保存文件引用；`GET /api/config` 还原可读正文。单个文件读取失败时保留原引用，配置编辑仍可使用；ZIP 导出保持严格检查，避免生成缺少正文的迁移包。存储规则与文件名示例见 [配置规约](config-schema.md#templates)。
+保存时复用内容未变的服务正文文件；仅为新增或变化的正文生成带时间戳的文件，默认直接放在 `/config`，主配置保存文件引用；`GET /api/config` 还原可读正文。单个文件读取失败时保留原引用，配置编辑仍可使用；ZIP 导出保持严格检查，避免生成缺少正文的迁移包。存储规则与文件名示例见 [配置规约](config-schema.md#templates)。
 
 正文目录无法创建或写入时，`PUT /api/config` 返回 `409`：
 

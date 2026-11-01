@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -207,7 +208,9 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 	if _, err := prepareAdminConfig(cfg, true); err != nil {
 		return nil, err
 	}
-	created, err := s.persistEditableContent(cfg)
+	// Invalid saved YAML must remain replaceable by a valid draft; reuse is best-effort.
+	saved, _ := parseConfigYAML(currentRaw)
+	created, err := s.persistEditableContent(cfg, saved)
 	committed := false
 	defer func() {
 		if !committed {
@@ -223,6 +226,10 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 	yamlBytes, err := yaml.Marshal(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("marshal config yaml: %w", err)
+	}
+	if bytes.Equal(yamlBytes, currentRaw) {
+		committed = true
+		return &SaveConfigResult{ConfigRevision: currentRevision}, nil
 	}
 	if err := writeFileAtomically(s.configLocation, yamlBytes); err != nil {
 		return nil, err

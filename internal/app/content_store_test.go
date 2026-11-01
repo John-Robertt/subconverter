@@ -128,8 +128,8 @@ func TestContentStore_SaveAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 8 {
-		t.Fatal("each save must retain a new timestamped version")
+	if len(after) != 4 {
+		t.Fatalf("unchanged save created extra versions: files=%d want 4", len(after))
 	}
 }
 
@@ -527,5 +527,258 @@ func TestContentStore_PartialBodyRollback(t *testing.T) {
 	}
 	if snapshot.ConfigRevision != revision {
 		t.Fatal("partial body save changed config")
+	}
+}
+
+func storedContentConfig(t *testing.T, svc *Service) config.Config {
+	t.Helper()
+	raw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- Fixture config is under t.TempDir.
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg config.Config
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func editableContentConfig(t *testing.T, svc *Service) (config.Config, string) {
+	t.Helper()
+	snapshot, err := svc.ConfigSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg config.Config
+	if err := json.Unmarshal(snapshot.Config, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	return cfg, snapshot.ConfigRevision
+}
+
+// T-APP-STORE-011: only changed bodies create versions; metadata and identical saves reuse references.
+func TestContentStore_ReuseUnchangedBodies(t *testing.T) {
+	for _, tt := range []struct {
+		name                             string
+		patch                            func(*config.Config)
+		changed                          string
+		addLoon, missingSource, readonly bool
+	}{
+		{name: "unchanged"},
+		{name: "metadata only", patch: func(c *config.Config) { c.BaseURL = "https://example.com" }},
+		{name: "readonly content directory", readonly: true, patch: func(c *config.Config) { c.BaseURL = "https://example.com" }},
+		{name: "add Loon only", addLoon: true, changed: "loon", patch: func(c *config.Config) { c.Templates.Inline["loon"] = "[General]\ndns-server = system\n" }},
+		{name: "subscription", changed: "subscription", patch: func(c *config.Config) {
+			c.Sources.Subscriptions[0].Content = "anytls://changed@hk.example.com:443#HK-CHANGED"
+		}},
+		{name: "clash", changed: "clash", patch: func(c *config.Config) { c.Templates.Inline["clash"] = "mixed-port: 7891\n" }},
+		{name: "surge", changed: "surge", patch: func(c *config.Config) { c.Templates.Inline["surge"] = "[General]\ndns-server = 1.1.1.1\n" }},
+		{name: "loon", changed: "loon", patch: func(c *config.Config) { c.Templates.Inline["loon"] = "[General]\ndns-server = 1.1.1.1\n" }},
+		{name: "repair missing source", changed: "subscription", missingSource: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, cfg, revision := contentStoreFixture(t)
+			if tt.addLoon {
+				delete(cfg.Templates.Inline, "loon")
+			}
+			if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
+				t.Fatal(err)
+			}
+			before := storedContentConfig(t, svc)
+			edited, savedRevision := editableContentConfig(t, svc)
+			if tt.patch != nil {
+				tt.patch(&edited)
+			}
+			if tt.missingSource {
+				if err := os.Remove(before.Sources.Subscriptions[0].ContentFile); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.readonly {
+				if err := os.Chmod(svc.dataDir, 0o500); err != nil { // #nosec G302 -- Directory read/execute access is required to reuse existing versions without write permission.
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(svc.dataDir, 0o700) }) // #nosec G302 -- Restores owner access to a temporary directory.
+			}
+			info, err := os.Stat(svc.configLocation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := saveContentDraft(t, svc, &edited, savedRevision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			after := storedContentConfig(t, svc)
+			oldPaths := map[string]string{"subscription": before.Sources.Subscriptions[0].ContentFile, "clash": before.Templates.Clash, "surge": before.Templates.Surge, "loon": before.Templates.Loon}
+			newPaths := map[string]string{"subscription": after.Sources.Subscriptions[0].ContentFile, "clash": after.Templates.Clash, "surge": after.Templates.Surge, "loon": after.Templates.Loon}
+			for kind, old := range oldPaths {
+				changed := newPaths[kind] != old
+				if changed != (kind == tt.changed) {
+					t.Fatalf("%s reference changed=%v want %v: old=%q new=%q", kind, changed, kind == tt.changed, old, newPaths[kind])
+				}
+			}
+			entries, err := os.ReadDir(svc.dataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantFiles := 4
+			if tt.addLoon {
+				wantFiles--
+			}
+			if tt.changed != "" {
+				wantFiles++
+			}
+			if tt.missingSource {
+				wantFiles--
+			}
+			if len(entries) != wantFiles {
+				t.Fatalf("body files=%d want %d", len(entries), wantFiles)
+			}
+			if tt.patch == nil && !tt.missingSource {
+				afterInfo, err := os.Stat(svc.configLocation)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if result.ConfigRevision != savedRevision || !os.SameFile(info, afterInfo) {
+					t.Fatalf("identical save rewrote config: revision=%s want %s", result.ConfigRevision, savedRevision)
+				}
+			}
+		})
+	}
+}
+
+// T-APP-STORE-012: subscription reordering reuses each body; a new duplicate remains a separate resource.
+func TestContentStore_ReorderSubscriptions(t *testing.T) {
+	svc, cfg, revision := contentStoreFixture(t)
+	cfg.Sources.Subscriptions = append(cfg.Sources.Subscriptions, config.Subscription{Content: "anytls://pw@sg.example.com:443#SG"})
+	if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
+		t.Fatal(err)
+	}
+	before := storedContentConfig(t, svc)
+	edited, revision := editableContentConfig(t, svc)
+	edited.Sources.Subscriptions[0], edited.Sources.Subscriptions[1] = edited.Sources.Subscriptions[1], edited.Sources.Subscriptions[0]
+	if _, err := saveContentDraft(t, svc, &edited, revision); err != nil {
+		t.Fatal(err)
+	}
+	after := storedContentConfig(t, svc)
+	for i, j := range []int{1, 0} {
+		if after.Sources.Subscriptions[i].ContentFile != before.Sources.Subscriptions[j].ContentFile {
+			t.Fatalf("source %d lost reference after reorder: %+v", i, after.Sources.Subscriptions)
+		}
+	}
+	entries, err := os.ReadDir(svc.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 5 {
+		t.Fatalf("reorder created versions: files=%d want 5", len(entries))
+	}
+	edited, revision = editableContentConfig(t, svc)
+	edited.Sources.Subscriptions = append(edited.Sources.Subscriptions, edited.Sources.Subscriptions[0])
+	if _, err := saveContentDraft(t, svc, &edited, revision); err != nil {
+		t.Fatal(err)
+	}
+	after = storedContentConfig(t, svc)
+	if len(after.Sources.Subscriptions) != 3 || after.Sources.Subscriptions[0].ContentFile == after.Sources.Subscriptions[2].ContentFile {
+		t.Fatalf("new subscription lost independent resource: %+v", after.Sources.Subscriptions)
+	}
+}
+
+// T-APP-STORE-013: explicitly editing an ordinary reference creates a managed copy even when text is identical.
+func TestContentStore_CopyOrdinaryTemplate(t *testing.T) {
+	svc, cfg, revision := contentStoreFixture(t)
+	path := filepath.Join(filepath.Dir(svc.configLocation), "original.lcf")
+	const body = "[General]\ndns-server = system\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	delete(cfg.Templates.Inline, "loon")
+	cfg.Templates.Loon = path
+	if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
+		t.Fatal(err)
+	}
+	edited, revision := editableContentConfig(t, svc)
+	edited.Templates.Loon = ""
+	edited.Templates.Inline["loon"] = body
+	if _, err := saveContentDraft(t, svc, &edited, revision); err != nil {
+		t.Fatal(err)
+	}
+	after := storedContentConfig(t, svc)
+	if after.Templates.Loon == path || !svc.isManagedTemplate(after.Templates.Loon, "loon") {
+		t.Fatalf("ordinary reference reused instead of copying: %q", after.Templates.Loon)
+	}
+}
+
+// T-APP-STORE-014: a failed config commit removes only new bodies and keeps reused versions readable.
+func TestContentStore_ReuseRollback(t *testing.T) {
+	svc, cfg, revision := contentStoreFixture(t)
+	if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
+		t.Fatal(err)
+	}
+	before := storedContentConfig(t, svc)
+	edited, revision := editableContentConfig(t, svc)
+	edited.Templates.Inline["loon"] += "loglevel = notify\n"
+	original := svc.configLocation
+	blocked := filepath.Join(filepath.Dir(original), "blocked")
+	if err := os.Mkdir(blocked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	clock := svc.now
+	svc.now = func() time.Time { svc.configLocation = blocked; return clock() }
+	_, err := saveContentDraft(t, svc, &edited, revision)
+	svc.configLocation, svc.now = original, clock
+	if !errors.Is(err, errtype.ErrConfigFileNotWritable) {
+		t.Fatalf("save error=%v want config commit failure", err)
+	}
+	after := storedContentConfig(t, svc)
+	if after.Templates.Loon != before.Templates.Loon {
+		t.Fatal("failed save changed config reference")
+	}
+	entries, err := os.ReadDir(svc.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 4 {
+		t.Fatalf("failed save retained new versions or removed old ones: %d", len(entries))
+	}
+	if _, err := svc.ReadResource(context.Background(), before.Templates.Clash); err != nil {
+		t.Fatalf("reused file was removed: %v", err)
+	}
+}
+
+// T-APP-STORE-015: malformed saved YAML does not prevent replacing it with a valid draft.
+func TestContentStore_RepairInvalidSavedConfig(t *testing.T) {
+	svc, cfg, _ := contentStoreFixture(t)
+	raw := []byte("sources: [invalid yaml\n")
+	if err := os.WriteFile(svc.configLocation, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := saveContentDraft(t, svc, cfg, configRevision(raw)); err != nil {
+		t.Fatalf("valid replacement failed: %v", err)
+	}
+	if stored := storedContentConfig(t, svc); stored.Sources.Subscriptions[0].ContentFile == "" {
+		t.Fatal("replacement did not save body")
+	}
+}
+
+// T-APP-STORE-016: keeping one explicit reference must not consume another subscription's reusable version.
+func TestContentStore_MixedReferencesAndBodies(t *testing.T) {
+	svc, cfg, revision := contentStoreFixture(t)
+	cfg.Sources.Subscriptions = append(cfg.Sources.Subscriptions, cfg.Sources.Subscriptions[0])
+	if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
+		t.Fatal(err)
+	}
+	before := storedContentConfig(t, svc)
+	edited, revision := editableContentConfig(t, svc)
+	edited.Sources.Subscriptions[0].Content = ""
+	edited.Sources.Subscriptions[0].ContentFile = before.Sources.Subscriptions[0].ContentFile
+	if _, err := saveContentDraft(t, svc, &edited, revision); err != nil {
+		t.Fatal(err)
+	}
+	after := storedContentConfig(t, svc)
+	for i := range before.Sources.Subscriptions {
+		if after.Sources.Subscriptions[i].ContentFile != before.Sources.Subscriptions[i].ContentFile {
+			t.Fatalf("source %d reference changed: old=%q new=%q", i, before.Sources.Subscriptions[i].ContentFile, after.Sources.Subscriptions[i].ContentFile)
+		}
 	}
 }
