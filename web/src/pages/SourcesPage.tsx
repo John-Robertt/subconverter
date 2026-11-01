@@ -1,7 +1,7 @@
 import { Link2, Pencil, Plus, Radio, Shield, Trash2 } from "lucide-react";
-import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Config, CustomProxy, FetchSource, FetchSourceKind, RelayThrough } from "../api/types";
-import { SubscriptionEditor, subscriptionFormatLabels, type SubscriptionCheckState, type SubscriptionEditorValue } from "../components/SubscriptionEditor";
+import { SubscriptionEditor, subscriptionFormatLabels, type SubscriptionEditorValue } from "../components/SubscriptionEditor";
 import { SortableList } from "../components/SortableList";
 import { Button, Chip, EmptyState, Field, IconButton, Modal, SelectInput, StatCard, TextInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
@@ -32,25 +32,17 @@ type SourceEditor =
   | { type: "custom"; index: number | null; proxy: CustomProxy }
   | null;
 
-function sourceFromEditor(editor: Extract<NonNullable<SourceEditor>, { type: "fetch" }>, confirmed: boolean): FetchSource {
+function sourceFromEditor(editor: Extract<NonNullable<SourceEditor>, { type: "fetch" }>): FetchSource {
   const source: FetchSource = editor.content !== undefined ? { content: editor.content }
     : editor.reference === "file" && !/^https?:\/\//.test(editor.location) ? { content_file: editor.location.trim() } : { url: editor.location.trim() };
-  const format = confirmed ? editor.inspection?.format ?? editor.format : editor.format;
+  const format = editor.inspection?.format ?? editor.format;
   if (editor.kind === "subscriptions" && format) source.format = format;
   return source;
 }
 
-function subscriptionKey(source: FetchSource): string {
-  return JSON.stringify([source.url, source.content_file, source.content, source.format ?? "auto"]);
-}
-
-function subscriptionSummary(source: FetchSource, state?: SubscriptionCheckState): string {
-  const result = state?.inspection;
-  if (state?.kind === "read_error") return "读取失败";
-  if (state?.kind === "check_error") return "格式检查失败";
-  if (result?.status === "ambiguous") return `需确认格式 · ${result.node_count} 条声明`;
-  if (result?.format) return `${subscriptionFormatLabels[result.format]} · ${result.node_count} 个节点`;
-  return `${source.format && source.format !== "auto" ? subscriptionFormatLabels[source.format] : "自动识别"} · 尚未检查`;
+function sameFetchSource(left: FetchSource, right: FetchSource | undefined): boolean {
+  return right !== undefined && left.url === right.url && left.content_file === right.content_file && left.content === right.content
+    && (left.format ?? "auto") === (right.format ?? "auto");
 }
 
 export function SourcesPage() {
@@ -58,18 +50,9 @@ export function SourcesPage() {
   const confirm = useConfirm();
   const activePointer = useDiagnosticPointer();
   const [editor, setEditor] = useState<SourceEditor>(null);
-  const [checks, setChecks] = useState<Record<string, SubscriptionCheckState>>({});
   const sources = ensureSources(draft?.sources);
   const totalFetch = sources.subscriptions.length + sources.snell.length + sources.vless.length;
   const totalSources = totalFetch + sources.custom_proxies.length;
-
-  useEffect(() => {
-    if (editor?.type !== "fetch" || editor.kind !== "subscriptions" || !editor.checkState || ["idle", "loading"].includes(editor.checkState.kind)) return;
-    const source = sourceFromEditor(editor, false);
-    if (!sources.subscriptions.some((item) => subscriptionKey(item) === subscriptionKey(source))) return;
-    const state = editor.checkState;
-    setChecks((current) => ({ ...current, [subscriptionKey(source)]: state }));
-  }, [editor, sources.subscriptions]);
 
   function patchSources(updater: (sources: ReturnType<typeof ensureSources>) => ReturnType<typeof ensureSources>) {
     updateDraft((config) => ({ ...config, sources: updater(ensureSources(config.sources)) }));
@@ -78,11 +61,7 @@ export function SourcesPage() {
   function saveEditor() {
     if (!editor) return;
     if (editor.type === "fetch") {
-      const source = sourceFromEditor(editor, true);
-      if (editor.kind === "subscriptions" && editor.checkState) {
-        const state = editor.checkState;
-        setChecks((current) => ({ ...current, [subscriptionKey(source)]: state }));
-      }
+      const source = sourceFromEditor(editor);
       patchSources((current) => ({
         ...current,
         [editor.kind]:
@@ -187,8 +166,8 @@ export function SourcesPage() {
               <SourceCard
                 title={`${sourceLabels[kind]} #${index + 1}`}
                 subtitle={source.content !== undefined ? `正文 · ${source.content.split("\n").length} 行` : source.content_file ? `正文文件 · ${source.content_file}` : maskUrl(source.url ?? "") || "未设置 URL"}
-                meta={kind === "subscriptions" ? subscriptionSummary(source, checks[subscriptionKey(source)]) : kind}
-                statusTone={kind === "subscriptions" ? checks[subscriptionKey(source)]?.kind === "recognized" ? "success" : checks[subscriptionKey(source)] ? "warning" : "neutral" : "success"}
+                meta={kind === "subscriptions" ? source.format && source.format !== "auto" ? subscriptionFormatLabels[source.format] : "按内容识别" : kind}
+                statusTone={kind === "subscriptions" ? "neutral" : "success"}
                 viewable={kind === "subscriptions"}
                 tag={source.url || source.content_file || source.content?.trim() ? "已配置" : "待补齐"}
                 readonly={isReadonly}
@@ -343,6 +322,11 @@ function SourceEditorModal({
 }) {
   const groupNames = draft?.groups?.map((entry) => entry.key).filter(Boolean) ?? [];
   const isCustom = editor?.type === "custom";
+  const sources = ensureSources(draft?.sources);
+  const hasChanges = Boolean(editor && (editor.index === null || (editor.type === "fetch"
+    ? !sameFetchSource(sourceFromEditor(editor), sources[editor.kind][editor.index])
+    : JSON.stringify(editor.proxy) !== JSON.stringify(sources.custom_proxies[editor.index]))));
+  const done = readonly || !hasChanges;
   const title = !editor ? "" : editor.index === null ? (isCustom ? "添加自定义代理" : `添加 ${sourceLabels[editor.kind]}`) : isCustom ? "编辑自定义代理" : `编辑 ${sourceLabels[editor.kind]}`;
 
   function patchCustom(patch: Partial<CustomProxy>) {
@@ -359,12 +343,12 @@ function SourceEditorModal({
     <Modal
       open={Boolean(editor)}
       title={title}
-      description={isCustom ? "支持单节点 URL 与 relay_through 中转配置。" : "来源修改先进入草稿，保存并热重载后生效。"}
+      description={done ? readonly ? "只读查看，关闭不会修改配置。" : "配置未修改，无需保存。" : isCustom ? "支持单节点 URL 与 relay_through 中转配置。" : "来源修改先进入草稿，保存并热重载后生效。"}
       onClose={onClose}
       footer={
-        <>
+        done ? <Button variant="primary" onClick={onClose}>完成</Button> : <>
           <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" disabled={readonly || !editor || (editor.type === "fetch" && (!(editor.content !== undefined ? editor.content.trim() : editor.location.trim()) || (editor.kind === "subscriptions" && editor.inspection?.status !== "recognized")))} onClick={onSave}>应用到草稿</Button>
+          <Button variant="primary" disabled={!editor || (editor.type === "fetch" && (!(editor.content !== undefined ? editor.content.trim() : editor.location.trim()) || (editor.kind === "subscriptions" && editor.inspection?.status !== "recognized")))} onClick={onSave}>应用到草稿</Button>
         </>
       }
     >

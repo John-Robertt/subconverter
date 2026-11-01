@@ -5,17 +5,11 @@ import { useResourceContent } from "../features/useResourceContent";
 import { ResourceBody } from "./ResourceBody";
 import { Button, Field, SelectInput, TextInput } from "./ui";
 
-export interface SubscriptionCheckState {
-  kind: "idle" | "loading" | "read_error" | "check_error" | "recognized" | "ambiguous";
-  inspection?: SubscriptionCheckResult;
-}
-
 export interface SubscriptionEditorValue {
   location: string;
   content?: string;
   format?: SubscriptionFormat;
   inspection?: SubscriptionCheckResult;
-  checkState?: SubscriptionCheckState;
 }
 
 export const subscriptionFormatLabels = { text: "节点列表", clash: "Clash 配置", surge: "Surge 配置", loon: "Loon 配置" };
@@ -41,28 +35,28 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange }:
   const readError = !inline && address && !validAddress
     ? "请输入 HTTP(S) 订阅地址；单个节点请粘贴到“本地正文”。"
     : resource.error;
-  const publish = useEffectEvent((state: SubscriptionCheckState) => onChange({ inspection: state.inspection, checkState: state }));
+  const publish = useEffectEvent((result?: SubscriptionCheckResult) => onChange({ inspection: result }));
 
   // Inspect downloaded bytes without re-fetching or discarding invalid content.
   useEffect(() => {
     setError("");
     if (body === undefined || !body.trim()) {
       setChecking(false);
-      publish({ kind: resource.loading ? "loading" : readError ? "read_error" : "idle" });
+      publish();
       return;
     }
     let current = true;
     const controller = new AbortController();
     setChecking(true);
-    publish({ kind: "loading" });
+    publish();
     const timer = window.setTimeout(async () => {
       try {
         const result = await api.checkSubscription({ content: body, format, source_location: inline ? undefined : address }, controller.signal);
-        if (current) publish({ kind: result.status, inspection: result });
+        if (current) publish(result);
       } catch (err) {
         if (current) {
           setError(err instanceof Error ? err.message : "订阅检查失败");
-          publish({ kind: "check_error" });
+          publish();
         }
       } finally {
         if (current) setChecking(false);
@@ -77,7 +71,7 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange }:
 
   function edit(patch: Partial<SubscriptionEditorValue>) {
     setError("");
-    onChange({ ...patch, inspection: undefined, checkState: undefined });
+    onChange({ ...patch, inspection: undefined });
   }
 
   function switchMode(nextInline: boolean) {

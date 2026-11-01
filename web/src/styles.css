@@ -1331,7 +1331,7 @@ tr:last-child td {
 }
 
 .source-card-meta.neutral::before {
-  background: var(--text-dim);
+  content: none;
 }
 
 .source-card-actions {

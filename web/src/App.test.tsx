@@ -736,6 +736,60 @@ async function addSubscriptionDraft() {
 
 
 describe("资源自动读取与正文展开", () => {
+  // T-WEB-SOURCE-001: list entries show configured parsers without starting inspections.
+  it("列表只展示解析方式，重新进入也不显示待检查或读取订阅", async () => {
+    const backend = mockBackend({ config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources, subscriptions: [
+      { url: "https://example.com/sub.conf", format: "surge" },
+      { url: "https://example.com/sub.yml", format: "clash" },
+      { url: "https://example.com/sub", format: "auto" }
+    ] } } });
+    renderApp("/sources");
+    await screen.findByRole("heading", { level: 1, name: "订阅来源" });
+    expect(screen.getByText("Surge 配置")).toBeTruthy();
+    expect(screen.getByText("Clash 配置")).toBeTruthy();
+    expect(screen.getByText("按内容识别")).toBeTruthy();
+    expect(screen.queryByText(/尚未检查|待检查/)).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: /过滤器/ }));
+    fireEvent.click(screen.getByRole("link", { name: /订阅来源/ }));
+    expect(screen.getByText("Surge 配置")).toBeTruthy();
+    expect(backend.calls.some((call) => ["/api/resources/read", "/api/subscriptions/check"].includes(call.path))).toBe(false);
+  });
+
+  // T-WEB-SOURCE-002: inspecting an unchanged explicit parser needs no config write.
+  it("检查同样的配置后显示完成，明确无需保存", async () => {
+    const backend = mockBackend({ config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources,
+      subscriptions: [{ url: sampleConfig.config.sources.subscriptions[0].url, format: "surge" }] } } });
+    renderApp("/sources");
+    await openSubscription();
+    await screen.findByText("已识别：Surge 配置 · 1 个节点");
+    expect(screen.queryByRole("button", { name: "应用到草稿" })).toBeNull();
+    expect(screen.getByText("配置未修改，无需保存。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
+    expect(backend.calls.some((call) => call.path === "/api/config" && call.init?.method === "PUT")).toBe(false);
+  });
+
+  // T-WEB-SOURCE-003: actual edits enable Apply and Save; reverting restores Done.
+  it("修改解析格式才应用到草稿并启用保存，撤回修改恢复完成", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend({ config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources,
+      subscriptions: [{ url: sampleConfig.config.sources.subscriptions[0].url, format: "surge" }] } } });
+    renderApp("/sources");
+    await openSubscription();
+    await screen.findByText("已识别：Surge 配置 · 1 个节点");
+    fireEvent.change(screen.getByLabelText("按哪种格式解析"), { target: { value: "loon" } });
+    await screen.findByText("已识别：Loon 配置 · 1 个节点");
+    expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.change(screen.getByLabelText("按哪种格式解析"), { target: { value: "surge" } });
+    await screen.findByText("已识别：Surge 配置 · 1 个节点");
+    expect(screen.getByRole("button", { name: "完成" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("按哪种格式解析"), { target: { value: "loon" } });
+    await finishSourceEdit();
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0].format).toBe("loon"));
+  });
+
   // T-WEB-CHECK-001: inspection reads once without replacing the URL or dirtying the draft.
   it("打开订阅自动读取并检查，正文收起且来源保持引用", async () => {
     localStorage.setItem("subconverter.firstSaveConfirmed", "true");
@@ -750,7 +804,7 @@ describe("资源自动读取与正文展开", () => {
     const check = backend.calls.find((c) => c.path === "/api/subscriptions/check");
     expect(JSON.parse(String(check?.init?.body))).toEqual({ content: "anytls://pw@hk.example.com:443#HK", format: "auto", source_location: sampleConfig.config.sources.subscriptions[0].url });
     await finishSourceEdit();
-    expect(screen.getByText("节点列表 · 1 个节点")).toBeTruthy();
+    expect(screen.getByText("节点列表")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ url: sampleConfig.config.sources.subscriptions[0].url, format: "text" }));
   });
@@ -790,9 +844,10 @@ describe("资源自动读取与正文展开", () => {
     renderApp("/sources");
     await openSubscription();
     await screen.findByText("发现 1 条节点声明，需要确认格式");
-    expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "完成" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "编辑为本地副本" }));
     expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(content);
+    expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(await screen.findByRole("button", { name: "Loon" }));
     await screen.findByText("已识别：Loon 配置 · 1 个节点");
     expect(backend.calls.filter((c) => c.path === "/api/resources/read")).toHaveLength(1);
@@ -884,7 +939,8 @@ describe("资源自动读取与正文展开", () => {
     await openSubscription();
     await screen.findByText("已识别：节点列表 · 1 个节点");
     fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
-    expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "应用到草稿" })).toBeNull();
+    expect(screen.getByRole("button", { name: "完成" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "编辑为本地副本" }).hasAttribute("disabled")).toBe(true);
     await waitFor(() => expect(reads).toBe(2));
     finish(json({ content: "anytls://pw@new.example.com:443#NEW" }));
@@ -990,7 +1046,8 @@ describe("资源自动读取与正文展开", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看来源" }));
     await screen.findByText("已识别：节点列表 · 1 个节点");
     expect(screen.getByRole("button", { name: "编辑为本地副本" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "应用到草稿" })).toBeNull();
+    expect(screen.getByRole("button", { name: "完成" })).toBeTruthy();
   });
 
   // T-WEB-INLINE-005: a failed template read preserves its reference and can be repaired.
@@ -1027,7 +1084,7 @@ async function openSubscription() {
 }
 
 async function finishSourceEdit() {
-  const save = screen.getByRole("button", { name: "应用到草稿" });
-  await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
-  fireEvent.click(save);
+  const action = () => screen.queryByRole("button", { name: "应用到草稿" }) ?? screen.getByRole("button", { name: "完成" });
+  await waitFor(() => expect(action().hasAttribute("disabled")).toBe(false));
+  fireEvent.click(action());
 }
