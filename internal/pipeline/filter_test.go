@@ -147,7 +147,7 @@ func TestFilter_SnellNodesFiltered(t *testing.T) {
 
 // T-FLT-VLESS: VLESS nodes share subscription-like filtering semantics.
 // Guards the isFetchedKind extension — if someone narrows it back to only
-// Subscription/Snell, this test trips.
+// Source/Snell, this test trips.
 func TestFilter_ExcludesVLessNodesByName(t *testing.T) {
 	proxies := []model.Proxy{
 		makeProxy("HK-VL", model.KindVLess),

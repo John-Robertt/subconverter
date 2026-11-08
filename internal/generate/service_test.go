@@ -51,7 +51,7 @@ func validConfig(t *testing.T) *config.Config {
 	t.Helper()
 	return &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: testSubURL}},
+			Subscriptions: []config.Source{{URL: testSubURL}},
 		},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
 		Routing:  mustRoutingMap(t, `"proxy": ["HK", "DIRECT"]`),
@@ -159,7 +159,7 @@ func TestServiceGenerateStructuredSubscriptionsByTarget(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{
+			Subscriptions: []config.Source{
 				{URL: clashSubURL},
 				{URL: surgeSubURL},
 			},

@@ -121,9 +121,9 @@ func prepareRuntimeForRouteStage(cfg *config.Config, gr *GroupResult) (*config.R
 func makeStageReadyConfig(cfg *config.Config) (*config.Config, error) {
 	stageCfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: append([]config.Subscription(nil), cfg.Sources.Subscriptions...),
-			Snell:         append([]config.SnellSource(nil), cfg.Sources.Snell...),
-			VLess:         append([]config.VLessSource(nil), cfg.Sources.VLess...),
+			Subscriptions: append([]config.Source(nil), cfg.Sources.Subscriptions...),
+			Snell:         append([]config.Source(nil), cfg.Sources.Snell...),
+			VLess:         append([]config.Source(nil), cfg.Sources.VLess...),
 			CustomProxies: append([]config.CustomProxy(nil), cfg.Sources.CustomProxies...),
 			FetchOrder:    append([]string(nil), cfg.Sources.FetchOrder...),
 		},

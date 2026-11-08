@@ -1299,6 +1299,18 @@ tr:last-child td {
   }
 }
 
+.source-card-content {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.source-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .source-card-url {
   min-width: 0;
   overflow: hidden;

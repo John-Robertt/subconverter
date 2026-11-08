@@ -35,7 +35,7 @@ func contentStoreFixture(t *testing.T) (*Service, *config.Config, string) {
 	if err := json.Unmarshal(snapshot.Config, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Sources.Subscriptions = []config.Subscription{{Content: "anytls://secret-value@hk.example.com:443#HK-SAVED"}}
+	cfg.Sources.Subscriptions = []config.Source{{Name: "手动订阅", Content: "anytls://secret-value@hk.example.com:443#HK-SAVED"}}
 	cfg.Templates.Inline = map[string]string{"clash": "mixed-port: 17890\n", "surge": "[General]\ndns-server = system\n", "loon": "[General]\ndns-server = system\n"}
 	return svc, &cfg, snapshot.ConfigRevision
 }
@@ -66,6 +66,9 @@ func TestContentStore_SaveAndRestart(t *testing.T) {
 	}
 	if stored.Sources.Subscriptions[0].Content != "" || len(stored.Templates.Inline) != 0 || strings.Contains(string(raw), "secret-value") {
 		t.Fatal("config contains bodies instead of references")
+	}
+	if stored.Sources.Subscriptions[0].Name != cfg.Sources.Subscriptions[0].Name {
+		t.Fatalf("saved name=%q want %q", stored.Sources.Subscriptions[0].Name, cfg.Sources.Subscriptions[0].Name)
 	}
 	paths := []string{stored.Sources.Subscriptions[0].ContentFile, stored.Templates.Clash, stored.Templates.Surge, stored.Templates.Loon}
 	for _, path := range paths {
@@ -309,7 +312,7 @@ func TestContentStore_SourceFormatSurvivesCopy(t *testing.T) {
 	if err := os.WriteFile(location, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Sources.Subscriptions = []config.Subscription{{ContentFile: location}}
+	cfg.Sources.Subscriptions = []config.Source{{ContentFile: location}}
 	raw, err := yaml.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -650,7 +653,7 @@ func TestContentStore_ReuseUnchangedBodies(t *testing.T) {
 // T-APP-STORE-012: subscription reordering reuses each body; a new duplicate remains a separate resource.
 func TestContentStore_ReorderSubscriptions(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
-	cfg.Sources.Subscriptions = append(cfg.Sources.Subscriptions, config.Subscription{Content: "anytls://pw@sg.example.com:443#SG"})
+	cfg.Sources.Subscriptions = append(cfg.Sources.Subscriptions, config.Source{Content: "anytls://pw@sg.example.com:443#SG"})
 	if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
 		t.Fatal(err)
 	}

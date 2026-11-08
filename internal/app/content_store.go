@@ -81,20 +81,18 @@ func (s *Service) persistEditableContent(cfg, saved *config.Config) ([]string, e
 		created = append(created, path)
 		return path, nil
 	}
-	for i := range cfg.Sources.Subscriptions {
-		sub := &cfg.Sources.Subscriptions[i]
-		if sub.Content == "" {
-			continue
+	for _, list := range cfg.Sources.Lists() {
+		for i := range list.Entries {
+			source := &list.Entries[i]
+			if source.Content == "" {
+				continue
+			}
+			path, writeErr := store(sourceFilePrefix(list.Kind), sourceExtension(list.Kind, source.Format), source.Content)
+			if writeErr != nil {
+				return created, writeErr
+			}
+			source.ContentFile, source.Content = path, ""
 		}
-		ext := ".txt"
-		if sub.Format == "loon" {
-			ext = ".lcf"
-		}
-		path, writeErr := store("subscription", ext, sub.Content)
-		if writeErr != nil {
-			return created, writeErr
-		}
-		sub.ContentFile, sub.Content = path, ""
 	}
 	for _, format := range []string{"clash", "surge", "loon"} {
 		content, ok := cfg.Templates.Inline[format]
@@ -130,10 +128,12 @@ func (s *Service) savedContentFiles(cfg, draft *config.Config) map[contentKey][]
 	}
 	// Explicit source references already occupy their saved versions.
 	retained := make(map[string]int)
-	for _, sub := range draft.Sources.Subscriptions {
-		if sub.ContentFile != "" {
-			if path, err := filepath.Abs(sub.ContentFile); err == nil {
-				retained[path]++
+	for _, list := range draft.Sources.Lists() {
+		for _, source := range list.Entries {
+			if source.ContentFile != "" {
+				if path, err := filepath.Abs(source.ContentFile); err == nil {
+					retained[path]++
+				}
 			}
 		}
 	}
@@ -141,7 +141,7 @@ func (s *Service) savedContentFiles(cfg, draft *config.Config) map[contentKey][]
 		if !s.isManagedContentFile(location, kind, ext) {
 			return
 		}
-		if kind == "subscription" {
+		if !strings.HasPrefix(kind, "template-") {
 			if path, err := filepath.Abs(location); err == nil && retained[path] > 0 {
 				retained[path]--
 				return
@@ -154,10 +154,12 @@ func (s *Service) savedContentFiles(cfg, draft *config.Config) map[contentKey][]
 		key := contentKey{kind, ext, string(body)}
 		files[key] = append(files[key], location)
 	}
-	for _, sub := range cfg.Sources.Subscriptions {
-		ext := filepath.Ext(sub.ContentFile)
-		if ext == ".txt" || ext == ".lcf" {
-			remember("subscription", ext, sub.ContentFile)
+	for _, list := range cfg.Sources.Lists() {
+		for _, source := range list.Entries {
+			ext := filepath.Ext(source.ContentFile)
+			if ext == ".txt" || ext == ".lcf" {
+				remember(sourceFilePrefix(list.Kind), ext, source.ContentFile)
+			}
 		}
 	}
 	for _, entry := range []struct{ format, location string }{
@@ -184,29 +186,31 @@ func (s *Service) ensureContentDirectory() error {
 }
 
 // restoreEditableContent restores readable bodies and keeps failed references intact.
-// Editors may keep those references for repair; archive export must reject the errors.
+// Editors may keep those references for repair.
 func (s *Service) restoreEditableContent(ctx context.Context, cfg *config.Config) error {
 	var failures []error
-	for i := range cfg.Sources.Subscriptions {
-		sub := &cfg.Sources.Subscriptions[i]
-		if sub.ContentFile == "" {
-			continue
-		}
-		if strings.Contains(sub.ContentFile, "://") {
-			failures = append(failures, newBadRequestError("invalid_request", "content_file 必须为本地文件路径"))
-			continue
-		}
-		body, err := fetch.LoadResource(ctx, sub.ContentFile, s.fetcher)
-		if err != nil {
-			failures = append(failures, err)
-			continue
-		}
-		if sub.Format == "" || sub.Format == "auto" {
-			if detected := pipeline.DetectSubscriptionFormat(sub.ContentFile, body); detected != "" {
-				sub.Format = detected
+	for _, list := range cfg.Sources.Lists() {
+		for i := range list.Entries {
+			source := &list.Entries[i]
+			if source.ContentFile == "" {
+				continue
 			}
+			if strings.Contains(source.ContentFile, "://") {
+				failures = append(failures, newBadRequestError("invalid_request", "content_file 必须为本地文件路径"))
+				continue
+			}
+			body, err := fetch.LoadResource(ctx, source.ContentFile, s.fetcher)
+			if err != nil {
+				failures = append(failures, err)
+				continue
+			}
+			if list.Kind == "subscriptions" && (source.Format == "" || source.Format == "auto") {
+				if detected := pipeline.DetectSubscriptionFormat(source.ContentFile, body); detected != "" {
+					source.Format = detected
+				}
+			}
+			source.Content, source.ContentFile = string(body), ""
 		}
-		sub.Content, sub.ContentFile = string(body), ""
 	}
 	for _, entry := range []struct {
 		format   string
@@ -262,6 +266,20 @@ func (s *Service) isManagedContentFile(location, kind, ext string) bool {
 	return strings.IndexFunc(suffix, func(r rune) bool {
 		return (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z')
 	}) == -1
+}
+
+func sourceFilePrefix(kind string) string {
+	if kind == "subscriptions" {
+		return "subscription"
+	}
+	return kind
+}
+
+func sourceExtension(kind, format string) string {
+	if kind == "subscriptions" && format == "loon" {
+		return ".lcf"
+	}
+	return ".txt"
 }
 
 func templateExtension(format string) string {

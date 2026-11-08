@@ -85,7 +85,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !h.requireSession(w, r) {
 			return
 		}
-		h.handleSubscriptionCheck(w, r)
+		h.handleSourceCheck(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/reload":
 		if !h.requireSession(w, r) {
 			return
@@ -131,12 +131,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) handleSubscriptionCheck(w http.ResponseWriter, r *http.Request) {
-	var input app.CheckSubscriptionInput
+func (h *Handler) handleSourceCheck(w http.ResponseWriter, r *http.Request) {
+	var input app.CheckSourceInput
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := h.app.CheckSubscription(r.Context(), input)
+	result, err := h.app.CheckSource(r.Context(), input)
 	if err != nil {
 		writeServiceError(w, err, false)
 		return

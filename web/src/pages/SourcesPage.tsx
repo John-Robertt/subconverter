@@ -1,7 +1,7 @@
 import { Link2, Pencil, Plus, Radio, Shield, Trash2 } from "lucide-react";
 import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Config, CustomProxy, FetchSource, FetchSourceKind, RelayThrough } from "../api/types";
-import { SubscriptionEditor, subscriptionFormatLabels, type SubscriptionEditorValue } from "../components/SubscriptionEditor";
+import { SourceEditor, subscriptionFormatLabels, type SourceEditorValue } from "../components/SourceEditor";
 import { SortableList } from "../components/SortableList";
 import { Button, Chip, EmptyState, Field, IconButton, Modal, SelectInput, StatCard, TextInput } from "../components/ui";
 import { focusClassName, useDiagnosticPointer } from "../features/diagnostics";
@@ -27,21 +27,23 @@ const sourceIcons: Record<FetchSourceKind, ReactNode> = {
   vless: <Radio size={18} aria-hidden="true" />
 };
 
-type SourceEditor =
-  | ({ type: "fetch"; kind: FetchSourceKind; index: number | null; reference?: "file" } & SubscriptionEditorValue)
+type SourceEditorState =
+  | ({ type: "fetch"; kind: FetchSourceKind; index: number | null; reference?: "file" } & SourceEditorValue)
   | { type: "custom"; index: number | null; proxy: CustomProxy }
   | null;
 
-function sourceFromEditor(editor: Extract<NonNullable<SourceEditor>, { type: "fetch" }>): FetchSource {
+function sourceFromEditor(editor: Extract<NonNullable<SourceEditorState>, { type: "fetch" }>): FetchSource {
   const source: FetchSource = editor.content !== undefined ? { content: editor.content }
     : editor.reference === "file" && !/^https?:\/\//.test(editor.location) ? { content_file: editor.location.trim() } : { url: editor.location.trim() };
   const format = editor.inspection?.format ?? editor.format;
+  if (editor.name?.trim()) source.name = editor.name.trim();
   if (editor.kind === "subscriptions" && format) source.format = format;
   return source;
 }
 
 function sameFetchSource(left: FetchSource, right: FetchSource | undefined): boolean {
   return right !== undefined && left.url === right.url && left.content_file === right.content_file && left.content === right.content
+    && (left.name ?? "") === (right.name ?? "")
     && (left.format ?? "auto") === (right.format ?? "auto");
 }
 
@@ -49,7 +51,7 @@ export function SourcesPage() {
   const { draft, updateDraft, isReadonly } = useConfigState();
   const confirm = useConfirm();
   const activePointer = useDiagnosticPointer();
-  const [editor, setEditor] = useState<SourceEditor>(null);
+  const [editor, setEditor] = useState<SourceEditorState>(null);
   const sources = ensureSources(draft?.sources);
   const totalFetch = sources.subscriptions.length + sources.snell.length + sources.vless.length;
   const totalSources = totalFetch + sources.custom_proxies.length;
@@ -63,7 +65,7 @@ export function SourcesPage() {
     } else {
       const kind = match[1] as FetchSourceKind;
       const source = sources[kind][index];
-      if (source) setEditor({ type: "fetch", kind, index, location: source.url ?? source.content_file ?? "", reference: source.content_file ? "file" : undefined, content: source.content, format: source.format });
+      if (source) setEditor({ type: "fetch", kind, index, name: source.name, location: source.url ?? source.content_file ?? "", reference: source.content_file ? "file" : undefined, content: source.content, format: source.format });
     }
   }, [activePointer]);
 
@@ -177,15 +179,16 @@ export function SourcesPage() {
             onReorder={(items) => reorderFetchSources(kind, items)}
             renderItem={(source, index, handle) => (
               <SourceCard
-                title={`${sourceLabels[kind]} #${index + 1}`}
+                title={source.name || `${sourceLabels[kind]} #${index + 1}`}
+                name={source.name}
                 subtitle={source.content !== undefined ? `正文 · ${source.content.split("\n").length} 行` : source.content_file ? `正文文件 · ${source.content_file}` : maskUrl(source.url ?? "") || "未设置 URL"}
                 meta={kind === "subscriptions" ? source.format && source.format !== "auto" ? subscriptionFormatLabels[source.format] : "按内容识别" : kind}
                 statusTone={kind === "subscriptions" ? "neutral" : "success"}
-                viewable={kind === "subscriptions"}
+                viewable
                 tag={source.url || source.content_file || source.content?.trim() ? "已配置" : "待补齐"}
                 readonly={isReadonly}
                 dragHandle={handle}
-                onEdit={() => setEditor({ type: "fetch", kind, index, location: source.url ?? source.content_file ?? "", reference: source.content_file ? "file" : undefined, content: source.content, format: source.format })}
+                onEdit={() => setEditor({ type: "fetch", kind, index, name: source.name, location: source.url ?? source.content_file ?? "", reference: source.content_file ? "file" : undefined, content: source.content, format: source.format })}
                 onDelete={() => void deleteFetchSource(kind, index)}
               />
             )}
@@ -278,6 +281,7 @@ function SourceSection({
 
 function SourceCard({
   title,
+  name,
   subtitle,
   meta,
   tag,
@@ -289,6 +293,7 @@ function SourceCard({
   viewable = false
 }: {
   title: string;
+  name?: string;
   subtitle: string;
   meta: string;
   tag: string;
@@ -304,7 +309,10 @@ function SourceCard({
   return (
     <article className="source-card" title={title}>
       {dragHandle}
-      <code className="source-card-url">{subtitle}</code>
+      <div className="source-card-content">
+        {name ? <strong className="source-card-name">{name}</strong> : null}
+        <code className="source-card-url">{subtitle}</code>
+      </div>
       <span className={`source-card-meta ${ready ? statusTone : "warning"}`}>{status}</span>
       <div className="source-card-actions">
         <IconButton label={readonly && viewable ? "查看来源" : "编辑来源"} variant="ghost" disabled={readonly && !viewable} onClick={onEdit}>
@@ -327,11 +335,11 @@ function SourceEditorModal({
   onClose,
   onSave
 }: {
-  editor: SourceEditor;
+  editor: SourceEditorState;
   draft: Config | undefined;
   readonly: boolean;
   diagnosticPointer?: string;
-  onChange: Dispatch<SetStateAction<SourceEditor>>;
+  onChange: Dispatch<SetStateAction<SourceEditorState>>;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -342,7 +350,7 @@ function SourceEditorModal({
   const focusCustomURL = editor?.type === "custom" && diagnosticPointer === `/config/sources/custom_proxies/${editor.index}/url`;
   const canApply = editor?.type === "custom" ? !customNameError && !customURLError : editor?.type === "fetch"
     && Boolean(editor.content !== undefined ? editor.content.trim() : editor.location.trim())
-    && (editor.kind !== "subscriptions" || editor.inspection?.status === "recognized");
+    && editor.inspection?.status === "recognized";
   const sources = ensureSources(draft?.sources);
   const hasChanges = Boolean(editor && (editor.index === null || (editor.type === "fetch"
     ? !sameFetchSource(sourceFromEditor(editor), sources[editor.kind][editor.index])
@@ -375,15 +383,9 @@ function SourceEditorModal({
     >
       {editor?.type === "fetch" ? (
         <div className="form-stack">
-          {editor.kind === "subscriptions" ? (
-            <SubscriptionEditor key={`${editor.kind}:${editor.index}`} value={editor} fileReference={editor.reference === "file"} readonly={readonly}
-              pointer={`/config/sources/${editor.kind}/${editor.index}`}
-              onChange={(patch) => onChange((current) => current?.type === "fetch" ? { ...current, ...patch } : current)} />
-          ) : (
-            <Field label="订阅 URL" hint="必须为 HTTP(S) URL">
-              <TextInput data-config-pointer={`/config/sources/${editor.kind}/${editor.index}/url`} autoFocus aria-label="订阅 URL" value={editor.location} disabled={readonly} onChange={(event) => onChange({ ...editor, location: event.target.value })} />
-            </Field>
-          )}
+          <SourceEditor key={`${editor.kind}:${editor.index}`} kind={editor.kind} value={editor} fileReference={editor.reference === "file"} readonly={readonly}
+            pointer={`/config/sources/${editor.kind}/${editor.index}`}
+            onChange={(patch) => onChange((current) => current?.type === "fetch" ? { ...current, ...patch } : current)} />
         </div>
       ) : editor?.type === "custom" ? (
         <div className="form-stack">

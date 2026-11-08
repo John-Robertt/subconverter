@@ -82,7 +82,7 @@ interface MockBackendOptions {
   authed?: boolean;
   resourceReadError?: boolean;
   resourceRead?: (input: { location: string }) => Promise<Response>;
-  subscriptionCheck?: (input: { location?: string; content?: string; format?: string }) => Promise<Response>;
+  subscriptionCheck?: (input: { kind?: string; location?: string; content?: string; format?: string }) => Promise<Response>;
   config?: unknown;
   setupRequired?: boolean;
   readonly?: boolean;
@@ -126,8 +126,9 @@ function mockBackend(options: MockBackendOptions = {}) {
     if (path === "/api/auth/logout") return json({ success: true });
     if (path === "/api/status") return json(options.uptimeSeconds === undefined ? status : { ...status, runtime_environment: { uptime_seconds: options.uptimeSeconds } });
     if (path === "/api/subscriptions/check") {
-      const body = JSON.parse(String(init?.body)) as { location?: string; content?: string; format?: string };
+      const body = JSON.parse(String(init?.body)) as { kind?: string; location?: string; content?: string; format?: string };
       if (options.subscriptionCheck) return options.subscriptionCheck(body);
+      if (body.kind === "snell" || body.kind === "vless") return json({ status: "recognized", node_count: 1, output_formats: body.kind === "snell" ? ["surge"] : ["clash", "loon"], content: body.content });
       const format = body.format && body.format !== "auto" ? body.format : "text";
       return json({ status: "recognized", format, node_count: 1, output_formats: format === "text" ? ["clash", "surge", "loon"] : [format], content: body.content ?? "anytls://pw@hk.example.com:443#HK" });
     }
@@ -545,7 +546,7 @@ describe("save workflow", () => {
     await screen.findByRole("heading", { level: 1, name: "订阅来源" });
     fireEvent.click(screen.getByRole("button", { name: "添加 节点订阅" }));
     expect(await screen.findByRole("dialog", { name: "添加 节点订阅" })).toBeTruthy();
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://sub.example.com/new?token=secret" } });
+    fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "https://sub.example.com/new?token=secret" } });
     await finishSourceEdit();
     await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -703,7 +704,7 @@ describe("Loon support", () => {
     await finishSourceEdit();
     fireEvent.click(screen.getAllByRole("button", { name: "编辑来源" })[0]);
     expect((screen.getByLabelText("按哪种格式解析") as HTMLSelectElement).value).toBe("loon");
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://example.com/loon.conf" } });
+    fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "https://example.com/loon.conf" } });
     await finishSourceEdit();
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ url: "https://example.com/loon.conf", format: "loon" }));
@@ -738,13 +739,132 @@ async function addSubscriptionDraft() {
   await screen.findByRole("heading", { level: 1, name: "订阅来源" });
   fireEvent.click(screen.getByRole("button", { name: "添加 节点订阅" }));
   expect(await screen.findByRole("dialog", { name: "添加 节点订阅" })).toBeTruthy();
-  fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://sub.example.com/new?token=secret" } });
+  fireEvent.change(screen.getByLabelText("订阅地址"), { target: { value: "https://sub.example.com/new?token=secret" } });
   await finishSourceEdit();
   await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
 }
 
 
 describe("资源自动读取与正文展开", () => {
+  for (const pool of [
+    { kind: "snell", label: "Snell 节点池", body: "HK = snell, hk.example.com, 443, psk=pw, version=4" },
+    { kind: "vless", label: "VLESS 节点池", body: "vless://11111111-1111-1111-1111-111111111111@hk.example.com:443?type=tcp#HK" }
+  ] as const) {
+    // T-WEB-LOCAL-001: every pool uses the same local edit, name and global save workflow.
+    it(`${pool.label}可本地编辑、命名，保存后重新载入`, async () => {
+      localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+      const backend = mockBackend();
+      const view = renderApp("/sources");
+      fireEvent.click(await screen.findByRole("button", { name: `添加 ${pool.label}` }));
+      fireEvent.change(screen.getByLabelText("节点池名称"), { target: { value: `本地 ${pool.kind}` } });
+      fireEvent.click(screen.getByRole("button", { name: "本地正文" }));
+      fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: pool.body } });
+      expect(screen.queryByLabelText("按哪种格式解析")).toBeNull();
+      await screen.findByText(`已识别：${pool.label} · 1 个节点`);
+      await finishSourceEdit();
+      expect(screen.getByText(`本地 ${pool.kind}`)).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "保存" }));
+      await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources[pool.kind][0]).toEqual({ name: `本地 ${pool.kind}`, content: pool.body }));
+      const check = backend.calls.find((call) => call.path === "/api/subscriptions/check" && JSON.parse(String(call.init?.body)).kind === pool.kind);
+      expect(JSON.parse(String(check?.init?.body))).toEqual({ kind: pool.kind, content: pool.body });
+      view.unmount();
+      renderApp("/sources");
+      const title = await screen.findByText(`本地 ${pool.kind}`);
+      fireEvent.click(within(title.closest("article")!).getByRole("button", { name: "编辑来源" }));
+      expect((screen.getByLabelText("节点池名称") as HTMLInputElement).value).toBe(`本地 ${pool.kind}`);
+      expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(pool.body);
+    });
+
+    // T-WEB-LOCAL-002: invalid pool bodies block Apply; correcting them preserves names and enables it.
+    it(`${pool.label}检查失败后可修复正文`, async () => {
+      mockBackend({ subscriptionCheck: async (input) => input.content === pool.body
+        ? json({ status: "recognized", node_count: 1, output_formats: [], content: input.content })
+        : json({ error: { code: "invalid_pool", message: "第 3 行解析失败" } }, 400) });
+      renderApp("/sources");
+      fireEvent.click(await screen.findByRole("button", { name: `添加 ${pool.label}` }));
+      fireEvent.click(screen.getByRole("button", { name: "本地正文" }));
+      fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: "invalid body" } });
+      await screen.findByText("第 3 行解析失败");
+      expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(true);
+      fireEvent.change(screen.getByLabelText("节点正文"), { target: { value: pool.body } });
+      await screen.findByText(`已识别：${pool.label} · 1 个节点`);
+      expect(screen.getByRole("button", { name: "应用到草稿" }).hasAttribute("disabled")).toBe(false);
+    });
+
+    // T-WEB-LOCAL-004: editing a fetched copy preserves its pool kind and leaves the URL behind.
+    it(`${pool.label}可把远程正文改为本地副本`, async () => {
+      localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+      const backend = mockBackend({ resourceRead: async () => json({ content: pool.body }),
+        config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources,
+          [pool.kind]: [{ name: `远程 ${pool.kind}`, url: `https://example.com/${pool.kind}.txt` }] } } });
+      renderApp("/sources");
+      const title = await screen.findByText(`远程 ${pool.kind}`);
+      fireEvent.click(within(title.closest("article")!).getByRole("button", { name: "编辑来源" }));
+      await screen.findByText(`已识别：${pool.label} · 1 个节点`);
+      fireEvent.click(screen.getByRole("button", { name: "编辑为本地副本" }));
+      expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).value).toBe(pool.body);
+      await screen.findByText(`已识别：${pool.label} · 1 个节点`);
+      await finishSourceEdit();
+      fireEvent.click(screen.getByRole("button", { name: "保存" }));
+      await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources[pool.kind][0]).toEqual({ name: `远程 ${pool.kind}`, content: pool.body }));
+    });
+
+    // T-WEB-LOCAL-003: readonly pools still allow body inspection and keep all editing disabled.
+    it(`${pool.label}只读时可查看正文`, async () => {
+      mockBackend({ readonly: true, config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources,
+        [pool.kind]: [{ name: `只读 ${pool.kind}`, content: pool.body }] } } });
+      renderApp("/sources");
+      const title = await screen.findByText(`只读 ${pool.kind}`);
+      fireEvent.click(within(title.closest("article")!).getByRole("button", { name: "查看来源" }));
+      await screen.findByText(`已识别：${pool.label} · 1 个节点`);
+      expect((screen.getByLabelText("节点池名称") as HTMLInputElement).disabled).toBe(true);
+      expect((screen.getByLabelText("节点正文") as HTMLTextAreaElement).readOnly).toBe(true);
+      expect(screen.getByRole("button", { name: "本地正文" }).hasAttribute("disabled")).toBe(true);
+      expect(screen.getByRole("button", { name: "完成" })).toBeTruthy();
+    });
+  }
+
+  // T-WEB-SOURCE-004: subscription names survive editing, saving and reloading without rechecking the body.
+  it("本地订阅可命名、重命名和清空，保存后重新载入保留名称", async () => {
+    localStorage.setItem("subconverter.firstSaveConfirmed", "true");
+    const backend = mockBackend({ config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources,
+      subscriptions: [{ name: "手动节点", content: "anytls://pw@hk.example.com:443#HK", format: "text" }] } } });
+    const view = renderApp("/sources");
+    await screen.findByText("手动节点");
+    await openSubscription();
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    const checks = backend.calls.filter((call) => call.path === "/api/subscriptions/check").length;
+    fireEvent.change(screen.getByLabelText("订阅名称"), { target: { value: "  自建订阅  " } });
+    await finishSourceEdit();
+    expect(screen.getByText("自建订阅")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ name: "自建订阅", content: "anytls://pw@hk.example.com:443#HK", format: "text" }));
+    expect(backend.calls.filter((call) => call.path === "/api/subscriptions/check").length).toBe(checks);
+    view.unmount();
+    renderApp("/sources");
+    await screen.findByText("自建订阅");
+    await openSubscription();
+    expect((screen.getByLabelText("订阅名称") as HTMLInputElement).value).toBe("自建订阅");
+    await screen.findByText("已识别：节点列表 · 1 个节点");
+    fireEvent.change(screen.getByLabelText("订阅名称"), { target: { value: "" } });
+    await finishSourceEdit();
+    expect(screen.queryByText("自建订阅")).toBeNull();
+    expect(screen.getByText("正文 · 1 行")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(lastSavedConfig(backend.calls)?.sources.subscriptions[0]).toEqual({ content: "anytls://pw@hk.example.com:443#HK", format: "text" }));
+  });
+
+  // T-WEB-SOURCE-005: readonly subscription names remain visible and cannot be edited.
+  it("只读订阅显示名称并禁用名称编辑", async () => {
+    mockBackend({ readonly: true, config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources,
+      subscriptions: [{ name: "只读订阅", content: "anytls://pw@hk.example.com:443#HK", format: "text" }] } } });
+    renderApp("/sources");
+    await screen.findByText("只读订阅");
+    fireEvent.click(screen.getByRole("button", { name: "查看来源" }));
+    expect((screen.getByLabelText("订阅名称") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("订阅名称") as HTMLInputElement).value).toBe("只读订阅");
+  });
+
   // T-WEB-SOURCE-001: list entries show configured parsers without starting inspections.
   it("列表只展示解析方式，重新进入也不显示待检查或读取订阅", async () => {
     const backend = mockBackend({ config: { ...sampleConfig.config, sources: { ...sampleConfig.config.sources, subscriptions: [
@@ -811,7 +931,7 @@ describe("资源自动读取与正文展开", () => {
     expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
     expect(backend.calls.filter((c) => c.path === "/api/resources/read")).toHaveLength(1);
     const check = backend.calls.find((c) => c.path === "/api/subscriptions/check");
-    expect(JSON.parse(String(check?.init?.body))).toEqual({ content: "anytls://pw@hk.example.com:443#HK", format: "auto", source_location: sampleConfig.config.sources.subscriptions[0].url });
+    expect(JSON.parse(String(check?.init?.body))).toEqual({ kind: "subscriptions", content: "anytls://pw@hk.example.com:443#HK", format: "auto", source_location: sampleConfig.config.sources.subscriptions[0].url });
     await finishSourceEdit();
     expect(screen.getByText("节点列表")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "保存" }));

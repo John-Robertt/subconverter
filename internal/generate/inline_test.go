@@ -13,7 +13,7 @@ func TestService_InlineNodesAndTemplates(t *testing.T) {
 	for _, format := range []string{"clash", "surge", "loon"} {
 		t.Run(format, func(t *testing.T) {
 			cfg := validConfig(t)
-			cfg.Sources.Subscriptions = []config.Subscription{{Content: "anytls://pw@hk.example.com:443#HK-INLINE"}}
+			cfg.Sources.Subscriptions = []config.Source{{Content: "anytls://pw@hk.example.com:443#HK-INLINE"}}
 			template := "[General]\ndns-server = 1.1.1.1\n"
 			if format == "clash" {
 				template = "mixed-port: 17890\n"

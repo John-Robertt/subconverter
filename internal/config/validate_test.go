@@ -12,7 +12,7 @@ import (
 // validBase returns a minimal valid Config for mutation in tests.
 func validBase() Config {
 	var cfg Config
-	cfg.Sources.Subscriptions = []Subscription{{URL: "https://example.com/sub"}}
+	cfg.Sources.Subscriptions = []Source{{URL: "https://example.com/sub"}}
 	cfg.Groups = mustOrderedMap[Group](`HK: { match: "(HK)", strategy: select }`)
 	cfg.Routing = mustOrderedMap[[]string](`proxy: [HK, DIRECT]`)
 	cfg.Rulesets = mustOrderedMap[[]string](`proxy: ["https://example.com/rules.list"]`)
@@ -47,35 +47,35 @@ func TestPrepare_ValidConfig(t *testing.T) {
 
 func TestPrepare_MissingSubscriptionURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.Subscriptions = []Subscription{{URL: ""}}
+	cfg.Sources.Subscriptions = []Source{{URL: ""}}
 	_, err := Prepare(&cfg)
 	assertFieldError(t, err, "sources.subscriptions[0].url")
 }
 
 func TestPrepare_InvalidSubscriptionURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.Subscriptions = []Subscription{{URL: "not-a-url"}}
+	cfg.Sources.Subscriptions = []Source{{URL: "not-a-url"}}
 	_, err := Prepare(&cfg)
 	assertFieldError(t, err, "sources.subscriptions[0].url")
 }
 
 func TestPrepare_MissingSnellURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.Snell = []SnellSource{{URL: ""}}
+	cfg.Sources.Snell = []Source{{URL: ""}}
 	_, err := Prepare(&cfg)
 	assertFieldError(t, err, "sources.snell[0].url")
 }
 
 func TestPrepare_InvalidSnellURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.Snell = []SnellSource{{URL: "ftp://example.com/nodes.txt"}}
+	cfg.Sources.Snell = []Source{{URL: "ftp://example.com/nodes.txt"}}
 	_, err := Prepare(&cfg)
 	assertFieldError(t, err, "sources.snell[0].url")
 }
 
 func TestPrepare_ValidSnellURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.Snell = []SnellSource{{URL: "https://example.com/snell.txt"}}
+	cfg.Sources.Snell = []Source{{URL: "https://example.com/snell.txt"}}
 	rt, err := Prepare(&cfg)
 	if err != nil {
 		t.Fatalf("expected nil, got %v", err)
@@ -87,21 +87,21 @@ func TestPrepare_ValidSnellURL(t *testing.T) {
 
 func TestPrepare_MissingVLessURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.VLess = []VLessSource{{URL: ""}}
+	cfg.Sources.VLess = []Source{{URL: ""}}
 	_, err := Prepare(&cfg)
 	assertFieldError(t, err, "sources.vless[0].url")
 }
 
 func TestPrepare_InvalidVLessURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.VLess = []VLessSource{{URL: "ftp://example.com/vless.txt"}}
+	cfg.Sources.VLess = []Source{{URL: "ftp://example.com/vless.txt"}}
 	_, err := Prepare(&cfg)
 	assertFieldError(t, err, "sources.vless[0].url")
 }
 
 func TestPrepare_ValidVLessURL(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.VLess = []VLessSource{{URL: "https://example.com/vless.txt"}}
+	cfg.Sources.VLess = []Source{{URL: "https://example.com/vless.txt"}}
 	rt, err := Prepare(&cfg)
 	if err != nil {
 		t.Fatalf("expected nil, got %v", err)
@@ -440,7 +440,7 @@ func TestPrepare_BaseURLValid(t *testing.T) {
 
 func TestPrepare_MultipleErrors(t *testing.T) {
 	cfg := validBase()
-	cfg.Sources.Subscriptions = []Subscription{{URL: ""}}
+	cfg.Sources.Subscriptions = []Source{{URL: ""}}
 	cfg.Fallback = ""
 
 	_, err := Prepare(&cfg)

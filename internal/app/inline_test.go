@@ -31,7 +31,7 @@ func TestApp_InlineSaveReloadArchive(t *testing.T) {
 	if err := json.Unmarshal(snapshot.Config, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Sources.Subscriptions = []config.Subscription{{Format: "loon", Content: "HK = anytls, hk.example.com, 443, \"pw\""}}
+	cfg.Sources.Subscriptions = []config.Source{{Name: "本地 Loon", Format: "loon", Content: "HK = anytls, hk.example.com, 443, \"pw\""}}
 	cfg.Templates = config.Templates{Inline: map[string]string{"loon": "[General]\ndns-server = system\n"}}
 	js, err := json.Marshal(cfg)
 	if err != nil {
@@ -65,8 +65,15 @@ func TestApp_InlineSaveReloadArchive(t *testing.T) {
 	if strings.Contains(string(entries[archiveConfigEntry]), svc.dataDir) {
 		t.Fatal("archive retained machine-specific managed file references")
 	}
-	if len(entries) != 2 || string(entries[archiveLoonTemplateEntry]) != cfg.Templates.Inline["loon"] {
-		t.Fatalf("archive should include the portable template: entries=%v", entries)
+	if len(entries) != 3 || string(entries[archiveLoonTemplateEntry]) != cfg.Templates.Inline["loon"] || string(entries["subscriptions/1.lcf"]) != cfg.Sources.Subscriptions[0].Content {
+		t.Fatalf("archive should include the subscription and template files: entries=%v", entries)
+	}
+	exported, err := parseConfigYAML(entries[archiveConfigEntry])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub := exported.Sources.Subscriptions[0]; sub.Content != "" || sub.ContentFile != "subscriptions/1.lcf" || sub.Name != cfg.Sources.Subscriptions[0].Name {
+		t.Fatalf("archive source should retain name and reference its file: %+v", sub)
 	}
 	imported, err := svc.ImportConfigArchive(ctx, archive.Body)
 	if err != nil {
@@ -79,8 +86,8 @@ func TestApp_InlineSaveReloadArchive(t *testing.T) {
 	if back.Sources.Subscriptions[0] != cfg.Sources.Subscriptions[0] || back.Templates.Inline["loon"] != cfg.Templates.Inline["loon"] {
 		t.Fatal("archive changed inline bodies")
 	}
-	// An explicitly packaged template replaces the embedded body of that format.
-	override, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: entries[archiveConfigEntry]}, {Name: archiveLoonTemplateEntry, Body: []byte("[General]\ndns-server = 1.1.1.1")}}, time.Now())
+	// Replacing a packaged template changes the imported draft without altering its subscription.
+	override, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: entries[archiveConfigEntry]}, {Name: "subscriptions/1.lcf", Body: entries["subscriptions/1.lcf"]}, {Name: archiveLoonTemplateEntry, Body: []byte("[General]\ndns-server = 1.1.1.1")}}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

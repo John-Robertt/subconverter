@@ -52,7 +52,7 @@ proxies:
 
 	proxies, err := loadSubscription(context.Background(), &fakeFetcher{
 		responses: map[string][]byte{rawURL: body},
-	}, config.Subscription{URL: rawURL})
+	}, config.Source{URL: rawURL})
 	if err != nil {
 		t.Fatalf("loadSubscription() error: %v", err)
 	}
@@ -100,7 +100,7 @@ SHOULD-NOT-BE-A-NODE = select, HK-CONF
 
 	proxies, err := loadSubscription(context.Background(), &fakeFetcher{
 		responses: map[string][]byte{rawURL: body},
-	}, config.Subscription{URL: rawURL})
+	}, config.Source{URL: rawURL})
 	if err != nil {
 		t.Fatalf("loadSubscription() error: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestSource_SubscriptionStructuredSuffixOverridesTXT(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := loadSubscription(context.Background(), &fakeFetcher{
 				responses: map[string][]byte{tt.rawURL: tt.body},
-			}, config.Subscription{URL: tt.rawURL})
+			}, config.Source{URL: tt.rawURL})
 			if err == nil {
 				t.Fatal("expected structured-format error, got nil")
 			}

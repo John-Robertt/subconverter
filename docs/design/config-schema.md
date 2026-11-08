@@ -57,9 +57,16 @@ sources:
 
 注：`subscriptions` / `snell` / `vless` 三类拉取来源按 YAML 中的书写顺序遍历（`Sources.FetchOrder`）。例如上例顺序 `subscriptions → snell → vless` 即节点在后续管道中的相对顺序。`custom_proxies` 不属于拉取类，排在最后，与 YAML 位置无关。
 
+### 拉取来源的输入与展示
+
+- `subscriptions`、`snell`、`vless` 的每条来源共用以下字段。
+- `name` 可选，为 Web 列表中的来源展示名；适用于链接和本地正文，随配置保存及导入导出保留。允许重名，不参与节点命名、代理 ID、分组匹配或文件命名；省略时显示来源地址或正文摘要
+- `url`、`content`、`content_file` 三选一：`url` 为 HTTP(S) URL；`content` 为非空节点正文；`content_file` 为本地正文文件路径。Web 编辑请求使用 `content`，保存后主配置改为 `content_file` 引用
+- Web 编辑与只读查看共用正文读取、检查、展开流程。保存时复用未变正文文件，仅内容变化时发布新版本；存储规则见 [正文存储规则](#templates)，迁移包结构见 [配置包 API](api.md#get-apiconfigeffectivezip)。
+
 ### subscriptions
 
-- `url`、`content`、`content_file` 三选一：`url` 为 HTTP(S) URL；`content` 为非空节点正文；`content_file` 为本地正文文件路径。Web 编辑请求使用 `content`，保存后主配置改为 `content_file` 引用
+- 输入字段遵循[拉取来源的输入与展示](#拉取来源的输入与展示)。
 - `content` 使用下述同一套解析规则，不访问上游，也不自动更新。显式 `format: surge` / `loon` 时可只粘贴节点声明；含 section 的完整文档仍只提取 `[Proxy]`
 - 支持多个订阅源
 - `format` 可选，接受 `auto`、`text`、`clash`、`surge`、`loon`，省略等同 `auto`。显式格式优先于 URL 后缀和内容识别
@@ -108,9 +115,9 @@ sources:
 
 ### snell
 
-- `url` 必填，必须为 HTTP(S) URL
+- 输入字段遵循[拉取来源的输入与展示](#拉取来源的输入与展示)；解析器固定为 Snell，不填写 `format`
 - 支持多个 Snell 来源
-- URL 返回纯文本内容，每行一条 Surge 风格的 Snell 节点声明：
+- URL、正文或本地文件均提供纯文本内容，每行一条 Surge 风格的 Snell 节点声明：
 
   ```
   NAME = snell, SERVER, PORT, psk=..., version=..., [其他可选键]
@@ -118,15 +125,15 @@ sources:
 
 - 可选字段：`version`、`obfs`、`obfs-host`、`obfs-uri`、`reuse`、`tfo`、`udp-relay`、`udp-port`、`shadow-tls-password`、`shadow-tls-sni`、`shadow-tls-version`
 - 空行和以 `#` / `//` 开头的注释行会被跳过；单行解析失败时整源报错（与 `subscriptions` 的静默跳过不同——Snell 来源通常是小规模手工清单，严格报错更有利于发现拼写问题）
-- 单行解析失败的错误消息会附带脱敏后的来源 URL 与 1-based 物理行号；原始解析根因保留在 `BuildError.Cause`
+- 单行解析失败的错误消息附带来源位置与 1-based 物理行号；URL 会脱敏，本地正文标注 `sources.snell[index].content`，文件标注其路径；原始解析根因保留在 `BuildError.Cause`
 - 节点名是显示名候选；同名节点保留独立 ID，最终输出名在各目标格式投影内独立消歧
 - Snell 节点**只进入 Surge 输出**；Clash 输出会过滤掉这些节点及级联清理的空组、失效链式节点、空规则。详见 `rendering.md`
 
 ### vless
 
-- `url` 必填，必须为 HTTP(S) URL
+- 输入字段遵循[拉取来源的输入与展示](#拉取来源的输入与展示)；解析器固定为 VLESS，不填写 `format`
 - 支持多个 VLESS 来源
-- URL 返回纯文本内容，每行一条标准 VLESS URI：
+- URL、正文或本地文件均提供纯文本内容，每行一条标准 VLESS URI：
 
   ```
   vless://UUID@SERVER:PORT?security=...&sni=...&type=...#NODE_NAME
@@ -134,7 +141,7 @@ sources:
 
 - 支持的 query 参数：`security`（`none`/`tls`/`reality`）、`encryption`（非空透传）、`flow`、`type`（已知值保留，缺失或未知值回落到 `tcp`）、`sni`、`fp`、`alpn`、`pbk`、`sid`、`spx`
 - 空行和以 `#` / `//` 开头的注释行会被跳过；单行解析失败时整源报错（与 Snell 一致——VLESS 来源通常也是小规模手工清单，严格报错更利于发现拼写问题）
-- 单行解析失败的错误消息会附带脱敏后的来源 URL 与 1-based 物理行号；原始解析根因保留在 `BuildError.Cause`
+- 单行解析失败的错误消息附带来源位置与 1-based 物理行号；URL 会脱敏，本地正文标注 `sources.vless[index].content`，文件标注其路径；原始解析根因保留在 `BuildError.Cause`
 - 节点名是显示名候选；同名节点保留独立 ID，最终输出名在各目标格式投影内独立消歧
 - 当前 URI 模型仅承接本节列出的 query；像 `packet-encoding`、`support-x25519mlkem768` 等 Mihomo 代理字段本次不接入，避免在未定义稳定 query 契约前产生隐式支持承诺
 - VLESS 节点进入 Clash；Loon 支持 `tcp` / `ws` / `http` 传输，其余传输在 Loon Target 级联过滤；Surge 过滤全部 VLESS。详见 `rendering.md`
@@ -381,8 +388,8 @@ templates:
 正文存储规则：
 
 - 默认直接写入 `/config`，不增加子目录。可通过 `-data-dir` 或 `SUBCONVERTER_DATA_DIR` 指定本地开发或其他部署的目录，参数优先于环境变量
-- Loon 节点正文与底版模板均以 `.lcf` 保存；其他节点正文使用 `.txt`，Clash 模板使用 `.yaml`，Surge 模板使用 `.conf`
-- 保存时逐字比较当前已保存配置引用的服务正文文件：相同类型、扩展名和正文复用原引用；订阅重排不生成新文件。只有新增或内容变化时才生成版本文件，例如 `subscription-20261101T123456.123456789Z-123456789.txt`、`template-loon-20261101T123456.123456789Z-987654321.lcf`；时间戳使用 UTC，唯一后缀避免同时保存重名
+- Loon 订阅正文与底版模板均以 `.lcf` 保存；其他订阅正文及 Snell / VLESS 节点池使用 `.txt`，Clash 模板使用 `.yaml`，Surge 模板使用 `.conf`
+- 保存时逐字比较当前已保存配置引用的服务正文文件：相同来源类型、扩展名和正文复用原引用；来源重排不生成新文件。只有新增或内容变化时才生成版本文件，来源前缀分别为 `subscription-`、`snell-`、`vless-`，模板使用 `template-<格式>-`；例如 `snell-20261101T123456.123456789Z-123456789.txt`。时间戳使用 UTC，唯一后缀避免同时保存重名
 - 只复用当前正文目录内、符合服务版本文件命名的已保存引用，不扫描历史文件。普通文件或远程模板切换为本地正文时仍生成独立副本；旧版本缺失或不可读时，允许用提交的正文重新保存
 - 原订阅文件与模板不覆盖，旧版本保留。服务读取主配置中的版本引用，热重载前的运行快照继续使用旧版本；主配置提交失败时移除本次新增文件
 - 新建目录权限为 `0700`，正文文件为 `0600`。保存时实际探测目录写入权限，失败返回 `409 resource_content_write_failed`，消息包含目录位置和处理建议
@@ -396,7 +403,8 @@ Web 正文编辑对应的 YAML 示例（JSON 使用相同字段）：
 ```yaml
 sources:
   subscriptions:
-    - format: loon
+    - name: 手动 Loon 订阅
+      format: loon
       content: |
         HK = anytls, hk.example.com, 443, "example-password"
 templates:

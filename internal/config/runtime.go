@@ -25,9 +25,9 @@ type RuntimeConfig struct {
 
 // PreparedSources is the startup-prepared subset consumed by the Source stage.
 type PreparedSources struct {
-	Subscriptions []Subscription
-	Snell         []SnellSource
-	VLess         []VLessSource
+	Subscriptions []Source
+	Snell         []Source
+	VLess         []Source
 	CustomProxies []PreparedCustomProxy
 	FetchOrder    []string
 }

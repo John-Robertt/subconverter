@@ -81,17 +81,17 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, fetcher
 				}
 				fetchedProxies = append(fetchedProxies, proxies...)
 			}
-		case "snell":
-			for _, s := range sources.Snell {
-				proxies, err := fetchSnellSource(ctx, fetcher, s.URL)
+		case "snell", "vless":
+			entries := sources.Snell
+			if kind == "vless" {
+				entries = sources.VLess
+			}
+			for index, source := range entries {
+				location, body, err := loadSourceBody(ctx, fetcher, source, fmt.Sprintf("sources.%s[%d].content", kind, index))
 				if err != nil {
 					return nil, err
 				}
-				fetchedProxies = append(fetchedProxies, proxies...)
-			}
-		case "vless":
-			for _, s := range sources.VLess {
-				proxies, err := fetchVLessSource(ctx, fetcher, s.URL)
+				proxies, err := parseNodePool(kind, location, body)
 				if err != nil {
 					return nil, err
 				}
@@ -139,27 +139,38 @@ func assignProxyIDs(proxies []model.Proxy) []model.Proxy {
 // loadSubscription reads inline/local content or fetches a subscription URL. Structured Clash YAML and
 // Surge CONF / Loon documents are recognized before the legacy Base64/plain-text
 // subscription list formats.
-func loadSubscription(ctx context.Context, fetcher fetch.Fetcher, sub config.Subscription) ([]model.Proxy, error) {
-	rawURL := sub.URL
-	body := []byte(sub.Content)
-	if sub.ContentFile != "" {
-		var err error
-		body, err = fetch.LoadResource(ctx, sub.ContentFile, fetcher)
-		if err != nil {
-			return nil, err
-		}
-		rawURL = sub.ContentFile
-	} else if strings.TrimSpace(sub.Content) == "" {
-		var err error
-		body, err = fetcher.Fetch(ctx, rawURL)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		rawURL = "inline:subscription"
+func loadSubscription(ctx context.Context, fetcher fetch.Fetcher, sub config.Source) ([]model.Proxy, error) {
+	rawURL, body, err := loadSourceBody(ctx, fetcher, sub, "inline:subscription")
+	if err != nil {
+		return nil, err
 	}
 	proxies, _, err := parseSubscriptionBody(rawURL, body, sub.Format, sub.Content != "" || sub.ContentFile != "")
 	return proxies, err
+}
+
+// loadSourceBody selects exactly one prepared input; inline and local sources never use the remote Fetcher.
+func loadSourceBody(ctx context.Context, fetcher fetch.Fetcher, source config.Source, inlineLocation string) (string, []byte, error) {
+	if source.ContentFile != "" {
+		body, err := fetch.LoadResource(ctx, source.ContentFile, fetcher)
+		return source.ContentFile, body, err
+	}
+	if source.Content != "" {
+		return inlineLocation, []byte(source.Content), nil
+	}
+	body, err := fetcher.Fetch(ctx, source.URL)
+	return source.URL, body, err
+}
+
+// parseNodePool applies the same strict protocol parser to URL, local and edited bodies.
+func parseNodePool(kind, location string, body []byte) ([]model.Proxy, error) {
+	switch kind {
+	case "snell":
+		return parseSnellSource(location, body)
+	case "vless":
+		return parseVLessSource(location, body)
+	default:
+		return nil, &errtype.BuildError{Code: errtype.CodeBuildValidationFailed, Phase: "source", Message: "节点池类型无效：" + kind}
+	}
 }
 
 func parseSubscriptionBody(rawURL string, body []byte, format string, allowFragment bool) ([]model.Proxy, string, error) {
@@ -233,26 +244,11 @@ func subscriptionDocumentFormatLabel(format model.NativeProxyFormat) string {
 	}
 }
 
-// fetchSnellSource fetches a URL whose body is plain text with one Surge-style
-// Snell proxy declaration per line. Blank lines and comments (#, //) are
-// skipped; malformed Snell lines abort the entire source with a BuildError,
-// because Snell sources are small hand-curated lists where silently dropping
-// a line is more likely to mask a typo than a real transient issue.
-//
-// A source yielding zero valid nodes is reported as CodeFetchSubscriptionEmpty,
-// mirroring the subscription path.
-//
-// The body is scanned line-by-line so parse failures can report physical line
-// numbers from the original source text. Each line is still trimmed before
-// parsing; blank lines and comments are skipped via errSnellLineSkip.
-func fetchSnellSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string) ([]model.Proxy, error) {
-	body, err := fetcher.Fetch(ctx, rawURL)
-	if err != nil {
-		return nil, err
-	}
-
+// parseSnellSource parses one Surge-style Snell declaration per line.
+// Blank/comment lines are skipped; any other invalid line aborts the source and retains its physical line number.
+func parseSnellSource(location string, body []byte) ([]model.Proxy, error) {
 	var proxies []model.Proxy
-	sanitizedURL := fetch.SanitizeURL(rawURL)
+	sanitizedLocation := fetch.SanitizeURL(location)
 	for lineNo, rawLine := range strings.Split(string(body), "\n") {
 		line := strings.TrimSpace(rawLine)
 		proxy, parseErr := ParseSnellSurgeLine(line)
@@ -260,7 +256,7 @@ func fetchSnellSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string)
 			if errors.Is(parseErr, errSnellLineSkip) {
 				continue
 			}
-			return nil, wrapSnellSourceParseError(sanitizedURL, lineNo+1, parseErr)
+			return nil, wrapSnellSourceParseError(sanitizedLocation, lineNo+1, parseErr)
 		}
 		proxies = append(proxies, proxy)
 	}
@@ -268,7 +264,7 @@ func fetchSnellSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string)
 	if len(proxies) == 0 {
 		return nil, &errtype.FetchError{
 			Code:    errtype.CodeFetchSubscriptionEmpty,
-			URL:     fetch.SanitizeURL(rawURL),
+			URL:     fetch.SanitizeURL(location),
 			Message: "Snell 来源未产生任何有效节点",
 		}
 	}
@@ -276,7 +272,7 @@ func fetchSnellSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string)
 	return proxies, nil
 }
 
-func wrapSnellSourceParseError(sanitizedURL string, lineNo int, parseErr error) error {
+func wrapSnellSourceParseError(sanitizedLocation string, lineNo int, parseErr error) error {
 	detail := parseErr.Error()
 	var buildErr *errtype.BuildError
 	if errors.As(parseErr, &buildErr) {
@@ -286,29 +282,15 @@ func wrapSnellSourceParseError(sanitizedURL string, lineNo int, parseErr error) 
 	return &errtype.BuildError{
 		Code:    errtype.CodeBuildSnellLineInvalid,
 		Phase:   "source",
-		Message: fmt.Sprintf(`Snell 来源 %q 第 %d 行解析失败：%s`, sanitizedURL, lineNo, detail),
+		Message: fmt.Sprintf(`Snell 来源 %q 第 %d 行解析失败：%s`, sanitizedLocation, lineNo, detail),
 		Cause:   parseErr,
 	}
 }
 
-// fetchVLessSource fetches a URL whose body is plain text with one
-// `vless://` URI per line. Blank lines and comment lines (`#`, `//`) are
-// skipped; any other line that fails to parse aborts the entire source
-// with a BuildError, matching the strict Snell behaviour.
-//
-// A source yielding zero valid nodes is reported as CodeFetchSubscriptionEmpty,
-// mirroring the subscription and Snell paths.
-//
-// Parse-failure errors carry the 1-based physical line number from the
-// original body and the sanitized URL (subscription tokens redacted).
-func fetchVLessSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string) ([]model.Proxy, error) {
-	body, err := fetcher.Fetch(ctx, rawURL)
-	if err != nil {
-		return nil, err
-	}
-
+// parseVLessSource parses one VLESS URI per line with the same strict failure policy as Snell.
+func parseVLessSource(location string, body []byte) ([]model.Proxy, error) {
 	var proxies []model.Proxy
-	sanitizedURL := fetch.SanitizeURL(rawURL)
+	sanitizedLocation := fetch.SanitizeURL(location)
 	for lineNo, rawLine := range strings.Split(string(body), "\n") {
 		line := strings.TrimSpace(rawLine)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
@@ -316,7 +298,7 @@ func fetchVLessSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string)
 		}
 		proxy, parseErr := ParseVLessURI(line)
 		if parseErr != nil {
-			return nil, wrapVLessSourceParseError(sanitizedURL, lineNo+1, parseErr)
+			return nil, wrapVLessSourceParseError(sanitizedLocation, lineNo+1, parseErr)
 		}
 		proxies = append(proxies, proxy)
 	}
@@ -324,7 +306,7 @@ func fetchVLessSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string)
 	if len(proxies) == 0 {
 		return nil, &errtype.FetchError{
 			Code:    errtype.CodeFetchSubscriptionEmpty,
-			URL:     fetch.SanitizeURL(rawURL),
+			URL:     fetch.SanitizeURL(location),
 			Message: "VLESS 来源未产生任何有效节点",
 		}
 	}
@@ -332,7 +314,7 @@ func fetchVLessSource(ctx context.Context, fetcher fetch.Fetcher, rawURL string)
 	return proxies, nil
 }
 
-func wrapVLessSourceParseError(sanitizedURL string, lineNo int, parseErr error) error {
+func wrapVLessSourceParseError(sanitizedLocation string, lineNo int, parseErr error) error {
 	detail := parseErr.Error()
 	var buildErr *errtype.BuildError
 	if errors.As(parseErr, &buildErr) {
@@ -342,7 +324,7 @@ func wrapVLessSourceParseError(sanitizedURL string, lineNo int, parseErr error) 
 	return &errtype.BuildError{
 		Code:    errtype.CodeBuildVLessSourceLineInvalid,
 		Phase:   "source",
-		Message: fmt.Sprintf(`VLESS 来源 %q 第 %d 行解析失败：%s`, sanitizedURL, lineNo, detail),
+		Message: fmt.Sprintf(`VLESS 来源 %q 第 %d 行解析失败：%s`, sanitizedLocation, lineNo, detail),
 		Cause:   parseErr,
 	}
 }

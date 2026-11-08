@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/John-Robertt/subconverter/internal/config"
 	"github.com/John-Robertt/subconverter/internal/errtype"
@@ -55,10 +57,31 @@ func (s *Service) configArchive(ctx context.Context, raw []byte) (*ConfigArchive
 	if err != nil {
 		return nil, err
 	}
-	if err := s.restoreEditableContent(ctx, cfg); err != nil {
-		return nil, err
-	}
 	entries := []archiveEntry{}
+	for _, list := range cfg.Sources.Lists() {
+		for i := range list.Entries {
+			source := &list.Entries[i]
+			body := source.Content
+			if source.ContentFile != "" {
+				if strings.Contains(source.ContentFile, "://") {
+					return nil, newBadRequestError("invalid_request", fmt.Sprintf("sources.%s[%d].content_file 必须为本地文件路径", list.Kind, i))
+				}
+				resource, readErr := s.ReadResource(ctx, source.ContentFile)
+				if readErr != nil {
+					return nil, readErr
+				}
+				body = resource.Content
+				if list.Kind == "subscriptions" && (source.Format == "" || source.Format == "auto") && resource.Format != "" {
+					source.Format = resource.Format
+				}
+			} else if body == "" {
+				continue
+			}
+			name := fmt.Sprintf("%s/%d%s", list.Kind, i+1, sourceExtension(list.Kind, source.Format))
+			entries = append(entries, archiveEntry{Name: name, Body: []byte(body)})
+			source.ContentFile, source.Content = name, ""
+		}
+	}
 	for _, entry := range archiveTemplates(cfg) {
 		var body []byte
 		if content, ok := cfg.Templates.Inline[entry.format]; ok {
@@ -121,7 +144,31 @@ func (s *Service) ImportConfigArchive(_ context.Context, raw []byte) (*ImportCon
 	if err != nil {
 		return nil, err
 	}
-
+	for _, list := range cfg.Sources.Lists() {
+		for i := range list.Entries {
+			source := &list.Entries[i]
+			if source.Content != "" {
+				return nil, newBadRequestError("invalid_archive", fmt.Sprintf("sources.%s[%d]：配置包中的正文必须通过 content_file 引用 %s/ 下的文件", list.Kind, i, list.Kind))
+			}
+			if source.ContentFile == "" {
+				continue
+			}
+			if !isArchiveSourceFile(source.ContentFile) || path.Dir(source.ContentFile) != list.Kind {
+				return nil, newBadRequestError("invalid_archive", fmt.Sprintf("sources.%s[%d].content_file 必须引用包内 %s/ 下的文件", list.Kind, i, list.Kind))
+			}
+			body, ok := entries[source.ContentFile]
+			if !ok {
+				return nil, newBadRequestError("invalid_archive", "配置包缺少来源文件："+source.ContentFile)
+			}
+			if !utf8.Valid(body) || strings.ContainsRune(string(body), '\x00') {
+				return nil, newBadRequestError("invalid_archive", "来源文件必须为 UTF-8 文本："+source.ContentFile)
+			}
+			if strings.TrimSpace(string(body)) == "" {
+				return nil, newBadRequestError("invalid_archive", "来源文件正文不能为空："+source.ContentFile)
+			}
+			source.Content, source.ContentFile = string(body), ""
+		}
+	}
 	if cfg.Templates.Inline == nil {
 		cfg.Templates.Inline = make(map[string]string)
 	}
@@ -204,7 +251,7 @@ func readConfigArchive(raw []byte) (map[string][]byte, error) {
 	entries := make(map[string][]byte, len(want))
 	remaining := int64(MaxConfigImportArchiveBytes)
 	for _, file := range zr.File {
-		if !want[file.Name] {
+		if !want[file.Name] && !isArchiveSourceFile(file.Name) {
 			continue
 		}
 		if _, seen := entries[file.Name]; seen {
@@ -220,6 +267,11 @@ func readConfigArchive(raw []byte) (map[string][]byte, error) {
 		entries[file.Name] = body
 	}
 	return entries, nil
+}
+
+func isArchiveSourceFile(name string) bool {
+	dir := path.Dir(name)
+	return (dir == "subscriptions" || dir == "snell" || dir == "vless") && path.Clean(name) == name && !strings.ContainsRune(name, '\\')
 }
 
 func readArchiveFile(file *zip.File, remaining *int64) ([]byte, error) {

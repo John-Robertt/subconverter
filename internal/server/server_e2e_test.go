@@ -68,7 +68,7 @@ func validConfig(t *testing.T) *config.Config {
 	t.Helper()
 	return &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
 		},
 		Groups:   mustParseOrderedMapGroups(t, `"HK": { match: "(HK)", strategy: select }`),
 		Routing:  mustParseOrderedMapStrings(t, `"proxy": ["HK", "DIRECT"]`),
@@ -398,7 +398,7 @@ func TestE2E_TokenRequired(t *testing.T) {
 	}
 }
 
-// T-E2E-004: Subscription fetch failure returns 502
+// T-E2E-004: Source fetch failure returns 502
 func TestE2E_FetchFailure(t *testing.T) {
 	f := &fakeFetcher{err: errors.New("connection refused")}
 	ts := startTestServer(t, validConfig(t), f)
@@ -423,7 +423,7 @@ func TestE2E_BuildError(t *testing.T) {
 	// Config passes startup preparation but fails request-time graph validation:
 	// HK 节点组在当前远程结果中为空。
 	cfg := validConfig(t)
-	cfg.Sources.Subscriptions = []config.Subscription{{URL: subURL}}
+	cfg.Sources.Subscriptions = []config.Source{{URL: subURL}}
 	cfg.Groups = mustParseOrderedMapGroups(t, `"HK": { match: "(HK)", strategy: select }`)
 	cfg.Routing = mustParseOrderedMapStrings(t, `"proxy": ["HK", "DIRECT"]`)
 	cfg.Fallback = "proxy"

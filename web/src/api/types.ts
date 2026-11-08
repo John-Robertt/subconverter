@@ -8,7 +8,7 @@ export type FetchSourceKind = "subscriptions" | "snell" | "vless";
 export type GenerateFormat = "clash" | "surge" | "loon";
 export type SubscriptionFormat = "auto" | "text" | GenerateFormat;
 
-export interface SubscriptionCheckResult {
+export interface SourceCheckResult {
   status: "recognized" | "ambiguous";
   format?: Exclude<SubscriptionFormat, "auto">;
   node_count: number;
@@ -17,7 +17,8 @@ export interface SubscriptionCheckResult {
   content: string;
 }
 
-export interface SubscriptionCheckInput {
+export interface SourceCheckInput {
+  kind?: FetchSourceKind;
   location?: string;
   content?: string;
   source_location?: string;
@@ -30,6 +31,7 @@ export interface ResourceContent {
 }
 
 export interface FetchSource {
+  name?: string;
   url?: string;
   content?: string;
   content_file?: string;

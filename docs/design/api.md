@@ -212,7 +212,7 @@
 {
   "config_revision": "sha256:7d9c...",
   "config": {
-    "sources": {"subscriptions": [{"url": "https://example.com/sub.conf", "format": "loon"}]},
+    "sources": {"subscriptions": [{"name": "主订阅", "url": "https://example.com/sub.conf", "format": "loon"}]},
     "templates": {"loon": "configs/base_loon.lcf"},
     "groups": [],
     "routing": [],
@@ -223,7 +223,7 @@
 
 说明：
 
-- `sources.subscriptions[].format` 和 `templates.loon` 随 JSON/YAML 往返保留；字段约束见 [配置规约](config-schema.md#subscriptions)
+- 三类来源的 `name`、订阅的 `sources.subscriptions[].format` 和 `templates.loon` 随 JSON/YAML 往返保留；字段约束见 [配置规约](config-schema.md#subscriptions)
 - `GET /api/config` 读取配置源内容，不等同于当前生效的 `RuntimeConfig`
 - 本地配置通过 `PUT /api/config` 保存后，若尚未调用 `POST /api/reload`，保存配置与运行时配置可能短暂不同步
 - 当前生效配置的加载时间、配置源能力和 dirty 状态通过 `GET /api/status` 查看
@@ -333,14 +333,16 @@ revision 冲突响应示例：
 
 ### `GET /api/config/effective.zip`
 
-用途：下载当前正在生效的源 YAML 配置与全部已配置底版模板。
+用途：下载当前正在生效的源 YAML 配置、本地订阅正文文件与全部已配置底版模板。
 
 成功响应：
 
 - `200`，`Content-Type: application/zip`
 - `Content-Disposition: attachment; filename="subconverter-config.zip"; filename*=UTF-8''subconverter-config.zip`
 - ZIP 内容：
-  - `config.yaml`：当前生效配置的可迁移副本；订阅正文文件展开为 `content`，模板引用改为包内相对路径，不保留服务器绝对路径
+  - `config.yaml`：当前生效配置的可迁移副本；本地订阅使用包内相对 `content_file` 引用，模板引用改为包内相对路径，不保留服务器绝对路径或订阅正文字符串；远程订阅 URL 保持原样，不下载为副本
+  - `subscriptions/<序号>.txt`：本地订阅正文，序号为该条来源在 `sources.subscriptions` 中的 1-based 位置；Loon 正文使用 `.lcf`。正文逐字保留，订阅名称单独保存在 `name` 中；依赖原文件后缀识别的格式在配置中显式保存
+  - `snell/<序号>.txt`、`vless/<序号>.txt`：两类本地节点池的正文，序号为各自列表中的 1-based 位置；主配置的对应来源使用相对 `content_file` 引用，保留 `name`
   - `templates/clash.yaml`：Clash 底版正文（引用模板或本地编辑正文配置后存在）
   - `templates/surge.conf`：Surge 底版正文（引用模板或本地编辑正文配置后存在）
   - `templates/loon.lcf`：Loon 底版正文（引用模板或本地编辑正文配置后存在）
@@ -352,6 +354,18 @@ revision 冲突响应示例：
 - 模板内容按当前生效模板位置读取；远程模板走现有 fetch/cache，本地模板走本地资源读取
 - 任一已配置模板读取失败时，整个导出失败，不返回不完整 ZIP
 - 本接口不写文件、不改变 `config_dirty`
+
+例如，本地订阅导出后在 `config.yaml` 中表示为：
+
+```yaml
+sources:
+  subscriptions:
+    - name: 手动节点
+      content_file: subscriptions/1.txt
+      format: text
+```
+
+解压后以解压目录作为工作目录启动服务，即可读取这些相对路径。
 
 ### `POST /api/config/import`
 
@@ -386,10 +400,10 @@ ZIP 请求体：
 
 - `config` 的 JSON 形状与 `GET /api/config` 相同，保序字段仍以 `[{key, value}]` 数组表示
 - YAML 导入解析配置并读取已有的本地正文引用以还原编辑内容；不写文件、不替换运行时配置
-- ZIP 导入将包内模板还原为 `templates.inline` 草稿正文，清除对应的模板路径；包内模板优先于配置内同格式正文
+- ZIP 导入将 `subscriptions`、`snell`、`vless` 中 `content_file` 引用的包内正文文件还原为对应来源的 `content`，保留 `name` 及订阅的 `format`，清除文件引用；包内模板还原为 `templates.inline` 草稿正文，清除对应模板路径
 - 导入不创建目录、不写任何文件。用户编辑草稿后，通过 `PUT /api/config` 统一校验并保存配置与正文文件；保存失败由保存流程回收本次新增文件
 - 既有 `.imports` 模板路径继续作为普通本地引用读取，新导入不再创建此目录
-- ZIP 导入只读取固定条目，不按 ZIP 内路径直接解压；缺少 `config.yaml` 或 ZIP 无效时返回 `400 invalid_archive`
+- ZIP 导入只读取 `config.yaml`、上述固定模板条目及 `subscriptions/`、`snell/`、`vless/` 下的直接文件，不按 ZIP 内路径解压，也不读取服务器上的同名文件。各来源正文必须通过 `content_file` 引用包内同类目录的文件，内容须为不含 NUL 的非空 UTF-8 文本；缺失或无效文件、目录外引用、重复条目及无效 ZIP 返回 `400 invalid_archive`。压缩包和所读取条目的解压总大小均不能超过 10 MiB
 - HTTP(S) 远程配置源导入 ZIP 返回 `409 config_source_readonly`；本地配置文件不可写返回 `409 config_file_not_writable`
 - 导入成功后，前端应只替换草稿；用户仍需显式保存和热重载才会生效
 
@@ -955,11 +969,11 @@ AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscr
 
 `format` 可选，表示按 Source 的自动识别规则会采用的结构化订阅格式，取 `clash`、`surge` 或 `loon`；TXT/Base64 不返回此字段。该提示仅表示旧版 Source 自动规则的选择，不表示节点检查成功。模板和订阅编辑器都使用此接口自动读取原文；订阅随后使用下述专用检查接口，格式提示不替代检查结果。
 
-`GET /api/config` 和 `PUT /api/config` 的配置 JSON 支持 `sources.subscriptions[].content` 与 `templates.inline`，字段及互斥约束见 [配置规约](config-schema.md#subscriptions)。例如：
+`GET /api/config` 和 `PUT /api/config` 的配置 JSON 支持三类来源的 `name`、`content`、`content_file` 与 `templates.inline`，字段及互斥约束见 [配置规约](config-schema.md#拉取来源的输入与展示)。例如：
 
 ```json
 {
-  "sources": {"subscriptions": [{"format":"loon", "content":"HK = anytls, hk.example.com, 443, \"example-password\""}]},
+  "sources": {"subscriptions": [{"name":"手动 Loon 订阅", "format":"loon", "content":"HK = anytls, hk.example.com, 443, \"example-password\""}]},
   "templates": {"inline": {"loon":"[General]\ndns-server = system\n"}}
 }
 ```
@@ -974,14 +988,14 @@ AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscr
 
 失败不修改主配置和运行快照；修复目录权限后可用同一 revision 重试。此错误不改变主配置的 `config_source.writable` 或 `capabilities.config_write`；主配置自身只读时仍遵守原有 `config_file_not_writable` / `config_source_readonly` 契约。
 
-正文在配置包的 `config.yaml` 内保存；导入包若同时提供对应的 `templates/*` 文件，则用该文件副本替换同格式正文。YAML 导入会读取其中已有的本地正文引用以还原编辑内容；跨机器迁移使用 ZIP 包。
+配置包的正文文件及引用方式见[导出配置 API](#get-apiconfigeffectivezip)。YAML 导入会读取其中已有的本地正文引用以还原编辑内容；跨机器迁移使用 ZIP 包。
 
 
 ## POST /api/subscriptions/check
 
-检查订阅链接、本地正文文件或粘贴内容，不保存配置、不创建版本文件、不 reload。要求管理员 session，并执行同源检查。远程地址沿用共享 Fetcher 和缓存；只读配置源也可通过此只读接口检查。
+检查节点订阅、Snell 或 VLESS 节点池的链接、本地文件或粘贴正文，不保存配置、不创建版本文件、不 reload。要求管理员 session，并执行同源检查。远程地址沿用共享 Fetcher 和缓存；只读配置源也可通过此只读接口检查。
 
-请求的 `location` 与非空 `content` 二选一。`format` 可省略或为 `auto`，也可指定 `text`、`clash`、`surge`、`loon` 更正解析器：
+请求的 `location` 与非空 `content` 二选一。`kind` 接受 `subscriptions`、`snell`、`vless`，省略时为 `subscriptions`。只有节点订阅使用 `format`，可省略或为 `auto`，也可指定 `text`、`clash`、`surge`、`loon` 更正解析器；Snell / VLESS 由 `kind` 固定解析器，传入 `format` 返回 `400 invalid_request`。
 
 ```json
 {"location":"https://example.com/sub.conf","format":"auto"}
@@ -990,6 +1004,18 @@ AnyTLS 节点从 `sources.subscriptions` 进入预览结果，`kind` 为 `subscr
 ```json
 {"content":"anytls://example-password@hk.example.com:443#HK"}
 ```
+
+节点池检查示例：
+
+```json
+{"kind":"snell","content":"HK = snell, hk.example.com, 443, psk=example-password, version=4"}
+```
+
+```json
+{"kind":"vless","content":"vless://11111111-1111-1111-1111-111111111111@hk.example.com:443?type=tcp#HK"}
+```
+
+两类节点池成功时返回 `status="recognized"`、节点数量、`output_formats` 和原文，不返回订阅的 `format` 或候选客户端。单行无效则整源检查失败，返回 `400 build_snell_line_invalid` 或 `400 build_vless_source_line_invalid`，保留物理行号与脱敏来源位置。
 
 已读取原文的检查可同时提供可选的 `source_location`，表示原文来自哪个 URL 或本地文件。它仅传给格式识别器，不触发读取，不改变 `location` 与 `content` 二选一的约束。使用 `content` 时，来源位置保留 `.lcf` 等现有识别提示，以及远程完整文档与本地节点片段的解析边界；直接提供 `location` 时以该实际读取位置为准。
 

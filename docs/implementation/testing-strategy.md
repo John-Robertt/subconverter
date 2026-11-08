@@ -112,6 +112,10 @@
 - `T-ADM-024`：`GET /api/config/effective.zip` 返回当前 RuntimeConfig 对应的源 YAML 与模板 ZIP；`GET /api/config/saved.zip` 返回已保存配置包；`POST /api/config/import` 以 `application/zip` 导入配置包为内存正文草稿，不创建文件；两个端点均要求管理员 session
 
 - `T-APP-STORE-001`–`016`：正文保存与重启还原、未变引用复用、按资源生成新版本、订阅重排、普通文件副本边界、缺失文件修复、失败回收和运行快照保持
+- `T-APP-ARCHIVE-001`–`003`：本地订阅文件与展示名导入导出、同名来源及远程引用保持、包内路径与大小校验、解压后使用相对引用生成三种格式
+- `T-WEB-SOURCE-004`–`005`：订阅名称编辑、清空、保存后重新载入，以及只读名称展示与编辑禁用
+- `T-CFG-LOCAL-001`、`T-SRC-LOCAL-001`–`002`、`T-APP-LOCAL-001`：两类节点池的输入互斥、共用解析与 ID 分配、严格错误定位、本地文件保存复用、重启还原、配置包往返与三格式过滤
+- `T-WEB-LOCAL-001`–`004`：Snell / VLESS 本地正文编辑、命名保存、检查失败修复、远程来源复制与只读查看
 
 ---
 

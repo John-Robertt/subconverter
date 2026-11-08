@@ -51,13 +51,13 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 // 用于 GET /api/config/effective.yaml。
 func (s *Service) EffectiveConfigYAML(ctx context.Context) ([]byte, error)
 
-// EffectiveConfigArchive 返回当前 RuntimeConfig 对应的源 YAML 与模板 ZIP 包（含已配置的 Clash / Surge / Loon 底版）。
-// 启动成功与 Reload 成功时更新配置快照；模板按当前生效 templates 位置读取。
+// EffectiveConfigArchive 返回当前 RuntimeConfig 对应的配置、本地订阅与模板 ZIP 包。
+// 启动成功与 Reload 成功时更新配置快照；正文按快照中的文件引用读取。
 // 用于 GET /api/config/effective.zip。
 func (s *Service) EffectiveConfigArchive(ctx context.Context) (*ConfigArchiveResult, error)
 
 // SavedConfigArchive 读取当前配置源，打包已保存的配置与正文，无需先 Reload。
-// 两种导出共用包结构：订阅正文内嵌、模板引用包内相对路径，读取失败即终止。
+// 两种导出共用包结构：订阅正文与模板作为独立文件，配置使用包内相对路径；读取失败即终止。
 // 用于 GET /api/config/saved.zip。
 func (s *Service) SavedConfigArchive(ctx context.Context) (*ConfigArchiveResult, error)
 
@@ -69,10 +69,10 @@ func (s *Service) ImportConfigYAML(ctx context.Context, raw []byte) (*ImportConf
 // ReadResource 读取节点订阅或模板的文本副本，不修改资源和配置。
 func (s *Service) ReadResource(ctx context.Context, location string) (*ResourceContentResult, error)
 
-// CheckSubscription 读取并检查节点，不保存配置或替换运行快照。
-func (s *Service) CheckSubscription(ctx context.Context, input CheckSubscriptionInput) (*CheckSubscriptionResult, error)
+// CheckSource 读取并检查节点，不保存配置或替换运行快照。
+func (s *Service) CheckSource(ctx context.Context, input CheckSourceInput) (*CheckSourceResult, error)
 
-// ImportConfigArchive 将上传 ZIP 包解析为 Config JSON，包内模板还原为草稿正文。
+// ImportConfigArchive 将上传 ZIP 包解析为 Config JSON，包内订阅和模板文件还原为草稿正文。
 // 仅本地可写配置源支持；不创建文件、不替换 RuntimeConfig、不执行 Prepare。
 // 用于 POST /api/config/import application/zip。
 func (s *Service) ImportConfigArchive(ctx context.Context, raw []byte) (*ImportConfigYAMLResult, error)
@@ -167,6 +167,8 @@ type ConfigSnapshotResult struct {
 }
 ```
 
+`Config` 保留三类来源的 `name`、正文和文件引用；其含义与约束统一见[配置规约](config-schema.md#拉取来源的输入与展示)。配置包结构与导入约束见[导出配置 API](api.md#get-apiconfigeffectivezip)。
+
 ### SaveConfigInput
 
 ```go
@@ -192,17 +194,18 @@ type ImportConfigYAMLResult struct {
 }
 ```
 
-### CheckSubscriptionInput / CheckSubscriptionResult
+### CheckSourceInput / CheckSourceResult
 
 ```go
-type CheckSubscriptionInput struct {
+type CheckSourceInput struct {
+    Kind           string `json:"kind,omitempty"`
     Location       string `json:"location,omitempty"`
     Content        string `json:"content,omitempty"`
     SourceLocation string `json:"source_location,omitempty"`
     Format         string `json:"format,omitempty"`
 }
 
-type CheckSubscriptionResult struct {
+type CheckSourceResult struct {
     Status        string   `json:"status"`
     Format        string   `json:"format,omitempty"`
     NodeCount     int      `json:"node_count"`
@@ -212,7 +215,7 @@ type CheckSubscriptionResult struct {
 }
 ```
 
-`SourceLocation` 仅为已读取的 `Content` 提供来源位置提示，不触发资源读取。`subscription_check.go` 负责读取与 DTO 编排；`pipeline.InspectSubscription` 负责识别和提取，`generate.Service.CheckProxyFormats` 复用实际 Target/Render 检查输出兼容性。字段和错误契约见 [订阅检查 API](api.md#post-apisubscriptionscheck)。
+`Kind` 指定 `subscriptions`、`snell` 或 `vless`，省略时为 `subscriptions`。`SourceLocation` 仅为已读取的 `Content` 提供来源位置提示，不触发资源读取。`source_check.go` 负责读取与 DTO 编排；`pipeline.InspectSource` 按来源类型识别和提取，`generate.Service.CheckProxyFormats` 复用实际 Target/Render 检查输出兼容性。字段和错误契约见 [来源检查 API](api.md#post-apisubscriptionscheck)。
 
 ### ResourceContentResult
 
@@ -498,7 +501,7 @@ var (
 - 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
 - `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 由响应中的 `config_revision != runtime_config_revision` 计算
 - `EffectiveConfigYAML`：只在 `RLock` 内复制当前生效 YAML 字节；该快照只在启动成功和 `Reload` 成功时更新
-- `EffectiveConfigArchive`：复用 `EffectiveConfigYAML` 取得生效 YAML 快照，再解析模板位置；正文读取与 ZIP 编码在释放锁后执行
+- `EffectiveConfigArchive`：复用 `EffectiveConfigYAML` 取得生效 YAML 快照，再读取其中的本地订阅与模板位置；正文读取与 ZIP 编码在释放锁后执行
 - 写路径（`Reload`）：先在锁外读取、解析和准备配置；校验成功后，短暂加写锁一起更新配置指针、revision、生效 YAML、加载时间和重载状态
 - 慢速订阅拉取、模板加载和渲染不持有配置锁
 

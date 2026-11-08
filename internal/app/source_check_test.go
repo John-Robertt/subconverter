@@ -13,8 +13,20 @@ import (
 	"github.com/John-Robertt/subconverter/internal/generate"
 )
 
+// T-APP-CHECK-005: node pool checks use strict line parsing and preserve sanitized source locations.
+func TestApp_CheckNodePoolFailures(t *testing.T) {
+	svc, _, _ := contentStoreFixture(t)
+	for _, kind := range []string{"snell", "vless"} {
+		location := "https://example.com/" + kind + "?token=private-pool-token"
+		_, err := svc.CheckSource(context.Background(), CheckSourceInput{Kind: kind, Content: "# header\n\ninvalid node\n", SourceLocation: location})
+		if err == nil || !strings.Contains(err.Error(), "第 3 行") || strings.Contains(err.Error(), "private-pool-token") {
+			t.Fatalf("%s want strict sanitized line error, got=%v", kind, err)
+		}
+	}
+}
+
 // T-APP-CHECK-001: check returns usable outputs and never saves or switches a URL to a copy.
-func TestApp_CheckSubscription(t *testing.T) {
+func TestApp_CheckSource(t *testing.T) {
 	svc, _, _ := contentStoreFixture(t)
 	const location = "https://example.com/sub.conf?token=secret"
 	const loon = "[Proxy]\nHK = anytls, hk.example.com, 443, \"pw\"\n"
@@ -26,18 +38,20 @@ func TestApp_CheckSubscription(t *testing.T) {
 	}
 	for _, tt := range []struct {
 		name           string
-		input          CheckSubscriptionInput
+		input          CheckSourceInput
 		status, format string
 		outputs        []string
 	}{
-		{"link", CheckSubscriptionInput{Location: location}, "recognized", "loon", []string{"loon"}},
-		{"body", CheckSubscriptionInput{Content: "anytls://pw@hk.example.com:443#HK"}, "recognized", "text", []string{"clash", "surge", "loon"}},
-		{"plugin compatibility", CheckSubscriptionInput{Content: "ss://YWVzLTEyOC1nY206cHc@hk.example.com:443?plugin=v2ray-plugin%3Bmode%3Dwebsocket#HK"}, "recognized", "text", []string{"clash"}},
-		{"ambiguous", CheckSubscriptionInput{Content: "[Proxy]\nHK = http, hk.example.com, 80"}, "ambiguous", "", []string{}},
-		{"corrected", CheckSubscriptionInput{Content: "[Proxy]\nHK = http, hk.example.com, 80", Format: "surge"}, "recognized", "surge", []string{"surge"}},
+		{"link", CheckSourceInput{Location: location}, "recognized", "loon", []string{"loon"}},
+		{"body", CheckSourceInput{Content: "anytls://pw@hk.example.com:443#HK"}, "recognized", "text", []string{"clash", "surge", "loon"}},
+		{"plugin compatibility", CheckSourceInput{Content: "ss://YWVzLTEyOC1nY206cHc@hk.example.com:443?plugin=v2ray-plugin%3Bmode%3Dwebsocket#HK"}, "recognized", "text", []string{"clash"}},
+		{"ambiguous", CheckSourceInput{Content: "[Proxy]\nHK = http, hk.example.com, 80"}, "ambiguous", "", []string{}},
+		{"corrected", CheckSourceInput{Content: "[Proxy]\nHK = http, hk.example.com, 80", Format: "surge"}, "recognized", "surge", []string{"surge"}},
+		{"Snell body", CheckSourceInput{Kind: "snell", Content: "HK = snell, hk.example.com, 443, psk=pw, version=4"}, "recognized", "", []string{"surge"}},
+		{"VLESS body", CheckSourceInput{Kind: "vless", Content: "vless://11111111-1111-1111-1111-111111111111@hk.example.com:443?type=tcp#HK"}, "recognized", "", []string{"clash", "loon"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := svc.CheckSubscription(context.Background(), tt.input)
+			got, err := svc.CheckSource(context.Background(), tt.input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,7 +73,7 @@ func TestApp_CheckSubscription(t *testing.T) {
 	if _, err := os.Stat(svc.contentDirectory()); !os.IsNotExist(err) {
 		t.Fatalf("check created version files: %v", err)
 	}
-	result, err := svc.CheckSubscription(context.Background(), CheckSubscriptionInput{Location: location})
+	result, err := svc.CheckSource(context.Background(), CheckSourceInput{Location: location})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,10 +110,10 @@ func TestApp_CheckSubscription(t *testing.T) {
 }
 
 // T-APP-CHECK-002: malformed inputs cannot produce a successful identification badge.
-func TestApp_CheckSubscriptionFailures(t *testing.T) {
+func TestApp_CheckSourceFailures(t *testing.T) {
 	svc, _, _ := contentStoreFixture(t)
-	for _, tt := range []CheckSubscriptionInput{{}, {Location: "a", Content: "b"}, {Content: "x", Format: "unknown"}, {Content: "<html>expired</html>"}, {Content: "proxies: wrong"}, {Content: "\x00"}} {
-		if _, err := svc.CheckSubscription(context.Background(), tt); err == nil {
+	for _, tt := range []CheckSourceInput{{}, {Location: "a", Content: "b"}, {Content: "x", Format: "unknown"}, {Content: "<html>expired</html>"}, {Content: "proxies: wrong"}, {Content: "\x00"}, {Kind: "unknown", Content: "x"}, {Kind: "snell", Format: "surge", Content: "x"}, {Kind: "snell", Content: "# empty"}, {Kind: "vless", Content: "# empty"}} {
+		if _, err := svc.CheckSource(context.Background(), tt); err == nil {
 			t.Fatalf("invalid input accepted: %+v", tt)
 		}
 	}
@@ -108,7 +122,7 @@ func TestApp_CheckSubscriptionFailures(t *testing.T) {
 type failedCheckFetcher struct{}
 
 // T-APP-CHECK-004: source hints retain URL detection without fetching already-read bodies.
-func TestApp_CheckSubscriptionSourceLocation(t *testing.T) {
+func TestApp_CheckSourceSourceLocation(t *testing.T) {
 	svc := NewWithRuntime("", nil, failedCheckFetcher{}, generate.Options{})
 	for _, tt := range []struct {
 		name, source, body, want string
@@ -119,7 +133,7 @@ func TestApp_CheckSubscriptionSourceLocation(t *testing.T) {
 		{name: "remote fragments stay invalid", source: "https://example.com/sub.lcf", body: "HK = http, hk.example.com, 80", invalid: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := svc.CheckSubscription(context.Background(), CheckSubscriptionInput{Content: tt.body, SourceLocation: tt.source})
+			got, err := svc.CheckSource(context.Background(), CheckSourceInput{Content: tt.body, SourceLocation: tt.source})
 			if tt.invalid {
 				if err == nil {
 					t.Fatal("remote fragment was accepted without a Proxy section")
@@ -138,9 +152,9 @@ func (failedCheckFetcher) Fetch(_ context.Context, location string) ([]byte, err
 }
 
 // T-APP-CHECK-003: readonly config still permits checks; upstream errors never expose URL tokens.
-func TestApp_CheckSubscriptionReadonlyAndSafeError(t *testing.T) {
+func TestApp_CheckSourceReadonlyAndSafeError(t *testing.T) {
 	svc := NewWithRuntime("https://example.com/config.yaml", nil, failedCheckFetcher{}, generate.Options{})
-	if _, err := svc.CheckSubscription(context.Background(), CheckSubscriptionInput{Content: "anytls://pw@hk.example.com:443#HK"}); err != nil {
+	if _, err := svc.CheckSource(context.Background(), CheckSourceInput{Content: "anytls://pw@hk.example.com:443#HK"}); err != nil {
 		t.Fatal(err)
 	}
 	status, err := svc.Status(context.Background())
@@ -150,7 +164,7 @@ func TestApp_CheckSubscriptionReadonlyAndSafeError(t *testing.T) {
 	if status.Capabilities.ConfigWrite || status.ConfigSource.Writable || status.ConfigSource.Type != "remote" {
 		t.Fatal("inspection changed readonly config contract")
 	}
-	_, err = svc.CheckSubscription(context.Background(), CheckSubscriptionInput{Location: "https://example.com/sub?token=private-check-token"})
+	_, err = svc.CheckSource(context.Background(), CheckSourceInput{Location: "https://example.com/sub?token=private-check-token"})
 	if err == nil || strings.Contains(err.Error(), "private-check-token") {
 		t.Fatalf("want sanitized upstream failure, got %v", err)
 	}

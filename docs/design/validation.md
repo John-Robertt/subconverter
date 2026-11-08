@@ -26,9 +26,7 @@
 
 重点规则：
 
-- 校验 `subscriptions[]` 的来源互斥、URL、正文和本地文件字段；完整约束见 [配置规约](config-schema.md#subscriptions)
-- `snell[].url` 必填，必须为 HTTP(S) URL
-- `vless[].url` 必填，必须为 HTTP(S) URL
+- 校验 `subscriptions[]`、`snell[]`、`vless[]` 的来源互斥、URL、正文和本地文件字段；节点池不接受订阅的 `format` 字段，完整约束见 [配置规约](config-schema.md#拉取来源的输入与展示)
 - `custom_proxies[].name` 必填；不带 `relay_through` 的节点允许重名，带 `relay_through` 的名称会成为链式组名，仍受组命名空间唯一性约束
 - `custom_proxies[].url` 必填；scheme 必须是 `ss://`、`socks5://` 或 `http://`；URL 解析失败（host/port 缺失、port 越界、SS userinfo 解码失败、SS plugin 选项格式错误等）记为字段错误
 - `custom_proxies[].url` 为 SS 时还需含 `cipher` + `password`（base64/明文 userinfo 解码后必须形如 `method:password`）
@@ -67,8 +65,8 @@
 - TXT 响应体可为 Base64 编码的 SS / AnyTLS URI 列表，或明文 SS / AnyTLS 列表（SS: SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`；AnyTLS: `anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）；非 Base64 且不像明文订阅列表的内容视为订阅内容格式错误
 - Snell 来源拉取结果不得为空（0 个有效节点报同类错误）
 - VLESS 来源拉取结果不得为空（0 个有效节点报同类错误）
-- Snell 来源中单行解析失败整源报错（与 `subscriptions` 的静默跳过不同，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
-- VLESS 来源中单行解析失败整源报错（与 Snell 一致，详见 `pipeline.md`）；错误消息附带脱敏后的来源 URL 和 1-based 物理行号
+- Snell 来源中单行解析失败整源报错（与 `subscriptions` 的静默跳过不同，详见 `pipeline.md`）；错误消息附带来源 URL、本地文件路径或正文字段位置，以及 1-based 物理行号；URL 脱敏
+- VLESS 来源中单行解析失败整源报错（与 Snell 一致，详见 `pipeline.md`）；来源位置和行号遵循上述规则
 - 节点在创建阶段获得非零、Build 内唯一且不复用的 ID：Source 分配原始节点，Group 分配链式节点；候选节点名允许跨来源或在自定义代理之间重复
 - `relay_through.type=group` 引用的节点组必须存在
 - SS / AnyTLS URI 中端口值必须在 1-65535 范围内；Snell / VLESS 节点的 port 字段同理
@@ -122,8 +120,8 @@
 补充说明：
 
 - `BuildError` 的 `Error()` 文本格式保持稳定；需要补充来源上下文时，可通过 `Cause` / `Unwrap()` 保留内层根因链
-- 当前 Snell 单行失败路径采用“外层 `BuildError` 提供来源 URL + 物理行号，内层解析错误保留具体语法原因”的模式
-- 当前 VLESS 单行失败路径采用与 Snell 相同的“外层 `BuildError` 提供来源 URL + 物理行号，内层解析错误保留具体语法原因”的模式
+- 当前 Snell 单行失败路径采用“外层 `BuildError` 提供来源位置 + 物理行号，内层解析错误保留具体语法原因”的模式
+- 当前 VLESS 单行失败路径采用与 Snell 相同的“外层 `BuildError` 提供来源位置 + 物理行号，内层解析错误保留具体语法原因”的模式
 
 HTTP 层映射：
 

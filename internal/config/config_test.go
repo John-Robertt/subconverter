@@ -275,9 +275,9 @@ subscriptions:
 
 func TestSources_MarshalYAMLUsesFetchOrderAndCustomLast(t *testing.T) {
 	s := Sources{
-		Subscriptions: []Subscription{{URL: "https://example.com/sub"}},
-		Snell:         []SnellSource{{URL: "https://example.com/snell"}},
-		VLess:         []VLessSource{{URL: "https://example.com/vless"}},
+		Subscriptions: []Source{{URL: "https://example.com/sub"}},
+		Snell:         []Source{{URL: "https://example.com/snell"}},
+		VLess:         []Source{{URL: "https://example.com/vless"}},
 		CustomProxies: []CustomProxy{{Name: "local", URL: "socks5://127.0.0.1:1080"}},
 		FetchOrder:    []string{"vless", "subscriptions", "snell"},
 	}

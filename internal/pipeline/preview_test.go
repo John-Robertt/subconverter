@@ -103,7 +103,7 @@ func previewRuntimeConfig(t *testing.T, subURL, exclude string) *config.RuntimeC
 	t.Helper()
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
 			CustomProxies: []config.CustomProxy{
 				customProxy("SS-Chain", "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388", &config.RelayThrough{Type: "all", Strategy: "select"}),
 			},

@@ -69,7 +69,7 @@ func assertSequentialProxyIDs(t *testing.T, proxies []model.Proxy) {
 func TestSource_SingleSubscription(t *testing.T) {
 	body := mustReadFile(t, "../../testdata/subscriptions/sample.txt")
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub1.example.com/api?token=secret"},
 	}
 
@@ -106,7 +106,7 @@ func TestSource_SubscriptionAnyTLSBase64(t *testing.T) {
 		"anytls://1b3614e427e3451b@demo.com:3814/?peer=cache-proxy.example.com&insecure=1#HK-AnyTLS-02",
 	)
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/anytls"}}
+	cfg.Sources.Subscriptions = []config.Source{{URL: "https://sub.example.com/anytls"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{"https://sub.example.com/anytls": body}}
 
@@ -134,7 +134,7 @@ func TestSource_SubscriptionAnyTLSBase64(t *testing.T) {
 func TestSource_SubscriptionAnyTLSPlainText(t *testing.T) {
 	body := []byte("anytls=demo.com:3383, password=secret, tls-host=edge.example.com, tls-verification=false, tag=HK-AnyTLS\n")
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/plain-anytls"}}
+	cfg.Sources.Subscriptions = []config.Source{{URL: "https://sub.example.com/plain-anytls"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{"https://sub.example.com/plain-anytls": body}}
 
@@ -157,7 +157,7 @@ func TestSource_MultiSubscriptionMerge(t *testing.T) {
 	body2 := mustReadFile(t, "../../testdata/subscriptions/sample_sub2.txt")
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub1.example.com"},
 		{URL: "https://sub2.example.com"},
 	}
@@ -197,7 +197,7 @@ func TestSource_CrossSubscriptionDuplicateNamesGetDistinctIDs(t *testing.T) {
 	sub := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@a.example.com:8388#NODE-A")
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub1.example.com"},
 		{URL: "https://sub2.example.com"},
 		{URL: "https://sub3.example.com"},
@@ -368,7 +368,7 @@ func TestSource_CustomAndSubscriptionMayShareDisplayName(t *testing.T) {
 	sub := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-ISP")
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com"},
 	}
 	cfg.Sources.CustomProxies = []config.CustomProxy{
@@ -394,7 +394,7 @@ func TestSource_CustomAndSubscriptionMayShareDisplayName(t *testing.T) {
 
 func TestSource_FetchError(t *testing.T) {
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com/api?token=secret"},
 	}
 
@@ -413,7 +413,7 @@ func TestSource_FetchError(t *testing.T) {
 
 func TestSource_InvalidBase64Response(t *testing.T) {
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com"},
 	}
 
@@ -449,7 +449,7 @@ func TestSource_PlainTextSSSubscription(t *testing.T) {
 	}, "\n"))
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com/ss.txt"},
 	}
 
@@ -486,7 +486,7 @@ func TestSource_PlainTextQuanXSSSubscription(t *testing.T) {
 	}, "\n"))
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com/quanx-ss.txt"},
 	}
 
@@ -528,7 +528,7 @@ func TestSource_PlainTextSurgeSSSubscription(t *testing.T) {
 	}, "\n"))
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com/surge-ss.txt"},
 	}
 
@@ -568,7 +568,7 @@ func TestSource_PlainTextSSSubscriptionSkipsInvalidLines(t *testing.T) {
 	}, "\n"))
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com/ss.txt"},
 	}
 
@@ -593,7 +593,7 @@ func TestSource_PlainTextSSSubscriptionSkipsInvalidLines(t *testing.T) {
 // the same empty-subscription error as base64 subscriptions.
 func TestSource_PlainTextSSSubscriptionOnlyInvalidLinesIsEmpty(t *testing.T) {
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com/ss.txt"},
 	}
 
@@ -617,7 +617,7 @@ func TestSource_PlainTextSSSubscriptionOnlyInvalidLinesIsEmpty(t *testing.T) {
 
 func TestSource_EmptySubscription(t *testing.T) {
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com"},
 	}
 
@@ -650,7 +650,7 @@ func TestSource_MixedValidInvalidURIs(t *testing.T) {
 	)
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com"},
 	}
 
@@ -680,7 +680,7 @@ func TestSource_SubscriptionAndCustomCombined(t *testing.T) {
 	sub := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01")
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com"},
 	}
 	cfg.Sources.CustomProxies = []config.CustomProxy{
@@ -702,7 +702,7 @@ func TestSource_SubscriptionAndCustomCombined(t *testing.T) {
 		t.Fatalf("got %d proxies, want 2", len(proxies))
 	}
 
-	// Subscription nodes come first, then custom.
+	// Source nodes come first, then custom.
 	if proxies[0].Kind != model.KindSubscription {
 		t.Errorf("proxy[0].Kind = %q, want subscription", proxies[0].Kind)
 	}
@@ -721,7 +721,7 @@ func TestSource_NaturalSuffixDoesNotTriggerSourceRenaming(t *testing.T) {
 	)
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{
+	cfg.Sources.Subscriptions = []config.Source{
 		{URL: "https://sub.example.com"},
 	}
 
@@ -777,7 +777,7 @@ func TestSource_SnellSource(t *testing.T) {
 		"\n" +
 		"SG-Snell = snell, 5.6.7.8, 8989, psk=yyy, version=4\n")
 	cfg := baseCfg()
-	cfg.Sources.Snell = []config.SnellSource{
+	cfg.Sources.Snell = []config.Source{
 		{URL: "https://example.com/snell-nodes.txt"},
 	}
 
@@ -805,7 +805,7 @@ func TestSource_SnellSource(t *testing.T) {
 	}
 }
 
-// T-SRC-SNELL-002: Subscription and Snell names may overlap; IDs do not.
+// T-SRC-SNELL-002: Source and Snell names may overlap; IDs do not.
 func TestSource_SnellAndSubscriptionDuplicateNamesGetDistinctIDs(t *testing.T) {
 	// SS subscription with name "HK-01".
 	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01")
@@ -813,8 +813,8 @@ func TestSource_SnellAndSubscriptionDuplicateNamesGetDistinctIDs(t *testing.T) {
 	snellBody := []byte("HK-01 = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
-	cfg.Sources.Snell = []config.SnellSource{{URL: "https://example.com/snell.txt"}}
+	cfg.Sources.Subscriptions = []config.Source{{URL: "https://sub.example.com/api"}}
+	cfg.Sources.Snell = []config.Source{{URL: "https://example.com/snell.txt"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://sub.example.com/api":   subBody,
@@ -848,7 +848,7 @@ func TestSource_MultiSnellDuplicateNamesGetDistinctIDs(t *testing.T) {
 	body2 := []byte("SG-01 = snell, 5.6.7.8, 8989, psk=yyy, version=4\n")
 
 	cfg := baseCfg()
-	cfg.Sources.Snell = []config.SnellSource{{URL: url1}, {URL: url2}}
+	cfg.Sources.Snell = []config.Source{{URL: url1}, {URL: url2}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		url1: body1,
@@ -887,7 +887,7 @@ func TestSource_SnellSource_MalformedLineFailsFast(t *testing.T) {
 		"INVALID = snell, 1.2.3.4, no-port-here\n") // malformed
 
 	cfg := baseCfg()
-	cfg.Sources.Snell = []config.SnellSource{{URL: "https://example.com/snell.txt?token=secret"}}
+	cfg.Sources.Snell = []config.Source{{URL: "https://example.com/snell.txt?token=secret"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://example.com/snell.txt?token=secret": body,
@@ -935,7 +935,7 @@ func TestSource_SnellSource_EmptyReported(t *testing.T) {
 	body := []byte("# only comments here\n\n// nothing else\n")
 
 	cfg := baseCfg()
-	cfg.Sources.Snell = []config.SnellSource{{URL: "https://example.com/snell.txt?token=secret"}}
+	cfg.Sources.Snell = []config.Source{{URL: "https://example.com/snell.txt?token=secret"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://example.com/snell.txt?token=secret": body,
@@ -976,7 +976,7 @@ func TestSource_VLessSourceBasic(t *testing.T) {
 		vlessURIFor("SG-VL", "sg.example.com", 443) + "\n")
 
 	cfg := baseCfg()
-	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt"}}
+	cfg.Sources.VLess = []config.Source{{URL: "https://example.com/vless.txt"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://example.com/vless.txt": body,
@@ -1007,7 +1007,7 @@ func TestSource_VLessUnknownTypeFallsBackAndEncryptionPassesThrough(t *testing.T
 	)
 
 	cfg := baseCfg()
-	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt"}}
+	cfg.Sources.VLess = []config.Source{{URL: "https://example.com/vless.txt"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://example.com/vless.txt": body,
@@ -1036,7 +1036,7 @@ func TestSource_VLessBadLineAbortsSource(t *testing.T) {
 		"vless://not-a-uuid@example.com:443?type=tcp#bad\n") // bad uuid
 
 	cfg := baseCfg()
-	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt?token=secret"}}
+	cfg.Sources.VLess = []config.Source{{URL: "https://example.com/vless.txt?token=secret"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://example.com/vless.txt?token=secret": body,
@@ -1074,7 +1074,7 @@ func TestSource_VLessSource_EmptyReported(t *testing.T) {
 	body := []byte("# only comments\n\n// nothing else\n")
 
 	cfg := baseCfg()
-	cfg.Sources.VLess = []config.VLessSource{{URL: "https://example.com/vless.txt?token=secret"}}
+	cfg.Sources.VLess = []config.Source{{URL: "https://example.com/vless.txt?token=secret"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://example.com/vless.txt?token=secret": body,
@@ -1099,7 +1099,7 @@ func TestSource_VLessSource_EmptyReported(t *testing.T) {
 	}
 }
 
-// T-SRC-VLESS-SRC-005: Subscription, Snell and VLESS may share a display name
+// T-SRC-VLESS-SRC-005: Source, Snell and VLESS may share a display name
 // while remaining distinct nodes by ID.
 func TestSource_VLessSharesDisplayNameWithSSAndSnell(t *testing.T) {
 	subBody := makeSubResponse("ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@hk.example.com:8388#HK-01")
@@ -1107,9 +1107,9 @@ func TestSource_VLessSharesDisplayNameWithSSAndSnell(t *testing.T) {
 	vlessBody := []byte(vlessURIFor("HK-01", "hk.example.com", 443) + "\n")
 
 	cfg := baseCfg()
-	cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
-	cfg.Sources.Snell = []config.SnellSource{{URL: "https://snell.example.com/s.txt"}}
-	cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
+	cfg.Sources.Subscriptions = []config.Source{{URL: "https://sub.example.com/api"}}
+	cfg.Sources.Snell = []config.Source{{URL: "https://snell.example.com/s.txt"}}
+	cfg.Sources.VLess = []config.Source{{URL: "https://vless.example.com/v.txt"}}
 
 	f := &fakeFetcher{responses: map[string][]byte{
 		"https://sub.example.com/api":     subBody,
@@ -1140,7 +1140,7 @@ func TestSource_VLessAndCustomDuplicateNamesGetDistinctIDs(t *testing.T) {
 	vlessBody := []byte(vlessURIFor("HK-01", "hk.example.com", 443) + "\n")
 
 	cfg := baseCfg()
-	cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
+	cfg.Sources.VLess = []config.Source{{URL: "https://vless.example.com/v.txt"}}
 	cfg.Sources.CustomProxies = []config.CustomProxy{{
 		Name: "HK-01",
 		URL:  "socks5://1.2.3.4:1080",
@@ -1211,9 +1211,9 @@ func TestSource_RespectsFetchOrder(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := baseCfg()
-			cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
-			cfg.Sources.Snell = []config.SnellSource{{URL: "https://snell.example.com/s.txt"}}
-			cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
+			cfg.Sources.Subscriptions = []config.Source{{URL: "https://sub.example.com/api"}}
+			cfg.Sources.Snell = []config.Source{{URL: "https://snell.example.com/s.txt"}}
+			cfg.Sources.VLess = []config.Source{{URL: "https://vless.example.com/v.txt"}}
 			cfg.Sources.FetchOrder = tc.order
 
 			f := &fakeFetcher{responses: map[string][]byte{
@@ -1256,21 +1256,21 @@ func TestSource_ChainGroupAndFetchedNodeMayShareDisplayName(t *testing.T) {
 		{
 			name: "subscription",
 			setupCfg: func(cfg *config.Config) {
-				cfg.Sources.Subscriptions = []config.Subscription{{URL: "https://sub.example.com/api"}}
+				cfg.Sources.Subscriptions = []config.Source{{URL: "https://sub.example.com/api"}}
 			},
 			responses: map[string][]byte{"https://sub.example.com/api": subBody},
 		},
 		{
 			name: "snell",
 			setupCfg: func(cfg *config.Config) {
-				cfg.Sources.Snell = []config.SnellSource{{URL: "https://snell.example.com/s.txt"}}
+				cfg.Sources.Snell = []config.Source{{URL: "https://snell.example.com/s.txt"}}
 			},
 			responses: map[string][]byte{"https://snell.example.com/s.txt": snellBody},
 		},
 		{
 			name: "vless",
 			setupCfg: func(cfg *config.Config) {
-				cfg.Sources.VLess = []config.VLessSource{{URL: "https://vless.example.com/v.txt"}}
+				cfg.Sources.VLess = []config.Source{{URL: "https://vless.example.com/v.txt"}}
 			},
 			responses: map[string][]byte{"https://vless.example.com/v.txt": vlessBody},
 		},

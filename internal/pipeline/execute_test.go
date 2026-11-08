@@ -23,7 +23,7 @@ func TestExecute_HappyPath(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
 		},
 		Groups:  mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
 		Routing: mustRoutingMap(t, `"proxy": ["HK", "DIRECT"]`),
@@ -76,7 +76,7 @@ func TestExecute_AnyTLSEndToEnd(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
 		},
 		Filters:  config.Filters{Exclude: "Traffic"},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
@@ -125,7 +125,7 @@ SG-CONF = trojan, sg.example.com, 443, password=pw
 	}}
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: clashURL}, {URL: surgeURL}},
+			Subscriptions: []config.Source{{URL: clashURL}, {URL: surgeURL}},
 		},
 		Filters: config.Filters{Exclude: "Traffic"},
 		Groups: mustGroupsMap(t,
@@ -165,7 +165,7 @@ func TestExecute_FetchError(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: "https://sub.example.com/api"}},
+			Subscriptions: []config.Source{{URL: "https://sub.example.com/api"}},
 		},
 		Routing:  mustRoutingMap(t, `"proxy": ["DIRECT"]`),
 		Fallback: "proxy",
@@ -203,8 +203,8 @@ func TestExecute_SnellSourceEndToEnd(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
-			Snell:         []config.SnellSource{{URL: snellURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
+			Snell:         []config.Source{{URL: snellURL}},
 		},
 		Groups: mustGroupsMap(t,
 			`"HK": { match: "(HK)", strategy: select }
@@ -289,7 +289,7 @@ func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Snell: []config.SnellSource{{URL: snellURL}},
+			Snell: []config.Source{{URL: snellURL}},
 			CustomProxies: []config.CustomProxy{
 				customProxy("MY-PROXY", "socks5://u:p@10.0.0.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
 			},
@@ -346,7 +346,7 @@ func TestExecute_SnellFilterAppliesExclude(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Snell: []config.SnellSource{{URL: snellURL}},
+			Snell: []config.Source{{URL: snellURL}},
 		},
 		Filters:  config.Filters{Exclude: "(过期)"},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
@@ -380,7 +380,7 @@ func TestExecute_FilterExcludes(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
 		},
 		Filters:  config.Filters{Exclude: "(过期)"},
 		Groups:   mustGroupsMap(t, `"HK": { match: "(HK)", strategy: select }`),
@@ -428,8 +428,8 @@ func TestExecute_VLessEndToEnd(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
-			VLess:         []config.VLessSource{{URL: vlessURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
+			VLess:         []config.Source{{URL: vlessURL}},
 		},
 		Groups: mustGroupsMap(t,
 			`"HK": { match: "(HK)", strategy: select }
@@ -522,7 +522,7 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			VLess: []config.VLessSource{{URL: vlessURL}},
+			VLess: []config.Source{{URL: vlessURL}},
 			CustomProxies: []config.CustomProxy{
 				customProxy("MY-PROXY", "socks5://u:p@10.0.0.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
 			},
@@ -583,7 +583,7 @@ func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 	// same name, triggering a duplicate-declaration error at ValidateGraph.
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
 			CustomProxies: []config.CustomProxy{
 				customProxy("HK-ISP", "socks5://1.1.1.1:1080", &config.RelayThrough{Type: "all", Strategy: "select"}),
 			},
@@ -622,7 +622,7 @@ func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
 			CustomProxies: []config.CustomProxy{
 				customProxy("MY-SS", "ss://YWVzLTI1Ni1nY206bXlwYXNz@1.2.3.4:8388", nil),
 			},
@@ -701,7 +701,7 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 
 	cfg := &config.Config{
 		Sources: config.Sources{
-			Subscriptions: []config.Subscription{{URL: subURL}},
+			Subscriptions: []config.Source{{URL: subURL}},
 			CustomProxies: []config.CustomProxy{
 				customProxy("SS-Chain", "ss://YWVzLTI1Ni1nY206Y2hhaW5wYXNz@1.2.3.4:8388?plugin=obfs-local%3Bobfs%3Dhttp", &config.RelayThrough{Type: "all", Strategy: "select"}),
 			},

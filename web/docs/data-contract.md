@@ -139,8 +139,8 @@ API client 归一化错误对象至少包含：
 `GenerateFormat` 包含 `loon`。来源编辑器保留 `sources.subscriptions[].format`（枚举见配置规约），设置页保留 `templates.loon`；读取、修改 URL、保存和导入导出均保持这些字段。下载页以相同运行时 revision 请求 Loon 预览与订阅链接。字段权威定义见 [配置规约](../../docs/design/config-schema.md#subscriptions)，输出语义见 [Loon 渲染](../../docs/design/rendering.md#loon)。
 
 
-正文编辑使用 `sources.subscriptions[].content` 和 `templates.inline`，与相应 URL／路径互斥；完整字段定义见 [配置规约](../../docs/design/config-schema.md#subscriptions)。模板读取使用 `api.readResource(location)`；节点订阅使用 `api.checkSubscription`，契约见 [订阅检查 API](../../docs/design/api.md#post-apisubscriptionscheck)。
+三类来源正文编辑共用 `name`、`content`、`content_file`；模板使用 `templates.inline`，正文均与相应 URL／路径互斥。完整字段定义见 [配置规约](../../docs/design/config-schema.md#拉取来源的输入与展示)。模板读取使用 `api.readResource(location)`；节点来源使用 `api.checkSource` 并携带 `kind`，契约见 [来源检查 API](../../docs/design/api.md#post-apisubscriptionscheck)。
 
 `GET /api/config` 展开可读正文供编辑；不可读的 `content_file` 或模板路径保留原引用，编辑器允许修复或删除。保存正文时，后端生成时间戳文件并写入引用。正文目录写入错误使用 `409 resource_content_write_failed`，前端保留草稿与编辑能力。
 
-`api.checkSubscription` 返回 `recognized` 或 `ambiguous`。格式、节点数、完整输出兼容性均由后端返回；检查链接保留 URL，显式复制时才使用返回的 `content`。过期响应应丢弃，输入变更后清除检查结果；歧义未解决或检查失败时禁用“保存来源”。
+`api.checkSource` 返回 `recognized` 或 `ambiguous`。格式、节点数、完整输出兼容性均由后端返回；检查链接保留 URL，显式复制时才使用返回的 `content`。过期响应应丢弃，输入变更后清除检查结果；歧义未解决或检查失败时禁用“保存来源”。

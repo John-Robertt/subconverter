@@ -1,28 +1,33 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { SubscriptionCheckResult, SubscriptionFormat } from "../api/types";
+import type { FetchSourceKind, SourceCheckResult, SubscriptionFormat } from "../api/types";
 import { useResourceContent } from "../features/useResourceContent";
 import { ResourceBody } from "./ResourceBody";
 import { Button, Field, SelectInput, TextInput } from "./ui";
 
-export interface SubscriptionEditorValue {
+export interface SourceEditorValue {
+  name?: string;
   location: string;
   content?: string;
   format?: SubscriptionFormat;
-  inspection?: SubscriptionCheckResult;
+  inspection?: SourceCheckResult;
 }
 
 export const subscriptionFormatLabels = { text: "节点列表", clash: "Clash 配置", surge: "Surge 配置", loon: "Loon 配置" };
 const outputLabels = { clash: "Clash Meta", surge: "Surge", loon: "Loon" };
 
-export function SubscriptionEditor({ value, fileReference, readonly, onChange, pointer }: {
-  value: SubscriptionEditorValue;
+export function SourceEditor({ kind, value, fileReference, readonly, onChange, pointer }: {
+  kind: FetchSourceKind;
+  value: SourceEditorValue;
   fileReference: boolean;
   readonly: boolean;
   pointer?: string;
-  onChange: (patch: Partial<SubscriptionEditorValue>) => void;
+  onChange: (patch: Partial<SourceEditorValue>) => void;
 }) {
   const { location, content, inspection, format = "auto" } = value;
+  const subscription = kind === "subscriptions";
+  const nameLabel = subscription ? "订阅名称" : "节点池名称";
+  const poolLabel = kind === "snell" ? "Snell 节点池" : "VLESS 节点池";
   const inline = content !== undefined;
   const address = location.trim();
   const validAddress = /^https?:\/\//.test(address) || (fileReference && !address.includes("://"));
@@ -36,7 +41,7 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange, p
   const readError = !inline && address && !validAddress
     ? "请输入 HTTP(S) 订阅地址；单个节点请粘贴到“本地正文”。"
     : resource.error;
-  const publish = useEffectEvent((result?: SubscriptionCheckResult) => onChange({ inspection: result }));
+  const publish = useEffectEvent((result?: SourceCheckResult) => onChange({ inspection: result }));
 
   // Inspect downloaded bytes without re-fetching or discarding invalid content.
   useEffect(() => {
@@ -52,7 +57,7 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange, p
     publish();
     const timer = window.setTimeout(async () => {
       try {
-        const result = await api.checkSubscription({ content: body, format, source_location: inline ? undefined : address }, controller.signal);
+        const result = await api.checkSource({ kind, content: body, format: subscription ? format : undefined, source_location: inline ? undefined : address }, controller.signal);
         if (current) publish(result);
       } catch (err) {
         if (current) {
@@ -68,9 +73,9 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange, p
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [body, format, inline, address, attempt, resource.loading, readError]);
+  }, [kind, body, format, inline, address, attempt, resource.loading, readError]);
 
-  function edit(patch: Partial<SubscriptionEditorValue>) {
+  function edit(patch: Partial<SourceEditorValue>) {
     setError("");
     onChange({ ...patch, inspection: undefined });
   }
@@ -97,6 +102,10 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange, p
 
   return (
     <div className="form-stack subscription-editor">
+      <Field label={nameLabel} hint="可选，用于区分来源；不改变节点名称。">
+        <TextInput data-config-pointer={pointer ? `${pointer}/name` : undefined} aria-label={nameLabel} value={value.name ?? ""} disabled={readonly}
+          onChange={(event) => onChange({ name: event.target.value })} />
+      </Field>
       <div className="subscription-modes" role="group" aria-label="来源方式">
         <Button variant={inline ? "ghost" : "primary"} aria-pressed={!inline} disabled={readonly} onClick={() => switchMode(false)}>{fileReference ? "文件引用" : "订阅链接"}</Button>
         <Button variant={inline ? "primary" : "ghost"} aria-pressed={inline} disabled={readonly || (!inline && resource.loading)} onClick={() => switchMode(true)}>本地正文</Button>
@@ -109,8 +118,8 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange, p
       <p className="field-hint" role="status">{resource.loading ? "正在读取订阅…" : readError ? "订阅读取失败" : checking ? "正文已读取，正在检查格式…" : body !== undefined ? "正文已就绪" : "请填写订阅地址或粘贴本地正文。"}</p>
       {readError || error ? <div className="field-error" role="alert">{readError || error}</div> : null}
       {inspection ? <div className="subscription-result" role="status">
-        {inspection.status === "recognized" && inspection.format ? <>
-          <strong>已识别：{subscriptionFormatLabels[inspection.format]} · {inspection.node_count} 个节点</strong>
+        {inspection.status === "recognized" && (inspection.format || !subscription) ? <>
+          <strong>已识别：{subscription ? subscriptionFormatLabels[inspection.format!] : poolLabel} · {inspection.node_count} 个节点</strong>
           <span>可完整用于：{inspection.output_formats.map((item) => outputLabels[item]).join("、") || "当前节点未通过输出兼容检查"}</span>
         </> : <>
           <strong>发现 {inspection.node_count} 条节点声明，需要确认格式</strong>
@@ -119,12 +128,12 @@ export function SubscriptionEditor({ value, fileReference, readonly, onChange, p
             <Button key={candidate} disabled={readonly} onClick={() => edit({ format: candidate })}>{outputLabels[candidate]}</Button>)}</div>
         </>}
       </div> : null}
-      <Field label="按哪种格式解析">
+      {subscription ? <Field label="按哪种格式解析">
         <SelectInput data-config-pointer={pointer ? `${pointer}/format` : undefined} aria-label="按哪种格式解析" value={format} disabled={readonly} onChange={(event) => edit({ format: event.target.value as SubscriptionFormat })}>
           <option value="auto">按内容识别</option>
           {Object.entries(subscriptionFormatLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
         </SelectInput>
-      </Field>
+      </Field> : <p className="field-hint">{poolLabel}逐行检查，任一行错误都会阻止应用到草稿。</p>}
       <ResourceBody label="节点正文" content={body} readOnly={readonly || !inline} expanded={expanded}
         onToggle={() => setExpanded((current) => !current)} onChange={(text) => edit({ content: text })}
         actions={<>

@@ -325,7 +325,7 @@ func TestImportConfigArchiveDraftSaveExport(t *testing.T) {
 	}
 	// Edit the same body returned by import, then publish it through SaveConfig.
 	cfg.Templates.Inline["clash"] = "mixed-port: 17890\n"
-	cfg.Sources.Subscriptions = []config.Subscription{{Format: "text", Content: "anytls://pw@hk.example.com:443#HK"}}
+	cfg.Sources.Subscriptions = []config.Source{{Format: "text", Content: "anytls://pw@hk.example.com:443#HK"}}
 	edited, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)

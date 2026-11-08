@@ -11,14 +11,15 @@ import (
 	"github.com/John-Robertt/subconverter/internal/pipeline"
 )
 
-type CheckSubscriptionInput struct {
+type CheckSourceInput struct {
+	Kind           string `json:"kind,omitempty"`
 	Location       string `json:"location,omitempty"`
 	Content        string `json:"content,omitempty"`
 	SourceLocation string `json:"source_location,omitempty"`
 	Format         string `json:"format,omitempty"`
 }
 
-type CheckSubscriptionResult struct {
+type CheckSourceResult struct {
 	Status        string   `json:"status"`
 	Format        string   `json:"format,omitempty"`
 	NodeCount     int      `json:"node_count"`
@@ -27,11 +28,22 @@ type CheckSubscriptionResult struct {
 	Content       string   `json:"content"`
 }
 
-// CheckSubscription reads and parses a copy; it never saves a config or changes runtime state.
-func (s *Service) CheckSubscription(ctx context.Context, input CheckSubscriptionInput) (*CheckSubscriptionResult, error) {
+// CheckSource reads and parses a copy; it never saves a config or changes runtime state.
+func (s *Service) CheckSource(ctx context.Context, input CheckSourceInput) (*CheckSourceResult, error) {
 	input.Location = strings.TrimSpace(input.Location)
 	if (input.Location == "") == (strings.TrimSpace(input.Content) == "") {
 		return nil, newBadRequestError("invalid_request", "location 与 content 必须且只能填写一个")
+	}
+	if input.Kind == "" {
+		input.Kind = "subscriptions"
+	}
+	switch input.Kind {
+	case "subscriptions", "snell", "vless":
+	default:
+		return nil, newBadRequestError("invalid_request", "来源类型必须为 subscriptions、snell 或 vless")
+	}
+	if input.Kind != "subscriptions" && input.Format != "" {
+		return nil, newBadRequestError("invalid_request", "节点池格式由来源类型决定，无需填写 format")
 	}
 	switch input.Format {
 	case "", "auto", "text", "clash", "surge", "loon":
@@ -68,15 +80,22 @@ func (s *Service) CheckSubscription(ctx context.Context, input CheckSubscription
 	if !utf8.Valid(body) || strings.ContainsRune(string(body), '\x00') {
 		return nil, newBadRequestError(string(errtype.CodeFetchSubscriptionFormatInvalid), "订阅必须为 UTF-8 文本")
 	}
-	inspection, err := pipeline.InspectSubscription(origin, body, input.Format, inline)
+	if origin == "" {
+		origin = "inline:" + input.Kind
+	}
+	inspection, err := pipeline.InspectSource(input.Kind, origin, body, input.Format, inline)
 	if err != nil {
 		var parseErr *errtype.FetchError
 		if errors.As(err, &parseErr) {
 			return nil, newBadRequestError(string(parseErr.Code), parseErr.Message)
 		}
+		var poolErr *errtype.BuildError
+		if errors.As(err, &poolErr) {
+			return nil, newBadRequestError(string(poolErr.Code), poolErr.Message)
+		}
 		return nil, newBadRequestError(string(errtype.CodeFetchSubscriptionFormatInvalid), "无法提取订阅节点，请检查内容或更正格式")
 	}
-	result := &CheckSubscriptionResult{Status: "recognized", Format: inspection.Format, NodeCount: len(inspection.Proxies), OutputFormats: []string{}, Content: string(body)}
+	result := &CheckSourceResult{Status: "recognized", Format: inspection.Format, NodeCount: len(inspection.Proxies), OutputFormats: []string{}, Content: string(body)}
 	if len(inspection.Candidates) > 0 {
 		result.Status = "ambiguous"
 		result.Candidates = inspection.Candidates

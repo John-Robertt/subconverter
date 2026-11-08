@@ -6,23 +6,35 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// SubscriptionInspection describes parsed nodes without applying global filters or groups.
-type SubscriptionInspection struct {
+// SourceInspection describes parsed nodes without applying global filters or groups.
+type SourceInspection struct {
 	Format     string
 	Candidates []string
 	Proxies    []model.Proxy
 }
 
+// InspectSource parses a source copy without applying global filters or groups.
+func InspectSource(kind, location string, body []byte, format string, allowFragment bool) (*SourceInspection, error) {
+	if kind == "subscriptions" {
+		return InspectSubscription(location, body, format, allowFragment)
+	}
+	proxies, err := parseNodePool(kind, location, body)
+	if err != nil {
+		return nil, err
+	}
+	return &SourceInspection{Proxies: assignProxyIDs(proxies)}, nil
+}
+
 // InspectSubscription prefers document evidence and asks the caller to resolve ambiguous INI syntax.
 // The legacy Source auto-selection order is intentionally unchanged.
-func InspectSubscription(location string, body []byte, format string, allowFragment bool) (*SubscriptionInspection, error) {
+func InspectSubscription(location string, body []byte, format string, allowFragment bool) (*SourceInspection, error) {
 	if format == "" || format == "auto" {
 		if document, _ := parseClashSubscriptionDocument(body, false); document != nil {
 			format = "clash"
 		} else {
 			if !hasINISection(string(body)) {
 				if proxies, _, err := parseSubscriptionBody(location, body, "text", allowFragment); err == nil {
-					return &SubscriptionInspection{Format: "text", Proxies: assignProxyIDs(proxies)}, nil
+					return &SourceInspection{Format: "text", Proxies: assignProxyIDs(proxies)}, nil
 				}
 			}
 			format = inspectINIFormat(location, string(body), allowFragment)
@@ -31,7 +43,7 @@ func InspectSubscription(location string, body []byte, format string, allowFragm
 				if err != nil {
 					return nil, err
 				}
-				return &SubscriptionInspection{Format: "text", Proxies: assignProxyIDs(proxies)}, nil
+				return &SourceInspection{Format: "text", Proxies: assignProxyIDs(proxies)}, nil
 			}
 		}
 	}
@@ -40,13 +52,13 @@ func InspectSubscription(location string, body []byte, format string, allowFragm
 		if err != nil {
 			return nil, err
 		}
-		return &SubscriptionInspection{Candidates: []string{"surge", "loon"}, Proxies: assignProxyIDs(proxies)}, nil
+		return &SourceInspection{Candidates: []string{"surge", "loon"}, Proxies: assignProxyIDs(proxies)}, nil
 	}
 	proxies, selected, err := parseSubscriptionBody(location, body, format, allowFragment)
 	if err != nil {
 		return nil, err
 	}
-	return &SubscriptionInspection{Format: selected, Proxies: assignProxyIDs(proxies)}, nil
+	return &SourceInspection{Format: selected, Proxies: assignProxyIDs(proxies)}, nil
 }
 
 func inspectINIFormat(location, body string, allowFragment bool) string {

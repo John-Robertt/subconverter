@@ -41,7 +41,7 @@
 | 路由 | `/sources` |
 | 所属里程碑 | M9 |
 | 字段 / JSON pointer 根 | `/config/sources`、`/config/sources/subscriptions`、`/config/sources/snell`、`/config/sources/vless`、`/config/sources/custom_proxies`、`/config/sources/fetch_order` |
-| 主要动作 | 新增、编辑、删除、排序拉取类来源；订阅链接/正文检查、歧义确认、显式编辑副本；SS 与 AnyTLS 共用 `subscriptions`；编辑 custom proxy 与 `relay_through` |
+| 主要动作 | 新增、编辑、删除、排序拉取类来源；三类来源链接/正文检查、歧义确认、显式编辑副本；SS 与 AnyTLS 共用 `subscriptions`；编辑 custom proxy 与 `relay_through` |
 | 调用 API | 启动加载用 `GET /api/config`；订阅检查用 `POST /api/subscriptions/check`；保存工作流用 `POST /api/config/validate`、`PUT /api/config`；热重载由全局按钮单独调用 `POST /api/reload` |
 | 只读行为 | 禁用新增、编辑、删除、排序和保存；URL 脱敏展示仍可查看 |
 | dirty 行为 | 顶栏提示 reload；离开页面前不自动覆盖草稿 |

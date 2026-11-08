@@ -341,6 +341,6 @@ Vite 配置已把 `/api/*`、`/generate`、`/healthz` 代理到 Go 后端。Cook
 
 正文默认直接写入 `/config`，复用配置目录挂载，不额外创建正文子目录。主配置记录正文文件引用，版本文件的生成与复用遵循下方配置规约。容器运行用户需要对 `/config` 有创建、写入和删除文件的权限；目录写入失败时 Web 提示具体路径并保留草稿。文件格式、权限及版本清理规则见 [配置规约](design/config-schema.md#templates)。
 
-本地开发可用 `-data-dir ./bin/acceptance`，或设置 `SUBCONVERTER_DATA_DIR`；命令行参数优先，默认值为 `/config`。该目录需要随主配置一起持久化。导出 ZIP 会嵌入当前正文，适合跨机器迁移；单独的生效 YAML 仍引用版本文件。
+本地开发可用 `-data-dir ./bin/acceptance`，或设置 `SUBCONVERTER_DATA_DIR`；命令行参数优先，默认值为 `/config`。该目录需要随主配置一起持久化。导出 ZIP 会携带当前正文的独立文件，并将配置中的引用改为包内相对路径，适合跨机器迁移；单独的生效 YAML 仍引用版本文件。包结构见[配置包 API](design/api.md#get-apiconfigeffectivezip)。
 
 主配置可写性契约保持原样：HTTP(S) 主配置只读，本地配置文件或其目录不可写时 Web 禁用编辑。仅正文存储目录不可写而主配置可写时，保存返回 `409 resource_content_write_failed`，修复目录权限后重试。

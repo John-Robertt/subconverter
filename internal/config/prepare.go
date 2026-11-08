@@ -74,9 +74,9 @@ func Prepare(cfg *Config) (*RuntimeConfig, error) {
 func newEmptyRuntimeConfig(cfg *Config) *RuntimeConfig {
 	return &RuntimeConfig{
 		sources: PreparedSources{
-			Subscriptions: append([]Subscription(nil), cfg.Sources.Subscriptions...),
-			Snell:         append([]SnellSource(nil), cfg.Sources.Snell...),
-			VLess:         append([]VLessSource(nil), cfg.Sources.VLess...),
+			Subscriptions: append([]Source(nil), cfg.Sources.Subscriptions...),
+			Snell:         append([]Source(nil), cfg.Sources.Snell...),
+			VLess:         append([]Source(nil), cfg.Sources.VLess...),
 			FetchOrder:    append([]string(nil), cfg.Sources.FetchOrder...),
 		},
 		fallback:  cfg.Fallback,
@@ -93,57 +93,45 @@ func newRegistry() map[string]staticDecl {
 }
 
 func prepareSourceInputs(c *collector, cfg *Config) {
-	for i, sub := range cfg.Sources.Subscriptions {
-		switch sub.Format {
-		case "", "auto", "text", "clash", "surge", "loon":
-		default:
-			c.addCode(valuePath("sources", fmt.Sprintf("subscriptions[%d].format", i)), errtype.CodeConfigInvalidEnum, "必须为 auto、text、clash、surge 或 loon")
-		}
-		loc := valuePath("sources", fmt.Sprintf("subscriptions[%d].url", i))
-		selected := 0
-		for _, value := range []string{sub.URL, sub.Content, sub.ContentFile} {
-			if value != "" {
-				selected++
+	for _, list := range cfg.Sources.Lists() {
+		for i, source := range list.Entries {
+			field := fmt.Sprintf("%s[%d]", list.Kind, i)
+			if list.Kind == "subscriptions" {
+				switch source.Format {
+				case "", "auto", "text", "clash", "surge", "loon":
+				default:
+					c.addCode(valuePath("sources", field+".format"), errtype.CodeConfigInvalidEnum, "必须为 auto、text、clash、surge 或 loon")
+				}
+			} else if source.Format != "" {
+				c.add(valuePath("sources", field+".format"), "节点池格式由来源类型决定，无需填写 format")
+			}
+			loc := valuePath("sources", field+".url")
+			selected := 0
+			for _, value := range []string{source.URL, source.Content, source.ContentFile} {
+				if value != "" {
+					selected++
+				}
+			}
+			if selected == 0 {
+				c.addCode(loc, errtype.CodeConfigRequired, "url、content、content_file 必须填写一个")
+				continue
+			}
+			if selected > 1 {
+				c.add(loc, "url、content、content_file 只能填写一个")
+				continue
+			}
+			if source.Content != "" {
+				if strings.TrimSpace(source.Content) == "" {
+					c.addCode(valuePath("sources", field+".content"), errtype.CodeConfigRequired, "节点正文不能为空")
+				}
+			} else if source.ContentFile != "" {
+				if strings.TrimSpace(source.ContentFile) == "" || strings.Contains(source.ContentFile, "://") {
+					c.add(valuePath("sources", field+".content_file"), "content_file 必须为本地文件路径")
+				}
+			} else {
+				c.validateHTTPURL(loc, source.URL)
 			}
 		}
-		if selected == 0 {
-			c.addCode(loc, errtype.CodeConfigRequired, "url、content、content_file 必须填写一个")
-			continue
-		}
-		if selected > 1 {
-			c.add(loc, "url、content、content_file 只能填写一个")
-			continue
-		}
-		if sub.Content != "" {
-			if strings.TrimSpace(sub.Content) == "" {
-				c.addCode(valuePath("sources", fmt.Sprintf("subscriptions[%d].content", i)), errtype.CodeConfigRequired, "节点正文不能为空")
-			}
-		} else if sub.ContentFile != "" {
-			if strings.TrimSpace(sub.ContentFile) == "" || strings.Contains(sub.ContentFile, "://") {
-				c.add(valuePath("sources", fmt.Sprintf("subscriptions[%d].content_file", i)), "content_file 必须为本地文件路径")
-			}
-		} else {
-			c.validateHTTPURL(loc, sub.URL)
-		}
-
-	}
-
-	for i, s := range cfg.Sources.Snell {
-		loc := valuePath("sources", fmt.Sprintf("snell[%d].url", i))
-		if s.URL == "" {
-			c.addCode(loc, errtype.CodeConfigRequired, "必填")
-			continue
-		}
-		c.validateHTTPURL(loc, s.URL)
-	}
-
-	for i, s := range cfg.Sources.VLess {
-		loc := valuePath("sources", fmt.Sprintf("vless[%d].url", i))
-		if s.URL == "" {
-			c.addCode(loc, errtype.CodeConfigRequired, "必填")
-			continue
-		}
-		c.validateHTTPURL(loc, s.URL)
 	}
 }
 

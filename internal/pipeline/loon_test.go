@@ -44,7 +44,7 @@ func TestSource_LoonDocumentDetection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			url := "https://example.com/sub." + tt.suffix + "?token=secret"
 			body := strings.Replace(loonSubscriptionFixture, "[General]", "[Remote Filter]\n[General]", 1)
-			proxies, err := loadSubscription(context.Background(), &fakeFetcher{responses: map[string][]byte{url: []byte(body)}}, config.Subscription{URL: url, Format: tt.format})
+			proxies, err := loadSubscription(context.Background(), &fakeFetcher{responses: map[string][]byte{url: []byte(body)}}, config.Source{URL: url, Format: tt.format})
 			if err != nil {
 				t.Fatalf("loadSubscription: %v", err)
 			}
@@ -68,7 +68,7 @@ func TestSource_LoonDocumentFailures(t *testing.T) {
 	for _, body := range []string{"[General]\ndns-server=system", "[Proxy]\n# empty\n", "[Proxy]\n= anytls, secret.example.com, 443, private-password\n"} {
 		t.Run(body[:7], func(t *testing.T) {
 			url := "https://example.com/sub.conf?token=private-token"
-			_, err := loadSubscription(context.Background(), &fakeFetcher{responses: map[string][]byte{url: []byte(body)}}, config.Subscription{URL: url, Format: "loon"})
+			_, err := loadSubscription(context.Background(), &fakeFetcher{responses: map[string][]byte{url: []byte(body)}}, config.Source{URL: url, Format: "loon"})
 			var fetchErr *errtype.FetchError
 			if !errors.As(err, &fetchErr) {
 				t.Fatalf("error = %v, want FetchError", err)

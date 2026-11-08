@@ -36,42 +36,35 @@ type Templates struct {
 // them in the user-declared order. It is populated by the custom UnmarshalYAML.
 // custom_proxies is not a fetch-kind and is excluded from FetchOrder.
 type Sources struct {
-	Subscriptions []Subscription `yaml:"subscriptions" json:"subscriptions"`
-	Snell         []SnellSource  `yaml:"snell" json:"snell"`
-	VLess         []VLessSource  `yaml:"vless" json:"vless"`
-	CustomProxies []CustomProxy  `yaml:"custom_proxies" json:"custom_proxies"`
+	Subscriptions []Source      `yaml:"subscriptions" json:"subscriptions"`
+	Snell         []Source      `yaml:"snell" json:"snell"`
+	VLess         []Source      `yaml:"vless" json:"vless"`
+	CustomProxies []CustomProxy `yaml:"custom_proxies" json:"custom_proxies"`
 
 	// FetchOrder holds fetch-kind keys in YAML declaration order.
 	// Set by UnmarshalYAML; empty when Sources is zero-valued (tests).
 	FetchOrder []string `yaml:"-" json:"fetch_order"`
 }
 
-// Subscription is a single subscription source.
-type Subscription struct {
+// Source declares a URL, editable body or local body file. Format is only used by subscriptions.
+type Source struct {
+	Name        string `yaml:"name,omitempty" json:"name,omitempty"`
 	URL         string `yaml:"url,omitempty" json:"url,omitempty"`
 	Content     string `yaml:"content,omitempty" json:"content,omitempty"`
 	ContentFile string `yaml:"content_file,omitempty" json:"content_file,omitempty"`
 	Format      string `yaml:"format,omitempty" json:"format,omitempty"`
 }
 
-// SnellSource is a single Snell node source. The URL is fetched as plain text;
-// each non-empty line is parsed as a Surge-style Snell proxy declaration
-// (e.g. `HK = snell, 1.2.3.4, 57891, psk=xxx, version=4`).
-//
-// Snell nodes are Surge-only: they appear in Surge output and are filtered
-// out of Clash output (Clash Meta does not support Snell v4/v5).
-type SnellSource struct {
-	URL string `yaml:"url" json:"url"`
+// SourceList identifies a source collection without changing its declared order.
+type SourceList struct {
+	Kind    string
+	Entries []Source
 }
 
-// VLessSource is a single VLESS node source. The URL is fetched as plain text;
-// each non-empty line is parsed as a standard VLESS URI
-// (e.g. `vless://UUID@server:port?security=reality&...#name`).
-//
-// VLESS nodes are Clash-only: they appear in Clash output and are filtered
-// out of Surge output (Surge does not natively support VLESS).
-type VLessSource struct {
-	URL string `yaml:"url" json:"url"`
+// Lists exposes editable sources in a fixed order for validation, storage and archives.
+// Runtime traversal uses FetchOrder instead.
+func (s Sources) Lists() []SourceList {
+	return []SourceList{{"subscriptions", s.Subscriptions}, {"snell", s.Snell}, {"vless", s.VLess}}
 }
 
 // sourceFetchKeys enumerates the YAML keys under `sources:` that correspond
@@ -179,11 +172,11 @@ func (s Sources) MarshalYAML() (any, error) {
 // for list fields so API round trips are stable.
 func (s Sources) MarshalJSON() ([]byte, error) {
 	type sourcesJSON struct {
-		Subscriptions []Subscription `json:"subscriptions"`
-		Snell         []SnellSource  `json:"snell"`
-		VLess         []VLessSource  `json:"vless"`
-		CustomProxies []CustomProxy  `json:"custom_proxies"`
-		FetchOrder    []string       `json:"fetch_order"`
+		Subscriptions []Source      `json:"subscriptions"`
+		Snell         []Source      `json:"snell"`
+		VLess         []Source      `json:"vless"`
+		CustomProxies []CustomProxy `json:"custom_proxies"`
+		FetchOrder    []string      `json:"fetch_order"`
 	}
 	return json.Marshal(sourcesJSON{
 		Subscriptions: nonNilSlice(s.Subscriptions),
@@ -198,11 +191,11 @@ func (s Sources) MarshalJSON() ([]byte, error) {
 // by the app-layer API wrapper so callers can receive structured diagnostics.
 func (s *Sources) UnmarshalJSON(data []byte) error {
 	type sourcesJSON struct {
-		Subscriptions []Subscription `json:"subscriptions"`
-		Snell         []SnellSource  `json:"snell"`
-		VLess         []VLessSource  `json:"vless"`
-		CustomProxies []CustomProxy  `json:"custom_proxies"`
-		FetchOrder    []string       `json:"fetch_order"`
+		Subscriptions []Source      `json:"subscriptions"`
+		Snell         []Source      `json:"snell"`
+		VLess         []Source      `json:"vless"`
+		CustomProxies []CustomProxy `json:"custom_proxies"`
+		FetchOrder    []string      `json:"fetch_order"`
 	}
 	var decoded sourcesJSON
 	if err := json.Unmarshal(data, &decoded); err != nil {

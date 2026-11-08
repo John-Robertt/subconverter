@@ -156,10 +156,10 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 说明：
 
-- 正文订阅直接读取 `sources.subscriptions[].content` 或其保存后的本地 `content_file`，跳过远程 Fetcher；解析规则与 URL 订阅相同，输入约束见 [配置规约](config-schema.md#subscriptions)
+- `subscriptions`、`snell`、`vless` 均使用 `config.Source` 表示 URL、正文或本地文件输入。`loadSourceBody` 统一选择来源：`content` 直接使用，`content_file` 读取本地文件，两者均跳过远程 Fetcher；输入约束见 [配置规约](config-schema.md#拉取来源的输入与展示)
 - 本阶段不生成链式节点
 - 同名节点保留各自候选显示名和独立 ID；本阶段不修改节点名
-- `InspectSubscription` 复用 Source 正文解析以检查单个来源，按内容提供识别结果或候选，不改变 Build 中的旧版自动识别；规则见 [配置规约](config-schema.md#web-订阅检查)
+- `InspectSource` 复用 Source 正文解析以检查单个来源；订阅通过 `InspectSubscription` 按内容提供识别结果或候选，Snell / VLESS 通过各自严格解析器检查，不改变 Build 中的解析规则；订阅识别规则见 [配置规约](config-schema.md#web-订阅检查)
 - 订阅格式由 `format`、URL 后缀及内容识别决定，规则以 [配置规约](config-schema.md#subscriptions) 为准
 - Clash YAML 复制 `proxies` 中的完整节点映射；Surge CONF / Loon 复制 `[Proxy]` 中每条声明的完整右值。这些节点都保留为 `KindSubscription`，并用 `NativeProxy.Format` 记录其唯一目标格式
 - TXT 响应体支持 Base64 编码列表和明文列表；明文列表兼容 SS（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`）和 AnyTLS（`anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）行格式
@@ -167,7 +167,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 - TXT 订阅中的空行、整行注释和单行解析失败会被跳过；结构化订阅声明错误整源报错；任一格式最终 0 个有效节点都报错
 - Snell 来源单行解析失败整源报错
 - VLESS 来源单行解析失败整源报错
-- 拉取失败时错误信息对 URL 做脱敏处理
+- 来源错误对 URL 脱敏；本地节点池正文使用字段路径定位，文件使用本地路径定位，Snell / VLESS 错误均保留物理行号
 
 来源遍历顺序：
 

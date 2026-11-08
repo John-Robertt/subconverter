@@ -24,7 +24,7 @@ func TestSource_InlineSubscription(t *testing.T) {
 		{"invalid", "loon", "[General]\npassword = do-not-log", true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			proxies, err := loadSubscription(context.Background(), nil, config.Subscription{Content: tt.body, Format: tt.format})
+			proxies, err := loadSubscription(context.Background(), nil, config.Source{Content: tt.body, Format: tt.format})
 			if tt.invalid {
 				if err == nil || strings.Contains(err.Error(), "do-not-log") {
 					t.Fatalf("want sanitized inline failure, got %v", err)
@@ -40,7 +40,7 @@ func TestSource_InlineSubscription(t *testing.T) {
 
 // T-SRC-INLINE-002: errors identify the inline source without exposing its body.
 func TestSource_InlineFailureLocation(t *testing.T) {
-	_, err := sourcePrepared(context.Background(), config.PreparedSources{Subscriptions: []config.Subscription{
+	_, err := sourcePrepared(context.Background(), config.PreparedSources{Subscriptions: []config.Source{
 		{Content: "anytls://pw@hk.example.com:443#HK"},
 		{Format: "loon", Content: "[General]\npassword = do-not-log"},
 	}}, nil)

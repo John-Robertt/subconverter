@@ -25,7 +25,7 @@ anytls://password@hk.example.com:443/?sni=edge.example.com&insecure=1#HK-AnyTLS
 
 ### 1.1b Snell 来源（Surge 专属）
 
-Snell 服务（如 jinqians/snell.sh 搭建）不提供标准订阅 URL，只产出 Surge 风格的单行节点配置。为支持这类来源，系统提供独立的 `sources.snell` 段，接受纯文本 URL：
+Snell 服务（如 jinqians/snell.sh 搭建）不提供标准订阅 URL，只产出 Surge 风格的单行节点配置。为支持这类来源，系统提供独立的 `sources.snell` 段，支持 URL、本地正文或文件引用，字段定义见[配置规约](design/config-schema.md#snell)。URL 示例：
 
 ```yaml
 sources:
@@ -50,7 +50,7 @@ JP-Snell = snell, 9.10.11.12, 443, psk=zzz, version=4, shadow-tls-password=sss, 
 
 ### 1.1c VLESS 来源（Clash / Loon）
 
-VLESS 来源通过独立的 `sources.vless` 段接入，接受纯文本 URL；URL 返回内容为"一行一个标准 VLESS URI"：
+VLESS 来源通过独立的 `sources.vless` 段接入，支持 URL、本地正文或文件引用；内容为“一行一个标准 VLESS URI”，字段定义见[配置规约](design/config-schema.md#vless)。URL 示例：
 
 ```yaml
 sources:
