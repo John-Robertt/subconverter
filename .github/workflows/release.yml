@@ -28,10 +28,31 @@ jobs:
       - name: Verify module integrity
         run: go mod verify
 
+      - name: Install golangci-lint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GOLANGCI_LINT_VERSION: v2.11.4
+        run: |
+          lint_archive="golangci-lint-${GOLANGCI_LINT_VERSION#v}-linux-amd64.tar.gz"
+          lint_checksums="golangci-lint-${GOLANGCI_LINT_VERSION#v}-checksums.txt"
+          lint_dir="bin/tools/golangci-lint"
+          mkdir -p "${lint_dir}"
+          gh release download "${GOLANGCI_LINT_VERSION}" \
+            --repo golangci/golangci-lint \
+            --pattern "${lint_archive}" \
+            --pattern "${lint_checksums}" \
+            --dir "${lint_dir}"
+          (
+            cd "${lint_dir}"
+            sha256sum --check --ignore-missing "${lint_checksums}"
+          )
+          tar -xzf "${lint_dir}/${lint_archive}" -C "${lint_dir}"
+          echo "${GITHUB_WORKSPACE}/${lint_dir}/${lint_archive%.tar.gz}" >> "${GITHUB_PATH}"
+
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11.4
+          install-mode: none
 
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"

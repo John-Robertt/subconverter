@@ -45,6 +45,8 @@ Docker 镜像平台矩阵：
 
 当前仓库中的 workflow 只在推送 tag 时触发，没有分支推送或 PR 检查。它也不运行 pnpm，不重新生成 Web 产物。入口文件非空只能证明产物存在，不能证明它与 `web/src` 一致；发布者需要先完成下方 [Web 构建](#web-构建)，并提交同步后的产物。
 
+Lint 工具由 `gh release download` 通过官方 GitHub Release API 下载固定版本，并使用官方 SHA-256 文件校验，再交给 `golangci-lint-action` 执行检查。工具放在项目的 `bin/tools`，`bin/` 不进入 Docker 构建上下文；版本号由 workflow 的 `GOLANGCI_LINT_VERSION` 维护。
+
 ---
 
 ## GitHub Release 二进制

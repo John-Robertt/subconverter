@@ -3,6 +3,7 @@
 coverage.out
 coverage.html
 /dist
+/bin/
 docs
 node_modules
 output
