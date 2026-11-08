@@ -255,3 +255,11 @@ func TestResourceError_ContentWriteFailed(t *testing.T) {
 		t.Fatalf("unexpected storage error: %v", e)
 	}
 }
+
+// T-ERR-BOOT-001: an uninitialized configuration has a stable code and config error format.
+func TestConfigError_NotInitialized(t *testing.T) {
+	e := &ConfigError{Code: CodeConfigNotInitialized, Message: "请先保存并热重载配置"}
+	if e.Code != "config_not_initialized" || e.Error() != "config error: 请先保存并热重载配置" {
+		t.Fatalf("code=%s error=%q", e.Code, e.Error())
+	}
+}

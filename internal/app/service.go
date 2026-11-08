@@ -3,17 +3,13 @@ package app
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/John-Robertt/subconverter/internal/config"
@@ -120,10 +116,15 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 		s.dataDir = DefaultDataDir
 	}
 
-	raw, err := s.readConfigBytes(ctx, false)
+	saved, err := s.readSavedConfig(ctx, false)
 	if err != nil {
 		return nil, err
 	}
+	s.observedConfigRevision = saved.revision
+	if !saved.exists {
+		return s, nil
+	}
+	raw := saved.raw
 	cfg, err := parseConfigYAML(raw)
 	if err != nil {
 		return nil, err
@@ -157,11 +158,11 @@ func NewWithRuntime(location string, runtimeCfg *config.RuntimeConfig, fetcher f
 }
 
 func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, error) {
-	raw, err := s.readConfigBytes(ctx, false)
+	saved, err := s.readSavedConfig(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := parseConfigYAML(raw)
+	cfg, err := parseConfigYAML(saved.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +172,7 @@ func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, er
 	if err != nil {
 		return nil, err
 	}
-	revision := configRevision(raw)
+	revision := saved.revision
 	s.setObservedConfigRevision(revision)
 	return &ConfigSnapshotResult{
 		ConfigRevision: revision,
@@ -192,11 +193,11 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 		return nil, err
 	}
 
-	currentRaw, err := s.readConfigBytes(ctx, false)
+	current, err := s.readSavedConfig(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-	currentRevision := configRevision(currentRaw)
+	currentRaw, currentRevision := current.raw, current.revision
 	if input.ConfigRevision != currentRevision {
 		return nil, &errtype.RevisionConflictError{CurrentConfigRevision: currentRevision}
 	}
@@ -231,7 +232,11 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 		committed = true
 		return &SaveConfigResult{ConfigRevision: currentRevision}, nil
 	}
-	if err := writeFileAtomically(s.configLocation, yamlBytes); err != nil {
+	if err := writeFileAtomically(s.configLocation, yamlBytes, !current.exists); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			latest, _ := s.readSavedConfig(ctx, false)
+			return nil, &errtype.RevisionConflictError{CurrentConfigRevision: latest.revision}
+		}
 		return nil, err
 	}
 	committed = true
@@ -260,7 +265,7 @@ func (s *Service) EffectiveConfigYAML(_ context.Context) ([]byte, error) {
 	raw := append([]byte(nil), s.effectiveConfigYAML...)
 	s.mu.RUnlock()
 	if len(raw) == 0 {
-		return nil, newBadRequestError("effective_config_unavailable", "当前生效配置不可用")
+		return nil, configNotInitializedError()
 	}
 	return raw, nil
 }
@@ -291,12 +296,17 @@ func (s *Service) Reload(ctx context.Context) (*ReloadResult, error) {
 	defer s.reloadMu.Unlock()
 
 	start := s.now()
-	raw, err := s.readConfigBytes(ctx, true)
+	saved, err := s.readSavedConfig(ctx, true)
 	if err != nil {
 		s.recordReload(start, false, err)
 		return nil, err
 	}
-	revision := configRevision(raw)
+	if !saved.exists {
+		err := configNotInitializedError()
+		s.recordReload(start, false, err)
+		return nil, err
+	}
+	raw, revision := saved.raw, saved.revision
 	s.setObservedConfigRevision(revision)
 	cfg, err := parseConfigYAML(raw)
 	if err != nil {
@@ -329,15 +339,21 @@ func (s *Service) Reload(ctx context.Context) (*ReloadResult, error) {
 }
 
 func (s *Service) Generate(ctx context.Context, req GenerateInput) (*GenerateResult, error) {
-	cfg := s.runtimeSnapshot()
+	cfg, err := s.runtimeSnapshot()
+	if err != nil {
+		return nil, err
+	}
 	return s.generator.Generate(ctx, cfg, req)
 }
 
-func (s *Service) runtimeSnapshot() *config.RuntimeConfig {
+func (s *Service) runtimeSnapshot() (*config.RuntimeConfig, error) {
 	s.mu.RLock()
 	cfg := s.runtimeCfg
 	s.mu.RUnlock()
-	return cfg
+	if cfg == nil {
+		return nil, configNotInitializedError()
+	}
+	return cfg, nil
 }
 
 func (s *Service) setObservedConfigRevision(revision string) {
@@ -358,21 +374,6 @@ func (s *Service) recordReload(start time.Time, success bool, reloadErr error) {
 	}
 	s.lastReload = state
 	s.mu.Unlock()
-}
-
-func (s *Service) readConfigBytes(ctx context.Context, invalidate bool) ([]byte, error) {
-	if s.configLocation == "" {
-		return nil, &errtype.ConfigError{
-			Code:    errtype.CodeConfigLoadFailed,
-			Message: "配置路径为空",
-		}
-	}
-	if invalidate && isRemoteConfig(s.configLocation) {
-		if invalidator, ok := s.fetcher.(interface{ Invalidate(string) }); ok {
-			invalidator.Invalidate(s.configLocation)
-		}
-	}
-	return fetch.LoadResource(ctx, s.configLocation, s.fetcher)
 }
 
 func parseConfigYAML(raw []byte) (*config.Config, error) {
@@ -400,83 +401,4 @@ func parseConfigJSON(raw json.RawMessage) (*config.Config, error) {
 func isJSONObject(raw json.RawMessage) bool {
 	trimmed := strings.TrimSpace(string(raw))
 	return strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")
-}
-
-func configRevision(raw []byte) string {
-	sum := sha256.Sum256(raw)
-	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-func isRemoteConfig(location string) bool {
-	return strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "https://")
-}
-
-func writeFileAtomically(path string, data []byte) error {
-	clean := filepath.Clean(path)
-	dir := filepath.Dir(clean)
-	base := filepath.Base(clean)
-	tmp, err := os.OpenFile(filepath.Join(dir, "."+base+".tmp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304 -- path is derived from the configured local config file location.
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			tmp, err = os.CreateTemp(dir, "."+base+".tmp-*")
-		}
-		if err != nil {
-			return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-		}
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-	}
-	if err := os.Rename(tmpName, clean); err != nil {
-		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-	}
-	syncDirBestEffort(dir)
-	return nil
-}
-
-func ensureLocalConfigWritable(path string) error {
-	const writableAccessMode = 0x2
-
-	clean := filepath.Clean(path)
-	info, err := os.Stat(clean)
-	if err != nil {
-		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-	}
-	if info.IsDir() || info.Mode().Perm()&0o200 == 0 {
-		return errtype.ErrConfigFileNotWritable
-	}
-	if err := syscall.Access(clean, writableAccessMode); err != nil {
-		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-	}
-	dirInfo, err := os.Stat(filepath.Dir(clean))
-	if err != nil {
-		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-	}
-	if !dirInfo.IsDir() || dirInfo.Mode().Perm()&0o200 == 0 {
-		return errtype.ErrConfigFileNotWritable
-	}
-	if err := syscall.Access(filepath.Dir(clean), writableAccessMode); err != nil {
-		return fmt.Errorf("%w: %v", errtype.ErrConfigFileNotWritable, err)
-	}
-	return nil
-}
-
-func syncDirBestEffort(dir string) {
-	d, err := os.Open(dir) // #nosec G304 -- dir is the cleaned parent of the configured local config path.
-	if err != nil {
-		return
-	}
-	defer func() { _ = d.Close() }()
-	_ = d.Sync()
 }

@@ -120,6 +120,7 @@ export interface SetupRequest {
 }
 
 export interface ConfigSourceStatus {
+  exists: boolean;
   location: string;
   type: "local" | "remote" | string;
   writable: boolean;

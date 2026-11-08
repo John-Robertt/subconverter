@@ -67,7 +67,7 @@
 | 操作失败反馈 | 右下反馈 | 普通提示 8s 后消失；需恢复操作的错误持续显示，同一操作合并；反馈正文不拦截下方控件，取消恢复操作后保留按钮 |
 | 进行中状态 | 顶栏按钮 Spinner + 禁用 | 防止重复提交 |
 | 不可撤销操作 | 居中红色确认弹窗 | 删除、重置等需二次确认 |
-| 首次保存本地 YAML | 居中确认弹窗 | 提示注释、引号和格式风格可能丢失，用户确认后才发起 `PUT /api/config` |
+| 首次覆写已有本地 YAML | 居中确认弹窗 | 提示注释、引号和格式风格可能丢失，用户确认后才发起 `PUT /api/config` |
 | 导入配置包 | 文件选择 + 确认弹窗 | B3 中选择 `.zip/.yaml/.yml` 后调用 `POST /api/config/import` 替换前端草稿；两种导入都只还原草稿与正文，不创建文件；替换未保存草稿前确认；保存时统一生成正文文件并写回 YAML，再显式热重载 |
 | 导出已保存配置包 | 下载链接 | 调用 `GET /api/config/saved.zip`，读取保存后的配置和正文；未保存修改需先保存，导出新保存内容无需热重载 |
 | 导出生效配置包 | 下载链接 | B3 中调用 `GET /api/config/effective.zip` 下载当前 RuntimeConfig 对应的源 YAML 与模板；保存但未 reload 时仍导出旧生效配置包 |
@@ -148,6 +148,10 @@ SPA 使用以下路由结构（React Router），与 Go 服务的 SPA fallback �
 - 前端通过 `GET /api/status` 读取 `capabilities.config_write`；当配置不可写时，编辑页进入只读查看模式，保存按钮禁用
 - API client 将错误归一化为 `status` / `code` / `message` / `details`；`409` 必须按 `error.code` 区分 revision 冲突、只读配置源和本地文件不可写
 
+### 无主配置的初始化
+
+本地文件缺失时，后台在管理员认证后返回空草稿。全局提示引导用户导入或手动编辑；配置目录可写时启用导入与编辑，不把文件缺失视为只读。首次保存使用配置接口提供的版本标记创建文件，保留空运行状态，热重载后才启用运行时生成与预览。未创建文件时隐藏已保存配置导出并禁用热重载；无运行版本时隐藏下载卡片。目录不可写时说明原因，保留只读限制。字段契约见 [首次配置 API](api.md#首次配置)。
+
 ### 登录态流程
 
 - 页面启动时先调用 `GET /api/auth/status` 判断 `authed`、`setup_required`、`setup_token_required` 和 `locked_until`
@@ -173,7 +177,7 @@ SPA 使用以下路由结构（React Router），与 Go 服务的 SPA fallback �
 | 后端草稿生成预览 API | `POST /api/generate/preview` | 前端草稿 `{ config }` | 否 |
 | B3 当前生成预览 | `GET /api/generate/preview` | 当前 `RuntimeConfig` | 否 |
 
-当前 Web UI 将保存与生效拆成两个显式动作：编辑草稿 → 校验 → 本地可写配置首次保存确认 → `PUT /api/config` 条件写回；随后用户通过全局“热重载”按钮调用 `POST /api/reload` 使配置生效。
+当前 Web UI 将保存与生效拆成两个显式动作：编辑草稿 → 校验 → 已有本地文件首次覆写确认（首次创建直接保存）→ `PUT /api/config` 条件写回；随后用户通过全局“热重载”按钮调用 `POST /api/reload` 使配置生效。
 
 中间态处理：`PUT /api/config` 成功但 `POST /api/reload` 失败时（如远程主配置源读取失败，或新配置未通过 `Prepare` 静态校验），配置文件已更新但 RuntimeConfig 仍为旧版。此时 UI 应保留 `config_dirty = true` 提示，并允许用户重新触发 reload。若用户在保存后、reload 前离开页面（浏览器崩溃或关闭标签页），下次打开时 `GET /api/status` 会返回 `config_dirty = true`，UI 应提示用户执行 reload 使配置生效。
 

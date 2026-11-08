@@ -16,13 +16,15 @@
 
 `GET /api/config` 不等同于当前运行时配置。当前运行时 revision 由 `GET /api/status` 返回。
 
+主配置不存在时，读取到空草稿和缺失版本标记。用户仍可导入 YAML / ZIP 或手动编辑，首次保存创建文件；文件存在性和目录写入能力以 [首次配置 API](../../docs/design/api.md#首次配置) 为准。创建前关闭重载和已保存配置导出，没有运行版本时不请求运行时预览或显示下载卡片。
+
 ## 保存与生效
 
 保存工作流：
 
 1. 用户编辑草稿。
 2. A8 调用 `POST /api/config/validate` 做静态校验。
-3. 本地可写配置源首次保存前展示 YAML 注释和格式可能丢失的确认框。
+3. 首次覆写已有本地配置前展示 YAML 注释和格式可能丢失的确认框；主配置缺失时直接保存创建文件。
 4. 调用 `PUT /api/config` 条件写回完整配置。
 
 `PUT /api/config` 成功不自动表示运行时已更新。当前 Web UI 将保存和热重载拆成两个显式动作：右上角“保存”只执行 validate + PUT；右上角“热重载”才调用 `POST /api/reload`。reload 成功后，`runtime_config_revision` 才更新为新的 `config_revision`。

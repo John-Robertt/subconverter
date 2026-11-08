@@ -173,7 +173,7 @@ export function DownloadPage() {
         >
           导入配置
         </Button>
-        {status?.config_revision ? <a className="button button-secondary" href={savedConfigArchivePath} download="subconverter-config.zip">
+        {status?.config_source.exists ? <a className="button button-secondary" href={savedConfigArchivePath} download="subconverter-config.zip">
           <FileDown size={15} aria-hidden="true" /><span>导出已保存配置</span>
         </a> : null}
         {runtimeRevision ? (
@@ -195,57 +195,59 @@ export function DownloadPage() {
         </section>
       ) : null}
 
-      <div className="stats-grid">
-        <StatCard label="节点（过滤后）" value={stats.activeNodes} sub={`原始 ${stats.totalNodes}`} />
-        <StatCard label="分组" value={stats.groupsTotal} sub={`${stats.groupsSelect} select · ${stats.groupsUrlTest} url-test`} />
-        <StatCard label="服务组" value={stats.serviceTotal} sub={`${stats.serviceWithRuleset} 带规则集`} />
-        <StatCard label="规则总数" value={stats.totalRules} sub={`${stats.rulesetUrls} 含规则集`} />
-      </div>
+      {!runtimeRevision ? <section className="content-panel info-panel">尚无生效配置，请先导入或编辑配置，保存后热重载，以启用生成与预览。</section> : <>
+        <div className="stats-grid">
+          <StatCard label="节点（过滤后）" value={stats.activeNodes} sub={`原始 ${stats.totalNodes}`} />
+          <StatCard label="分组" value={stats.groupsTotal} sub={`${stats.groupsSelect} select · ${stats.groupsUrlTest} url-test`} />
+          <StatCard label="服务组" value={stats.serviceTotal} sub={`${stats.serviceWithRuleset} 带规则集`} />
+          <StatCard label="规则总数" value={stats.totalRules} sub={`${stats.rulesetUrls} 含规则集`} />
+        </div>
 
-      {previewError ? (
-        <ErrorState message={getErrorMessage(previewError)} action={<Button variant="secondary" onClick={() => { void clashPreviewQuery.refetch(); void surgePreviewQuery.refetch(); void loonPreviewQuery.refetch(); }}>重试生成</Button>} />
-      ) : null}
+        {previewError ? (
+          <ErrorState message={getErrorMessage(previewError)} action={<Button variant="secondary" onClick={() => { void clashPreviewQuery.refetch(); void surgePreviewQuery.refetch(); void loonPreviewQuery.refetch(); }}>重试生成</Button>} />
+        ) : null}
 
-      {previewLoading && !previewError ? <LoadingState message="正在生成三种格式预览" /> : null}
+        {previewLoading && !previewError ? <LoadingState message="正在生成三种格式预览" /> : null}
 
-      <div className="preview-grid">
-        <PreviewCard
-          title="Clash Meta"
-          badge="YAML"
-          filename="config.yaml"
-          format="clash"
-          previewText={clashPreviewQuery.data ?? null}
-          downloadPath={buildGeneratePath("clash", "config.yaml")}
-          subUrl={clashLinkQuery.data?.url ?? buildGeneratePath("clash", "config.yaml")}
-          subUrlChip="SUB URL"
-          onCopyLink={() => linkMutation.mutate("clash")}
-          linkLoading={linkMutation.isPending && linkMutation.variables === "clash"}
-        />
-        <PreviewCard
-          title="Surge"
-          badge="conf"
-          filename="config.conf"
-          format="surge"
-          previewText={surgePreviewQuery.data ?? null}
-          downloadPath={buildGeneratePath("surge", "config.conf")}
-          subUrl={surgeLinkQuery.data?.url ?? buildGeneratePath("surge", "config.conf")}
-          subUrlChip={hasBaseURL ? "MANAGED" : "SUB URL"}
-          onCopyLink={() => linkMutation.mutate("surge")}
-          linkLoading={linkMutation.isPending && linkMutation.variables === "surge"}
-        />
-        <PreviewCard
-          title="Loon"
-          badge="conf"
-          filename="loon.lcf"
-          format="loon"
-          previewText={loonPreviewQuery.data ?? null}
-          downloadPath={buildGeneratePath("loon", "loon.lcf")}
-          subUrl={loonLinkQuery.data?.url ?? buildGeneratePath("loon", "loon.lcf")}
-          subUrlChip="SUB URL"
-          onCopyLink={() => linkMutation.mutate("loon")}
-          linkLoading={linkMutation.isPending && linkMutation.variables === "loon"}
-        />
-      </div>
+        <div className="preview-grid">
+          <PreviewCard
+            title="Clash Meta"
+            badge="YAML"
+            filename="config.yaml"
+            format="clash"
+            previewText={clashPreviewQuery.data ?? null}
+            downloadPath={buildGeneratePath("clash", "config.yaml")}
+            subUrl={clashLinkQuery.data?.url ?? buildGeneratePath("clash", "config.yaml")}
+            subUrlChip="SUB URL"
+            onCopyLink={() => linkMutation.mutate("clash")}
+            linkLoading={linkMutation.isPending && linkMutation.variables === "clash"}
+          />
+          <PreviewCard
+            title="Surge"
+            badge="conf"
+            filename="config.conf"
+            format="surge"
+            previewText={surgePreviewQuery.data ?? null}
+            downloadPath={buildGeneratePath("surge", "config.conf")}
+            subUrl={surgeLinkQuery.data?.url ?? buildGeneratePath("surge", "config.conf")}
+            subUrlChip={hasBaseURL ? "MANAGED" : "SUB URL"}
+            onCopyLink={() => linkMutation.mutate("surge")}
+            linkLoading={linkMutation.isPending && linkMutation.variables === "surge"}
+          />
+          <PreviewCard
+            title="Loon"
+            badge="conf"
+            filename="loon.lcf"
+            format="loon"
+            previewText={loonPreviewQuery.data ?? null}
+            downloadPath={buildGeneratePath("loon", "loon.lcf")}
+            subUrl={loonLinkQuery.data?.url ?? buildGeneratePath("loon", "loon.lcf")}
+            subUrlChip="SUB URL"
+            onCopyLink={() => linkMutation.mutate("loon")}
+            linkLoading={linkMutation.isPending && linkMutation.variables === "loon"}
+          />
+        </div>
+      </>}
     </div>
   );
 }

@@ -65,7 +65,7 @@ export const fixtureStatus: StatusResponse = {
   version: "2.0.0-test",
   commit: "test-commit",
   build_date: "2026-05-04",
-  config_source: { location: "/etc/subconverter/config.yaml", type: "local", writable: true },
+  config_source: { location: "/etc/subconverter/config.yaml", type: "local", writable: true, exists: true },
   config_revision: REVISION_BASE,
   runtime_config_revision: REVISION_BASE,
   config_loaded_at: "2026-05-04T08:00:00Z",
@@ -84,7 +84,7 @@ export const fixtureStatus: StatusResponse = {
 
 export const readonlyStatus: StatusResponse = {
   ...fixtureStatus,
-  config_source: { location: "https://config.example.com/config.yaml", type: "remote", writable: false },
+  config_source: { location: "https://config.example.com/config.yaml", type: "remote", writable: false, exists: true },
   capabilities: { config_write: false, reload: true }
 };
 

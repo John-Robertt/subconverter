@@ -25,7 +25,7 @@ export function useSaveWorkflow() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const { pushToast } = useToast();
-  const { draft, baseRevision, recordSavedDraft, replaceDraft, forceReadonly, resetDraft } = useConfigState();
+  const { draft, baseRevision, status, recordSavedDraft, replaceDraft, forceReadonly, resetDraft } = useConfigState();
 
   const reloadMutation = useMutation({
     mutationFn: reloadWithBackoff,
@@ -49,7 +49,7 @@ export function useSaveWorkflow() {
         throw new ValidationFailedError(validation);
       }
 
-      if (!localStorage.getItem(firstSaveStorageKey)) {
+      if (status?.config_source.exists !== false && !localStorage.getItem(firstSaveStorageKey)) {
         const accepted = await confirm({
           title: "将草稿写入 YAML 文件？",
           message: "保存会用当前草稿覆盖 YAML 文件，原文件中的注释、引号和部分格式风格可能丢失。保存后不会自动热重载，请按需点击右上角\"热重载\"。",

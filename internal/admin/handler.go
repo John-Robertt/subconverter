@@ -493,6 +493,11 @@ func (h *Handler) writeAuthError(w http.ResponseWriter, err error) {
 }
 
 func writeServiceError(w http.ResponseWriter, err error, validationBody bool) {
+	var cfgErr *errtype.ConfigError
+	if errors.As(err, &cfgErr) && cfgErr.Code == errtype.CodeConfigNotInitialized {
+		writeError(w, http.StatusConflict, string(cfgErr.Code), cfgErr.Message)
+		return
+	}
 	if validationBody {
 		if result, ok := app.ValidateResultFromError(err); ok {
 			writeJSON(w, http.StatusBadRequest, result)
@@ -535,7 +540,6 @@ func writeServiceError(w http.ResponseWriter, err error, validationBody bool) {
 		writeError(w, http.StatusBadGateway, string(fetchErr.Code), fetchErr.Message)
 		return
 	}
-	var cfgErr *errtype.ConfigError
 	if errors.As(err, &cfgErr) {
 		writeError(w, http.StatusBadRequest, string(cfgErr.Code), cfgErr.Message)
 		return

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, LogOut, Moon, RefreshCcw, Save, Sun, SunMoon, TriangleAlert } from "lucide-react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { queryKeys } from "../app/queryKeys";
 import { findPage, pages, type PageSection } from "../app/pages";
@@ -144,6 +144,7 @@ export function AppShell() {
               variant="secondary"
               icon={<RefreshCcw size={16} aria-hidden="true" />}
               loading={isReloading}
+              disabled={status?.capabilities.reload === false}
               onClick={() => void reloadOnly()}
             >
               热重载
@@ -154,11 +155,18 @@ export function AppShell() {
           </div>
         </header>
 
+        {status?.config_source.exists === false ? (
+          <div className="warning-strip">
+            <FileText size={17} aria-hidden="true" />
+            <span>{isReadonly ? "主配置文件不存在，配置目录不可写，请检查目录权限。" : "主配置文件尚不存在，可导入或编辑配置，保存后创建文件。"}</span>
+            {!isReadonly ? <Link to="/download">前往导入配置</Link> : null}
+          </div>
+        ) : null}
         {status?.config_dirty || externalRevisionChanged ? (
           <div className="warning-strip">
             {externalRevisionChanged ? <TriangleAlert size={17} aria-hidden="true" /> : <FileText size={17} aria-hidden="true" />}
             <span>
-              {externalRevisionChanged ? "检测到配置 revision 已变化，当前草稿不会被自动覆盖。" : "已保存配置尚未生效，当前运行时仍使用旧 RuntimeConfig。"}
+              {externalRevisionChanged ? "检测到配置 revision 已变化，当前草稿不会被自动覆盖。" : status?.runtime_config_revision ? "已保存配置尚未生效，当前运行时仍使用旧 RuntimeConfig。" : "配置已保存，请热重载后启用生成与预览。"}
             </span>
             {externalRevisionChanged ? (
               <button
@@ -207,6 +215,9 @@ function deriveSidebarStatus(
 ): SidebarStatusView {
   if (statusError) {
     return { tone: "error", title: "后端不可达", detail: "请求 /api/status 失败" };
+  }
+  if (status?.config_source.exists === false && !status.runtime_config_revision) {
+    return { tone: "warning", title: "配置待初始化", detail: "请导入或编辑配置后保存" };
   }
   if (status?.last_reload?.success === false) {
     return {

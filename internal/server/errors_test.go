@@ -156,3 +156,11 @@ func TestPresentError_TargetErrorThroughFmtErrorfWrap(t *testing.T) {
 		t.Errorf("message should contain inner detail, got %q", msg)
 	}
 }
+
+// T-SRV-BOOT-001: the public generator reports an initialization conflict rather than a pipeline failure.
+func TestServer_ConfigNotInitialized(t *testing.T) {
+	status, message := presentError(&errtype.ConfigError{Code: errtype.CodeConfigNotInitialized, Message: "请先保存并热重载配置"})
+	if status != http.StatusConflict || !strings.Contains(message, "请先保存并热重载配置") {
+		t.Fatalf("status=%d message=%q want 409 initialization guidance", status, message)
+	}
+}

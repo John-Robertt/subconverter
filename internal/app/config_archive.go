@@ -45,11 +45,14 @@ func (s *Service) EffectiveConfigArchive(ctx context.Context) (*ConfigArchiveRes
 }
 
 func (s *Service) SavedConfigArchive(ctx context.Context) (*ConfigArchiveResult, error) {
-	raw, err := s.readConfigBytes(ctx, false)
+	saved, err := s.readSavedConfig(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-	return s.configArchive(ctx, raw)
+	if !saved.exists {
+		return nil, configNotInitializedError()
+	}
+	return s.configArchive(ctx, saved.raw)
 }
 
 func (s *Service) configArchive(ctx context.Context, raw []byte) (*ConfigArchiveResult, error) {

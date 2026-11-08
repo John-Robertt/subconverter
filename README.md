@@ -39,7 +39,7 @@ templates:
 
 ## 安装
 
-SubConverter 可以通过 Docker 镜像、预编译二进制或源码构建安装。运行前需准备一份 YAML 配置文件，格式参见下方[配置](#配置)章节或 [`configs/base_config.yaml`](configs/base_config.yaml)。`-config` 同时支持本地路径和 HTTP(S) URL。
+SubConverter 可以通过 Docker 镜像、预编译二进制或源码构建安装。可使用已有 YAML 配置，或在本地配置路径尚无文件时启动后台，完成管理员登录后导入或编辑并保存，再热重载生效；首次保存要求父目录已存在且可写。配置格式参见下方[配置](#配置)章节或 [`configs/base_config.yaml`](configs/base_config.yaml)。`-config` 同时支持本地路径和 HTTP(S) URL。
 
 ### Docker 镜像
 

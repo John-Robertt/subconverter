@@ -37,6 +37,11 @@ func presentError(err error) (statusCode int, message string) {
 	}
 
 	if cfgErrs := collectConfigErrors(err); len(cfgErrs) > 0 {
+		for _, cfgErr := range cfgErrs {
+			if cfgErr.Code == errtype.CodeConfigNotInitialized {
+				return http.StatusConflict, joinMessages(cfgErrs, formatConfigError)
+			}
+		}
 		return http.StatusBadRequest, joinMessages(cfgErrs, formatConfigError)
 	}
 

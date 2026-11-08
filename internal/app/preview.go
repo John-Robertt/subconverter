@@ -65,7 +65,10 @@ type PreviewMemberItem struct {
 }
 
 func (s *Service) PreviewNodes(ctx context.Context) (*NodePreviewResult, error) {
-	cfg := s.runtimeSnapshot()
+	cfg, err := s.runtimeSnapshot()
+	if err != nil {
+		return nil, err
+	}
 	filter, err := pipeline.SourceAndFilter(ctx, cfg, s.fetcher)
 	if err != nil {
 		return nil, err
@@ -86,7 +89,10 @@ func (s *Service) PreviewNodesFromDraft(ctx context.Context, configJSON json.Raw
 }
 
 func (s *Service) PreviewGroups(ctx context.Context) (*GroupPreviewResult, error) {
-	cfg := s.runtimeSnapshot()
+	cfg, err := s.runtimeSnapshot()
+	if err != nil {
+		return nil, err
+	}
 	result, err := pipeline.SourceFilterGroupRouteValidate(ctx, cfg, s.fetcher)
 	if err != nil {
 		return nil, err

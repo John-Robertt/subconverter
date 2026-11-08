@@ -11,6 +11,7 @@ type Code string
 
 const (
 	CodeConfigLoadFailed        Code = "config_load_failed"
+	CodeConfigNotInitialized    Code = "config_not_initialized"
 	CodeConfigYAMLInvalid       Code = "config_yaml_invalid"
 	CodeConfigValidationFailed  Code = "config_validation_failed"
 	CodeConfigRequired          Code = "required"
@@ -70,8 +71,8 @@ var (
 	ErrReloadInProgress      = errors.New("reload already in progress")
 )
 
-// ConfigError indicates invalid configuration: bad YAML syntax,
-// missing required fields, illegal enum values, or uncompilable regexes.
+// ConfigError indicates an unavailable or invalid configuration: initialization
+// is pending, YAML is malformed, or declared fields violate config constraints.
 type ConfigError struct {
 	Code      Code
 	Section   string

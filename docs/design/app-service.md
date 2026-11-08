@@ -156,13 +156,19 @@ func (s *Service) Status(ctx context.Context) (*StatusResult, error)
 
 ---
 
+## 主配置首次创建
+
+`config_file.go` 负责配置源读取、缺失版本标记、可写性检查和文件原子发布，`service.go` 编排校验、正文发布与重载。本地文件缺失时，`New` 保留空运行快照，`ConfigSnapshot` 返回空草稿；存在但无效的文件仍按启动校验失败处理。状态字段和首次保存契约统一见 [首次配置 API](api.md#首次配置)。
+
+运行时操作通过 `runtimeSnapshot` 检查是否有生效配置；无快照时返回 `ConfigError(CodeConfigNotInitialized)`，HTTP 为 409。草稿校验、导入和草稿预览不依赖生效快照。首次保存以排他链接发布主配置，冲突时清理本次新增正文，保留外部创建的文件；已有文件仍按当前版本校验后原子替换。
+
 ## DTO 定义
 
 ### ConfigSnapshotResult
 
 ```go
 type ConfigSnapshotResult struct {
-    ConfigRevision string          `json:"config_revision"` // sha256:<hex>
+    ConfigRevision string          `json:"config_revision"` // sha256:<hex>；本地文件缺失为 missing
     Config         json.RawMessage `json:"config"`
 }
 ```
@@ -379,7 +385,7 @@ type StatusResult struct {
     ConfigRevision         string             `json:"config_revision"`          // 配置源已保存内容的 revision
     RuntimeConfigRevision  string             `json:"runtime_config_revision"`  // 当前 RuntimeConfig 的 revision
     ConfigLoadedAt         string             `json:"config_loaded_at"`         // ISO 8601
-    ConfigDirty            bool               `json:"config_dirty"`             // config_revision != runtime_config_revision
+    ConfigDirty            bool               `json:"config_dirty"`             // 未初始化时 false，其余按版本差异判断
     Capabilities           Capabilities       `json:"capabilities"`
     LastReload             *LastReload        `json:"last_reload,omitempty"` // 仅在曾发生过 reload 时填充，否则 nil 并在 JSON 中省略
     RuntimeEnvironment     RuntimeEnvironment `json:"runtime_environment"`
@@ -388,7 +394,8 @@ type StatusResult struct {
 type ConfigSource struct {
     Location string `json:"location"`
     Type     string `json:"type"`     // "local" | "remote"
-    Writable bool   `json:"writable"` // supports save and current local permissions allow writing
+    Writable bool   `json:"writable"` // 当前权限允许保存或首次创建
+    Exists   bool   `json:"exists"`   // 主配置是否存在
 }
 
 type Capabilities struct {
@@ -460,7 +467,7 @@ DiagnosticItem{Locator:{Section:"groups", Key:"🇭🇰 Hong Kong", Index:0, Val
 
 | 错误类型 | 定义位置 | 判断方式 | HTTP 状态 / code |
 |----------|---------|----------|------------------|
-| `*errtype.ConfigError` | `internal/errtype` | `errors.As` | 400 |
+| `*errtype.ConfigError` | `internal/errtype` | `errors.As` | `CodeConfigNotInitialized` 返回 `409 config_not_initialized`；其他配置错误返回 400 |
 | `*errtype.RevisionConflictError` | `internal/errtype` | `errors.As` | `409 config_revision_conflict` |
 | `errtype.ErrConfigSourceReadonly` | `internal/errtype`（sentinel） | `errors.Is` | `409 config_source_readonly` |
 | `errtype.ErrConfigFileNotWritable` | `internal/errtype`（sentinel） | `errors.Is` | `409 config_file_not_writable` |
@@ -499,7 +506,7 @@ var (
 `sync.RWMutex` 保护当前生效配置及相关内存状态：
 
 - 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
-- `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 由响应中的 `config_revision != runtime_config_revision` 计算
+- `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 在无文件且无运行快照时为 false，其余按保存版本与运行版本差异计算
 - `EffectiveConfigYAML`：只在 `RLock` 内复制当前生效 YAML 字节；该快照只在启动成功和 `Reload` 成功时更新
 - `EffectiveConfigArchive`：复用 `EffectiveConfigYAML` 取得生效 YAML 快照，再读取其中的本地订阅与模板位置；正文读取与 ZIP 编码在释放锁后执行
 - 写路径（`Reload`）：先在锁外读取、解析和准备配置；校验成功后，短暂加写锁一起更新配置指针、revision、生效 YAML、加载时间和重载状态

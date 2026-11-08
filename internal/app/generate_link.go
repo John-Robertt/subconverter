@@ -28,7 +28,10 @@ func (s *Service) GenerateLink(_ context.Context, input *GenerateLinkInput) (*Ge
 	if err != nil {
 		return nil, newBadRequestError("invalid_request", err.Error())
 	}
-	cfg := s.runtimeSnapshot()
+	cfg, err := s.runtimeSnapshot()
+	if err != nil {
+		return nil, err
+	}
 	baseURL := cfg.BaseURL()
 	if baseURL == "" {
 		return nil, newBadRequestError("base_url_required", "当前配置未声明 base_url")

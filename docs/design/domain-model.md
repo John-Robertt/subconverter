@@ -28,6 +28,8 @@
 
 补充边界：
 
+- 本地主配置缺失时 `app.Service` 暂无 `RuntimeConfig`，管理后台仍运行；导入和草稿检查不依赖运行快照，首次保存后通过显式热重载发布快照。状态契约见[首次配置 API](api.md#首次配置)。
+
 - 用户配置层中的 `custom_proxies` 只保留原始 YAML 字段（`name` / `url` / `relay_through`）
 - `url` 解析得到的 `type/server/port/params/plugin` 在 `Prepare` 阶段存入 `PreparedCustomProxy.Parsed`，不回写到 `Config`
 - `ChainTemplate` 是 Group 阶段使用的运行期结构，不属于稳定领域模型

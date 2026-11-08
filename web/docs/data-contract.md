@@ -38,9 +38,9 @@
 
 ## 配置 revision
 
-- `config_revision` 表示配置源当前已保存内容。
+- `config_revision` 表示当前已保存内容；本地文件缺失使用 `missing` 并返回空草稿，前端将其作为不透明版本传回。
 - `runtime_config_revision` 表示当前 `RuntimeConfig` 对应的配置。
-- `config_dirty = config_revision != runtime_config_revision`。
+- 没有文件且没有运行快照时 `config_dirty=false`，其余按保存版本和运行版本是否不同判断。
 - `PUT /api/config` 必须携带最近一次拿到的 `config_revision`。
 - 409 revision 冲突时，前端不得静默覆盖用户草稿。
 - `config_revision` 是乐观并发令牌，用于防止旧页面或旧 revision 覆盖已观测到的新配置；不表示服务端提供外部多写者线性一致写入。

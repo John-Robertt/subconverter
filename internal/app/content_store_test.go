@@ -210,7 +210,11 @@ func TestContentStore_SnapshotAndConcurrentSave(t *testing.T) {
 	if _, err := svc.Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	old := svc.runtimeSnapshot().SourceInput().Subscriptions[0].ContentFile
+	active, err := svc.runtimeSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := active.SourceInput().Subscriptions[0].ContentFile
 	cfg.Sources.Subscriptions[0].Content = "anytls://new-secret@hk.example.com:443#HK-NEW"
 	js, err := json.Marshal(cfg)
 	if err != nil {

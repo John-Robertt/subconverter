@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { api } from "./api/client";
+import type { StatusResponse } from "./api/types";
 import { isApiError } from "./api/errors";
 import { createAppQueryClient } from "./app/queryClient";
 import { ThemeProvider } from "./state/theme";
@@ -14,7 +15,7 @@ const sampleStatus = {
   version: "2.0.0",
   commit: "abc1234",
   build_date: "2026-05-03",
-  config_source: { location: "/config/config.yaml", type: "local", writable: true },
+  config_source: { location: "/config/config.yaml", type: "local", writable: true, exists: true },
   config_revision: "sha256:saved",
   runtime_config_revision: "sha256:runtime",
   config_loaded_at: "2026-05-03T00:00:00Z",
@@ -79,6 +80,7 @@ function text(data: string, status = 200) {
 }
 
 interface MockBackendOptions {
+  uninitialized?: boolean;
   authed?: boolean;
   resourceReadError?: boolean;
   resourceRead?: (input: { location: string }) => Promise<Response>;
@@ -101,13 +103,21 @@ function mockBackend(options: MockBackendOptions = {}) {
   const setupRequired = options.setupRequired ?? false;
   let configSnapshot = clone(sampleConfig);
   let configOverride = options.config;
-  let status = options.readonly
+  let status: StatusResponse = options.readonly
     ? {
         ...sampleStatus,
         config_source: { ...sampleStatus.config_source, writable: false },
         capabilities: { ...sampleStatus.capabilities, config_write: false }
       }
     : sampleStatus;
+  if (options.uninitialized) {
+    configSnapshot = { config_revision: "missing", config: { ...sampleConfig.config,
+      sources: { ...sampleConfig.config.sources, subscriptions: [] }, groups: [], routing: [], rulesets: [], rules: [], fallback: "", base_url: "",
+      templates: { clash: "", surge: "", loon: "" }
+    } };
+    status = { ...status, config_source: { ...status.config_source, exists: false }, config_revision: "missing", runtime_config_revision: "", config_loaded_at: "", config_dirty: false, last_reload: undefined,
+      capabilities: { ...status.capabilities, reload: false } };
+  }
   const reloadErrors = [...(options.reloadErrors ?? [])];
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -146,7 +156,7 @@ function mockBackend(options: MockBackendOptions = {}) {
         const body = JSON.parse(String(init.body)) as { config: typeof sampleConfig.config };
         configSnapshot = { config_revision: "sha256:next", config: body.config };
         configOverride = undefined;
-        status = { ...status, config_revision: "sha256:next", config_dirty: true };
+        status = { ...status, config_source: { ...status.config_source, exists: true }, capabilities: { ...status.capabilities, reload: true }, config_revision: "sha256:next", config_dirty: true };
         return json({ config_revision: "sha256:next" });
       }
       return json(configOverride === undefined ? configSnapshot : { ...configSnapshot, config: configOverride });
@@ -1466,5 +1476,49 @@ describe("规则集排序与导入并发", () => {
     expect(await screen.findByRole("dialog", {name:"替换导入期间的新修改？"})).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name:"取消"}));
     expect(screen.getByDisplayValue("https://newer.example.com")).toBeTruthy();
+  });
+});
+
+describe("首次部署配置初始化", () => {
+  for (const format of ["yaml", "zip"] as const) {
+    // T-WEB-BOOT-001: import creates a draft, first save creates a file, and reload enables runtime features.
+    it(`没有主配置时可导入 ${format}，保存后热重载`, async () => {
+      const backend = mockBackend({ uninitialized: true });
+      const { container } = renderApp("/download");
+      await screen.findByRole("heading", { level: 1, name: "生成下载" });
+      expect(screen.getByText("配置待初始化")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "导入配置" }).hasAttribute("disabled")).toBe(false);
+      expect(screen.getByRole("button", { name: "热重载" }).hasAttribute("disabled")).toBe(true);
+      expect(screen.queryByRole("link", { name: "导出已保存配置" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "下载" })).toBeNull();
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+      const file = format === "zip" ? new File(["zip-bytes"], "bootstrap.zip", { type: "application/zip" })
+        : new File(["base_url: https://import.example.com\n"], "bootstrap.yaml", { type: "application/x-yaml" });
+      fireEvent.change(input, { target: { files: [file] } });
+      await waitFor(() => expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(false));
+      expect(backend.calls.some(call => call.path.startsWith("/api/generate") || call.path.startsWith("/api/preview"))).toBe(false);
+      fireEvent.click(screen.getByRole("button", { name: "保存" }));
+      await screen.findByText("草稿已写入 YAML 文件");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(localStorage.getItem("subconverter.firstSaveConfirmed")).toBeNull();
+      const save = backend.calls.find(call => call.path === "/api/config" && call.init?.method === "PUT");
+      expect(JSON.parse(String(save?.init?.body)).config_revision).toBe("missing");
+      expect(screen.getByRole("link", { name: "导出已保存配置" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "热重载" }).hasAttribute("disabled")).toBe(false);
+      expect(backend.calls.some(call => call.path.startsWith("/api/generate") || call.path.startsWith("/api/preview"))).toBe(false);
+      fireEvent.click(screen.getByRole("button", { name: "热重载" }));
+      await waitFor(() => expect(backend.calls.some(call => call.path === "/api/generate/preview?format=loon")).toBe(true));
+      expect(screen.getAllByRole("button", { name: "下载" })).toHaveLength(3);
+    });
+  }
+
+  // T-WEB-BOOT-002: an absent config in a readonly directory remains readonly.
+  it("配置目录不可写时说明原因并禁用初始化保存", async () => {
+    mockBackend({ uninitialized: true, readonly: true });
+    renderApp("/download");
+    await screen.findByRole("heading", { level: 1, name: "生成下载" });
+    expect(screen.getByText("主配置文件不存在，配置目录不可写，请检查目录权限。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "导入配置" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
   });
 });

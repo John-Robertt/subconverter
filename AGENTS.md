@@ -29,6 +29,8 @@ RLock → 取得当前 RuntimeConfig 指针 → RUnlock
   -> Render
 ```
 
+本地主配置缺失时先启动受保护的管理后台，首次保存并热重载后才获得运行快照；状态契约见[首次配置 API](docs/design/api.md#首次配置)。
+
 上图描述运行时生成。GET 预览只运行所需阶段；POST 草稿预览先准备临时配置。完整流程及代码入口见 [管道设计](docs/design/pipeline.md)。
 
 **包边界**（依赖单向）：
@@ -168,6 +170,7 @@ internal/target → internal/{model,errtype}
 触碰配置保存、状态接口或只读部署文档时，必须同时检查 `/api/status`、`PUT /api/config` 和前端只读模式三处契约是否一致：
 
 - HTTP(S) 远程配置源：`config_source.type="remote"`，`config_source.writable=false`，`capabilities.config_write=false`；直接保存返回 `409 config_source_readonly`
+- 本地主配置缺失：`config_source.exists=false`，配置接口返回空草稿与 `missing` revision；父目录已存在且可写时允许导入、编辑和首次保存。未保存前禁用热重载，首次创建不覆盖并发创建的文件；详见[首次配置 API](docs/design/api.md#首次配置)
 - 本地可写配置文件：`config_source.type="local"`，`config_source.writable=true`，`capabilities.config_write=true`；允许 `PUT /api/config`
 - 本地配置文件或所在目录不可写：status 仍可读取配置并计算 revision，但返回 `config_source.writable=false` 与 `capabilities.config_write=false`；绕过前端直接保存返回 `409 config_file_not_writable`
 - 前端只读模式同时依赖 `capabilities.config_write` 与 `config_source.writable`；文档中不要把本地只读挂载写成 `config_source_readonly`
@@ -276,7 +279,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 > **触及时行动**：若用户反馈注释丢失影响过大 → 评估 `yaml.Node` 级 patch-merge 方案（见 `docs/architecture.md` 局限 #5）。
 
 - **现象**：`PUT /api/config` 通过 `yaml.Marshal` 写回，不保留原始注释和格式风格
-- **缓解**：Web UI 在本地可写配置源首次保存前弹出确认，提示注释、引号和格式风格可能丢失；后端不自动创建 `.bak` 文件
+- **缓解**：Web UI 在首次覆写已有本地配置前弹出确认，提示注释、引号和格式风格可能丢失；后端不自动创建 `.bak` 文件
 
 ---
 

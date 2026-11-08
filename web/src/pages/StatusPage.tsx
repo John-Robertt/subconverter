@@ -6,6 +6,7 @@ import { useConfigState } from "../state/config";
 
 export function StatusPage() {
   const { status, draft, isStatusLoading, statusError } = useConfigState();
+  const configPending = status?.config_source.exists === false || status?.config_dirty;
   const healthQuery = useQuery({
     queryKey: ["healthz"],
     queryFn: api.healthz
@@ -32,10 +33,10 @@ export function StatusPage() {
         />
         <StatCard
           label="配置"
-          value={status?.config_dirty ? "待重载" : "已加载"}
+          value={status?.config_source.exists === false ? "未创建" : status?.config_dirty ? "待重载" : "已加载"}
           sub={formatConfigSub(draft)}
-          tone={status?.config_dirty ? "warning" : "success"}
-          className={status?.config_dirty ? undefined : "stat-with-dot"}
+          tone={configPending ? "warning" : "success"}
+          className={configPending ? undefined : "stat-with-dot"}
         />
         <StatCard
           label="上次热重载"

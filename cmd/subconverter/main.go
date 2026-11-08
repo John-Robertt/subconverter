@@ -96,7 +96,7 @@ func main() {
 		log.Fatalf("failed to resolve auth state path: %v", err)
 	}
 
-	// Load and validate config at startup (fail-fast).
+	// Load an existing config or serve the authenticated setup UI for a missing local file.
 	appSvc, err := app.New(context.Background(), app.Options{
 		ConfigLocation: *configPath,
 		DataDir:        resolveDataDir(*dataDir),

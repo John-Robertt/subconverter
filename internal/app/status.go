@@ -35,6 +35,7 @@ type ConfigSource struct {
 	Location string `json:"location"`
 	Type     string `json:"type"`
 	Writable bool   `json:"writable"`
+	Exists   bool   `json:"exists"`
 }
 
 type Capabilities struct {
@@ -58,15 +59,16 @@ func (s *Service) Status(ctx context.Context) (*StatusResult, error) {
 	s.mu.RUnlock()
 
 	configRevision := observedRevision
+	exists := true
 	if !isRemoteConfig(s.configLocation) {
-		raw, err := s.readConfigBytes(ctx, false)
+		saved, err := s.readSavedConfig(ctx, false)
 		if err != nil {
 			return nil, err
 		}
-		configRevision = configRevisionForStatus(raw)
+		configRevision, exists = saved.revision, saved.exists
 	}
 
-	source := s.configSource()
+	source := s.configSource(exists)
 	result := &StatusResult{
 		Version:               s.version,
 		Commit:                s.commit,
@@ -75,10 +77,10 @@ func (s *Service) Status(ctx context.Context) (*StatusResult, error) {
 		ConfigRevision:        configRevision,
 		RuntimeConfigRevision: runtimeRevision,
 		ConfigLoadedAt:        formatStatusTime(loadedAt),
-		ConfigDirty:           configRevision != runtimeRevision,
+		ConfigDirty:           (exists || runtimeRevision != "") && configRevision != runtimeRevision,
 		Capabilities: Capabilities{
 			ConfigWrite: source.Writable,
-			Reload:      true,
+			Reload:      exists,
 		},
 		RuntimeEnvironment: s.runtimeEnvironment(),
 	}
@@ -111,7 +113,7 @@ func (s *Service) runtimeEnvironment() RuntimeEnvironment {
 	}
 }
 
-func (s *Service) configSource() ConfigSource {
+func (s *Service) configSource(exists bool) ConfigSource {
 	sourceType := "local"
 	writable := false
 	if isRemoteConfig(s.configLocation) {
@@ -123,11 +125,8 @@ func (s *Service) configSource() ConfigSource {
 		Location: s.configLocation,
 		Type:     sourceType,
 		Writable: writable,
+		Exists:   exists,
 	}
-}
-
-func configRevisionForStatus(raw []byte) string {
-	return configRevision(raw)
 }
 
 func formatStatusTime(t time.Time) string {

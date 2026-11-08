@@ -190,10 +190,34 @@
 
 | 配置源 | `GET /api/config` | `PUT /api/config` | `POST /api/reload` | 说明 |
 |--------|-------------------|-------------------|--------------------|------|
+| 本地路径尚无文件 | 返回空草稿与 `missing` 版本 | 父目录存在且可写时允许首次创建 | 保存后支持 | 后台先运行，导入或编辑后保存，再热重载 |
 | 本地文件 | 支持 | 支持；文件或目录不可写时返回 `409 config_file_not_writable` | 支持 | Web 后台可编辑并写回 YAML 文件 |
 | HTTP(S) URL | 支持 | 不支持，返回 `409` | 支持 | 远程配置视为只读，只能重新拉取并热重载 |
 
 状态接口会暴露 `config_source.type`、`config_source.writable` 和 `capabilities.config_write`，前端据此隐藏或禁用保存入口。本地配置文件或所在目录不可写时，`config_source.writable=false` 且 `capabilities.config_write=false`。
+
+### 首次配置
+
+本地主配置路径尚无文件时，服务启动受管理员认证保护的后台，`/healthz` 返回健康；已有文件的 YAML 或语义错误、远程配置读取失败仍阻止启动。父目录需要已存在并可写，服务才允许首次保存；目录不可写时，状态和空草稿仍可读取，保存返回 `409 config_file_not_writable`。
+
+管理员完成 setup 或登录后，可导入 YAML / ZIP 或手动编辑草稿。导入只返回内存草稿，不创建主配置或正文文件；空草稿必须补齐并通过校验才能保存。首次保存直接创建文件，不展示已有文件覆盖的格式丢失确认。保存后需要显式热重载，才启用当前配置的生成、预览和订阅链接。
+
+未创建主配置时，相关状态字段如下：
+
+```json
+{
+  "config_source": {"location":"/config/config.yaml","type":"local","exists":false,"writable":true},
+  "config_revision":"missing",
+  "runtime_config_revision":"",
+  "config_loaded_at":"",
+  "config_dirty":false,
+  "capabilities":{"config_write":true,"reload":false}
+}
+```
+
+`missing` 是文件缺失的专用版本标记，与空文件的 SHA-256 不同。首次保存携带读取到的该标记，按排他方式发布主配置；如果其他请求或外部进程已创建文件，返回 `409 config_revision_conflict`，保留现有文件并回收本次新增正文版本。已有文件的保存继续使用原版本校验和原子替换。
+
+尚无生效配置时，运行时预览、生成、订阅链接和生效配置导出返回 `409 config_not_initialized`；未创建主配置时，已保存配置导出也返回该错误。草稿校验、来源检查和草稿预览仍可使用。
 
 ### `GET /api/config`
 
@@ -203,7 +227,7 @@
 
 - `200`，`Content-Type: application/json`
 - Body：包含当前 YAML 配置的 JSON 表示和内容版本
-- `config_revision` 格式为 `sha256:<hex>`，基于配置源原始字节计算
+- 已有配置的 `config_revision` 为原始字节的 `sha256:<hex>`；本地文件不存在时为 `missing`，同时返回空草稿
 - `config` 中的保序字段（`groups` / `routing` / `rulesets`）以 `[{key, value}]` 数组形式返回
 
 示例：
@@ -241,14 +265,14 @@
 
 处理流程：
 
-1. 确认配置源是本地可写文件
-2. 重新读取当前配置文件原始字节，计算当前 `config_revision`
+1. 确认配置源是本地可写文件，或父目录可写的待创建路径
+2. 读取当前配置文件和版本；文件缺失使用 `missing`
 3. 请求中的 `config_revision` 与当前 revision 不一致 → 不写入，返回 `409 config_revision_conflict`
 4. JSON 反序列化为 `Config`
 5. 执行 `Prepare` 校验
 6. 校验通过后复用未变正文，仅为新增或变化的正文生成版本文件
-7. 序列化为 YAML；字节与现有文件相同则直接返回原 revision，否则写入同目录临时文件并原子 rename 覆盖原配置，返回保存后的 `config_revision`
-7. 校验失败 → 不写入，返回 `400` + `ValidateResult`（`valid=false`）
+7. 序列化为 YAML；字节相同则返回原 revision；首次创建以同目录临时文件排他发布，已有文件以原子 rename 替换，返回保存后的 `config_revision`
+8. 校验失败 → 不写入，返回 `400` + `ValidateResult`（`valid=false`）
 
 成功响应：
 
@@ -304,7 +328,7 @@ revision 冲突响应示例：
 - `PUT /api/config` 仅写回文件，不自动触发热重载；配置和正文均未变化时不重写文件，返回原 `config_revision`
 - 前端需在保存后显式调用 `POST /api/reload` 使新配置生效
 - YAML 写回可能改变格式细节并丢失原始文件中的注释
-- 本地可写配置源首次保存前，Web UI 必须弹出确认，提示注释、引号和格式风格可能丢失；`PUT /api/config` 成功响应只返回保存后的 `config_revision`（未变化时保留原值）
+- 首次覆写已有本地配置前，Web UI 弹出确认，提示注释、引号和格式风格可能丢失；首次创建直接保存；`PUT /api/config` 成功响应只返回保存后的 `config_revision`（未变化时保留原值）
 - `config_revision` 是乐观并发令牌，用于防止旧页面或旧 revision 静默覆盖已观测到的新配置；它不提供外部多写者的线性一致性保证
 - 多标签页、外部编辑器或 GitOps 进程在保存前已改写配置时，revision 校验会拒绝陈旧请求；若外部进程恰好在 revision 比对和 `rename` 之间改写文件，当前单用户设计不额外加文件锁或备份
 
@@ -750,7 +774,8 @@ ZIP 请求体：
   "config_source": {
     "location": "/config/config.yaml",
     "type": "local",
-    "writable": true
+    "writable": true,
+    "exists": true
   },
   "config_revision": "sha256:9a21...",
   "runtime_config_revision": "sha256:7d9c...",
@@ -779,12 +804,14 @@ ZIP 请求体：
 字段说明：
 
 - `config_source.type`：`local` 或 `remote`
-- `config_source.writable`：当前配置源是否支持 `PUT /api/config` 且当前本地文件/目录权限允许保存；HTTP(S) 配置源和本地不可写配置均为 `false`
-- `config_revision`：配置源当前已保存内容的 revision
+- `config_source.exists`：本地为当前主配置文件是否存在；远程在成功加载后为 `true`，status 不主动探测远程 URL
+- `config_source.writable`：当前配置源是否支持保存或首次创建；已有文件检查文件和父目录权限，缺失文件检查已存在的父目录，HTTP(S) 配置源始终为 `false`
+- `config_revision`：当前已保存内容的 revision，本地文件缺失时为 `missing`
 - `runtime_config_revision`：当前 `RuntimeConfig` 对应的配置 revision
-- `config_dirty`：`config_revision != runtime_config_revision` 时为 `true`
+- `config_dirty`：尚未保存且没有运行快照时为 `false`；其余状态按保存版本与运行版本是否不同判断
 - 本地配置源检测策略：每次 `GET /api/status` 都重新读取配置文件并计算 `sha256:<hex>`，不以 `(mtime, size)` 作为跳过 hash 的强判断；因此同大小改写或保留 mtime 的外部修改也能被下一次 status 请求发现
 - HTTP(S) 配置源检测策略：status 不主动拉取远程配置；`config_revision` 与 dirty 状态基于最近一次 `GET /api/config` 或 `POST /api/reload` 观测到的内容
+- `capabilities.reload`：主配置存在时为 `true`；首次创建前为 `false`
 - `capabilities.config_write`：前端是否应启用保存入口；与当前后端实际写回能力保持一致
 - `last_reload`：可选字段。仅在进程曾经触发过 `POST /api/reload`（无论成功或失败）时存在；从未发生过 reload 时该字段被省略（`omitempty`）。这避免用 zero value 同时表达"未发生"与"失败"两种语义——前端据此区分"运行中（未重载）"与"上次重载失败"
 - `last_reload.error`：仅在 `success=false` 时填充，记录最近一次 reload 失败的错误消息（用于 UI 直接展示原因）；`success=true` 时省略
@@ -802,7 +829,7 @@ ZIP 请求体：
 |------|------|
 | `400` | 请求参数非法；配置语义 / 图校验失败；热重载校验失败；目标格式级联过滤导致 fallback 清空 |
 | `401` | `/generate` 缺少或不匹配订阅访问 token；管理接口缺少、无效或已过期的管理员 session；登录凭据错误 |
-| `409` | 当前配置源不支持该操作、本地配置文件不可写，或配置 revision 冲突 |
+| `409` | 配置尚未初始化或生效、当前配置源不支持该操作、本地配置文件不可写，或配置 revision 冲突 |
 | `429` | reload 操作正在执行中，拒绝并发 reload 请求 |
 | `502` | 远程资源拉取失败，或远程订阅内容不可用 |
 | `500` | 本地资源读取失败、内部投影不变量失败，或内部处理 / 渲染失败 |
