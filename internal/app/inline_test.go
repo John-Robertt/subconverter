@@ -65,14 +65,14 @@ func TestApp_InlineSaveReloadArchive(t *testing.T) {
 	if strings.Contains(string(entries[archiveConfigEntry]), svc.dataDir) {
 		t.Fatal("archive retained machine-specific managed file references")
 	}
-	if len(entries) != 3 || string(entries[archiveLoonTemplateEntry]) != cfg.Templates.Inline["loon"] || string(entries["subscriptions/1.lcf"]) != cfg.Sources.Subscriptions[0].Content {
+	if len(entries) != 3 || string(entries[archiveLoonTemplateEntry]) != cfg.Templates.Inline["loon"] || string(entries["subscriptions/1.txt"]) != cfg.Sources.Subscriptions[0].Content {
 		t.Fatalf("archive should include the subscription and template files: entries=%v", entries)
 	}
 	exported, err := parseConfigYAML(entries[archiveConfigEntry])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sub := exported.Sources.Subscriptions[0]; sub.Content != "" || sub.ContentFile != "subscriptions/1.lcf" || sub.Name != cfg.Sources.Subscriptions[0].Name {
+	if sub := exported.Sources.Subscriptions[0]; sub.Content != "" || sub.ContentFile != "subscriptions/1.txt" || sub.Name != cfg.Sources.Subscriptions[0].Name {
 		t.Fatalf("archive source should retain name and reference its file: %+v", sub)
 	}
 	imported, err := svc.ImportConfigArchive(ctx, archive.Body)
@@ -87,7 +87,7 @@ func TestApp_InlineSaveReloadArchive(t *testing.T) {
 		t.Fatal("archive changed inline bodies")
 	}
 	// Replacing a packaged template changes the imported draft without altering its subscription.
-	override, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: entries[archiveConfigEntry]}, {Name: "subscriptions/1.lcf", Body: entries["subscriptions/1.lcf"]}, {Name: archiveLoonTemplateEntry, Body: []byte("[General]\ndns-server = 1.1.1.1")}}, time.Now())
+	override, err := buildConfigArchive([]archiveEntry{{Name: archiveConfigEntry, Body: entries[archiveConfigEntry]}, {Name: "subscriptions/1.txt", Body: entries["subscriptions/1.txt"]}, {Name: archiveLoonTemplateEntry, Body: []byte("[General]\ndns-server = 1.1.1.1")}}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

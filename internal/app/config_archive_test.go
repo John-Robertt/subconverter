@@ -55,7 +55,7 @@ func TestConfigArchive_SubscriptionsRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(entries) != 3 || string(entries["subscriptions/2.txt"]) != surgeBody || string(entries["subscriptions/3.lcf"]) != loonBody {
+			if len(entries) != 3 || string(entries["subscriptions/2.txt"]) != surgeBody || string(entries["subscriptions/3.txt"]) != loonBody {
 				t.Fatalf("archive did not preserve separate subscription files: entries=%v", entries)
 			}
 			if strings.Contains(string(entries[archiveConfigEntry]), dir) || strings.Contains(string(entries[archiveConfigEntry]), "password=pw") {
@@ -70,7 +70,7 @@ func TestConfigArchive_SubscriptionsRoundTrip(t *testing.T) {
 			}
 			for i, want := range []config.Source{
 				{Name: "同名/../订阅", ContentFile: "subscriptions/2.txt", Format: "surge"},
-				{Name: "同名/../订阅", ContentFile: "subscriptions/3.lcf", Format: "loon"},
+				{Name: "同名/../订阅", ContentFile: "subscriptions/3.txt", Format: "loon"},
 			} {
 				if got := exported.Sources.Subscriptions[i+1]; got != want {
 					t.Fatalf("source %d got=%+v want=%+v", i+1, got, want)

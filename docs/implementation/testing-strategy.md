@@ -106,6 +106,8 @@
 - `T-ADM-018`：管理员密码以 `PBKDF2-HMAC-SHA256`、`600000` iterations、32-byte salt、32-byte derived key 写入；auth state 不保存明文密码；密码比较使用 constant-time；参数落后时登录成功路径会重哈希
 - `T-ADM-019`：`POST /api/auth/login` 成功设置 HttpOnly `session_id` Cookie；未选择 remember 的 session 最长 24 小时，选择 remember 的 session 最长 7 天；auth state 只保存 session token 的 SHA-256 哈希；`POST /api/auth/logout` 清除 session
 - `T-ADM-020`：登录失败按 IP + 用户名计数；错误凭据返回 `401 invalid_credentials` 和剩余次数；第 5 次失败返回 `423 auth_locked` 和解锁时间
+- `T-AUTH-004`–`008`：失败计数空闲过期边界、最近失败时间续期、重启保持、IP / 用户名隔离、锁定到期和成功登录清零，以及已有无时间记录的处理
+- `T-WEB-AUTH-LOCK-001`–`004`：已过期锁定不禁用登录、截止时自动恢复提交、登录响应触发的锁定到期后可重试，以及截止时间更新后重设定时器
 - `T-ADM-021`：auth state 自动创建目录权限为 `0700`、文件权限为 `0600`；写入使用同目录临时文件、fsync、rename；auth state 不可写时 setup 返回 `409 auth_state_not_writable`
 - `T-ADM-022`：Cookie session 下非安全 `/api/*` 请求校验同源 `Origin` 或 `Referer`；覆盖受保护管理接口，以及未登录可访问但会修改状态的 `/api/auth/login`、`/api/auth/setup`、`/api/auth/logout`，缺失或跨站来源均被拒绝
 - `T-ADM-023`：`GET /api/config/effective.yaml` 返回当前 RuntimeConfig 对应的源 YAML；保存但未 reload 时仍返回旧生效 YAML；`POST /api/config/import` 将 YAML 转为 Config JSON；两个端点均要求管理员 session

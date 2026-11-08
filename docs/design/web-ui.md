@@ -154,7 +154,7 @@ SPA 使用以下路由结构（React Router），与 Go 服务的 SPA fallback �
 - `setup_required=true` 时，`/login` 渲染 setup 模式，要求输入 bootstrap setup token，提交 `POST /api/auth/setup`
 - 未登录访问受保护页面时跳转 `/login?next=<原路径>`；登录成功后跳回 `next` 或默认 `/sources`
 - 受保护 API 返回 `401 auth_required` 或 `401 session_expired` 时，全局拦截并跳转 `/login`，提示“登录已过期”
-- 登录失败 `401 invalid_credentials` 时在密码框下展示剩余次数；`423 auth_locked` 时展示锁定截止时间并禁用提交
+- 登录失败 `401 invalid_credentials` 时展示剩余次数；`423 auth_locked` 时展示锁定截止时间并禁用提交。页面按截止时间注册定时器，到期恢复提交并清除锁定提示；已过期的缓存时间不禁用登录。失败计数的过期规则见 [鉴权](api.md#鉴权)，实际登录请求仍由后端校验
 - setup 失败 `401 setup_token_required` 或 `401 setup_token_invalid` 时在 setup token 字段下展示错误，不创建管理员凭据
 - 右上角或用户菜单提供退出登录，调用 `POST /api/auth/logout` 后跳转 `/login`
 - “记住我”只影响服务端 session 过期时间：未选最长 24 小时，选中最长 7 天；前端不持久保存密码、session id 或订阅 token

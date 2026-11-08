@@ -23,12 +23,28 @@ export function LoginPage() {
   const [remember, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [lockedUntil, setLockedUntil] = useState("");
+  const [now, setNow] = useState(Date.now);
 
   const authQuery = useQuery({
     queryKey: queryKeys.authStatus,
     queryFn: api.authStatus,
     retry: false,
   });
+
+  const lockExpiresAt = Math.max(
+    Date.parse(lockedUntil) || 0,
+    Date.parse(authQuery.data?.locked_until ?? "") || 0,
+  );
+  useEffect(() => {
+    const currentTime = Date.now();
+    setNow(currentTime);
+    if (lockExpiresAt <= currentTime) return;
+    const timer = window.setTimeout(() => {
+      setNow(Date.now());
+      clearToasts("auth");
+    }, lockExpiresAt - currentTime);
+    return () => window.clearTimeout(timer);
+  }, [lockExpiresAt, clearToasts]);
 
   const mode = authQuery.data?.setup_required ? "setup" : "login";
   const passwordStrength = useMemo(
@@ -139,7 +155,7 @@ export function LoginPage() {
     return <Navigate to={next} replace />;
   }
 
-  const isLocked = Boolean(lockedUntil || authQuery.data?.locked_until);
+  const isLocked = lockExpiresAt > now;
 
   return (
     <main className="login-screen">

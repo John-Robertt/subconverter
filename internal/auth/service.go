@@ -32,6 +32,7 @@ const (
 	normalSessionTTL   = 24 * time.Hour
 	rememberSessionTTL = 7 * 24 * time.Hour
 	maxFailures        = 5
+	failureResetAfter  = 15 * time.Minute
 	lockDuration       = 15 * time.Minute
 )
 
@@ -87,8 +88,9 @@ type sessionRecord struct {
 }
 
 type failureRecord struct {
-	Count       int       `json:"count"`
-	LockedUntil time.Time `json:"locked_until,omitempty"`
+	Count        int       `json:"count"`
+	LastFailedAt time.Time `json:"last_failed_at,omitempty"`
+	LockedUntil  time.Time `json:"locked_until,omitempty"`
 }
 
 func New(opts Options) (*Service, error) {
@@ -280,10 +282,12 @@ func (s *Service) recordFailure(state *stateFile, key string) error {
 		state.Failures = map[string]failureRecord{}
 	}
 	record := state.Failures[key]
+	now := s.now()
 	record.Count++
+	record.LastFailedAt = now
 	remaining := maxFailures - record.Count
 	if remaining <= 0 {
-		record.LockedUntil = s.now().Add(lockDuration)
+		record.LockedUntil = now.Add(lockDuration)
 		record.Count = maxFailures
 		state.Failures[key] = record
 		if err := s.writeState(*state); err != nil {
@@ -321,6 +325,15 @@ func (s *Service) loadState() (stateFile, error) {
 	}
 	if state.Failures == nil {
 		state.Failures = map[string]failureRecord{}
+	}
+	now := s.now()
+	for key, failure := range state.Failures {
+		if failure.LockedUntil.After(now) {
+			continue
+		}
+		if !failure.LockedUntil.IsZero() || !failure.LastFailedAt.Add(failureResetAfter).After(now) {
+			delete(state.Failures, key)
+		}
 	}
 	return state, nil
 }

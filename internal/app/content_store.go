@@ -18,6 +18,7 @@ import (
 const DefaultDataDir = "/config"
 
 const contentVersionTimeLayout = "20060102T150405.000000000Z"
+const sourceContentExtension = ".txt"
 
 func (s *Service) contentDirectory() string {
 	root := s.dataDir
@@ -87,7 +88,7 @@ func (s *Service) persistEditableContent(cfg, saved *config.Config) ([]string, e
 			if source.Content == "" {
 				continue
 			}
-			path, writeErr := store(sourceFilePrefix(list.Kind), sourceExtension(list.Kind, source.Format), source.Content)
+			path, writeErr := store(sourceFilePrefix(list.Kind), sourceContentExtension, source.Content)
 			if writeErr != nil {
 				return created, writeErr
 			}
@@ -156,10 +157,7 @@ func (s *Service) savedContentFiles(cfg, draft *config.Config) map[contentKey][]
 	}
 	for _, list := range cfg.Sources.Lists() {
 		for _, source := range list.Entries {
-			ext := filepath.Ext(source.ContentFile)
-			if ext == ".txt" || ext == ".lcf" {
-				remember(sourceFilePrefix(list.Kind), ext, source.ContentFile)
-			}
+			remember(sourceFilePrefix(list.Kind), sourceContentExtension, source.ContentFile)
 		}
 	}
 	for _, entry := range []struct{ format, location string }{
@@ -273,13 +271,6 @@ func sourceFilePrefix(kind string) string {
 		return "subscription"
 	}
 	return kind
-}
-
-func sourceExtension(kind, format string) string {
-	if kind == "subscriptions" && format == "loon" {
-		return ".lcf"
-	}
-	return ".txt"
 }
 
 func templateExtension(format string) string {

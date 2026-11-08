@@ -306,65 +306,91 @@ func TestContentStore_DefaultDirectory(t *testing.T) {
 
 // T-APP-STORE-009: copying a suffix-detected document retains its format after saving and restarting.
 func TestContentStore_SourceFormatSurvivesCopy(t *testing.T) {
-	svc, cfg, _ := contentStoreFixture(t)
-	location := filepath.Join(filepath.Dir(svc.configLocation), "nodes.lcf")
-	const body = "[Proxy]\nHK = anytls, hk.example.com, 443, \"pw\"\n"
-	if err := os.WriteFile(location, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg.Sources.Subscriptions = []config.Source{{ContentFile: location}}
-	raw, err := yaml.Marshal(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(svc.configLocation, raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err := svc.ConfigSnapshot(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var editable config.Config
-	if err := json.Unmarshal(snapshot.Config, &editable); err != nil {
-		t.Fatal(err)
-	}
-	if editable.Sources.Subscriptions[0].Format != "loon" {
-		t.Fatalf("copy lost .lcf format: %+v", editable.Sources.Subscriptions[0])
-	}
-	if _, err := svc.SaveConfig(context.Background(), &SaveConfigInput{ConfigRevision: snapshot.ConfigRevision, Config: snapshot.Config}); err != nil {
-		t.Fatal(err)
-	}
-	savedRaw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture config is inside t.TempDir.
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stored config.Config
-	if err := yaml.Unmarshal(savedRaw, &stored); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{stored.Sources.Subscriptions[0].ContentFile, stored.Templates.Loon} {
-		if filepath.Ext(path) != ".lcf" {
-			t.Fatalf("Loon body filename = %q, want .lcf", path)
-		}
-	}
-	savedBody, err := os.ReadFile(stored.Sources.Subscriptions[0].ContentFile) // #nosec G304 -- service-managed body is inside t.TempDir.
-	if err != nil || string(savedBody) != body {
-		t.Fatalf("saved Loon body = %q err=%v, want %q", savedBody, err, body)
-	}
-	restarted, err := New(context.Background(), Options{ConfigLocation: svc.configLocation, DataDir: svc.dataDir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	req, err := NewGenerateInput("loon", "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := restarted.Generate(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(output.Body), `anytls, hk.example.com, 443, "pw"`) {
-		t.Fatal("Loon node disappeared after copy/save/restart")
+	for _, origin := range []string{"ordinary file", "managed file"} {
+		t.Run(origin, func(t *testing.T) {
+			svc, cfg, _ := contentStoreFixture(t)
+			location := filepath.Join(filepath.Dir(svc.configLocation), "nodes.lcf")
+			if origin == "managed file" {
+				if err := os.MkdirAll(svc.dataDir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				location = filepath.Join(svc.dataDir, "subscription-20261101T123456.123456789Z-12345.lcf")
+			}
+			const body = "[Proxy]\nHK = anytls, hk.example.com, 443, \"pw\"\n"
+			if err := os.WriteFile(location, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg.Sources.Subscriptions = []config.Source{{ContentFile: location}}
+			raw, err := yaml.Marshal(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(svc.configLocation, raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := svc.ConfigSnapshot(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var editable config.Config
+			if err := json.Unmarshal(snapshot.Config, &editable); err != nil {
+				t.Fatal(err)
+			}
+			if editable.Sources.Subscriptions[0].Format != "loon" {
+				t.Fatalf("copy lost .lcf format: %+v", editable.Sources.Subscriptions[0])
+			}
+			if _, err := svc.SaveConfig(context.Background(), &SaveConfigInput{ConfigRevision: snapshot.ConfigRevision, Config: snapshot.Config}); err != nil {
+				t.Fatal(err)
+			}
+			savedRaw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture config is inside t.TempDir.
+			if err != nil {
+				t.Fatal(err)
+			}
+			var stored config.Config
+			if err := yaml.Unmarshal(savedRaw, &stored); err != nil {
+				t.Fatal(err)
+			}
+			if path := stored.Sources.Subscriptions[0].ContentFile; filepath.Ext(path) != ".txt" {
+				t.Fatalf("Loon source filename=%q want .txt", path)
+			}
+			if filepath.Ext(stored.Templates.Loon) != ".lcf" {
+				t.Fatalf("Loon template filename=%q want .lcf", stored.Templates.Loon)
+			}
+			if stored.Sources.Subscriptions[0].Format != "loon" {
+				t.Fatalf("saved source lost explicit format: %+v", stored.Sources.Subscriptions[0])
+			}
+			original, err := os.ReadFile(location) // #nosec G304 -- fixture source is inside t.TempDir.
+			if err != nil || string(original) != body {
+				t.Fatalf("saving modified original source: body=%q err=%v", original, err)
+			}
+			savedBody, err := os.ReadFile(stored.Sources.Subscriptions[0].ContentFile) // #nosec G304 -- service-managed body is inside t.TempDir.
+			if err != nil || string(savedBody) != body {
+				t.Fatalf("saved Loon body = %q err=%v, want %q", savedBody, err, body)
+			}
+			restarted, err := New(context.Background(), Options{ConfigLocation: svc.configLocation, DataDir: svc.dataDir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req, err := NewGenerateInput("loon", "", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			output, err := restarted.Generate(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(output.Body), `anytls, hk.example.com, 443, "pw"`) {
+				t.Fatal("Loon node disappeared after copy/save/restart")
+			}
+			edited, revision := editableContentConfig(t, restarted)
+			if _, err := saveContentDraft(t, restarted, &edited, revision); err != nil {
+				t.Fatal(err)
+			}
+			after := storedContentConfig(t, restarted)
+			if after.Sources.Subscriptions[0] != stored.Sources.Subscriptions[0] || after.Templates.Loon != stored.Templates.Loon {
+				t.Fatalf("unchanged save replaced source or template: before=%+v after=%+v", stored, after)
+			}
+		})
 	}
 }
 

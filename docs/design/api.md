@@ -341,7 +341,7 @@ revision 冲突响应示例：
 - `Content-Disposition: attachment; filename="subconverter-config.zip"; filename*=UTF-8''subconverter-config.zip`
 - ZIP 内容：
   - `config.yaml`：当前生效配置的可迁移副本；本地订阅使用包内相对 `content_file` 引用，模板引用改为包内相对路径，不保留服务器绝对路径或订阅正文字符串；远程订阅 URL 保持原样，不下载为副本
-  - `subscriptions/<序号>.txt`：本地订阅正文，序号为该条来源在 `sources.subscriptions` 中的 1-based 位置；Loon 正文使用 `.lcf`。正文逐字保留，订阅名称单独保存在 `name` 中；依赖原文件后缀识别的格式在配置中显式保存
+  - `subscriptions/<序号>.txt`：所有格式的本地订阅正文均使用 `.txt`，序号为该条来源在 `sources.subscriptions` 中的 1-based 位置。正文逐字保留，订阅名称单独保存在 `name` 中；解析格式保存在 `format` 中，包括依赖原文件后缀识别的格式
   - `snell/<序号>.txt`、`vless/<序号>.txt`：两类本地节点池的正文，序号为各自列表中的 1-based 位置；主配置的对应来源使用相对 `content_file` 引用，保留 `name`
   - `templates/clash.yaml`：Clash 底版正文（引用模板或本地编辑正文配置后存在）
   - `templates/surge.conf`：Surge 底版正文（引用模板或本地编辑正文配置后存在）
@@ -834,7 +834,8 @@ ZIP 请求体：
 - 其他 `/api/*` 管理接口必须携带有效 `session_id` Cookie；不接受 `Authorization: Bearer <SUBCONVERTER_TOKEN>` 作为管理后台权限
 - 前端 API client 使用同源 Cookie，不把订阅访问 token 放入 `/api/*` query 或 header
 - Session 失效后，所有受保护管理接口返回 `401 session_expired` 或 `401 auth_required`，前端全局拦截并跳转 `/login?next=<当前路径>`
-- 失败登录按 IP + 用户名联合计数；第 5 次失败后返回 `423 auth_locked`，默认锁定 15 分钟，具体截止时间由后端返回
+- 失败登录按 IP + 用户名联合计数，最近失败时间随认证状态持久化；连续 15 分钟没有新失败则清零，服务重启保留尚未过期的计数。第 5 次失败返回 `423 auth_locked` 并锁定 15 分钟，截止时间由后端返回；锁定期间的请求不延长锁定，锁定到期或同一 IP + 用户名成功登录后清零
+- 读取认证状态时忽略已过期的失败记录，并在下一次写入时清理。没有失败时间的未锁定记录不继续累计；已有且未到期的锁定仍保持到原截止时间
 - 所有非安全 `/api/*` 请求必须先校验同源 `Origin` 或 `Referer`，包括未登录可访问的 `/api/auth/login`、`/api/auth/setup` 和 `/api/auth/logout`；这些认证入口不要求已有 session，但仍受同源校验约束
 
 `/generate` 规则：

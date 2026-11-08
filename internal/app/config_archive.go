@@ -77,7 +77,7 @@ func (s *Service) configArchive(ctx context.Context, raw []byte) (*ConfigArchive
 			} else if body == "" {
 				continue
 			}
-			name := fmt.Sprintf("%s/%d%s", list.Kind, i+1, sourceExtension(list.Kind, source.Format))
+			name := fmt.Sprintf("%s/%d%s", list.Kind, i+1, sourceContentExtension)
 			entries = append(entries, archiveEntry{Name: name, Body: []byte(body)})
 			source.ContentFile, source.Content = name, ""
 		}
