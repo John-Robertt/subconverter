@@ -8,22 +8,21 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// GroupResult holds the output of the Group stage (pipeline stage 5).
+// GroupResult 保存 Group 阶段（流水线第 5 阶段）的输出。
 type GroupResult struct {
-	Proxies       []model.Proxy     // all proxies: original + chained
-	RegionGroups  []model.NodeGroup // region groups, declaration order
-	ChainedGroups []model.NodeGroup // chain groups, declaration order
-	NodeGroups    []model.NodeGroup // region groups + chain groups, declaration order
-	AllProxies    []model.ProxyID   // @all expansion: original proxy identities only
+	Proxies       []model.Proxy     // 全部节点：原始节点 + 链式节点
+	RegionGroups  []model.NodeGroup // 区域组，按声明顺序
+	ChainedGroups []model.NodeGroup // 链式组，按声明顺序
+	NodeGroups    []model.NodeGroup // 区域组 + 链式组，按声明顺序
+	AllProxies    []model.ProxyID   // @all 展开结果：只含原始节点的编号
 }
 
-// Group executes pipeline stage 5: build region node groups, chained
-// nodes/groups, and compute @all.
+// Group 执行流水线第 5 阶段：构建区域节点组、链式节点和链式组，并计算 @all。
 //
-// Three sub-steps in order:
-//  1. Build region node groups from groups config
-//  2. Build chained nodes and groups from relay_through definitions
-//  3. Compute @all (original proxy identities, excluding chained)
+// 依次执行三个子步骤：
+//  1. 按 groups 配置构建区域节点组
+//  2. 按 relay_through 定义构建链式节点和链式组
+//  3. 计算 @all（原始节点的编号，不含链式节点）
 func Group(source *SourceResult, groups []config.PreparedGroup) (*GroupResult, error) {
 	if source == nil {
 		source = &SourceResult{}
@@ -63,11 +62,10 @@ func Group(source *SourceResult, groups []config.PreparedGroup) (*GroupResult, e
 	}, nil
 }
 
-// buildRegionGroups creates node groups by matching fetched proxies
-// (KindSubscription + KindSnell + KindVLess, see isFetchedKind) against
-// each group's regex pattern, in groups declaration order. KindCustom and
-// KindChained are excluded from matching: custom proxies are already named
-// exactly by the user, and chained proxies are derived from upstreams.
+// buildRegionGroups 按 groups 的声明顺序，用每个组的正则匹配拉取类节点
+// （KindSubscription + KindSnell + KindVLess，见 isFetchedKind），生成节点组。
+// KindCustom 和 KindChained 不参与匹配：自定义节点的名字已由用户精确指定，
+// 链式节点则由上游节点派生而来。
 func buildRegionGroups(proxies []model.Proxy, groups []config.PreparedGroup) ([]model.NodeGroup, error) {
 	fetched := fetchedProxies(proxies)
 	result := make([]model.NodeGroup, 0, len(groups))
@@ -97,10 +95,9 @@ func buildRegionGroups(proxies []model.Proxy, groups []config.PreparedGroup) ([]
 	return result, nil
 }
 
-// buildChainedNodesAndGroups generates chained proxies and their groups
-// from custom proxies that have relay_through definitions. Upstream
-// candidates are drawn from fetched proxies (KindSubscription + KindSnell
-// + KindVLess, see isFetchedKind).
+// buildChainedNodesAndGroups 根据带 relay_through 定义的自定义节点，
+// 生成链式节点及其分组。上游候选取自拉取类节点（KindSubscription +
+// KindSnell + KindVLess，见 isFetchedKind）。
 func buildChainedNodesAndGroups(
 	proxies []model.Proxy,
 	chainTemplates []ChainTemplate,
@@ -152,10 +149,9 @@ func buildChainedNodesAndGroups(
 	return chainedProxies, chainGroups, nil
 }
 
-// resolveUpstreams determines the upstream proxies for a relay_through
-// definition. The candidate pool is fetched proxies (KindSubscription +
-// KindSnell + KindVLess, see isFetchedKind); custom and chained proxies
-// are never valid upstreams.
+// resolveUpstreams 确定一条 relay_through 定义的上游节点。候选池是拉取类节点
+// （KindSubscription + KindSnell + KindVLess，见 isFetchedKind）；
+// 自定义节点和链式节点永远不能作为上游。
 func resolveUpstreams(
 	fetched []model.Proxy,
 	regionGroups []model.NodeGroup,
@@ -203,7 +199,7 @@ func resolveUpstreams(
 	}
 }
 
-// resolveMembers looks up proxy objects by identity from a proxy pool.
+// resolveMembers 按编号从节点池中查出节点对象。
 func resolveMembers(pool []model.Proxy, ids []model.ProxyID) []model.Proxy {
 	index := make(map[model.ProxyID]model.Proxy, len(pool))
 	for _, p := range pool {
@@ -219,10 +215,9 @@ func resolveMembers(pool []model.Proxy, ids []model.ProxyID) []model.Proxy {
 	return result
 }
 
-// computeAllProxies collects identities of original proxies (KindSubscription +
-// KindSnell + KindVLess + KindCustom), excluding chained proxies. Called
-// before chained nodes are generated so `@all` never includes chained
-// derivatives.
+// computeAllProxies 收集原始节点（KindSubscription + KindSnell + KindVLess +
+// KindCustom）的编号，不含链式节点。它在生成链式节点之前调用，
+// 因此 `@all` 永远不会包含链式派生节点。
 func computeAllProxies(proxies []model.Proxy) []model.ProxyID {
 	result := make([]model.ProxyID, 0, len(proxies))
 	for _, p := range proxies {
@@ -233,15 +228,12 @@ func computeAllProxies(proxies []model.Proxy) []model.ProxyID {
 	return result
 }
 
-// fetchedProxies returns proxies sourced via remote fetch:
-// KindSubscription (SS/AnyTLS subscriptions), KindSnell (Snell sources), and
-// KindVLess (VLESS sources). These are the original proxies that
-// participate in region-group regex matching and serve as valid chain
-// upstreams.
+// fetchedProxies 返回通过远程拉取得到的节点：KindSubscription（SS/AnyTLS
+// 订阅）、KindSnell（Snell 来源）和 KindVLess（VLESS 来源）。这些原始节点
+// 参与区域分组的正则匹配，也是合法的链式上游。
 //
-// Custom proxies are excluded because they are already named exactly and
-// should not be matched by region regexes. Chained proxies are excluded
-// because they derive from other nodes.
+// 自定义节点被排除，因为它们的名字已精确指定，不应被区域正则匹配。
+// 链式节点被排除，因为它们由其他节点派生。
 func fetchedProxies(proxies []model.Proxy) []model.Proxy {
 	result := make([]model.Proxy, 0, len(proxies))
 	for _, p := range proxies {
@@ -262,7 +254,7 @@ func nextProxyID(proxies []model.Proxy) model.ProxyID {
 	return maxID + 1
 }
 
-// findGroupByName looks up a node group by name.
+// findGroupByName 按名称查找节点组。
 func findGroupByName(groups []model.NodeGroup, name string) (model.NodeGroup, bool) {
 	for _, g := range groups {
 		if g.Name == name {

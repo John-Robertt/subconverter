@@ -49,14 +49,14 @@ func saveContentDraft(t *testing.T, svc *Service, cfg *config.Config, revision s
 	return svc.SaveConfig(context.Background(), &SaveConfigInput{ConfigRevision: revision, Config: js})
 }
 
-// T-APP-STORE-001: bodies are stored directly in the configured directory and remain editable after restart.
+// T-APP-STORE-001：正文直接存放在配置的目录中，重启后仍可编辑。
 func TestContentStore_SaveAndRestart(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	result, err := saveContentDraft(t, svc, cfg, revision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture location is inside t.TempDir.
+	raw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture 位置在 t.TempDir 内。
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,25 +65,25 @@ func TestContentStore_SaveAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stored.Sources.Subscriptions[0].Content != "" || len(stored.Templates.Inline) != 0 || strings.Contains(string(raw), "secret-value") {
-		t.Fatal("config contains bodies instead of references")
+		t.Fatal("配置中存放的是正文而不是引用")
 	}
 	if stored.Sources.Subscriptions[0].Name != cfg.Sources.Subscriptions[0].Name {
-		t.Fatalf("saved name=%q want %q", stored.Sources.Subscriptions[0].Name, cfg.Sources.Subscriptions[0].Name)
+		t.Fatalf("保存的名称=%q，期望 %q", stored.Sources.Subscriptions[0].Name, cfg.Sources.Subscriptions[0].Name)
 	}
 	paths := []string{stored.Sources.Subscriptions[0].ContentFile, stored.Templates.Clash, stored.Templates.Surge, stored.Templates.Loon}
 	for _, path := range paths {
 		if !strings.Contains(filepath.Base(path), "20261101T123456.123456789Z-") {
-			t.Fatalf("filename lacks timestamp: %q", path)
+			t.Fatalf("文件名缺少时间戳：%q", path)
 		}
 		if filepath.Dir(path) != svc.dataDir {
-			t.Fatalf("body stored outside fixed directory: %q", path)
+			t.Fatalf("正文存放在固定目录之外：%q", path)
 		}
 		info, err := os.Stat(path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if info.Mode().Perm() != 0o600 {
-			t.Fatalf("body permissions=%o want 600", info.Mode().Perm())
+			t.Fatalf("正文文件权限=%o，期望 600", info.Mode().Perm())
 		}
 	}
 	entries, err := os.ReadDir(svc.dataDir)
@@ -91,7 +91,7 @@ func TestContentStore_SaveAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 4 {
-		t.Fatalf("want 4 body files and no staging files, got %d", len(entries))
+		t.Fatalf("期望 4 个正文文件且没有暂存文件，实际 %d", len(entries))
 	}
 	restarted, err := New(context.Background(), Options{ConfigLocation: svc.configLocation, DataDir: svc.dataDir})
 	if err != nil {
@@ -106,10 +106,10 @@ func TestContentStore_SaveAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if editable.Sources.Subscriptions[0] != cfg.Sources.Subscriptions[0] || editable.Templates.Inline["loon"] != cfg.Templates.Inline["loon"] || editable.Templates.Loon != "" {
-		t.Fatal("restart lost editable bodies")
+		t.Fatal("重启后丢失了可编辑的正文")
 	}
 	if snapshot.ConfigRevision != result.ConfigRevision {
-		t.Fatal("snapshot revision does not represent disk config")
+		t.Fatal("快照的 revision 与磁盘上的配置不一致")
 	}
 	for _, format := range []string{"clash", "surge", "loon"} {
 		request, err := NewGenerateInput(format, "", false)
@@ -121,7 +121,7 @@ func TestContentStore_SaveAndRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !strings.Contains(string(output.Body), "HK-SAVED") {
-			t.Fatalf("%s lost saved node", format)
+			t.Fatalf("%s 丢失了已保存的节点", format)
 		}
 	}
 	if _, err := saveContentDraft(t, svc, cfg, result.ConfigRevision); err != nil {
@@ -132,11 +132,11 @@ func TestContentStore_SaveAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(after) != 4 {
-		t.Fatalf("unchanged save created extra versions: files=%d want 4", len(after))
+		t.Fatalf("内容未变的保存创建了多余的版本：files=%d，期望 4", len(after))
 	}
 }
 
-// T-APP-STORE-002: directory failures preserve the saved config and can be retried after fixing permissions.
+// T-APP-STORE-002：目录出错时保留已保存的配置，修复权限后可以重试。
 func TestContentStore_DirectoryFailureAndRetry(t *testing.T) {
 	for _, mode := range []string{"readonly", "file", "missing-parent-permission"} {
 		t.Run(mode, func(t *testing.T) {
@@ -151,7 +151,7 @@ func TestContentStore_DirectoryFailureAndRetry(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() {
-					_ = os.Chmod(svc.dataDir, 0o700) // #nosec G302 -- Owner execute permission is required for temporary directories.
+					_ = os.Chmod(svc.dataDir, 0o700) // #nosec G302 -- 临时目录需要所有者的执行权限。
 				})
 			default:
 				if err := os.MkdirAll(svc.dataDir, 0o500); err != nil {
@@ -160,13 +160,13 @@ func TestContentStore_DirectoryFailureAndRetry(t *testing.T) {
 				parent := svc.dataDir
 				svc.dataDir = filepath.Join(parent, "nested")
 				t.Cleanup(func() {
-					_ = os.Chmod(parent, 0o700) // #nosec G302 -- Owner execute permission is required for temporary directories.
+					_ = os.Chmod(parent, 0o700) // #nosec G302 -- 临时目录需要所有者的执行权限。
 				})
 			}
 			_, err := saveContentDraft(t, svc, cfg, revision)
 			var writeErr *errtype.ResourceError
 			if !errors.As(err, &writeErr) || writeErr.Code != errtype.CodeResourceContentWriteFailed || !strings.Contains(writeErr.Message, svc.dataDir) || strings.Contains(writeErr.Message, "secret-value") {
-				t.Fatalf("want actionable sanitized write error, got %v", err)
+				t.Fatalf("期望可据以处理且已脱敏的写入错误，实际 %v", err)
 			}
 			snapshot, err := svc.ConfigSnapshot(context.Background())
 			if err != nil {
@@ -177,7 +177,7 @@ func TestContentStore_DirectoryFailureAndRetry(t *testing.T) {
 				t.Fatal(err)
 			}
 			if snapshot.ConfigRevision != revision || status.ConfigDirty || !status.Capabilities.ConfigWrite || !status.ConfigSource.Writable {
-				t.Fatal("failed body save changed config or readonly contract")
+				t.Fatal("正文保存失败却改动了配置或只读约定")
 			}
 			switch mode {
 			case "file":
@@ -185,22 +185,22 @@ func TestContentStore_DirectoryFailureAndRetry(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "readonly":
-				if err := os.Chmod(svc.dataDir, 0o700); err != nil { // #nosec G302 -- Restores owner access to a temporary directory.
+				if err := os.Chmod(svc.dataDir, 0o700); err != nil { // #nosec G302 -- 恢复所有者对临时目录的访问权限。
 					t.Fatal(err)
 				}
 			default:
-				if err := os.Chmod(filepath.Dir(svc.dataDir), 0o700); err != nil { // #nosec G302 -- Restores owner access to a temporary directory.
+				if err := os.Chmod(filepath.Dir(svc.dataDir), 0o700); err != nil { // #nosec G302 -- 恢复所有者对临时目录的访问权限。
 					t.Fatal(err)
 				}
 			}
 			if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
-				t.Fatalf("retry failed: %v", err)
+				t.Fatalf("重试失败：%v", err)
 			}
 		})
 	}
 }
 
-// T-APP-STORE-003: changing a body cannot change an existing runtime snapshot before reload.
+// T-APP-STORE-003：热重载前修改正文不会改变已有的运行时快照。
 func TestContentStore_SnapshotAndConcurrentSave(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	saved, err := saveContentDraft(t, svc, cfg, revision)
@@ -244,14 +244,14 @@ func TestContentStore_SnapshotAndConcurrentSave(t *testing.T) {
 		}
 	}
 	if success != 1 || conflicts != 3 {
-		t.Fatalf("success=%d conflicts=%d want 1/3", success, conflicts)
+		t.Fatalf("成功=%d，冲突=%d，期望 1/3", success, conflicts)
 	}
-	body, err := os.ReadFile(old) // #nosec G304 -- path is generated within the test's managed directory.
+	body, err := os.ReadFile(old) // #nosec G304 -- 路径在测试的托管目录内生成。
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(body), "HK-SAVED") {
-		t.Fatal("old snapshot body was overwritten")
+		t.Fatal("旧快照的正文被覆盖了")
 	}
 	request, err := NewGenerateInput("loon", "", false)
 	if err != nil {
@@ -262,7 +262,7 @@ func TestContentStore_SnapshotAndConcurrentSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(output.Body), "HK-SAVED") {
-		t.Fatal("save mutated active runtime before reload")
+		t.Fatal("保存在热重载前就改动了生效中的运行时配置")
 	}
 	if _, err := svc.Reload(context.Background()); err != nil {
 		t.Fatal(err)
@@ -272,11 +272,11 @@ func TestContentStore_SnapshotAndConcurrentSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(output.Body), "HK-NEW") {
-		t.Fatal("reload did not activate new body")
+		t.Fatal("热重载没有让新正文生效")
 	}
 }
 
-// T-APP-STORE-004: editing a readonly source writes only a new version in the managed directory.
+// T-APP-STORE-004：编辑只读来源时，只在托管目录中写入新版本。
 func TestContentStore_ReadonlyOriginal(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	original := filepath.Join(filepath.Dir(svc.configLocation), "original.conf")
@@ -292,23 +292,23 @@ func TestContentStore_ReadonlyOriginal(t *testing.T) {
 	if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(original) // #nosec G304 -- original is inside t.TempDir.
+	raw, err := os.ReadFile(original) // #nosec G304 -- original 位于 t.TempDir 内。
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(raw) != body {
-		t.Fatal("readonly original was overwritten")
+		t.Fatal("只读的原始文件被覆盖了")
 	}
 }
 
-// T-APP-STORE-005: the production default has no extra content subdirectory.
+// T-APP-STORE-005：生产环境的默认目录下没有额外的正文子目录。
 func TestContentStore_DefaultDirectory(t *testing.T) {
 	if got := (&Service{}).contentDirectory(); got != "/config" {
-		t.Fatalf("default directory=%q want /config", got)
+		t.Fatalf("默认目录=%q，期望 /config", got)
 	}
 }
 
-// T-APP-STORE-009: copying a suffix-detected document retains its format after saving and restarting.
+// T-APP-STORE-009：复制按后缀识别格式的文档后，保存和重启都保留其格式。
 func TestContentStore_SourceFormatSurvivesCopy(t *testing.T) {
 	for _, origin := range []string{"ordinary file", "managed file"} {
 		t.Run(origin, func(t *testing.T) {
@@ -341,12 +341,12 @@ func TestContentStore_SourceFormatSurvivesCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			if editable.Sources.Subscriptions[0].Format != "loon" {
-				t.Fatalf("copy lost .lcf format: %+v", editable.Sources.Subscriptions[0])
+				t.Fatalf("副本丢失了 .lcf 格式：%+v", editable.Sources.Subscriptions[0])
 			}
 			if _, err := svc.SaveConfig(context.Background(), &SaveConfigInput{ConfigRevision: snapshot.ConfigRevision, Config: snapshot.Config}); err != nil {
 				t.Fatal(err)
 			}
-			savedRaw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture config is inside t.TempDir.
+			savedRaw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture 配置位于 t.TempDir 内。
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -355,21 +355,21 @@ func TestContentStore_SourceFormatSurvivesCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			if path := stored.Sources.Subscriptions[0].ContentFile; filepath.Ext(path) != ".txt" {
-				t.Fatalf("Loon source filename=%q want .txt", path)
+				t.Fatalf("Loon 来源文件名=%q，期望 .txt", path)
 			}
 			if filepath.Ext(stored.Templates.Loon) != ".lcf" {
-				t.Fatalf("Loon template filename=%q want .lcf", stored.Templates.Loon)
+				t.Fatalf("Loon 模板文件名=%q，期望 .lcf", stored.Templates.Loon)
 			}
 			if stored.Sources.Subscriptions[0].Format != "loon" {
-				t.Fatalf("saved source lost explicit format: %+v", stored.Sources.Subscriptions[0])
+				t.Fatalf("已保存的来源丢失了显式格式：%+v", stored.Sources.Subscriptions[0])
 			}
-			original, err := os.ReadFile(location) // #nosec G304 -- fixture source is inside t.TempDir.
+			original, err := os.ReadFile(location) // #nosec G304 -- fixture 来源位于 t.TempDir 内。
 			if err != nil || string(original) != body {
-				t.Fatalf("saving modified original source: body=%q err=%v", original, err)
+				t.Fatalf("保存改动了原始来源：body=%q err=%v", original, err)
 			}
-			savedBody, err := os.ReadFile(stored.Sources.Subscriptions[0].ContentFile) // #nosec G304 -- service-managed body is inside t.TempDir.
+			savedBody, err := os.ReadFile(stored.Sources.Subscriptions[0].ContentFile) // #nosec G304 -- 服务托管的正文位于 t.TempDir 内。
 			if err != nil || string(savedBody) != body {
-				t.Fatalf("saved Loon body = %q err=%v, want %q", savedBody, err, body)
+				t.Fatalf("已保存的 Loon 正文 = %q err=%v，期望 %q", savedBody, err, body)
 			}
 			restarted, err := New(context.Background(), Options{ConfigLocation: svc.configLocation, DataDir: svc.dataDir})
 			if err != nil {
@@ -384,7 +384,7 @@ func TestContentStore_SourceFormatSurvivesCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !strings.Contains(string(output.Body), `anytls, hk.example.com, 443, "pw"`) {
-				t.Fatal("Loon node disappeared after copy/save/restart")
+				t.Fatal("复制/保存/重启后 Loon 节点消失了")
 			}
 			edited, revision := editableContentConfig(t, restarted)
 			if _, err := saveContentDraft(t, restarted, &edited, revision); err != nil {
@@ -392,13 +392,13 @@ func TestContentStore_SourceFormatSurvivesCopy(t *testing.T) {
 			}
 			after := storedContentConfig(t, restarted)
 			if after.Sources.Subscriptions[0] != stored.Sources.Subscriptions[0] || after.Templates.Loon != stored.Templates.Loon {
-				t.Fatalf("unchanged save replaced source or template: before=%+v after=%+v", stored, after)
+				t.Fatalf("内容未变的保存替换了来源或模板：before=%+v after=%+v", stored, after)
 			}
 		})
 	}
 }
 
-// T-APP-STORE-008: one missing body does not prevent repairing the rest of the config.
+// T-APP-STORE-008：某个正文缺失不妨碍修复配置的其余部分。
 func TestContentStore_MissingBodyRemainsEditable(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
@@ -407,7 +407,7 @@ func TestContentStore_MissingBodyRemainsEditable(t *testing.T) {
 	if _, err := svc.Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture config is inside t.TempDir.
+	raw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture 配置位于 t.TempDir 内。
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,27 +423,27 @@ func TestContentStore_MissingBodyRemainsEditable(t *testing.T) {
 	}
 	snapshot, err := svc.ConfigSnapshot(context.Background())
 	if err != nil {
-		t.Fatalf("missing body blocked config editor: %v", err)
+		t.Fatalf("正文缺失导致配置编辑器无法使用：%v", err)
 	}
 	var got config.Config
 	if err := json.Unmarshal(snapshot.Config, &got); err != nil {
 		t.Fatal(err)
 	}
 	if got.Sources.Subscriptions[0].ContentFile != stored.Sources.Subscriptions[0].ContentFile || got.Templates.Loon != stored.Templates.Loon {
-		t.Fatal("unreadable body references were lost")
+		t.Fatal("无法读取的正文引用丢失了")
 	}
 	if got.Templates.Inline["clash"] != cfg.Templates.Inline["clash"] {
-		t.Fatal("a failed body prevented restoring other readable bodies")
+		t.Fatal("一个正文读取失败导致其他可读正文无法恢复")
 	}
 	if _, err := svc.ImportConfigYAML(context.Background(), raw); err != nil {
-		t.Fatalf("missing local body blocked draft import: %v", err)
+		t.Fatalf("本地正文缺失导致草稿无法导入：%v", err)
 	}
 	if _, err := svc.EffectiveConfigArchive(context.Background()); err == nil {
-		t.Fatal("archive exported incomplete bodies")
+		t.Fatal("配置包导出了不完整的正文")
 	}
 }
 
-// T-APP-STORE-007: ordinary template filenames never turn a live reference into a snapshot.
+// T-APP-STORE-007：普通模板文件名不会让实时引用变成快照。
 func TestContentStore_ManagedTemplateNames(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -483,16 +483,16 @@ func TestContentStore_ManagedTemplateNames(t *testing.T) {
 			}
 			if tt.managed {
 				if got.Templates.Loon != "" || got.Templates.Inline["loon"] != body {
-					t.Fatal("managed body was not restored")
+					t.Fatal("托管正文没有被恢复")
 				}
 			} else if got.Templates.Loon != location || len(got.Templates.Inline) != 0 {
-				t.Fatalf("ordinary template reference changed: %+v", got.Templates)
+				t.Fatalf("普通模板引用被改动：%+v", got.Templates)
 			}
 		})
 	}
 }
 
-// T-APP-STORE-006: a config commit failure removes only the versions created by that save.
+// T-APP-STORE-006：配置提交失败时，只删除这次保存创建的版本。
 func TestContentStore_ConfigCommitRollback(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	original := svc.configLocation
@@ -504,7 +504,7 @@ func TestContentStore_ConfigCommitRollback(t *testing.T) {
 	svc.now = func() time.Time { svc.configLocation = blocked; return now() }
 	_, err := saveContentDraft(t, svc, cfg, revision)
 	if !errors.Is(err, errtype.ErrConfigFileNotWritable) {
-		t.Fatalf("want config commit failure, got %v", err)
+		t.Fatalf("期望配置提交失败，实际 %v", err)
 	}
 	svc.configLocation = original
 	svc.now = now
@@ -513,18 +513,18 @@ func TestContentStore_ConfigCommitRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 0 {
-		t.Fatalf("uncommitted versions remain: %d", len(entries))
+		t.Fatalf("仍残留未提交的版本：%d", len(entries))
 	}
 	snapshot, err := svc.ConfigSnapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if snapshot.ConfigRevision != revision {
-		t.Fatal("failed config commit changed revision")
+		t.Fatal("配置提交失败却改变了 revision")
 	}
 }
 
-// T-APP-STORE-010: SaveConfig also rolls back files when a later body cannot be written.
+// T-APP-STORE-010：后面的正文无法写入时，SaveConfig 同样回滚已写的文件。
 func TestContentStore_PartialBodyRollback(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	root := svc.dataDir
@@ -544,7 +544,7 @@ func TestContentStore_PartialBodyRollback(t *testing.T) {
 	_, err := saveContentDraft(t, svc, cfg, revision)
 	var writeErr *errtype.ResourceError
 	if !errors.As(err, &writeErr) || writeErr.Code != errtype.CodeResourceContentWriteFailed {
-		t.Fatalf("want later-body write failure, got %v", err)
+		t.Fatalf("期望后续正文写入失败，实际 %v", err)
 	}
 	svc.dataDir, svc.now = root, clock
 	entries, err := os.ReadDir(root)
@@ -552,20 +552,20 @@ func TestContentStore_PartialBodyRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 0 {
-		t.Fatalf("partial save left %d uncommitted files", len(entries))
+		t.Fatalf("部分保存残留了 %d 个未提交的文件", len(entries))
 	}
 	snapshot, err := svc.ConfigSnapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if snapshot.ConfigRevision != revision {
-		t.Fatal("partial body save changed config")
+		t.Fatal("部分正文保存改动了配置")
 	}
 }
 
 func storedContentConfig(t *testing.T, svc *Service) config.Config {
 	t.Helper()
-	raw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- Fixture config is under t.TempDir.
+	raw, err := os.ReadFile(svc.configLocation) // #nosec G304 -- fixture 配置位于 t.TempDir 下。
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +589,7 @@ func editableContentConfig(t *testing.T, svc *Service) (config.Config, string) {
 	return cfg, snapshot.ConfigRevision
 }
 
-// T-APP-STORE-011: only changed bodies create versions; metadata and identical saves reuse references.
+// T-APP-STORE-011：只有改动过的正文才创建版本；只改元数据或内容相同的保存都复用引用。
 func TestContentStore_ReuseUnchangedBodies(t *testing.T) {
 	for _, tt := range []struct {
 		name                             string
@@ -628,10 +628,10 @@ func TestContentStore_ReuseUnchangedBodies(t *testing.T) {
 				}
 			}
 			if tt.readonly {
-				if err := os.Chmod(svc.dataDir, 0o500); err != nil { // #nosec G302 -- Directory read/execute access is required to reuse existing versions without write permission.
+				if err := os.Chmod(svc.dataDir, 0o500); err != nil { // #nosec G302 -- 没有写权限时，需要目录的读取和执行权限才能复用已有版本。
 					t.Fatal(err)
 				}
-				t.Cleanup(func() { _ = os.Chmod(svc.dataDir, 0o700) }) // #nosec G302 -- Restores owner access to a temporary directory.
+				t.Cleanup(func() { _ = os.Chmod(svc.dataDir, 0o700) }) // #nosec G302 -- 恢复所有者对临时目录的访问权限。
 			}
 			info, err := os.Stat(svc.configLocation)
 			if err != nil {
@@ -647,7 +647,7 @@ func TestContentStore_ReuseUnchangedBodies(t *testing.T) {
 			for kind, old := range oldPaths {
 				changed := newPaths[kind] != old
 				if changed != (kind == tt.changed) {
-					t.Fatalf("%s reference changed=%v want %v: old=%q new=%q", kind, changed, kind == tt.changed, old, newPaths[kind])
+					t.Fatalf("%s 引用 changed=%v，期望 %v：old=%q new=%q", kind, changed, kind == tt.changed, old, newPaths[kind])
 				}
 			}
 			entries, err := os.ReadDir(svc.dataDir)
@@ -665,7 +665,7 @@ func TestContentStore_ReuseUnchangedBodies(t *testing.T) {
 				wantFiles--
 			}
 			if len(entries) != wantFiles {
-				t.Fatalf("body files=%d want %d", len(entries), wantFiles)
+				t.Fatalf("正文文件数=%d，期望 %d", len(entries), wantFiles)
 			}
 			if tt.patch == nil && !tt.missingSource {
 				afterInfo, err := os.Stat(svc.configLocation)
@@ -673,14 +673,14 @@ func TestContentStore_ReuseUnchangedBodies(t *testing.T) {
 					t.Fatal(err)
 				}
 				if result.ConfigRevision != savedRevision || !os.SameFile(info, afterInfo) {
-					t.Fatalf("identical save rewrote config: revision=%s want %s", result.ConfigRevision, savedRevision)
+					t.Fatalf("内容相同的保存重写了配置：revision=%s，期望 %s", result.ConfigRevision, savedRevision)
 				}
 			}
 		})
 	}
 }
 
-// T-APP-STORE-012: subscription reordering reuses each body; a new duplicate remains a separate resource.
+// T-APP-STORE-012：调整订阅顺序时复用各自的正文；新增的重复项仍是独立资源。
 func TestContentStore_ReorderSubscriptions(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	cfg.Sources.Subscriptions = append(cfg.Sources.Subscriptions, config.Source{Content: "anytls://pw@sg.example.com:443#SG"})
@@ -696,7 +696,7 @@ func TestContentStore_ReorderSubscriptions(t *testing.T) {
 	after := storedContentConfig(t, svc)
 	for i, j := range []int{1, 0} {
 		if after.Sources.Subscriptions[i].ContentFile != before.Sources.Subscriptions[j].ContentFile {
-			t.Fatalf("source %d lost reference after reorder: %+v", i, after.Sources.Subscriptions)
+			t.Fatalf("调整顺序后来源 %d 丢失了引用：%+v", i, after.Sources.Subscriptions)
 		}
 	}
 	entries, err := os.ReadDir(svc.dataDir)
@@ -704,7 +704,7 @@ func TestContentStore_ReorderSubscriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 5 {
-		t.Fatalf("reorder created versions: files=%d want 5", len(entries))
+		t.Fatalf("调整顺序创建了新版本：files=%d，期望 5", len(entries))
 	}
 	edited, revision = editableContentConfig(t, svc)
 	edited.Sources.Subscriptions = append(edited.Sources.Subscriptions, edited.Sources.Subscriptions[0])
@@ -713,11 +713,11 @@ func TestContentStore_ReorderSubscriptions(t *testing.T) {
 	}
 	after = storedContentConfig(t, svc)
 	if len(after.Sources.Subscriptions) != 3 || after.Sources.Subscriptions[0].ContentFile == after.Sources.Subscriptions[2].ContentFile {
-		t.Fatalf("new subscription lost independent resource: %+v", after.Sources.Subscriptions)
+		t.Fatalf("新订阅没有独立的资源：%+v", after.Sources.Subscriptions)
 	}
 }
 
-// T-APP-STORE-013: explicitly editing an ordinary reference creates a managed copy even when text is identical.
+// T-APP-STORE-013：显式编辑普通引用时，即使文本相同也会创建托管副本。
 func TestContentStore_CopyOrdinaryTemplate(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	path := filepath.Join(filepath.Dir(svc.configLocation), "original.lcf")
@@ -738,11 +738,11 @@ func TestContentStore_CopyOrdinaryTemplate(t *testing.T) {
 	}
 	after := storedContentConfig(t, svc)
 	if after.Templates.Loon == path || !svc.isManagedTemplate(after.Templates.Loon, "loon") {
-		t.Fatalf("ordinary reference reused instead of copying: %q", after.Templates.Loon)
+		t.Fatalf("普通引用被复用而没有复制：%q", after.Templates.Loon)
 	}
 }
 
-// T-APP-STORE-014: a failed config commit removes only new bodies and keeps reused versions readable.
+// T-APP-STORE-014：配置提交失败时只删除新正文，被复用的版本保持可读。
 func TestContentStore_ReuseRollback(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	if _, err := saveContentDraft(t, svc, cfg, revision); err != nil {
@@ -761,25 +761,25 @@ func TestContentStore_ReuseRollback(t *testing.T) {
 	_, err := saveContentDraft(t, svc, &edited, revision)
 	svc.configLocation, svc.now = original, clock
 	if !errors.Is(err, errtype.ErrConfigFileNotWritable) {
-		t.Fatalf("save error=%v want config commit failure", err)
+		t.Fatalf("保存错误=%v，期望配置提交失败", err)
 	}
 	after := storedContentConfig(t, svc)
 	if after.Templates.Loon != before.Templates.Loon {
-		t.Fatal("failed save changed config reference")
+		t.Fatal("保存失败却改动了配置引用")
 	}
 	entries, err := os.ReadDir(svc.dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 4 {
-		t.Fatalf("failed save retained new versions or removed old ones: %d", len(entries))
+		t.Fatalf("保存失败后残留了新版本或删除了旧版本：%d", len(entries))
 	}
 	if _, err := svc.ReadResource(context.Background(), before.Templates.Clash); err != nil {
-		t.Fatalf("reused file was removed: %v", err)
+		t.Fatalf("被复用的文件被删除了：%v", err)
 	}
 }
 
-// T-APP-STORE-015: malformed saved YAML does not prevent replacing it with a valid draft.
+// T-APP-STORE-015：已保存的 YAML 格式错误时，仍能用有效草稿替换。
 func TestContentStore_RepairInvalidSavedConfig(t *testing.T) {
 	svc, cfg, _ := contentStoreFixture(t)
 	raw := []byte("sources: [invalid yaml\n")
@@ -787,14 +787,14 @@ func TestContentStore_RepairInvalidSavedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := saveContentDraft(t, svc, cfg, configRevision(raw)); err != nil {
-		t.Fatalf("valid replacement failed: %v", err)
+		t.Fatalf("用有效草稿替换失败：%v", err)
 	}
 	if stored := storedContentConfig(t, svc); stored.Sources.Subscriptions[0].ContentFile == "" {
-		t.Fatal("replacement did not save body")
+		t.Fatal("替换时没有保存正文")
 	}
 }
 
-// T-APP-STORE-016: keeping one explicit reference must not consume another subscription's reusable version.
+// T-APP-STORE-016：保留一个显式引用时，不能占用另一个订阅可复用的版本。
 func TestContentStore_MixedReferencesAndBodies(t *testing.T) {
 	svc, cfg, revision := contentStoreFixture(t)
 	cfg.Sources.Subscriptions = append(cfg.Sources.Subscriptions, cfg.Sources.Subscriptions[0])
@@ -811,7 +811,7 @@ func TestContentStore_MixedReferencesAndBodies(t *testing.T) {
 	after := storedContentConfig(t, svc)
 	for i := range before.Sources.Subscriptions {
 		if after.Sources.Subscriptions[i].ContentFile != before.Sources.Subscriptions[i].ContentFile {
-			t.Fatalf("source %d reference changed: old=%q new=%q", i, before.Sources.Subscriptions[i].ContentFile, after.Sources.Subscriptions[i].ContentFile)
+			t.Fatalf("来源 %d 的引用被改动：old=%q new=%q", i, before.Sources.Subscriptions[i].ContentFile, after.Sources.Subscriptions[i].ContentFile)
 		}
 	}
 }

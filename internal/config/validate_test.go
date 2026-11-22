@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// validBase returns a minimal valid Config for mutation in tests.
+// validBase 返回一份最小的合法 Config，供测试在其基础上修改。
 func validBase() Config {
 	var cfg Config
 	cfg.Sources.Subscriptions = []Source{{URL: "https://example.com/sub"}}
@@ -33,15 +33,15 @@ func TestPrepare_ValidConfig(t *testing.T) {
 	cfg := validBase()
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 
 	groups := rt.GroupInput()
 	if len(groups) == 0 || groups[0].Match == nil {
-		t.Fatal("group regex not compiled")
+		t.Fatal("组正则未编译")
 	}
 	if !groups[0].Match.MatchString("HK-01") {
-		t.Error("compiled regex should match HK-01")
+		t.Error("编译后的正则应匹配 HK-01")
 	}
 }
 
@@ -78,10 +78,10 @@ func TestPrepare_ValidSnellURL(t *testing.T) {
 	cfg.Sources.Snell = []Source{{URL: "https://example.com/snell.txt"}}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	if len(rt.SourceInput().Snell) != 1 || rt.SourceInput().Snell[0].URL != "https://example.com/snell.txt" {
-		t.Errorf("Snell source not preserved: %+v", rt.SourceInput().Snell)
+		t.Errorf("Snell 来源未被保留：%+v", rt.SourceInput().Snell)
 	}
 }
 
@@ -104,14 +104,14 @@ func TestPrepare_ValidVLessURL(t *testing.T) {
 	cfg.Sources.VLess = []Source{{URL: "https://example.com/vless.txt"}}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	if len(rt.SourceInput().VLess) != 1 || rt.SourceInput().VLess[0].URL != "https://example.com/vless.txt" {
-		t.Errorf("VLess source not preserved: %+v", rt.SourceInput().VLess)
+		t.Errorf("VLess 来源未被保留：%+v", rt.SourceInput().VLess)
 	}
 }
 
-// ---- custom_proxies: URL mode ----
+// ---- custom_proxies：URL 模式 ----
 
 func TestPrepare_MissingCustomProxyName(t *testing.T) {
 	cfg := validBase()
@@ -142,11 +142,11 @@ func TestPrepare_CustomProxySocks5Valid(t *testing.T) {
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	parsed := rt.SourceInput().CustomProxies[0].Parsed
 	if parsed.Type != "socks5" {
-		t.Errorf("parsed type = %q, want socks5", parsed.Type)
+		t.Errorf("解析出的类型 = %q，期望 socks5", parsed.Type)
 	}
 }
 
@@ -156,11 +156,11 @@ func TestPrepare_CustomProxyHTTPValid(t *testing.T) {
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	parsed := rt.SourceInput().CustomProxies[0].Parsed
 	if parsed.Type != "http" {
-		t.Errorf("parsed type = %q, want http", parsed.Type)
+		t.Errorf("解析出的类型 = %q，期望 http", parsed.Type)
 	}
 }
 
@@ -170,14 +170,14 @@ func TestPrepare_CustomProxySSValid(t *testing.T) {
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	parsed := rt.SourceInput().CustomProxies[0].Parsed
 	if parsed.Params["cipher"] != "aes-256-gcm" {
-		t.Errorf("cipher = %q, want aes-256-gcm", parsed.Params["cipher"])
+		t.Errorf("cipher = %q，期望 aes-256-gcm", parsed.Params["cipher"])
 	}
 	if parsed.Params["password"] != "mypass" {
-		t.Errorf("password = %q, want mypass", parsed.Params["password"])
+		t.Errorf("password = %q，期望 mypass", parsed.Params["password"])
 	}
 }
 
@@ -187,14 +187,14 @@ func TestPrepare_CustomProxySSWithPlugin(t *testing.T) {
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	plugin := rt.SourceInput().CustomProxies[0].Parsed.Plugin
 	if plugin == nil {
-		t.Fatal("plugin should not be nil")
+		t.Fatal("plugin 不应为 nil")
 	}
 	if plugin.Opts["obfs"] != "http" {
-		t.Errorf("plugin obfs = %q, want http", plugin.Opts["obfs"])
+		t.Errorf("plugin obfs = %q，期望 http", plugin.Opts["obfs"])
 	}
 }
 
@@ -204,10 +204,10 @@ func TestPrepare_CustomProxySSFragmentIgnored(t *testing.T) {
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	if rt.SourceInput().CustomProxies[0].Name != "MY-NODE" {
-		t.Errorf("Name = %q, want MY-NODE (fragment should be ignored)", rt.SourceInput().CustomProxies[0].Name)
+		t.Errorf("Name = %q，期望 MY-NODE（应忽略 fragment）", rt.SourceInput().CustomProxies[0].Name)
 	}
 }
 
@@ -227,7 +227,7 @@ func TestPrepare_CustomProxySSMissingPassword(t *testing.T) {
 	assertFieldError(t, err, "sources.custom_proxies[0].url")
 }
 
-// T-CFG-ID-001: standalone custom proxies may share a display name.
+// T-CFG-ID-001：独立的自定义代理可以使用相同的显示名。
 func TestPrepare_DuplicateStandaloneCustomProxyNamesAllowed(t *testing.T) {
 	cfg := validBase()
 	cfg.Sources.CustomProxies = []CustomProxy{
@@ -236,15 +236,15 @@ func TestPrepare_DuplicateStandaloneCustomProxyNamesAllowed(t *testing.T) {
 	}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("duplicate standalone display names should be valid: %v", err)
+		t.Fatalf("独立代理的显示名重复应视为合法：%v", err)
 	}
 	if got := len(rt.SourceInput().CustomProxies); got != 2 {
-		t.Fatalf("prepared custom proxies = %d, want 2", got)
+		t.Fatalf("预处理后的自定义代理数 = %d，期望 2", got)
 	}
 }
 
-// T-CFG-ID-002: relay_through declarations still create groups, whose names
-// remain unique in the group namespace.
+// T-CFG-ID-002：relay_through 声明仍会创建组，
+// 这些组名在组命名空间内必须唯一。
 func TestPrepare_DuplicateChainGroupNamesRejected(t *testing.T) {
 	cfg := validBase()
 	relay := &RelayThrough{Type: "all", Strategy: "select"}
@@ -263,17 +263,17 @@ func TestPrepare_CustomProxySSWithRelayThrough(t *testing.T) {
 	cfg.Sources.CustomProxies = []CustomProxy{cp}
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	relay := rt.SourceInput().CustomProxies[0].RelayThrough
 	if relay == nil {
-		t.Fatal("RelayThrough should not be nil")
+		t.Fatal("RelayThrough 不应为 nil")
 	}
 	if relay.Type != "all" {
-		t.Errorf("relay type = %q, want all", relay.Type)
+		t.Errorf("relay 类型 = %q，期望 all", relay.Type)
 	}
 	if relay.Strategy != "select" {
-		t.Errorf("relay strategy = %q, want select", relay.Strategy)
+		t.Errorf("relay 策略 = %q，期望 select", relay.Strategy)
 	}
 }
 
@@ -431,10 +431,10 @@ func TestPrepare_BaseURLValid(t *testing.T) {
 	cfg.BaseURL = "https://example.com"
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+		t.Fatalf("期望 nil，实际为 %v", err)
 	}
 	if rt.BaseURL() != "https://example.com" {
-		t.Errorf("BaseURL() = %q, want https://example.com", rt.BaseURL())
+		t.Errorf("BaseURL() = %q，期望 https://example.com", rt.BaseURL())
 	}
 }
 
@@ -445,24 +445,24 @@ func TestPrepare_MultipleErrors(t *testing.T) {
 
 	_, err := Prepare(&cfg)
 	if err == nil {
-		t.Fatal("expected error")
+		t.Fatal("期望返回错误")
 	}
 
 	msg := err.Error()
 	if !strings.Contains(msg, "sources.subscriptions[0].url") {
-		t.Errorf("missing subscription error in: %s", msg)
+		t.Errorf("错误信息中缺少订阅相关的错误：%s", msg)
 	}
 	if !strings.Contains(msg, "fallback") {
-		t.Errorf("missing fallback error in: %s", msg)
+		t.Errorf("错误信息中缺少 fallback 相关的错误：%s", msg)
 	}
 }
 
-// --- helpers ---
+// --- 辅助函数 ---
 
 func assertFieldError(t *testing.T, err error, fieldSubstr string) {
 	t.Helper()
 	if err == nil {
-		t.Fatalf("expected error containing field %q, got nil", fieldSubstr)
+		t.Fatalf("期望错误包含字段 %q，实际为 nil", fieldSubstr)
 	}
 
 	for _, e := range unwrapAll(err) {
@@ -471,7 +471,7 @@ func assertFieldError(t *testing.T, err error, fieldSubstr string) {
 			return
 		}
 	}
-	t.Errorf("no ConfigError with field containing %q in: %v", fieldSubstr, err)
+	t.Errorf("没有找到字段包含 %q 的 ConfigError，错误为：%v", fieldSubstr, err)
 }
 
 func unwrapAll(err error) []error {
@@ -495,10 +495,10 @@ func TestPrepare_TemplateClashInvalidURL(t *testing.T) {
 	cfg.Templates.Clash = "https://"
 	_, err := Prepare(&cfg)
 	if err == nil {
-		t.Fatal("expected error for invalid template URL")
+		t.Fatal("模板 URL 无效时应返回错误")
 	}
 	if !strings.Contains(err.Error(), "templates.clash") {
-		t.Errorf("error should mention templates.clash: %v", err)
+		t.Errorf("错误信息应提到 templates.clash：%v", err)
 	}
 }
 
@@ -507,7 +507,7 @@ func TestPrepare_TemplateClashValidURL(t *testing.T) {
 	cfg.Templates.Clash = "https://example.com/base.yaml"
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("valid template URL should pass: %v", err)
+		t.Fatalf("合法的模板 URL 应通过校验：%v", err)
 	}
 	if rt.Templates().Clash != "https://example.com/base.yaml" {
 		t.Errorf("Templates().Clash = %q", rt.Templates().Clash)
@@ -519,7 +519,7 @@ func TestPrepare_TemplateLocalPath(t *testing.T) {
 	cfg.Templates.Surge = "./configs/base_surge.conf"
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("local template path should pass validation: %v", err)
+		t.Fatalf("本地模板路径应通过校验：%v", err)
 	}
 	if rt.Templates().Surge != "./configs/base_surge.conf" {
 		t.Errorf("Templates().Surge = %q", rt.Templates().Surge)
@@ -531,10 +531,10 @@ func TestPrepare_RoutingAutoAndAllMutuallyExclusive(t *testing.T) {
 	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@all", "@auto"]`)
 	_, err := Prepare(&cfg)
 	if err == nil {
-		t.Fatal("expected error for @all + @auto in same entry")
+		t.Fatal("同一条目同时使用 @all 和 @auto 时应返回错误")
 	}
 	if !strings.Contains(err.Error(), "@all 和 @auto 不能同时使用") {
-		t.Errorf("error = %v, want @all+@auto conflict message", err)
+		t.Errorf("错误 = %v，期望包含 @all 与 @auto 冲突的提示", err)
 	}
 }
 
@@ -543,7 +543,7 @@ func TestPrepare_RoutingAutoAloneIsValid(t *testing.T) {
 	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@auto"]`)
 	rt, err := Prepare(&cfg)
 	if err != nil {
-		t.Fatalf("@auto alone should be valid: %v", err)
+		t.Fatalf("单独使用 @auto 应视为合法：%v", err)
 	}
 	routing, _, _, _ := rt.RouteInput()
 	expanded := routing[0].ExpandedMembers
@@ -555,7 +555,7 @@ func TestPrepare_RoutingAutoAloneIsValid(t *testing.T) {
 		}
 	}
 	if !hasAutoExpanded {
-		t.Error("@auto should produce AutoExpanded members in ExpandedMembers")
+		t.Error("@auto 应在 ExpandedMembers 中产生 AutoExpanded 成员")
 	}
 }
 
@@ -564,9 +564,9 @@ func TestPrepare_RoutingAutoRepeatedRejected(t *testing.T) {
 	cfg.Routing = mustOrderedMap[[]string](`proxy: ["@auto", "@auto"]`)
 	_, err := Prepare(&cfg)
 	if err == nil {
-		t.Fatal("expected error for repeated @auto in same entry")
+		t.Fatal("同一条目重复使用 @auto 时应返回错误")
 	}
 	if !strings.Contains(err.Error(), "@auto 不能重复使用") {
-		t.Errorf("error = %v, want repeated @auto message", err)
+		t.Errorf("错误 = %v，期望包含 @auto 重复使用的提示", err)
 	}
 }

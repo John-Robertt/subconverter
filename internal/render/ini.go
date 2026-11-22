@@ -9,7 +9,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// sectionHeaderRe matches INI-style section headers like [Proxy].
+// sectionHeaderRe 匹配 INI 风格的段落标题，例如 [Proxy]。
 var sectionHeaderRe = regexp.MustCompile(`^\[.+\]\s*$`)
 
 func renderINIKeyValue(key, value string) string {
@@ -107,13 +107,13 @@ func renderINIGroup(g model.TargetGroup) string {
 func mergeINISections(template []byte, replacements map[string]string, order []string) string {
 	sections := parseINISections(string(template))
 
-	// Strip any existing managed-config line from the preamble to avoid
-	// duplicating a new Surge header or leaking it into a Loon profile.
+	// 从前言中去掉已有的 managed-config 行，避免与新的 Surge 头部重复，
+	// 或被带进 Loon 配置。
 	if len(sections) > 0 && sections[0].header == "" {
 		sections[0].body = stripManagedConfigLine(sections[0].body)
 	}
 
-	// Replace existing sections.
+	// 替换已有的段落。
 	replaced := make(map[string]bool)
 	for i, sec := range sections {
 		if content, ok := replacements[sec.header]; ok {
@@ -122,7 +122,7 @@ func mergeINISections(template []byte, replacements map[string]string, order []s
 		}
 	}
 
-	// Append sections that were not found in the template.
+	// 追加模板中没有的段落。
 	for _, header := range order {
 		if !replaced[header] {
 			sections = append(sections, iniSection{header: header, body: replacements[header]})
@@ -145,11 +145,11 @@ func mergeINISections(template []byte, replacements map[string]string, order []s
 }
 
 type iniSection struct {
-	header string // e.g. "[Proxy]", or "" for preamble text before any header
+	header string // 例如 "[Proxy]"；第一个标题之前的前言文本为 ""
 	body   string
 }
 
-// parseINISections splits an INI profile into sections by [Header] lines.
+// parseINISections 按 [Header] 行把 INI 配置拆分成段落。
 func parseINISections(text string) []iniSection {
 	lines := strings.Split(text, "\n")
 	var sections []iniSection
@@ -158,7 +158,7 @@ func parseINISections(text string) []iniSection {
 
 	for _, line := range lines {
 		if sectionHeaderRe.MatchString(line) {
-			// Flush current section.
+			// 收尾当前段落。
 			current.body = strings.Join(bodyLines, "\n")
 			sections = append(sections, current)
 			current = iniSection{header: strings.TrimSpace(line)}
@@ -167,11 +167,11 @@ func parseINISections(text string) []iniSection {
 			bodyLines = append(bodyLines, line)
 		}
 	}
-	// Flush last section.
+	// 收尾最后一个段落。
 	current.body = strings.Join(bodyLines, "\n")
 	sections = append(sections, current)
 
-	// Remove leading empty preamble if header and body are both empty.
+	// 标题和正文都为空时，去掉开头的空前言。
 	if len(sections) > 0 && sections[0].header == "" && strings.TrimSpace(sections[0].body) == "" {
 		sections = sections[1:]
 	}
@@ -179,8 +179,8 @@ func parseINISections(text string) []iniSection {
 	return sections
 }
 
-// stripManagedConfigLine removes any #!MANAGED-CONFIG line from the preamble
-// so that mergeSurgeTemplate does not produce a duplicate header.
+// stripManagedConfigLine 从前言中去掉所有 #!MANAGED-CONFIG 行，
+// 让 mergeSurgeTemplate 不会产生重复的头部。
 func stripManagedConfigLine(body string) string {
 	lines := strings.Split(body, "\n")
 	filtered := lines[:0]

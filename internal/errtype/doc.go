@@ -1,14 +1,13 @@
-// Package errtype defines the six error categories used throughout the
-// subconverter pipeline.
+// Package errtype 定义 subconverter 流水线中通用的六类错误。
 //
-// Each category maps to a specific HTTP status code (applied in server layer):
+// 每类错误对应一个固定的 HTTP 状态码（由 server 层负责映射）：
 //
-//   - ConfigError  → 400 (invalid YAML, missing fields, bad regex)
-//   - FetchError   → 502 (remote resource fetch failures)
-//   - ResourceError → 500 (local resource read failures)
-//   - BuildError   → 400 (group/route/config semantic failures)
-//   - TargetError  → 500 (target-format projection failures)
-//   - RenderError  → 500 (output generation failures)
+//   - ConfigError  → 400（YAML 无效、缺少字段、正则错误）
+//   - FetchError   → 502（拉取远程资源失败）
+//   - ResourceError → 500（读取本地资源失败）
+//   - BuildError   → 400（分组、路由或配置语义错误）
+//   - TargetError  → 500（目标格式投影失败）
+//   - RenderError  → 500（生成输出失败）
 //
-// Design reference: docs/design/validation.md
+// 设计参考：docs/design/validation.md
 package errtype

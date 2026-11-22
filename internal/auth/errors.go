@@ -20,9 +20,9 @@ func authError(code, message string) *Error {
 const (
 	CodeAuthRequired         = "auth_required"
 	CodeSessionExpired       = "session_expired"
-	CodeInvalidCredentials   = "invalid_credentials" // #nosec G101 -- public error code, not a credential.
+	CodeInvalidCredentials   = "invalid_credentials" // #nosec G101 -- 这是公开的错误码，不是凭据。
 	CodeAuthLocked           = "auth_locked"
-	CodeSetupTokenRequired   = "setup_token_required" // #nosec G101 -- public error code, not a token value.
+	CodeSetupTokenRequired   = "setup_token_required" // #nosec G101 -- 这是公开的错误码，不是令牌值。
 	CodeSetupTokenInvalid    = "setup_token_invalid"
 	CodeSetupNotAllowed      = "setup_not_allowed"
 	CodeAuthStateNotWritable = "auth_state_not_writable"

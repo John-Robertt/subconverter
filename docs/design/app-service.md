@@ -539,9 +539,9 @@ sentinel error 定义形式：
 
 ```go
 var (
-    ErrConfigSourceReadonly  = errors.New("config source is read-only")
-    ErrConfigFileNotWritable = errors.New("config file is not writable")
-    ErrReloadInProgress      = errors.New("reload already in progress")
+    ErrConfigSourceReadonly  = errors.New("配置源只读")
+    ErrConfigFileNotWritable = errors.New("配置文件不可写")
+    ErrReloadInProgress      = errors.New("热重载正在进行中")
 )
 ```
 

@@ -42,7 +42,7 @@ func (c *collector) validateTemplatePath(loc diagnosticPath, location string) {
 	if strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "https://") {
 		c.validateHTTPURL(loc, location)
 	}
-	// Local paths are not validated here; OS will report errors at load time.
+	// 这里不校验本地路径；加载时由操作系统报告错误。
 }
 
 type diagnosticPath struct {
@@ -70,7 +70,7 @@ func indexedPath(section string, index int, valuePath string) diagnosticPath {
 	return diagnosticPath{section: section, index: &idx, valuePath: valuePath}
 }
 
-// collector accumulates validation errors.
+// collector 收集校验错误。
 type collector struct {
 	errs []error
 }

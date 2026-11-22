@@ -40,8 +40,8 @@ type contentKey struct {
 	kind, extension, body string
 }
 
-// persistEditableContent reuses identical saved bodies and publishes new versions for changes.
-// Old files remain readable by the active snapshot and in-flight requests.
+// persistEditableContent 对与已保存内容相同的正文直接复用，对有改动的正文发布新版本。
+// 旧文件保持可读，供当前生效的快照和进行中的请求使用。
 func (s *Service) persistEditableContent(cfg, saved *config.Config) ([]string, error) {
 	var created []string
 	reusable := s.savedContentFiles(saved, cfg)
@@ -120,14 +120,14 @@ func (s *Service) persistEditableContent(cfg, saved *config.Config) ([]string, e
 	return created, nil
 }
 
-// Only reuse service-managed files referenced by the saved config. Ordinary references
-// must become independent copies when the editor explicitly submits their contents.
+// 只复用已保存配置所引用的、由服务管理的文件。编辑器显式提交普通引用的内容时，
+// 这些内容必须成为独立副本。
 func (s *Service) savedContentFiles(cfg, draft *config.Config) map[contentKey][]string {
 	files := make(map[contentKey][]string)
 	if cfg == nil {
 		return files
 	}
-	// Explicit source references already occupy their saved versions.
+	// 显式的来源引用已经占用了它们对应的已保存版本。
 	retained := make(map[string]int)
 	for _, list := range draft.Sources.Lists() {
 		for _, source := range list.Entries {
@@ -148,9 +148,9 @@ func (s *Service) savedContentFiles(cfg, draft *config.Config) map[contentKey][]
 				return
 			}
 		}
-		body, err := os.ReadFile(location) // #nosec G304 -- Existing config references a service-managed local body.
+		body, err := os.ReadFile(location) // #nosec G304 -- 现有配置引用的是由服务管理的本地正文。
 		if err != nil {
-			return // A submitted body can repair an unreadable or missing old version.
+			return // 提交的正文可以修复无法读取或已缺失的旧版本。
 		}
 		key := contentKey{kind, ext, string(body)}
 		files[key] = append(files[key], location)
@@ -183,8 +183,8 @@ func (s *Service) ensureContentDirectory() error {
 	return nil
 }
 
-// restoreEditableContent restores readable bodies and keeps failed references intact.
-// Editors may keep those references for repair.
+// restoreEditableContent 恢复可读取的正文，读取失败的引用保持原样。
+// 编辑器可以保留这些引用以便修复。
 func (s *Service) restoreEditableContent(ctx context.Context, cfg *config.Config) error {
 	var failures []error
 	for _, list := range cfg.Sources.Lists() {

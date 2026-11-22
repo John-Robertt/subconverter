@@ -8,7 +8,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// T-SRC-001: Valid SS URI parsing
+// T-SRC-001: 解析合法的 SS URI
 func TestParseSSURI_Valid(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -137,55 +137,55 @@ func TestParseSSURI_Valid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			proxy, err := ParseSSURI(tt.uri)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("意外错误：%v", err)
 			}
 
 			if proxy.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", proxy.Name, tt.wantName)
+				t.Errorf("Name = %q，期望 %q", proxy.Name, tt.wantName)
 			}
 			if proxy.Type != "ss" {
-				t.Errorf("Type = %q, want %q", proxy.Type, "ss")
+				t.Errorf("Type = %q，期望 %q", proxy.Type, "ss")
 			}
 			if proxy.Server != tt.wantHost {
-				t.Errorf("Server = %q, want %q", proxy.Server, tt.wantHost)
+				t.Errorf("Server = %q，期望 %q", proxy.Server, tt.wantHost)
 			}
 			if proxy.Port != tt.wantPort {
-				t.Errorf("Port = %d, want %d", proxy.Port, tt.wantPort)
+				t.Errorf("Port = %d，期望 %d", proxy.Port, tt.wantPort)
 			}
 			if proxy.Params["cipher"] != tt.cipher {
-				t.Errorf("cipher = %q, want %q", proxy.Params["cipher"], tt.cipher)
+				t.Errorf("cipher = %q，期望 %q", proxy.Params["cipher"], tt.cipher)
 			}
 			if proxy.Params["password"] != tt.password {
-				t.Errorf("password = %q, want %q", proxy.Params["password"], tt.password)
+				t.Errorf("password = %q，期望 %q", proxy.Params["password"], tt.password)
 			}
 			if tt.plugin == nil {
 				if proxy.Plugin != nil {
-					t.Errorf("Plugin = %#v, want nil", proxy.Plugin)
+					t.Errorf("Plugin = %#v，期望 nil", proxy.Plugin)
 				}
 			} else {
 				if proxy.Plugin == nil {
-					t.Fatalf("Plugin = nil, want %#v", tt.plugin)
+					t.Fatalf("Plugin = nil，期望 %#v", tt.plugin)
 				}
 				if proxy.Plugin.Name != tt.plugin.Name {
-					t.Errorf("Plugin.Name = %q, want %q", proxy.Plugin.Name, tt.plugin.Name)
+					t.Errorf("Plugin.Name = %q，期望 %q", proxy.Plugin.Name, tt.plugin.Name)
 				}
 				if len(proxy.Plugin.Opts) != len(tt.plugin.Opts) {
-					t.Fatalf("Plugin.Opts len = %d, want %d", len(proxy.Plugin.Opts), len(tt.plugin.Opts))
+					t.Fatalf("Plugin.Opts 长度 = %d，期望 %d", len(proxy.Plugin.Opts), len(tt.plugin.Opts))
 				}
 				for key, want := range tt.plugin.Opts {
 					if got := proxy.Plugin.Opts[key]; got != want {
-						t.Errorf("Plugin.Opts[%q] = %q, want %q", key, got, want)
+						t.Errorf("Plugin.Opts[%q] = %q，期望 %q", key, got, want)
 					}
 				}
 			}
 			if proxy.Kind != model.KindSubscription {
-				t.Errorf("Kind = %q, want %q", proxy.Kind, model.KindSubscription)
+				t.Errorf("Kind = %q，期望 %q", proxy.Kind, model.KindSubscription)
 			}
 		})
 	}
 }
 
-// T-SRC-002: Invalid SS URI returns *errtype.BuildError
+// T-SRC-002: 非法 SS URI 返回 *errtype.BuildError
 func TestParseSSURI_Invalid(t *testing.T) {
 	tests := []struct {
 		name string
@@ -213,15 +213,15 @@ func TestParseSSURI_Invalid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ParseSSURI(tt.uri)
 			if err == nil {
-				t.Fatal("expected error, got nil")
+				t.Fatal("期望返回错误，实际为 nil")
 			}
 
 			var buildErr *errtype.BuildError
 			if !errors.As(err, &buildErr) {
-				t.Fatalf("error type = %T, want *errtype.BuildError", err)
+				t.Fatalf("错误类型 = %T，期望 *errtype.BuildError", err)
 			}
 			if buildErr.Phase != "source" {
-				t.Errorf("Phase = %q, want %q", buildErr.Phase, "source")
+				t.Errorf("Phase = %q，期望 %q", buildErr.Phase, "source")
 			}
 		})
 	}

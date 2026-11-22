@@ -13,12 +13,10 @@ const (
 	surgeManagedInterval = 86400
 )
 
-// surgeSnellKeyOrder fixes the order in which Snell parameters are emitted
-// into the Surge proxy line, so output is deterministic (required for
-// golden-file comparison) and aligned with jinqians/snell.sh output style.
-// Unknown keys present in Proxy.Params are intentionally not emitted: Snell
-// lines only originate from ParseSnellSurgeLine, which is the single entry
-// point for this type, so the set of legitimate keys is finite and known.
+// surgeSnellKeyOrder 固定 Snell 参数写入 Surge 节点行的顺序，让输出确定
+// （golden 文件比对需要这一点），并与 jinqians/snell.sh 的输出风格一致。
+// Proxy.Params 中的未知键有意不写出：Snell 行只来自 ParseSnellSurgeLine，
+// 它是这种类型唯一的入口，所以合法键的集合是有限且已知的。
 var surgeSnellKeyOrder = []string{
 	"psk",
 	"version",
@@ -46,9 +44,9 @@ var surgeAnyTLSKeyOrder = []string{
 	"server-cert-fingerprint-sha256",
 }
 
-// Surge renders a target-projected pipeline into Surge conf format.
-// managedURL is used for the #!MANAGED-CONFIG header (empty = omit header).
-// If baseTemplate is non-nil, generated sections replace corresponding sections in the template.
+// Surge 把已按目标客户端投影的流水线结果渲染为 Surge conf 格式。
+// managedURL 用于 #!MANAGED-CONFIG 头部（为空则不写头部）。
+// baseTemplate 非 nil 时，生成的段落替换模板中对应的段落。
 func Surge(p *model.TargetPipeline, managedURL string, baseTemplate []byte) ([]byte, error) {
 	proxySection, err := buildSurgeProxies(p.Proxies)
 	if err != nil {
@@ -59,7 +57,7 @@ func Surge(p *model.TargetPipeline, managedURL string, baseTemplate []byte) ([]b
 
 	var buf bytes.Buffer
 
-	// Managed config header.
+	// managed config 头部。
 	if managedURL != "" {
 		fmt.Fprintf(&buf, "#!MANAGED-CONFIG %s interval=%d strict=false\n\n",
 			managedURL, surgeManagedInterval)
@@ -165,27 +163,27 @@ func renderSurgeProxy(px model.TargetProxy) (string, error) {
 func buildSurgeRules(rulesets []model.Ruleset, rules []model.Rule, fallback string) string {
 	var sb strings.Builder
 
-	// 1. RULE-SET entries.
+	// 1. RULE-SET 条目。
 	for _, rs := range rulesets {
 		for _, u := range rs.URLs {
 			fmt.Fprintf(&sb, "RULE-SET,%s,%s\n", u, rs.Policy)
 		}
 	}
 
-	// 2. Inline rules.
+	// 2. 内联规则。
 	for _, r := range rules {
 		sb.WriteString(r.Raw)
 		sb.WriteByte('\n')
 	}
 
-	// 3. Fallback.
+	// 3. fallback。
 	fmt.Fprintf(&sb, "FINAL,%s\n", fallback)
 
 	return sb.String()
 }
 
-// mergeSurgeTemplate replaces [Proxy], [Proxy Group], and [Rule] sections
-// in the template with generated content, preserving all other sections.
+// mergeSurgeTemplate 用生成的内容替换模板中的 [Proxy]、[Proxy Group] 和
+// [Rule] 段落，其他段落全部保留。
 func mergeSurgeTemplate(template []byte, proxySection, groupSection, ruleSection string) string {
 	return mergeINISections(template, map[string]string{
 		"[Proxy]":       proxySection,

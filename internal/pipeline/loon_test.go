@@ -27,7 +27,7 @@ FINAL,PROVIDER
 hk.example.com = alias.example.com
 `
 
-// T-SRC-LOON-001: explicit format overrides suffix; auto detection preserves legacy .conf behavior.
+// T-SRC-LOON-001: 显式指定的 format 优先于 URL 后缀；自动检测保留 .conf 的旧行为。
 func TestSource_LoonDocumentDetection(t *testing.T) {
 	cases := []struct {
 		name, suffix, format string
@@ -49,21 +49,21 @@ func TestSource_LoonDocumentDetection(t *testing.T) {
 				t.Fatalf("loadSubscription: %v", err)
 			}
 			if len(proxies) != 3 {
-				t.Fatalf("proxies count = %d, want 3", len(proxies))
+				t.Fatalf("节点数量 = %d，期望 3", len(proxies))
 			}
 			for _, proxy := range proxies {
 				if proxy.Native == nil || proxy.Native.Format != tt.want || proxy.Kind != model.KindSubscription {
-					t.Fatalf("proxy = %+v, want subscription/%s", proxy, tt.want)
+					t.Fatalf("节点 = %+v，期望 subscription/%s", proxy, tt.want)
 				}
 			}
 			if !strings.Contains(proxies[0].Native.Payload, `"pw,=value"`) || !strings.Contains(proxies[0].Native.Payload, "tls-name=edge.example.com") {
-				t.Fatalf("native declaration changed: %q", proxies[0].Native.Payload)
+				t.Fatalf("原生声明被改动：%q", proxies[0].Native.Payload)
 			}
 		})
 	}
 }
 
-// T-SRC-LOON-002: malformed and empty Loon documents fail without exposing credentials.
+// T-SRC-LOON-002: 格式错误或为空的 Loon 文档会报错，且错误中不暴露凭据。
 func TestSource_LoonDocumentFailures(t *testing.T) {
 	for _, body := range []string{"[General]\ndns-server=system", "[Proxy]\n# empty\n", "[Proxy]\n= anytls, secret.example.com, 443, private-password\n"} {
 		t.Run(body[:7], func(t *testing.T) {
@@ -71,16 +71,16 @@ func TestSource_LoonDocumentFailures(t *testing.T) {
 			_, err := loadSubscription(context.Background(), &fakeFetcher{responses: map[string][]byte{url: []byte(body)}}, config.Source{URL: url, Format: "loon"})
 			var fetchErr *errtype.FetchError
 			if !errors.As(err, &fetchErr) {
-				t.Fatalf("error = %v, want FetchError", err)
+				t.Fatalf("错误 = %v，期望 FetchError", err)
 			}
 			if strings.Contains(err.Error(), "private-token") || strings.Contains(err.Error(), "private-password") {
-				t.Fatalf("error leaked credentials: %v", err)
+				t.Fatalf("错误信息泄露了凭据：%v", err)
 			}
 		})
 	}
 }
 
-// T-SRC-LOON-003: Loon nodes share IDs, name filters, region groups and chaining with other sources.
+// T-SRC-LOON-003: Loon 节点与其他来源共用节点编号、名称过滤、区域分组和链式代理。
 func TestExecute_LoonNodesUseConfiguredGroups(t *testing.T) {
 	var cfg config.Config
 	if err := yaml.Unmarshal([]byte(`sources:
@@ -110,19 +110,19 @@ fallback: OUT
 		t.Fatalf("Execute: %v", err)
 	}
 	if len(p.Proxies) != 6 || len(p.AllProxies) != 3 || len(p.NodeGroups) != 2 || len(p.NodeGroups[0].Members) != 3 {
-		t.Fatalf("pipeline counts: proxies=%d all=%d groups=%+v", len(p.Proxies), len(p.AllProxies), p.NodeGroups)
+		t.Fatalf("流水线计数：proxies=%d all=%d groups=%+v", len(p.Proxies), len(p.AllProxies), p.NodeGroups)
 	}
 	seen := map[model.ProxyID]bool{}
 	for _, proxy := range p.Proxies {
 		if proxy.ID == 0 || seen[proxy.ID] {
-			t.Fatalf("duplicate or zero ID: %d", proxy.ID)
+			t.Fatalf("ID 重复或为零：%d", proxy.ID)
 		}
 		seen[proxy.ID] = true
 	}
 	for _, id := range p.AllProxies {
 		for _, proxy := range p.Proxies {
 			if proxy.ID == id && proxy.Kind == model.KindChained {
-				t.Fatalf("@all contains chained ID %d", id)
+				t.Fatalf("@all 包含链式节点 ID %d", id)
 			}
 		}
 	}

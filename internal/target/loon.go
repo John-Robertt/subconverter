@@ -8,7 +8,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// ForLoon filters incompatible proxies and allocates names for Loon chains.
+// ForLoon 过滤不兼容的代理，并为 Loon 的链路分配名字。
 func ForLoon(p *model.Pipeline) (*model.TargetPipeline, error) {
 	opts := cascadeOptions{
 		formatName: "loon", formatDisplayName: "Loon",

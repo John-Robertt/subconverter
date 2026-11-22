@@ -13,13 +13,13 @@ import (
 	"github.com/John-Robertt/subconverter/internal/proxyparse"
 )
 
-// defaultFetchOrder is the fallback traversal order when Sources.FetchOrder
-// is empty (in-memory Config instances from tests that skip YAML unmarshal).
-// YAML-loaded configs populate FetchOrder from declaration order instead.
+// defaultFetchOrder 是 Sources.FetchOrder 为空时使用的后备遍历顺序
+// （测试中跳过 YAML 反序列化、直接在内存中构造的 Config 实例会出现这种情况）。
+// 从 YAML 加载的配置则按声明顺序填充 FetchOrder。
 var defaultFetchOrder = []string{"subscriptions", "snell", "vless"}
 
-// ChainTemplate is the runtime form of a relay_through custom proxy. It is
-// produced by Source and expanded into chained proxies by Group.
+// ChainTemplate 是带 relay_through 的自定义节点的运行时形式。它由 Source 产出，
+// 再由 Group 展开为链式节点。
 type ChainTemplate struct {
 	Name         string
 	Type         string
@@ -30,31 +30,27 @@ type ChainTemplate struct {
 	RelayThrough *config.PreparedRelayThrough
 }
 
-// SourceResult is the output of the Source stage. Proxies contains all
-// original proxies (fetched + standalone custom); ChainTemplates carries
-// relay_through declarations for the Group stage. NextProxyID is the first
-// identity not allocated by Source and survives filtering so Group never
-// reuses an identity that belonged to an excluded original proxy.
+// SourceResult 是 Source 阶段的输出。Proxies 包含全部原始节点
+// （拉取类节点 + 独立的自定义节点）；ChainTemplates 携带供 Group 阶段使用的
+// relay_through 声明。NextProxyID 是 Source 尚未分配的第一个编号，
+// 过滤之后仍然保留，这样 Group 永远不会复用某个已被排除的原始节点的编号。
 type SourceResult struct {
 	Proxies        []model.Proxy
 	ChainTemplates []ChainTemplate
 	NextProxyID    model.ProxyID
 }
 
-// sourcePrepared executes the request-time Source stage against startup-
-// prepared source declarations.
+// sourcePrepared 针对启动期准备好的来源声明，执行请求时的 Source 阶段。
 //
-// Traversal order within the three fetch-kinds follows sources.FetchOrder,
-// which reflects the YAML declaration order (e.g. `snell:` then `vless:`
-// then `subscriptions:` yields that exact node ordering in the output). When
-// FetchOrder is empty (unit-test Configs built in memory), a deterministic
-// default is used.
+// 三类拉取来源之间的遍历顺序遵循 sources.FetchOrder，它反映 YAML 中的声明顺序
+// （例如先写 `snell:`，再写 `vless:`，最后写 `subscriptions:`，输出中的节点
+// 就恰好按这个顺序排列）。FetchOrder 为空时（单元测试在内存中构造的 Config），
+// 使用一个确定的默认顺序。
 //
-// Sources are processed sequentially to guarantee deterministic ProxyID
-// assignment. Fetch errors are fail-fast; individual malformed SS/AnyTLS lines
-// within a subscription are skipped, but a subscription yielding zero valid nodes
-// is an error. VLESS and Snell sources abort on any single-line parse
-// failure (small hand-curated lists — strict failure surfaces typos early).
+// 来源按顺序逐个处理，以保证 ProxyID 的分配是确定的。拉取错误会立即失败；
+// 订阅中个别格式错误的 SS/AnyTLS 行会被跳过，但一个订阅最终没有产生任何
+// 有效节点时报错。VLESS 和 Snell 来源只要有一行解析失败就中止
+// （它们是手工维护的小列表，严格失败能尽早暴露笔误）。
 func sourcePrepared(ctx context.Context, sources config.PreparedSources, fetcher fetch.Fetcher) (*SourceResult, error) {
 	var fetchedProxies []model.Proxy
 
@@ -98,15 +94,14 @@ func sourcePrepared(ctx context.Context, sources config.PreparedSources, fetcher
 				fetchedProxies = append(fetchedProxies, proxies...)
 			}
 		default:
-			// FetchOrder should only ever contain keys from sourceFetchKeys
-			// (enforced by Sources.UnmarshalYAML). Reaching this branch
-			// means an in-memory Config set FetchOrder directly with a
-			// typo/unknown kind — surface it instead of silently dropping
-			// the source.
+			// FetchOrder 只应包含 sourceFetchKeys 中的键
+			// （由 Sources.UnmarshalYAML 保证）。走到这个分支，
+			// 说明某个内存中的 Config 直接设置了 FetchOrder，
+			// 且其中有笔误或未知类型；这里把它报出来，而不是悄悄丢掉这个来源。
 			return nil, &errtype.BuildError{
 				Code:    errtype.CodeBuildValidationFailed,
 				Phase:   "source",
-				Message: fmt.Sprintf("unknown fetch-kind %q in Sources.FetchOrder (check Sources.UnmarshalYAML and defaultFetchOrder)", kind),
+				Message: fmt.Sprintf("Sources.FetchOrder 中有未知的拉取类型 %q（请检查 Sources.UnmarshalYAML 和 defaultFetchOrder）", kind),
 			}
 		}
 	}
@@ -136,9 +131,8 @@ func assignProxyIDs(proxies []model.Proxy) []model.Proxy {
 	return result
 }
 
-// loadSubscription reads inline/local content or fetches a subscription URL. Structured Clash YAML and
-// Surge CONF / Loon documents are recognized before the legacy Base64/plain-text
-// subscription list formats.
+// loadSubscription 读取内联/本地内容，或拉取订阅 URL。结构化的 Clash YAML 和
+// Surge CONF / Loon 文档会先于传统的 Base64/明文订阅列表格式被识别。
 func loadSubscription(ctx context.Context, fetcher fetch.Fetcher, sub config.Source) ([]model.Proxy, error) {
 	rawURL, body, err := loadSourceBody(ctx, fetcher, sub, "inline:subscription")
 	if err != nil {
@@ -148,7 +142,7 @@ func loadSubscription(ctx context.Context, fetcher fetch.Fetcher, sub config.Sou
 	return proxies, err
 }
 
-// loadSourceBody selects exactly one prepared input; inline and local sources never use the remote Fetcher.
+// loadSourceBody 在准备好的输入中恰好选用一种；内联来源和本地来源从不使用远程 Fetcher。
 func loadSourceBody(ctx context.Context, fetcher fetch.Fetcher, source config.Source, inlineLocation string) (string, []byte, error) {
 	if source.ContentFile != "" {
 		body, err := fetch.LoadResource(ctx, source.ContentFile, fetcher)
@@ -161,7 +155,7 @@ func loadSourceBody(ctx context.Context, fetcher fetch.Fetcher, source config.So
 	return source.URL, body, err
 }
 
-// parseNodePool applies the same strict protocol parser to URL, local and edited bodies.
+// parseNodePool 对 URL、本地和编辑后的内容使用同一个严格的协议解析器。
 func parseNodePool(kind, location string, body []byte) ([]model.Proxy, error) {
 	switch kind {
 	case "snell":
@@ -174,7 +168,7 @@ func parseNodePool(kind, location string, body []byte) ([]model.Proxy, error) {
 }
 
 func parseSubscriptionBody(rawURL string, body []byte, format string, allowFragment bool) ([]model.Proxy, string, error) {
-	// Pasted INI node declarations need no document wrapper, including saved copies.
+	// 粘贴的 INI 节点声明不需要文档外壳，保存后的副本也一样。
 	if allowFragment && (format == "loon" || format == "surge") && !hasINISection(string(body)) {
 		body = append([]byte("[Proxy]\n"), body...)
 	}
@@ -214,7 +208,7 @@ func parseSubscriptionBody(rawURL string, body []byte, format string, allowFragm
 	for _, line := range lines {
 		proxy, err := ParseSubscriptionLine(line)
 		if err != nil {
-			// Skip individual malformed subscription lines.
+			// 跳过个别格式错误的订阅行。
 			continue
 		}
 		proxies = append(proxies, proxy)
@@ -244,8 +238,8 @@ func subscriptionDocumentFormatLabel(format model.NativeProxyFormat) string {
 	}
 }
 
-// parseSnellSource parses one Surge-style Snell declaration per line.
-// Blank/comment lines are skipped; any other invalid line aborts the source and retains its physical line number.
+// parseSnellSource 每行解析一条 Surge 风格的 Snell 声明。
+// 空行和注释行被跳过；其他任何无效行都会中止该来源，并保留它的物理行号。
 func parseSnellSource(location string, body []byte) ([]model.Proxy, error) {
 	var proxies []model.Proxy
 	sanitizedLocation := fetch.SanitizeURL(location)
@@ -287,7 +281,7 @@ func wrapSnellSourceParseError(sanitizedLocation string, lineNo int, parseErr er
 	}
 }
 
-// parseVLessSource parses one VLESS URI per line with the same strict failure policy as Snell.
+// parseVLessSource 每行解析一条 VLESS URI，失败策略与 Snell 一样严格。
 func parseVLessSource(location string, body []byte) ([]model.Proxy, error) {
 	var proxies []model.Proxy
 	sanitizedLocation := fetch.SanitizeURL(location)
@@ -329,8 +323,8 @@ func wrapVLessSourceParseError(sanitizedLocation string, lineNo int, parseErr er
 	}
 }
 
-// subscriptionBodyText accepts both conventional base64 subscriptions and
-// plain-text lists in the supported SS/AnyTLS line formats.
+// subscriptionBodyText 同时接受常规的 base64 订阅，以及采用所支持的
+// SS/AnyTLS 行格式的明文列表。
 func subscriptionBodyText(body []byte) (string, error) {
 	s := strings.TrimSpace(string(body))
 	if s == "" {
@@ -359,7 +353,7 @@ func looksLikePlainSubscription(text string) bool {
 	return false
 }
 
-// splitSubscriptionLines trims whitespace and skips empty/comment lines.
+// splitSubscriptionLines 去掉每行两侧空白，并跳过空行和注释行。
 func splitSubscriptionLines(text string) []string {
 	raw := strings.Split(text, "\n")
 	lines := make([]string, 0, len(raw))
@@ -373,8 +367,8 @@ func splitSubscriptionLines(text string) []string {
 	return lines
 }
 
-// convertCustomProxies converts startup-prepared custom proxies into either
-// standalone custom proxies or chain templates for later expansion in Group.
+// convertCustomProxies 把启动期准备好的自定义节点转换为独立的自定义节点，
+// 或转换为链式模板，留待 Group 阶段展开。
 func convertCustomProxies(cps []config.PreparedCustomProxy) ([]model.Proxy, []ChainTemplate) {
 	proxies := make([]model.Proxy, 0, len(cps))
 	chainTemplates := make([]ChainTemplate, 0, len(cps))
@@ -404,8 +398,8 @@ func convertCustomProxies(cps []config.PreparedCustomProxy) ([]model.Proxy, []Ch
 	return proxies, chainTemplates
 }
 
-// copyParams returns a shallow copy of a Params map to prevent sharing
-// between proxies. Used by both Source stage and Group stage.
+// copyParams 返回 Params map 的浅拷贝，避免多个节点共享同一个 map。
+// Source 阶段和 Group 阶段都会用到它。
 func copyParams(src map[string]string) map[string]string {
 	if len(src) == 0 {
 		return nil

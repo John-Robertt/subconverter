@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-// Result holds the parsed components of an SS URI body.
+// Result 保存 SS URI 主体解析出的各个部分。
 type Result struct {
-	Name     string // from fragment; empty if fragment absent or stripped
+	Name     string // 取自 fragment；fragment 不存在或被去掉时为空
 	Server   string
 	Port     int
 	Cipher   string
@@ -19,18 +19,17 @@ type Result struct {
 	Plugin   *PluginSpec
 }
 
-// PluginSpec is a protocol-agnostic SS plugin declaration parsed from the
-// SIP002 `plugin` query parameter.
+// PluginSpec 是从 SIP002 `plugin` query 参数解析出的 SS 插件声明，
+// 与具体协议无关。
 type PluginSpec struct {
 	Name string
 	Opts map[string]string
 }
 
-// ParseBody parses the body of an SS URI (everything after "ss://").
+// ParseBody 解析 SS URI 的主体部分（"ss://" 之后的全部内容）。
 //
-// If keepFragment is true the fragment is decoded and stored in Result.Name;
-// if false the fragment is silently stripped. Either way, parsing proceeds
-// identically for the remaining components.
+// keepFragment 为 true 时，fragment 解码后存入 Result.Name；为 false 时，
+// fragment 被直接去掉，不报错。无论哪种情况，其余部分的解析方式都相同。
 func ParseBody(body string, keepFragment bool) (Result, error) {
 	var name string
 	if idx := strings.LastIndex(body, "#"); idx >= 0 {
@@ -96,10 +95,10 @@ func ParseBody(body string, keepFragment bool) (Result, error) {
 	}, nil
 }
 
-// decodeUserinfo extracts method and password from SS userinfo.
-// Tries plain-text (percent-decoded) first, then base64.
-// This order is safe: base64 characters (A-Z a-z 0-9 + / =) never
-// contain ':', so a plain-text hit with ':' is unambiguously literal.
+// decodeUserinfo 从 SS userinfo 中提取加密方式和密码。
+// 先按明文（百分号解码）尝试，再按 base64 尝试。
+// 这个顺序是安全的：base64 字符（A-Z a-z 0-9 + / =）从不包含 ':'，
+// 因此按明文解析时出现 ':'，就可以确定是字面值。
 func decodeUserinfo(userinfo string) (string, string, error) {
 	if plain, err := url.PathUnescape(userinfo); err == nil {
 		parts := strings.SplitN(plain, ":", 2)
@@ -132,8 +131,8 @@ func splitHostPort(hostport string) (string, string, error) {
 	return host, port, nil
 }
 
-// decodeBase64Flexible tries multiple base64 encodings to handle both
-// padded and unpadded variants commonly found in SS URIs.
+// decodeBase64Flexible 依次尝试多种 base64 编码，以兼容 SS URI 中
+// 常见的带填充和不带填充两种写法。
 func decodeBase64Flexible(s string) (string, error) {
 	for _, enc := range []func(string) ([]byte, error){
 		base64.StdEncoding.DecodeString,

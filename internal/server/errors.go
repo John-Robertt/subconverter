@@ -24,12 +24,11 @@ func badRequest(message string) error {
 func writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(statusCode)
-	//nolint:gosec // Plain-text error responses are not rendered as HTML.
+	//nolint:gosec // 纯文本错误响应不会被当作 HTML 渲染。
 	_, _ = w.Write([]byte(message))
 }
 
-// presentError converts internal errors into stable HTTP status codes and
-// Chinese text intended for end users.
+// presentError 把内部错误转换为稳定的 HTTP 状态码和面向最终用户的中文文案。
 func presentError(err error) (statusCode int, message string) {
 	var reqErr *requestError
 	if errors.As(err, &reqErr) {
@@ -132,10 +131,10 @@ func collectResourceErrors(err error) []*errtype.ResourceError {
 	return result
 }
 
-// flattenErrors splits errors.Join chains into individual errors.
-// It only expands multi-Unwrap (errors.Join); single-Unwrap chains are left
-// intact so that typed errors like FetchError (which wrap a Cause) are
-// preserved as leaves. errors.As already walks single-Unwrap chains.
+// flattenErrors 把 errors.Join 链拆成单个错误。
+// 它只展开多值 Unwrap（errors.Join）；单值 Unwrap 链保持原样，这样 FetchError
+// 这类包装了 Cause 的类型化错误会作为叶子保留下来。errors.As 本身就会沿单值
+// Unwrap 链查找。
 func flattenErrors(err error) []error {
 	if err == nil {
 		return nil

@@ -20,7 +20,7 @@ type fakeFetcher struct {
 func (f *fakeFetcher) Fetch(_ context.Context, rawURL string) ([]byte, error) {
 	body, ok := f.responses[rawURL]
 	if !ok {
-		return nil, errors.New("missing response for " + rawURL)
+		return nil, errors.New("缺少该 URL 的响应：" + rawURL)
 	}
 	return body, nil
 }
@@ -66,7 +66,7 @@ func mustRuntimeConfig(t *testing.T, cfg *config.Config) *config.RuntimeConfig {
 	t.Helper()
 	rt, err := config.Prepare(cfg)
 	if err != nil {
-		t.Fatalf("Prepare() error = %v", err)
+		t.Fatalf("Prepare() 出错：%v", err)
 	}
 	return rt
 }
@@ -82,7 +82,7 @@ func validFetcher() *fakeFetcher {
 	}
 }
 
-// T-GEN-001: service generates Clash output with correct content
+// T-GEN-001：服务生成内容正确的 Clash 输出
 func TestServiceGenerateClash(t *testing.T) {
 	rt := mustRuntimeConfig(t, validConfig(t))
 	svc := New(validFetcher(), Options{})
@@ -92,7 +92,7 @@ func TestServiceGenerateClash(t *testing.T) {
 		Filename: "clash.yaml",
 	})
 	if err != nil {
-		t.Fatalf("Generate() error = %v", err)
+		t.Fatalf("Generate() 出错：%v", err)
 	}
 	if result.ContentType != "text/yaml; charset=utf-8" {
 		t.Fatalf("ContentType = %q", result.ContentType)
@@ -103,12 +103,12 @@ func TestServiceGenerateClash(t *testing.T) {
 	body := string(result.Body)
 	for _, want := range []string{"proxies:", "proxy-groups:", "rule-providers:", "rules:"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("body missing %q", want)
+			t.Errorf("body 缺少 %q", want)
 		}
 	}
 }
 
-// T-GEN-002: service generates Surge output with managed URL header
+// T-GEN-002：服务生成带托管 URL 头的 Surge 输出
 func TestServiceGenerateSurgeManagedURL(t *testing.T) {
 	rt := mustRuntimeConfig(t, validConfig(t))
 	svc := New(validFetcher(), Options{AccessToken: "secret-token"})
@@ -118,7 +118,7 @@ func TestServiceGenerateSurgeManagedURL(t *testing.T) {
 		Filename: "my-profile.conf",
 	})
 	if err != nil {
-		t.Fatalf("Generate() error = %v", err)
+		t.Fatalf("Generate() 出错：%v", err)
 	}
 	if result.ContentType != "text/plain; charset=utf-8" {
 		t.Fatalf("ContentType = %q", result.ContentType)
@@ -128,11 +128,11 @@ func TestServiceGenerateSurgeManagedURL(t *testing.T) {
 	}
 	body := string(result.Body)
 	if !strings.Contains(body, "#!MANAGED-CONFIG https://my-server.com/generate?format=surge&token=secret-token&filename=my-profile.conf interval=86400 strict=false") {
-		t.Fatalf("managed header missing or incorrect: %s", body)
+		t.Fatalf("托管头缺失或不正确：%s", body)
 	}
 }
 
-// T-GEN-003: service returns error for unsupported format
+// T-GEN-003：格式不受支持时服务返回错误
 func TestServiceGenerateUnsupportedFormat(t *testing.T) {
 	rt := mustRuntimeConfig(t, validConfig(t))
 	svc := New(validFetcher(), Options{})
@@ -142,17 +142,16 @@ func TestServiceGenerateUnsupportedFormat(t *testing.T) {
 		Filename: "qx.conf",
 	})
 	if err == nil {
-		t.Fatal("expected unsupported format error")
+		t.Fatal("应返回格式不受支持的错误")
 	}
-	if !strings.Contains(err.Error(), `unsupported format "quantumultx"`) {
-		t.Fatalf("unexpected error: %v", err)
+	if !strings.Contains(err.Error(), `不支持的格式 "quantumultx"`) {
+		t.Fatalf("意外错误：%v", err)
 	}
 }
 
-// T-GEN-DOC-001: Clash YAML and Surge CONF subscriptions with the same
-// candidate name flow through the complete build/target/render path. Each
-// target keeps the original name because name allocation happens after
-// format-specific filtering.
+// T-GEN-DOC-001：候选名相同的 Clash YAML 订阅和 Surge CONF 订阅走完
+// build/target/render 全流程。名字分配发生在按格式过滤之后，
+// 所以每个目标都保留原始名字。
 func TestServiceGenerateStructuredSubscriptionsByTarget(t *testing.T) {
 	const clashSubURL = "https://sub.example.com/nodes.yaml?token=clash-secret"
 	const surgeSubURL = "https://sub.example.com/nodes.conf?token=surge-secret"
@@ -188,16 +187,16 @@ SHARED = trojan, sg.example.com, 443, password=surge-password, future-option=ena
 		Filename: "clash.yaml",
 	})
 	if err != nil {
-		t.Fatalf("Generate(clash) error = %v", err)
+		t.Fatalf("Generate(clash) 出错：%v", err)
 	}
 	clashBody := string(clashResult.Body)
 	for _, want := range []string{"name: SHARED", "future-option: enabled", "ALL"} {
 		if !strings.Contains(clashBody, want) {
-			t.Errorf("Clash body missing %q:\n%s", want, clashBody)
+			t.Errorf("Clash body 缺少 %q：\n%s", want, clashBody)
 		}
 	}
 	if strings.Contains(clashBody, "SHARED②") || strings.Contains(clashBody, "surge-password") {
-		t.Errorf("Clash body leaked Surge CONF proxy:\n%s", clashBody)
+		t.Errorf("Clash body 泄露了 Surge CONF 节点：\n%s", clashBody)
 	}
 
 	surgeResult, err := svc.Generate(context.Background(), rt, Request{
@@ -205,14 +204,14 @@ SHARED = trojan, sg.example.com, 443, password=surge-password, future-option=ena
 		Filename: "surge.conf",
 	})
 	if err != nil {
-		t.Fatalf("Generate(surge) error = %v", err)
+		t.Fatalf("Generate(surge) 出错：%v", err)
 	}
 	surgeBody := string(surgeResult.Body)
 	wantSurgeProxy := "SHARED = trojan, sg.example.com, 443, password=surge-password, future-option=enabled"
 	if !strings.Contains(surgeBody, wantSurgeProxy) {
-		t.Errorf("Surge body missing copied proxy declaration:\n%s", surgeBody)
+		t.Errorf("Surge body 缺少原样复制的节点声明：\n%s", surgeBody)
 	}
 	if strings.Contains(surgeBody, "SHARED②") || strings.Contains(surgeBody, "clash-password") {
-		t.Errorf("Surge body leaked Clash YAML proxy:\n%s", surgeBody)
+		t.Errorf("Surge body 泄露了 Clash YAML 节点：\n%s", surgeBody)
 	}
 }

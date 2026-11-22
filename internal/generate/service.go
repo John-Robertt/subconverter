@@ -12,40 +12,38 @@ import (
 	"github.com/John-Robertt/subconverter/internal/target"
 )
 
-// Request describes one configuration generation request after transport-level
-// validation has already been performed.
+// Request 描述一次已通过传输层校验的配置生成请求。
 type Request struct {
 	Format   string
 	Filename string
 }
 
-// Result is the generated config payload plus response metadata expected by
-// the transport layer.
+// Result 是生成的配置内容，以及传输层需要的响应元数据。
 type Result struct {
 	Filename    string
 	ContentType string
 	Body        []byte
 }
 
-// Options holds runtime-only generation behavior.
+// Options 保存只在运行时生效的生成行为设置。
 type Options struct {
 	AccessToken string
 }
 
-// Service executes the full generation use case from format-agnostic build to
-// target projection and final rendering.
+// Service 执行完整的生成用例：从与格式无关的构建，到目标投影，
+// 再到最终渲染。
 type Service struct {
 	fetcher fetch.Fetcher
 	opts    Options
 }
 
-// New creates a stateless generation service.
+// New 创建一个无状态的生成服务。
 func New(fetcher fetch.Fetcher, opts Options) *Service {
 	return &Service{fetcher: fetcher, opts: opts}
 }
 
-// Generate builds the shared Pipeline, projects it to the requested target,
-// loads the optional base template, and renders the final output.
+// Generate 构建共享的 Pipeline，投影到请求的目标格式，
+// 加载可选的底版模板，并渲染最终输出。
 func (s *Service) Generate(ctx context.Context, cfg *config.RuntimeConfig, req Request) (*Result, error) {
 	p, err := pipeline.Build(ctx, cfg, s.fetcher)
 	if err != nil {
@@ -68,7 +66,7 @@ func projectPipeline(p *model.Pipeline, format string) (*model.TargetPipeline, e
 	case "loon":
 		return target.ForLoon(p)
 	default:
-		return nil, fmt.Errorf("unsupported format %q", format)
+		return nil, fmt.Errorf("不支持的格式 %q", format)
 	}
 }
 
@@ -98,7 +96,7 @@ func (s *Service) renderPipeline(ctx context.Context, cfg *config.RuntimeConfig,
 	case "loon":
 		body, err = render.Loon(p, tmpl)
 	default:
-		return nil, fmt.Errorf("unsupported format %q", req.Format)
+		return nil, fmt.Errorf("不支持的格式 %q", req.Format)
 	}
 	if err != nil {
 		return nil, err
@@ -106,7 +104,7 @@ func (s *Service) renderPipeline(ctx context.Context, cfg *config.RuntimeConfig,
 	return &Result{Filename: req.Filename, ContentType: contentType, Body: body}, nil
 }
 
-// CheckProxyFormats checks complete node preservation and rendering without templates or network access.
+// CheckProxyFormats 在不使用模板、不访问网络的情况下，检查每种格式能否完整保留并渲染全部节点。
 func (s *Service) CheckProxyFormats(ctx context.Context, proxies []model.Proxy) []string {
 	formats := make([]string, 0, 3)
 	p := &model.Pipeline{Proxies: proxies, Fallback: "DIRECT"}

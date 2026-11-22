@@ -10,7 +10,7 @@ import (
 	"testing/fstest"
 )
 
-// T-SRV-001: resolveFilename sanitizes filenames and uses format defaults
+// T-SRV-001：resolveFilename 清理文件名，并使用各格式的默认文件名
 func TestResolveFilename(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -74,10 +74,10 @@ func TestResolveFilename(t *testing.T) {
 			got, err := resolveFilename(tc.query, tc.format)
 			if tc.wantErr != "" {
 				if err == nil {
-					t.Fatalf("resolveFilename() error = nil, want %q", tc.wantErr)
+					t.Fatalf("resolveFilename() error = nil，期望 %q", tc.wantErr)
 				}
 				if err.Error() != tc.wantErr {
-					t.Fatalf("resolveFilename() error = %q, want %q", err.Error(), tc.wantErr)
+					t.Fatalf("resolveFilename() error = %q，期望 %q", err.Error(), tc.wantErr)
 				}
 				return
 			}
@@ -86,22 +86,22 @@ func TestResolveFilename(t *testing.T) {
 				t.Fatalf("resolveFilename() error = %v", err)
 			}
 			if got != tc.want {
-				t.Fatalf("resolveFilename() = %q, want %q", got, tc.want)
+				t.Fatalf("resolveFilename() = %q，期望 %q", got, tc.want)
 			}
 		})
 	}
 }
 
-// T-SRV-002: Content-Disposition value formatting
+// T-SRV-002：Content-Disposition 值的格式
 func TestContentDispositionValue(t *testing.T) {
 	got := contentDispositionValue("my-profile.yaml")
 	want := `attachment; filename="my-profile.yaml"; filename*=UTF-8''my-profile.yaml`
 	if got != want {
-		t.Fatalf("contentDispositionValue() = %q, want %q", got, want)
+		t.Fatalf("contentDispositionValue() = %q，期望 %q", got, want)
 	}
 }
 
-// T-SRV-003: Web UI serves SPA fallback and hashed assets
+// T-SRV-003：Web UI 提供 SPA fallback 和带哈希的静态资源
 func TestWebUIServesSPAFallbackAndAssets(t *testing.T) {
 	srv := New(nil, Options{
 		WebFS: fstest.MapFS{
@@ -173,13 +173,13 @@ func TestWebUIServesSPAFallbackAndAssets(t *testing.T) {
 			body, _ := io.ReadAll(resp.Body)
 
 			if resp.StatusCode != tc.wantStatus {
-				t.Fatalf("status = %d, want %d; body: %s", resp.StatusCode, tc.wantStatus, body)
+				t.Fatalf("status = %d，期望 %d；body: %s", resp.StatusCode, tc.wantStatus, body)
 			}
 			if tc.wantBody != "" && !strings.Contains(string(body), tc.wantBody) {
-				t.Fatalf("body = %q, want containing %q", body, tc.wantBody)
+				t.Fatalf("body = %q，期望包含 %q", body, tc.wantBody)
 			}
 			if tc.wantCache != "" && resp.Header.Get("Cache-Control") != tc.wantCache {
-				t.Fatalf("Cache-Control = %q, want %q", resp.Header.Get("Cache-Control"), tc.wantCache)
+				t.Fatalf("Cache-Control = %q，期望 %q", resp.Header.Get("Cache-Control"), tc.wantCache)
 			}
 		})
 	}

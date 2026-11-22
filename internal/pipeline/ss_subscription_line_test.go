@@ -21,8 +21,8 @@ func quotedSSLineParam(key, value string) string {
 	return key + `="` + value + `"`
 }
 
-// T-SRC-SS-LINE-001: SS subscription line parser accepts supported plain-text
-// formats from ss-ss.txt, quanx-ss.txt, and surge-ss.txt.
+// T-SRC-SS-LINE-001: SS 订阅行解析器接受 ss-ss.txt、quanx-ss.txt 和
+// surge-ss.txt 中支持的纯文本格式。
 func TestParseSSSubscriptionLine_ValidFormats(t *testing.T) {
 	paramValue := ssLineFixtureValue()
 	tests := []struct {
@@ -73,35 +73,35 @@ func TestParseSSSubscriptionLine_ValidFormats(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			proxy, err := ParseSSSubscriptionLine(tt.line)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("意外错误：%v", err)
 			}
 			if proxy.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", proxy.Name, tt.wantName)
+				t.Errorf("Name = %q，期望 %q", proxy.Name, tt.wantName)
 			}
 			if proxy.Server != tt.wantServer {
-				t.Errorf("Server = %q, want %q", proxy.Server, tt.wantServer)
+				t.Errorf("Server = %q，期望 %q", proxy.Server, tt.wantServer)
 			}
 			if proxy.Port != tt.wantPort {
-				t.Errorf("Port = %d, want %d", proxy.Port, tt.wantPort)
+				t.Errorf("Port = %d，期望 %d", proxy.Port, tt.wantPort)
 			}
 			if proxy.Params["cipher"] != tt.wantCipher {
-				t.Errorf("cipher = %q, want %q", proxy.Params["cipher"], tt.wantCipher)
+				t.Errorf("cipher = %q，期望 %q", proxy.Params["cipher"], tt.wantCipher)
 			}
 			if proxy.Params[ssLineParamKey] != tt.wantParam {
-				t.Errorf("auth param = %q, want %q", proxy.Params[ssLineParamKey], tt.wantParam)
+				t.Errorf("认证参数 = %q，期望 %q", proxy.Params[ssLineParamKey], tt.wantParam)
 			}
 			if proxy.Params["udp-relay"] != tt.wantUDPRelay {
-				t.Errorf("udp-relay = %q, want %q", proxy.Params["udp-relay"], tt.wantUDPRelay)
+				t.Errorf("udp-relay = %q，期望 %q", proxy.Params["udp-relay"], tt.wantUDPRelay)
 			}
 			if proxy.Params["tfo"] != tt.wantTFO {
-				t.Errorf("tfo = %q, want %q", proxy.Params["tfo"], tt.wantTFO)
+				t.Errorf("tfo = %q，期望 %q", proxy.Params["tfo"], tt.wantTFO)
 			}
 		})
 	}
 }
 
-// T-SRC-SS-LINE-002: malformed SS subscription lines return source build
-// errors that callers can skip or surface according to source policy.
+// T-SRC-SS-LINE-002: 格式错误的 SS 订阅行返回 source 阶段的构建错误，
+// 调用方按来源策略决定跳过还是上报。
 func TestParseSSSubscriptionLine_InvalidFormats(t *testing.T) {
 	tests := []struct {
 		name string
@@ -118,14 +118,14 @@ func TestParseSSSubscriptionLine_InvalidFormats(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ParseSSSubscriptionLine(tt.line)
 			if err == nil {
-				t.Fatal("expected error, got nil")
+				t.Fatal("期望返回错误，实际为 nil")
 			}
 			var buildErr *errtype.BuildError
 			if !errors.As(err, &buildErr) {
-				t.Fatalf("error type = %T, want *errtype.BuildError", err)
+				t.Fatalf("错误类型 = %T，期望 *errtype.BuildError", err)
 			}
 			if buildErr.Code != errtype.CodeBuildSSURIInvalid {
-				t.Errorf("Code = %q, want %q", buildErr.Code, errtype.CodeBuildSSURIInvalid)
+				t.Errorf("Code = %q，期望 %q", buildErr.Code, errtype.CodeBuildSSURIInvalid)
 			}
 		})
 	}

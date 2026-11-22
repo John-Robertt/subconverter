@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// T-CFG-LOON-001: subscription format and Loon template survive YAML/JSON and runtime preparation.
+// T-CFG-LOON-001：订阅格式与 Loon 模板经过 YAML/JSON 往返和运行时预处理后保持不变。
 func TestConfig_LoonRoundTrip(t *testing.T) {
 	const raw = `sources:
   subscriptions:
@@ -38,24 +38,24 @@ templates:
 		t.Fatal(err)
 	}
 	if rt.SourceInput().Subscriptions[0].Format != "loon" || rt.Templates().Loon != "configs/base_loon.lcf" {
-		t.Fatalf("runtime lost Loon config: %+v %+v", rt.SourceInput(), rt.Templates())
+		t.Fatalf("运行时配置丢失了 Loon 设置：%+v %+v", rt.SourceInput(), rt.Templates())
 	}
 	back, err := yaml.Marshal(roundTrip)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(back), "format: loon") || !strings.Contains(string(back), "loon: configs/base_loon.lcf") {
-		t.Fatalf("YAML lost Loon config:\n%s", back)
+		t.Fatalf("YAML 丢失了 Loon 设置：\n%s", back)
 	}
 	for _, format := range []string{"", "auto", "text", "clash", "surge", "loon", "invalid"} {
 		t.Run(format, func(t *testing.T) {
 			cfg.Sources.Subscriptions[0].Format = format
 			_, err := Prepare(&cfg)
 			if (err != nil) != (format == "invalid") {
-				t.Fatalf("format=%q error=%v", format, err)
+				t.Fatalf("format=%q，错误=%v", format, err)
 			}
 			if format == "invalid" && !strings.Contains(err.Error(), "subscriptions[0].format") {
-				t.Fatalf("error lacks field path: %v", err)
+				t.Fatalf("错误信息缺少字段路径：%v", err)
 			}
 		})
 	}

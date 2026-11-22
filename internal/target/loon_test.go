@@ -10,7 +10,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// T-TGT-LOON-001: native Loon nodes survive only their target, with cascade cleanup elsewhere.
+// T-TGT-LOON-001：Loon 原生节点只在 Loon 输出中保留，在其他格式中被剔除并级联清理。
 func TestTarget_LoonNativeIsolation(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
@@ -30,19 +30,19 @@ func TestTarget_LoonNativeIsolation(t *testing.T) {
 			got, err := tt.project(p)
 			if tt.wantCode == "" {
 				if err != nil || len(got.ProxyChains) != 1 {
-					t.Fatalf("projection=%+v error=%v, want one chain", got, err)
+					t.Fatalf("projection=%+v error=%v，期望恰好一条链路", got, err)
 				}
 			} else {
 				var targetErr *errtype.TargetError
 				if !errors.As(err, &targetErr) || targetErr.Code != tt.wantCode || !strings.Contains(err.Error(), "Loon CONF 专属") {
-					t.Fatalf("error=%v, want %s with Loon root", err, tt.wantCode)
+					t.Fatalf("error=%v，期望 %s 且根因为 Loon 原生节点", err, tt.wantCode)
 				}
 			}
 		})
 	}
 }
 
-// T-TGT-LOON-002: unsupported formats and VLESS transports cascade through groups and rules.
+// T-TGT-LOON-002：不支持的格式和 VLESS 传输方式被剔除后，影响级联到分组和规则。
 func TestTarget_LoonFiltersUnsupportedProxies(t *testing.T) {
 	grpc := vlessProxy(4, "GRPC")
 	grpc.Params["network"] = "grpc"
@@ -58,17 +58,17 @@ func TestTarget_LoonFiltersUnsupportedProxies(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got.Proxies) != 1 || got.Proxies[0].Name != "TCP" || len(got.NodeGroups) != 1 || len(got.RouteGroups) != 1 || len(got.Rules) != 0 || len(got.Rulesets) != 0 {
-		t.Fatalf("projection=%+v, want only TCP and surviving groups", got)
+		t.Fatalf("projection=%+v，期望只剩 TCP 节点和保留下来的分组", got)
 	}
 	p.Fallback = "DEAD"
 	_, err = ForLoon(p)
 	var targetErr *errtype.TargetError
 	if !errors.As(err, &targetErr) || targetErr.Code != errtype.CodeTargetLoonFallbackEmpty || !strings.Contains(err.Error(), "grpc") {
-		t.Fatalf("error=%v, want Loon fallback failure with transport root", err)
+		t.Fatalf("error=%v，期望 Loon fallback 失败且根因为传输方式", err)
 	}
 }
 
-// T-TGT-LOON-003: helper names avoid nodes and groups; projection does not mutate the input.
+// T-TGT-LOON-003：辅助名字避开已有节点和分组；投影不修改输入。
 func TestTarget_LoonChainNames(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies:     []model.Proxy{ssProxy(1, "HK"), chainedProxy(2, "CHAIN", 1, "EXIT"), ssProxy(3, "HK→EXIT-exit")},
@@ -82,18 +82,18 @@ func TestTarget_LoonChainNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(p.Proxies, before) {
-		t.Fatal("input proxies mutated")
+		t.Fatal("输入的 proxies 被修改了")
 	}
 	chain := got.ProxyChains[0]
 	if !chain.UDP || chain.Name != "HK→EXIT" || !reflect.DeepEqual(chain.Members, []string{"HK", "HK→EXIT-exit③"}) {
-		t.Fatalf("chain=%+v, want collision-free exit name", chain)
+		t.Fatalf("chain=%+v，期望出口名不与其他名字冲突", chain)
 	}
 	if got.NodeGroups[1].Members[0] != chain.Name {
-		t.Fatalf("group=%+v does not refer to chain %q", got.NodeGroups[1], chain.Name)
+		t.Fatalf("group=%+v 没有引用链路 %q", got.NodeGroups[1], chain.Name)
 	}
 }
 
-// T-TGT-LOON-004: required VLESS extensions are filtered instead of being silently discarded.
+// T-TGT-LOON-004：带有必需 VLESS 扩展的节点会被过滤，而不是悄悄丢掉扩展。
 func TestTarget_LoonVLessExtensions(t *testing.T) {
 	for _, key := range []string{"encryption", "flow"} {
 		t.Run(key, func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestTarget_LoonVLessExtensions(t *testing.T) {
 			_, err := ForLoon(p)
 			var targetErr *errtype.TargetError
 			if !errors.As(err, &targetErr) || targetErr.Code != errtype.CodeTargetLoonFallbackEmpty || !strings.Contains(err.Error(), key) {
-				t.Fatalf("error=%v, want %s extension root", err, key)
+				t.Fatalf("error=%v，期望根因为 %s 扩展", err, key)
 			}
 		})
 	}

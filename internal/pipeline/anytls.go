@@ -10,15 +10,15 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// ParseAnyTLSURI parses an AnyTLS URI into a subscription proxy.
+// ParseAnyTLSURI 把一条 AnyTLS URI 解析为订阅节点。
 //
-// Supported form:
+// 支持的形式：
 //
 //	anytls://PASSWORD@SERVER[:PORT][/][?sni=...&insecure=1][#NodeName]
 //
-// The AnyTLS URI scheme defines auth as the password. Port defaults to 443
-// when omitted. Query keys not consumed here are ignored so subscription
-// providers can add metadata such as group without breaking parsing.
+// AnyTLS URI 规范把 auth 部分定义为密码。省略端口时默认为 443。
+// 这里不使用的 query 键会被忽略，订阅提供方因此可以附加 group 等元数据，
+// 而不会导致解析失败。
 func ParseAnyTLSURI(raw string) (model.Proxy, error) {
 	const prefix = "anytls://"
 	if !strings.HasPrefix(raw, prefix) {

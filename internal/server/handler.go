@@ -10,7 +10,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/generate"
 )
 
-// handleGenerate executes the pipeline and renders output in the requested format.
+// handleGenerate 执行流水线，并按请求的格式渲染输出。
 func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	query := r.URL.Query()
@@ -38,7 +38,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		code, msg := presentError(err)
-		log.Printf("generate error: %v", err)
+		log.Printf("生成失败：%v", err)
 		writeError(w, code, msg)
 		return
 	}
@@ -48,7 +48,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(result.Body)
 }
 
-// handleHealthz returns 200 OK for health checks.
+// handleHealthz 为健康检查返回 200 OK。
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))

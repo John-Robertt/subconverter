@@ -2,7 +2,7 @@ package model
 
 import "testing"
 
-// T-MDL-001: ProxyKind constants have expected string values
+// T-MDL-001：ProxyKind 常量取值符合预期
 func TestProxyKindValues(t *testing.T) {
 	tests := []struct {
 		kind ProxyKind
@@ -14,12 +14,12 @@ func TestProxyKindValues(t *testing.T) {
 	}
 	for _, tt := range tests {
 		if string(tt.kind) != tt.want {
-			t.Errorf("ProxyKind = %q, want %q", tt.kind, tt.want)
+			t.Errorf("ProxyKind = %q，期望 %q", tt.kind, tt.want)
 		}
 	}
 }
 
-// T-MDL-002: PolicyRefKind constants have expected string values
+// T-MDL-002：PolicyRefKind 常量取值符合预期
 func TestPolicyRefKindValues(t *testing.T) {
 	tests := []struct {
 		kind PolicyRefKind
@@ -32,12 +32,12 @@ func TestPolicyRefKindValues(t *testing.T) {
 	}
 	for _, tt := range tests {
 		if string(tt.kind) != tt.want {
-			t.Errorf("PolicyRefKind = %q, want %q", tt.kind, tt.want)
+			t.Errorf("PolicyRefKind = %q，期望 %q", tt.kind, tt.want)
 		}
 	}
 }
 
-// T-MDL-003: Pipeline struct construction with all fields
+// T-MDL-003：填写全部字段构造 Pipeline 结构体
 func TestPipelineConstruction(t *testing.T) {
 	p := Pipeline{
 		Proxies: []Proxy{
@@ -59,7 +59,7 @@ func TestPipelineConstruction(t *testing.T) {
 	}
 
 	if len(p.Proxies) != 1 || p.Proxies[0].Name != "HK-01" {
-		t.Errorf("unexpected Proxies: %+v", p.Proxies)
+		t.Errorf("Proxies 不符合预期：%+v", p.Proxies)
 	}
 	if p.Fallback != "Proxy" {
 		t.Errorf("Fallback = %q", p.Fallback)

@@ -10,7 +10,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// T-SRC-ANYTLS-001: AnyTLS URI parser accepts the provider URI shape.
+// T-SRC-ANYTLS-001: AnyTLS URI 解析器接受机场提供的 URI 形式。
 func TestParseAnyTLSURI_Valid(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -66,33 +66,33 @@ func TestParseAnyTLSURI_Valid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ParseAnyTLSURI(tt.uri)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("意外错误：%v", err)
 			}
 			if got.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", got.Name, tt.wantName)
+				t.Errorf("Name = %q，期望 %q", got.Name, tt.wantName)
 			}
 			if got.Type != "anytls" {
-				t.Errorf("Type = %q, want anytls", got.Type)
+				t.Errorf("Type = %q，期望 anytls", got.Type)
 			}
 			if got.Kind != model.KindSubscription {
-				t.Errorf("Kind = %q, want %q", got.Kind, model.KindSubscription)
+				t.Errorf("Kind = %q，期望 %q", got.Kind, model.KindSubscription)
 			}
 			if got.Server != tt.wantServer {
-				t.Errorf("Server = %q, want %q", got.Server, tt.wantServer)
+				t.Errorf("Server = %q，期望 %q", got.Server, tt.wantServer)
 			}
 			if got.Port != tt.wantPort {
-				t.Errorf("Port = %d, want %d", got.Port, tt.wantPort)
+				t.Errorf("Port = %d，期望 %d", got.Port, tt.wantPort)
 			}
 			for key, want := range tt.wantParams {
 				if got.Params[key] != want {
-					t.Errorf("Params[%q] = %q, want %q", key, got.Params[key], want)
+					t.Errorf("Params[%q] = %q，期望 %q", key, got.Params[key], want)
 				}
 			}
 		})
 	}
 }
 
-// T-SRC-ANYTLS-002: malformed AnyTLS URIs return source build errors.
+// T-SRC-ANYTLS-002: 格式错误的 AnyTLS URI 返回 source 阶段的构建错误。
 func TestParseAnyTLSURI_Invalid(t *testing.T) {
 	tests := []struct {
 		name string
@@ -108,21 +108,21 @@ func TestParseAnyTLSURI_Invalid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ParseAnyTLSURI(tt.uri)
 			if err == nil {
-				t.Fatal("expected error, got nil")
+				t.Fatal("期望返回错误，实际为 nil")
 			}
 			var buildErr *errtype.BuildError
 			if !errors.As(err, &buildErr) {
-				t.Fatalf("error type = %T, want *errtype.BuildError", err)
+				t.Fatalf("错误类型 = %T，期望 *errtype.BuildError", err)
 			}
 			if buildErr.Code != errtype.CodeBuildAnyTLSURIInvalid {
-				t.Errorf("Code = %q, want %q", buildErr.Code, errtype.CodeBuildAnyTLSURIInvalid)
+				t.Errorf("Code = %q，期望 %q", buildErr.Code, errtype.CodeBuildAnyTLSURIInvalid)
 			}
 		})
 	}
 }
 
-// T-SRC-ANYTLS-003: generic subscription parser accepts AnyTLS plain-text
-// line formats from URI, Surge, and Quantumult X sources.
+// T-SRC-ANYTLS-003: 通用订阅解析器接受 URI、Surge 和 Quantumult X
+// 三种来源的 AnyTLS 纯文本行格式。
 func TestParseSubscriptionLine_AnyTLSFormats(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -166,44 +166,44 @@ func TestParseSubscriptionLine_AnyTLSFormats(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ParseSubscriptionLine(tt.line)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("意外错误：%v", err)
 			}
 			if got.Name != tt.wantName || got.Server != tt.wantServer || got.Port != tt.wantPort {
-				t.Fatalf("proxy = {%q %q %d}, want {%q %q %d}", got.Name, got.Server, got.Port, tt.wantName, tt.wantServer, tt.wantPort)
+				t.Fatalf("节点 = {%q %q %d}，期望 {%q %q %d}", got.Name, got.Server, got.Port, tt.wantName, tt.wantServer, tt.wantPort)
 			}
 			if got.Type != "anytls" || got.Kind != model.KindSubscription {
-				t.Fatalf("Type/Kind = %q/%q, want anytls/%q", got.Type, got.Kind, model.KindSubscription)
+				t.Fatalf("Type/Kind = %q/%q，期望 anytls/%q", got.Type, got.Kind, model.KindSubscription)
 			}
 			if got.Params["password"] != "1b3614e427e3451b" {
-				t.Errorf("password = %q, want sample password", got.Params["password"])
+				t.Errorf("password = %q，期望为样例密码", got.Params["password"])
 			}
 			if got.Params["sni"] != tt.wantSNI {
-				t.Errorf("sni = %q, want %q", got.Params["sni"], tt.wantSNI)
+				t.Errorf("sni = %q，期望 %q", got.Params["sni"], tt.wantSNI)
 			}
 			if got.Params["skip-cert-verify"] != tt.wantSkip {
-				t.Errorf("skip-cert-verify = %q, want %q", got.Params["skip-cert-verify"], tt.wantSkip)
+				t.Errorf("skip-cert-verify = %q，期望 %q", got.Params["skip-cert-verify"], tt.wantSkip)
 			}
 		})
 	}
 }
 
-// T-SRC-ANYTLS-004: malformed AnyTLS line formats use the AnyTLS line code.
+// T-SRC-ANYTLS-004: 格式错误的 AnyTLS 行使用 AnyTLS 行对应的错误码。
 func TestParseSubscriptionLine_AnyTLSInvalidLine(t *testing.T) {
 	_, err := ParseSubscriptionLine("HK = anytls, demo.com, 443")
 	if err == nil {
-		t.Fatal("expected error, got nil")
+		t.Fatal("期望返回错误，实际为 nil")
 	}
 	var buildErr *errtype.BuildError
 	if !errors.As(err, &buildErr) {
-		t.Fatalf("error type = %T, want *errtype.BuildError", err)
+		t.Fatalf("错误类型 = %T，期望 *errtype.BuildError", err)
 	}
 	if buildErr.Code != errtype.CodeBuildAnyTLSLineInvalid {
-		t.Errorf("Code = %q, want %q", buildErr.Code, errtype.CodeBuildAnyTLSLineInvalid)
+		t.Errorf("Code = %q，期望 %q", buildErr.Code, errtype.CodeBuildAnyTLSLineInvalid)
 	}
 }
 
-// T-SRC-ANYTLS-FIX-001: provider-style AnyTLS samples remain accepted across
-// supported subscription shapes.
+// T-SRC-ANYTLS-FIX-001: 机场风格的 AnyTLS 样例在各种支持的订阅形式下
+// 都能被接受。
 func TestParseSubscriptionLine_AnyTLSSamples(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -257,46 +257,46 @@ func TestParseSubscriptionLine_AnyTLSSamples(t *testing.T) {
 				body := []byte(base64.StdEncoding.EncodeToString([]byte(strings.Join(tt.lines, "\n"))))
 				text, err := subscriptionBodyText(body)
 				if err != nil {
-					t.Fatalf("decode generated base64 body: %v", err)
+					t.Fatalf("解码生成的 base64 正文：%v", err)
 				}
 				lines = splitSubscriptionLines(text)
 			}
 			if len(lines) != tt.wantCount {
-				t.Fatalf("sample lines = %d, want %d: %#v", len(lines), tt.wantCount, lines)
+				t.Fatalf("样例行数 = %d，期望 %d：%#v", len(lines), tt.wantCount, lines)
 			}
 
 			var proxies []model.Proxy
 			for _, line := range lines {
 				proxy, err := ParseSubscriptionLine(line)
 				if err != nil {
-					t.Fatalf("ParseSubscriptionLine(%q) error: %v", line, err)
+					t.Fatalf("ParseSubscriptionLine(%q) 出错：%v", line, err)
 				}
 				if proxy.Type != "anytls" || proxy.Kind != model.KindSubscription {
-					t.Fatalf("Type/Kind = %q/%q, want anytls/%q", proxy.Type, proxy.Kind, model.KindSubscription)
+					t.Fatalf("Type/Kind = %q/%q，期望 anytls/%q", proxy.Type, proxy.Kind, model.KindSubscription)
 				}
 				if proxy.Params["password"] == "" {
-					t.Fatalf("proxy %q missing password", proxy.Name)
+					t.Fatalf("节点 %q 缺少 password", proxy.Name)
 				}
 				if proxy.Params["sni"] == "" {
-					t.Fatalf("proxy %q missing sni", proxy.Name)
+					t.Fatalf("节点 %q 缺少 sni", proxy.Name)
 				}
 				if tt.wantNoParam != "" && proxy.Params[tt.wantNoParam] != "" {
-					t.Fatalf("proxy %q preserved input-only param %q=%q", proxy.Name, tt.wantNoParam, proxy.Params[tt.wantNoParam])
+					t.Fatalf("节点 %q 保留了仅用于输入的参数 %q=%q", proxy.Name, tt.wantNoParam, proxy.Params[tt.wantNoParam])
 				}
 				proxies = append(proxies, proxy)
 			}
 
 			if proxies[0].Name != tt.wantFirst {
-				t.Errorf("first proxy name = %q, want %q", proxies[0].Name, tt.wantFirst)
+				t.Errorf("第一个节点名 = %q，期望 %q", proxies[0].Name, tt.wantFirst)
 			}
 			if proxies[len(proxies)-1].Name != tt.wantLast {
-				t.Errorf("last proxy name = %q, want %q", proxies[len(proxies)-1].Name, tt.wantLast)
+				t.Errorf("最后一个节点名 = %q，期望 %q", proxies[len(proxies)-1].Name, tt.wantLast)
 			}
 			if tt.wantUDP != "" && proxies[0].Params["udp-relay"] != tt.wantUDP {
-				t.Errorf("udp-relay = %q, want %q", proxies[0].Params["udp-relay"], tt.wantUDP)
+				t.Errorf("udp-relay = %q，期望 %q", proxies[0].Params["udp-relay"], tt.wantUDP)
 			}
 			if tt.wantTFO != "" && proxies[0].Params["tfo"] != tt.wantTFO {
-				t.Errorf("tfo = %q, want %q", proxies[0].Params["tfo"], tt.wantTFO)
+				t.Errorf("tfo = %q，期望 %q", proxies[0].Params["tfo"], tt.wantTFO)
 			}
 		})
 	}

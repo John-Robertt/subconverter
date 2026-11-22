@@ -1,2 +1,2 @@
-// Package webui exposes optional embedded assets for the admin SPA.
+// Package webui 提供管理后台 SPA 的可选嵌入资源。
 package webui

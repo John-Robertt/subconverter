@@ -13,11 +13,11 @@ func mustRenderClashProjected(t *testing.T, p *model.Pipeline) []byte {
 	t.Helper()
 	projected, err := target.ForClash(p)
 	if err != nil {
-		t.Fatalf("target.ForClash() error: %v", err)
+		t.Fatalf("target.ForClash() 出错：%v", err)
 	}
 	out, err := render.Clash(projected, nil)
 	if err != nil {
-		t.Fatalf("Clash() error: %v", err)
+		t.Fatalf("Clash() 出错：%v", err)
 	}
 	return out
 }
@@ -26,11 +26,11 @@ func mustRenderSurgeProjected(t *testing.T, p *model.Pipeline) []byte {
 	t.Helper()
 	projected, err := target.ForSurge(p)
 	if err != nil {
-		t.Fatalf("target.ForSurge() error: %v", err)
+		t.Fatalf("target.ForSurge() 出错：%v", err)
 	}
 	out, err := render.Surge(projected, "", nil)
 	if err != nil {
-		t.Fatalf("Surge() error: %v", err)
+		t.Fatalf("Surge() 出错：%v", err)
 	}
 	return out
 }
@@ -73,7 +73,7 @@ func buildSnellFilterPipeline() *model.Pipeline {
 	}
 }
 
-// T-TGT-RND-001: Snell-upstream chained node visible in Surge but filtered from Clash
+// T-TGT-RND-001：以 Snell 为上游的链式节点在 Surge 中可见，在 Clash 中被过滤
 func TestRender_SnellUpstreamChainVisibility(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -101,20 +101,20 @@ func TestRender_SnellUpstreamChainVisibility(t *testing.T) {
 	clashOut := mustRenderClashProjected(t, p)
 
 	if !strings.Contains(string(surgeOut), "HK-Snell→MY-PROXY = socks5, 10.0.0.1, 1080") {
-		t.Errorf("Surge missing snell-chained proxy line:\n%s", string(surgeOut))
+		t.Errorf("Surge 缺少以 snell 为上游的链式节点行：\n%s", string(surgeOut))
 	}
 	if !strings.Contains(string(surgeOut), "underlying-proxy=HK-Snell") {
-		t.Errorf("Surge missing underlying-proxy=HK-Snell directive:\n%s", string(surgeOut))
+		t.Errorf("Surge 缺少 underlying-proxy=HK-Snell 指令：\n%s", string(surgeOut))
 	}
 	if strings.Contains(string(clashOut), "HK-Snell→MY-PROXY") {
-		t.Errorf("Clash output leaked Snell-upstream chained node:\n%s", string(clashOut))
+		t.Errorf("Clash 输出泄露了以 Snell 为上游的链式节点：\n%s", string(clashOut))
 	}
 	if !strings.Contains(string(clashOut), "HK-01→MY-PROXY") {
-		t.Errorf("Clash missing SS-upstream chained node:\n%s", string(clashOut))
+		t.Errorf("Clash 缺少以 SS 为上游的链式节点：\n%s", string(clashOut))
 	}
 }
 
-// T-TGT-RND-002: Snell nodes and groups visible in Surge, cascade-filtered from Clash
+// T-TGT-RND-002：Snell 节点和分组在 Surge 中可见，在 Clash 中被级联过滤
 func TestRender_SnellVisibilityDiffersBetweenFormats(t *testing.T) {
 	p := buildSnellFilterPipeline()
 
@@ -122,27 +122,27 @@ func TestRender_SnellVisibilityDiffersBetweenFormats(t *testing.T) {
 	clashOut := mustRenderClashProjected(t, p)
 
 	if !strings.Contains(string(surgeOut), "HK-Snell = snell, 1.2.3.4, 57891, psk=x, version=4") {
-		t.Errorf("Surge output missing HK-Snell line:\n%s", string(surgeOut))
+		t.Errorf("Surge 输出缺少 HK-Snell 行：\n%s", string(surgeOut))
 	}
 	if !strings.Contains(string(surgeOut), "SG-Snell = snell, 5.6.7.8, 8989, psk=y, version=4") {
-		t.Errorf("Surge output missing SG-Snell line:\n%s", string(surgeOut))
+		t.Errorf("Surge 输出缺少 SG-Snell 行：\n%s", string(surgeOut))
 	}
 	if !strings.Contains(string(surgeOut), "GRP_SG = select") {
-		t.Errorf("Surge output missing GRP_SG group:\n%s", string(surgeOut))
+		t.Errorf("Surge 输出缺少 GRP_SG 分组：\n%s", string(surgeOut))
 	}
 
 	if strings.Contains(string(clashOut), "HK-Snell") || strings.Contains(string(clashOut), "SG-Snell") {
-		t.Errorf("Clash output leaked snell proxy name:\n%s", string(clashOut))
+		t.Errorf("Clash 输出泄露了 snell 节点名：\n%s", string(clashOut))
 	}
 	if strings.Contains(string(clashOut), "GRP_SG") {
-		t.Errorf("Clash output still references dropped GRP_SG:\n%s", string(clashOut))
+		t.Errorf("Clash 输出仍引用已删除的 GRP_SG：\n%s", string(clashOut))
 	}
 	if !strings.Contains(string(clashOut), "GRP_HK") {
-		t.Errorf("Clash output missing surviving GRP_HK:\n%s", string(clashOut))
+		t.Errorf("Clash 输出缺少应保留的 GRP_HK：\n%s", string(clashOut))
 	}
 }
 
-// T-TGT-RND-003: VLESS nodes visible in Clash, cascade-filtered from Surge
+// T-TGT-RND-003：VLESS 节点在 Clash 中可见，在 Surge 中被级联过滤
 func TestRender_VLessVisibilityDiffersBetweenFormats(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -164,26 +164,26 @@ func TestRender_VLessVisibilityDiffersBetweenFormats(t *testing.T) {
 
 	clashOut := mustRenderClashProjected(t, p)
 	if !strings.Contains(string(clashOut), "HK-VL") {
-		t.Error("VLESS node should appear in Clash output")
+		t.Error("VLESS 节点应出现在 Clash 输出中")
 	}
 	if !strings.Contains(string(clashOut), "type: vless") {
-		t.Error("VLESS type should appear in Clash output")
+		t.Error("VLESS 类型应出现在 Clash 输出中")
 	}
 
 	surgeOut := mustRenderSurgeProjected(t, p)
 	if strings.Contains(string(surgeOut), "HK-VL") {
-		t.Error("VLESS node should NOT appear in Surge output")
+		t.Error("VLESS 节点不应出现在 Surge 输出中")
 	}
 	if strings.Contains(string(surgeOut), "= vless") {
-		t.Error("VLESS type should NOT appear in Surge output")
+		t.Error("VLESS 类型不应出现在 Surge 输出中")
 	}
 	if !strings.Contains(string(surgeOut), "HK-01") {
-		t.Error("SS node must still render in Surge")
+		t.Error("SS 节点仍必须在 Surge 中渲染")
 	}
 }
 
-// T-TGT-RND-004: AnyTLS is supported by both target projections, but each
-// renderer emits only its target-client field contract.
+// T-TGT-RND-004：两种目标投影都支持 AnyTLS，但每个渲染器只输出
+// 本目标客户端约定的字段。
 func TestRender_AnyTLSVisibleInBothFormats(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{{
@@ -220,19 +220,19 @@ func TestRender_AnyTLSVisibleInBothFormats(t *testing.T) {
 	clashOut := string(mustRenderClashProjected(t, p))
 	for _, want := range []string{"name: HK-AnyTLS", "type: anytls", "udp: true", "client-fingerprint: chrome"} {
 		if !strings.Contains(clashOut, want) {
-			t.Errorf("Clash output missing %q:\n%s", want, clashOut)
+			t.Errorf("Clash 输出缺少 %q：\n%s", want, clashOut)
 		}
 	}
 
 	surgeOut := string(mustRenderSurgeProjected(t, p))
 	for _, want := range []string{"HK-AnyTLS = anytls", "password=pw", "sni=edge.example.com", "skip-cert-verify=true", "server-cert-fingerprint-sha256=abc123"} {
 		if !strings.Contains(surgeOut, want) {
-			t.Errorf("Surge output missing %q:\n%s", want, surgeOut)
+			t.Errorf("Surge 输出缺少 %q：\n%s", want, surgeOut)
 		}
 	}
 	for _, unwanted := range []string{"udp-relay=true", "tfo=true", "client-fingerprint=chrome", "tls=true"} {
 		if strings.Contains(surgeOut, unwanted) {
-			t.Errorf("Surge output should not contain %q:\n%s", unwanted, surgeOut)
+			t.Errorf("Surge 输出不应包含 %q：\n%s", unwanted, surgeOut)
 		}
 	}
 }

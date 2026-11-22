@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Code is a stable machine-readable identifier for an error condition.
+// Code 是错误情形的稳定标识，供程序识别。
 type Code string
 
 const (
@@ -65,28 +65,28 @@ const (
 )
 
 var (
-	ErrConfigSourceReadonly  = errors.New("config source is read-only")
-	ErrConfigFileNotWritable = errors.New("config file is not writable")
-	ErrReloadInProgress      = errors.New("reload already in progress")
+	ErrConfigSourceReadonly  = errors.New("配置源只读")
+	ErrConfigFileNotWritable = errors.New("配置文件不可写")
+	ErrReloadInProgress      = errors.New("热重载正在进行中")
 )
 
-// ConfigError indicates an unavailable or invalid configuration: initialization
-// is pending, YAML is malformed, or declared fields violate config constraints.
+// ConfigError 表示配置不可用或无效：尚未初始化、YAML 格式错误，
+// 或声明的字段违反配置约束。
 type ConfigError struct {
 	Code      Code
 	Section   string
 	Key       string
 	Index     *int
 	ValuePath string
-	Field     string // deprecated display path for v1 text errors.
+	Field     string // 已弃用：v1 文本错误使用的展示路径。
 	Message   string
 }
 
 func (e *ConfigError) Error() string {
 	if path := e.DisplayPath(); path != "" {
-		return fmt.Sprintf("config error [%s]: %s", path, e.Message)
+		return fmt.Sprintf("配置错误 [%s]：%s", path, e.Message)
 	}
-	return fmt.Sprintf("config error: %s", e.Message)
+	return fmt.Sprintf("配置错误：%s", e.Message)
 }
 
 func (e *ConfigError) DisplayPath() string {
@@ -114,34 +114,34 @@ func (e *ConfigError) DisplayPath() string {
 	return path
 }
 
-// RevisionConflictError indicates that a conditional config write used a stale
-// config_revision. CurrentConfigRevision is safe to return in API responses.
+// RevisionConflictError 表示带条件的配置写入使用了过期的 config_revision。
+// CurrentConfigRevision 可以安全地放进 API 响应。
 type RevisionConflictError struct {
 	CurrentConfigRevision string
 }
 
 func (e *RevisionConflictError) Error() string {
-	return "config revision conflict"
+	return "配置版本冲突"
 }
 
-// FetchError indicates a failure to retrieve a remote HTTP(S) resource.
-// URL must be sanitized (query params redacted) before storing.
+// FetchError 表示拉取远程 HTTP(S) 资源失败。
+// 保存 URL 前必须先脱敏（隐去查询参数）。
 type FetchError struct {
 	Code    Code
-	URL     string // sanitized URL (query params redacted)
+	URL     string // 脱敏后的 URL（已隐去查询参数）
 	Message string
 	Cause   error
 }
 
 func (e *FetchError) Error() string {
-	return fmt.Sprintf("fetch error [%s]: %s", e.URL, e.Message)
+	return fmt.Sprintf("拉取失败 [%s]：%s", e.URL, e.Message)
 }
 
 func (e *FetchError) Unwrap() error {
 	return e.Cause
 }
 
-// ResourceError indicates a failure to read or write a local resource.
+// ResourceError 表示读取或写入本地资源失败。
 type ResourceError struct {
 	Code     Code
 	Location string
@@ -151,60 +151,58 @@ type ResourceError struct {
 
 func (e *ResourceError) Error() string {
 	if e.Location != "" {
-		return fmt.Sprintf("resource error [%s]: %s", e.Location, e.Message)
+		return fmt.Sprintf("资源读取失败 [%s]：%s", e.Location, e.Message)
 	}
-	return fmt.Sprintf("resource error: %s", e.Message)
+	return fmt.Sprintf("资源读取失败：%s", e.Message)
 }
 
 func (e *ResourceError) Unwrap() error {
 	return e.Cause
 }
 
-// BuildError indicates a failure during pipeline construction
-// (source parsing, group building, route assembly, graph validation).
+// BuildError 表示流水线构建阶段失败
+// （解析来源、构建分组、组装路由、校验关系图）。
 type BuildError struct {
 	Code    Code
-	Phase   string // e.g. "group", "route", "validate"
+	Phase   string // 例如 "group"、"route"、"validate"
 	Message string
 	Cause   error
 }
 
 func (e *BuildError) Error() string {
-	return fmt.Sprintf("build error [%s]: %s", e.Phase, e.Message)
+	return fmt.Sprintf("构建错误 [%s]：%s", e.Phase, e.Message)
 }
 
 func (e *BuildError) Unwrap() error {
 	return e.Cause
 }
 
-// TargetError indicates a failure during target-format projection, before
-// rendering starts.
+// TargetError 表示渲染开始前、按目标格式投影时失败。
 type TargetError struct {
 	Code    Code
-	Format  string // "clash", "surge" or "loon"
+	Format  string // "clash"、"surge" 或 "loon"
 	Message string
 	Cause   error
 }
 
 func (e *TargetError) Error() string {
-	return fmt.Sprintf("target error [%s]: %s", e.Format, e.Message)
+	return fmt.Sprintf("目标投影错误 [%s]：%s", e.Format, e.Message)
 }
 
 func (e *TargetError) Unwrap() error {
 	return e.Cause
 }
 
-// RenderError indicates a failure during output serialization or template
-// merging after target projection has already succeeded.
+// RenderError 表示目标投影成功之后，在序列化输出或合并模板时失败。
 type RenderError struct {
 	Code    Code
-	Format  string // "clash", "surge" or "loon"
+	Format  string // "clash"、"surge" 或 "loon"
 	Message string
 	Cause   error
 }
 
 func (e *RenderError) Error() string {
-	return fmt.Sprintf("render error [%s]: %s", e.Format, e.Message)
+	return fmt.Sprintf("渲染错误 [%s]：%s", e.Format, e.Message)
 }
 
 func (e *RenderError) Unwrap() error {

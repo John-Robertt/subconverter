@@ -11,10 +11,10 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
-// LoadResource loads content from a local file path or a remote HTTP(S) URL.
-// If location starts with http:// or https://, it uses the provided Fetcher;
-// otherwise it reads from the local filesystem.
-// When f is nil, only local paths are supported.
+// LoadResource 从本地文件路径或远程 HTTP(S) URL 加载内容。
+// location 以 http:// 或 https:// 开头时使用传入的 Fetcher，
+// 否则从本地文件系统读取。
+// f 为 nil 时只支持本地路径。
 func LoadResource(ctx context.Context, location string, f Fetcher) ([]byte, error) {
 	if isRemoteURL(location) {
 		if f == nil {

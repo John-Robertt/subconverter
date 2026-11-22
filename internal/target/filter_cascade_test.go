@@ -195,7 +195,7 @@ func buildVLessFilterPipeline() *model.Pipeline {
 	}
 }
 
-// T-TGT-001: Clash drops Snell nodes and all empty dependants.
+// T-TGT-001：Clash 剔除 Snell 节点，以及所有因此变空的依赖项。
 func TestForClash_DropsSnellCascade(t *testing.T) {
 	projected, err := ForClash(buildSnellFilterPipeline())
 	if err != nil {
@@ -204,25 +204,25 @@ func TestForClash_DropsSnellCascade(t *testing.T) {
 
 	proxies := targetProxyNameSet(projected.Proxies)
 	if proxies["HK-Snell"] || proxies["SG-Snell"] || !proxies["HK-01"] {
-		t.Fatalf("Clash proxies = %v, want HK-01 only", proxies)
+		t.Fatalf("Clash 节点 = %v，期望只有 HK-01", proxies)
 	}
 	nodeGroups := targetGroupNameSet(projected.NodeGroups)
 	if nodeGroups["GRP_SG"] || !nodeGroups["GRP_HK"] {
-		t.Fatalf("Clash node groups = %v", nodeGroups)
+		t.Fatalf("Clash 节点组 = %v", nodeGroups)
 	}
 	routeGroups := targetGroupNameSet(projected.RouteGroups)
 	if routeGroups["SVC_SGOnly"] || !routeGroups["SVC_Quick"] || !routeGroups["SVC_FINAL"] {
-		t.Fatalf("Clash route groups = %v", routeGroups)
+		t.Fatalf("Clash 服务组 = %v", routeGroups)
 	}
 	if len(projected.Rulesets) != 1 || projected.Rulesets[0].Policy != "SVC_Quick" {
-		t.Fatalf("Clash rulesets = %+v", projected.Rulesets)
+		t.Fatalf("Clash 规则集 = %+v", projected.Rulesets)
 	}
 	if len(projected.Rules) != 1 || projected.Rules[0].Policy != "SVC_Quick" {
-		t.Fatalf("Clash rules = %+v", projected.Rules)
+		t.Fatalf("Clash 规则 = %+v", projected.Rules)
 	}
 }
 
-// T-TGT-002: chained nodes follow the identity of their dialer.
+// T-TGT-002：链式节点的去留跟随其上游（dialer）节点。
 func TestForClash_DropsChainedOnDroppedUpstream(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -248,11 +248,11 @@ func TestForClash_DropsChainedOnDroppedUpstream(t *testing.T) {
 	}
 	proxies := targetProxyNameSet(projected.Proxies)
 	if proxies["HK-Snell→MY-PROXY"] || !proxies["HK-01→MY-PROXY"] {
-		t.Fatalf("projected proxies = %v", proxies)
+		t.Fatalf("投影后的节点 = %v", proxies)
 	}
 }
 
-// T-TGT-003: cleared fallback reports the complete identity-aware path.
+// T-TGT-003：fallback 被清空时，报告带节点编号的完整清空路径。
 func TestForClash_FallbackCleared(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies:    []model.Proxy{snellProxy(1, "HK-Snell")},
@@ -267,19 +267,19 @@ func TestForClash_FallbackCleared(t *testing.T) {
 	_, err := ForClash(p)
 	var targetErr *errtype.TargetError
 	if !errors.As(err, &targetErr) {
-		t.Fatalf("error = %T %v, want TargetError", err, err)
+		t.Fatalf("error = %T %v，期望 TargetError", err, err)
 	}
 	if targetErr.Code != errtype.CodeTargetClashFallbackEmpty {
 		t.Fatalf("Code = %q", targetErr.Code)
 	}
 	for _, want := range []string{"SVC_FINAL", "GRP_SG", "HK-Snell#1(snell)"} {
 		if !strings.Contains(targetErr.Error(), want) {
-			t.Fatalf("error missing %q: %s", want, targetErr.Error())
+			t.Fatalf("错误信息缺少 %q：%s", want, targetErr.Error())
 		}
 	}
 }
 
-// T-TGT-004: chain removal paths retain both child and root identities.
+// T-TGT-004：链式剔除路径同时保留下游节点和根因节点的标识。
 func TestForClash_FallbackPathLabelsChainedProxy(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -296,12 +296,12 @@ func TestForClash_FallbackPathLabelsChainedProxy(t *testing.T) {
 	_, err := ForClash(p)
 	for _, want := range []string{"HK-Snell→CHAIN#2(chained)", "HK-Snell#1(snell)"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error missing %q: %s", want, err)
+			t.Fatalf("错误信息缺少 %q：%s", want, err)
 		}
 	}
 }
 
-// T-TGT-005: shared dropped subgraphs are not cycles.
+// T-TGT-005：被共享的已剔除子图不算循环。
 func TestForClash_SharedSubgraphDoesNotReportCycle(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies:    []model.Proxy{snellProxy(1, "HK-Snell")},
@@ -316,11 +316,11 @@ func TestForClash_SharedSubgraphDoesNotReportCycle(t *testing.T) {
 
 	_, err := ForClash(p)
 	if err == nil || strings.Contains(err.Error(), "(cycle)") {
-		t.Fatalf("shared subgraph error = %v", err)
+		t.Fatalf("共享子图的错误 = %v", err)
 	}
 }
 
-// T-TGT-006: cascade converges even when route groups are not topological.
+// T-TGT-006：即使服务组不是按拓扑顺序声明，级联剔除也能收敛。
 func TestForClash_CascadeHandlesNonTopologicalDeclaration(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies:    []model.Proxy{snellProxy(1, "HK-Snell")},
@@ -335,12 +335,12 @@ func TestForClash_CascadeHandlesNonTopologicalDeclaration(t *testing.T) {
 	_, err := ForClash(p)
 	for _, want := range []string{"SVC_PARENT", "SVC_CHILD", "GRP_SNELL", "HK-Snell#1(snell)"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error missing %q: %s", want, err)
+			t.Fatalf("错误信息缺少 %q：%s", want, err)
 		}
 	}
 }
 
-// T-TGT-007: direct proxy references are pruned by identity.
+// T-TGT-007：对节点的直接引用按节点编号剔除。
 func TestForClash_DropsAllSnellRouteGroup(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -362,11 +362,11 @@ func TestForClash_DropsAllSnellRouteGroup(t *testing.T) {
 		t.Fatalf("ForClash: %v", err)
 	}
 	if targetGroupNameSet(projected.RouteGroups)["SVC_ManualAll"] {
-		t.Fatalf("all-Snell route group survived: %+v", projected.RouteGroups)
+		t.Fatalf("全部由 Snell 组成的服务组没有被剔除：%+v", projected.RouteGroups)
 	}
 }
 
-// T-TGT-008: a compatible pipeline is still projected into renderer types.
+// T-TGT-008：完全兼容的 pipeline 仍会被投影成渲染器使用的类型。
 func TestForClash_CompatiblePipelineProjectsNames(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies:    []model.Proxy{ssProxy(1, "HK-01")},
@@ -382,14 +382,14 @@ func TestForClash_CompatiblePipelineProjectsNames(t *testing.T) {
 		t.Fatalf("ForClash: %v", err)
 	}
 	if len(projected.Proxies) != 1 || projected.Proxies[0].Name != "HK-01" {
-		t.Fatalf("projected proxies = %+v", projected.Proxies)
+		t.Fatalf("投影后的节点 = %+v", projected.Proxies)
 	}
 	if got := targetGroupByName(projected.NodeGroups, "GRP_HK"); got == nil || len(got.Members) != 1 || got.Members[0] != "HK-01" {
-		t.Fatalf("projected node groups = %+v", projected.NodeGroups)
+		t.Fatalf("投影后的节点组 = %+v", projected.NodeGroups)
 	}
 }
 
-// T-TGT-009: Surge applies the symmetric VLESS cascade.
+// T-TGT-009：Surge 对 VLESS 执行对称的级联剔除。
 func TestForSurge_DropsVLessCascade(t *testing.T) {
 	projected, err := ForSurge(buildVLessFilterPipeline())
 	if err != nil {
@@ -397,17 +397,17 @@ func TestForSurge_DropsVLessCascade(t *testing.T) {
 	}
 	proxies := targetProxyNameSet(projected.Proxies)
 	if proxies["HK-VL"] || proxies["SG-VL"] || !proxies["HK-01"] {
-		t.Fatalf("Surge proxies = %v", proxies)
+		t.Fatalf("Surge 节点 = %v", proxies)
 	}
 	if targetGroupNameSet(projected.NodeGroups)["GRP_SG"] {
-		t.Fatalf("Surge node groups = %+v", projected.NodeGroups)
+		t.Fatalf("Surge 节点组 = %+v", projected.NodeGroups)
 	}
 	if targetGroupNameSet(projected.RouteGroups)["SVC_SGOnly"] {
-		t.Fatalf("Surge route groups = %+v", projected.RouteGroups)
+		t.Fatalf("Surge 服务组 = %+v", projected.RouteGroups)
 	}
 }
 
-// T-TGT-010: Surge drops chains whose VLESS dialer was removed.
+// T-TGT-010：Surge 剔除上游 VLESS 节点已被移除的链式节点。
 func TestForSurge_DropsChainedOnDroppedUpstream(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -430,14 +430,14 @@ func TestForSurge_DropsChainedOnDroppedUpstream(t *testing.T) {
 		t.Fatalf("ForSurge: %v", err)
 	}
 	if targetProxyNameSet(projected.Proxies)["HK-VL→CHAIN"] {
-		t.Fatalf("VLESS chain survived: %+v", projected.Proxies)
+		t.Fatalf("VLESS 链式节点没有被剔除：%+v", projected.Proxies)
 	}
 	if targetGroupNameSet(projected.NodeGroups)["GRP_CHAIN"] {
-		t.Fatalf("empty chain group survived: %+v", projected.NodeGroups)
+		t.Fatalf("空的链式节点组没有被剔除：%+v", projected.NodeGroups)
 	}
 }
 
-// T-TGT-011: Surge uses its dedicated fallback error code.
+// T-TGT-011：Surge 使用自己专用的 fallback 错误码。
 func TestForSurge_FallbackCleared(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies:    []model.Proxy{vlessProxy(1, "HK-VL")},
@@ -458,12 +458,12 @@ func TestForSurge_FallbackCleared(t *testing.T) {
 	}
 	for _, want := range []string{"SVC_FINAL", "GRP_HK", "HK-VL#1(vless)"} {
 		if !strings.Contains(targetErr.Error(), want) {
-			t.Fatalf("error missing %q: %s", want, targetErr.Error())
+			t.Fatalf("错误信息缺少 %q：%s", want, targetErr.Error())
 		}
 	}
 }
 
-// T-TGT-012: projection keeps only target-native structured subscriptions.
+// T-TGT-012：投影只保留目标格式自己的结构化订阅节点。
 func TestTargetProjection_FiltersNativeSubscriptionFormats(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -485,7 +485,7 @@ func TestTargetProjection_FiltersNativeSubscriptionFormats(t *testing.T) {
 	}
 	clashNames := targetProxyNameSet(clash.Proxies)
 	if !clashNames["HK-YAML"] || !clashNames["US-TXT"] || clashNames["SG-CONF"] {
-		t.Fatalf("Clash names = %v", clashNames)
+		t.Fatalf("Clash 名字 = %v", clashNames)
 	}
 
 	surge, err := ForSurge(p)
@@ -494,11 +494,11 @@ func TestTargetProjection_FiltersNativeSubscriptionFormats(t *testing.T) {
 	}
 	surgeNames := targetProxyNameSet(surge.Proxies)
 	if !surgeNames["SG-CONF"] || !surgeNames["US-TXT"] || surgeNames["HK-YAML"] {
-		t.Fatalf("Surge names = %v", surgeNames)
+		t.Fatalf("Surge 名字 = %v", surgeNames)
 	}
 }
 
-// T-TGT-013: incompatible native roots remain visible in cascade diagnostics.
+// T-TGT-013：不兼容的原生根因节点在级联诊断信息中仍然可见。
 func TestForClash_SurgeNativeCascadeIncludesRootCause(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -515,12 +515,12 @@ func TestForClash_SurgeNativeCascadeIncludesRootCause(t *testing.T) {
 	_, err := ForClash(p)
 	for _, want := range []string{"HK-CONF→CHAIN#2(chained)", "HK-CONF#1(Surge CONF 专属)", "SVC_FINAL"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error missing %q: %s", want, err)
+			t.Fatalf("错误信息缺少 %q：%s", want, err)
 		}
 	}
 }
 
-// T-TGT-ID-001: names are allocated independently after format filtering.
+// T-TGT-ID-001：名字在按格式过滤之后，各格式独立分配。
 func TestTargetProjection_DuplicateNativeNamesRemainOriginalPerFormat(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -543,15 +543,15 @@ func TestTargetProjection_DuplicateNativeNamesRemainOriginalPerFormat(t *testing
 		t.Fatalf("ForSurge: %v", err)
 	}
 	if len(clash.Proxies) != 1 || clash.Proxies[0].Name != "SAME" {
-		t.Fatalf("Clash proxies = %+v, want original SAME", clash.Proxies)
+		t.Fatalf("Clash 节点 = %+v，期望保持原名 SAME", clash.Proxies)
 	}
 	if len(surge.Proxies) != 1 || surge.Proxies[0].Name != "SAME" {
-		t.Fatalf("Surge proxies = %+v, want original SAME", surge.Proxies)
+		t.Fatalf("Surge 节点 = %+v，期望保持原名 SAME", surge.Proxies)
 	}
 }
 
-// T-TGT-ID-002: duplicates inside one target use deterministic suffixes, while
-// preserving natural suffix declarations.
+// T-TGT-ID-002：同一目标格式内的重名使用确定的后缀，原本就带这类后缀的
+// 名字保持不变。
 func TestTargetProjection_DeduplicatesWithinOneFormat(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -573,17 +573,17 @@ func TestTargetProjection_DeduplicatesWithinOneFormat(t *testing.T) {
 	want := []string{"NODE-A", "NODE-A②", "NODE-A③"}
 	for index, name := range want {
 		if projected.Proxies[index].Name != name {
-			t.Errorf("Proxies[%d].Name = %q, want %q", index, projected.Proxies[index].Name, name)
+			t.Errorf("Proxies[%d].Name = %q，期望 %q", index, projected.Proxies[index].Name, name)
 		}
 	}
 	group := targetGroupByName(projected.NodeGroups, "GRP_ALL")
 	if group == nil || strings.Join(group.Members, ",") != strings.Join(want, ",") {
-		t.Fatalf("GRP_ALL = %+v, want %v", group, want)
+		t.Fatalf("GRP_ALL = %+v，期望 %v", group, want)
 	}
 }
 
-// T-TGT-ID-003: group and reserved names are target-local reservations, not
-// graph identities; colliding proxies are renamed during projection.
+// T-TGT-ID-003：组名和保留名只在目标格式内占用名字，不是关系图中的标识；
+// 与它们冲突的节点在投影时改名。
 func TestTargetProjection_AvoidsGroupAndReservedNames(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -602,12 +602,12 @@ func TestTargetProjection_AvoidsGroupAndReservedNames(t *testing.T) {
 		t.Fatalf("ForClash: %v", err)
 	}
 	if projected.Proxies[0].Name != "GRP_ALL②" || projected.Proxies[1].Name != "DIRECT②" {
-		t.Fatalf("projected proxies = %+v", projected.Proxies)
+		t.Fatalf("投影后的节点 = %+v", projected.Proxies)
 	}
 }
 
-// T-TGT-ID-004: a chain name and dialer reference are derived from the
-// dialer's final target-local name.
+// T-TGT-ID-004：链式节点的名字和对上游的引用，都取自上游节点在目标格式内
+// 最终分配到的名字。
 func TestTargetProjection_ChainedNamesUseFinalDialerName(t *testing.T) {
 	p := &model.Pipeline{
 		Proxies: []model.Proxy{
@@ -628,17 +628,17 @@ func TestTargetProjection_ChainedNamesUseFinalDialerName(t *testing.T) {
 	}
 	chain := targetProxyByName(projected.Proxies, "UPSTREAM②→CHAIN")
 	if chain == nil {
-		t.Fatalf("projected proxies = %+v", projected.Proxies)
+		t.Fatalf("投影后的节点 = %+v", projected.Proxies)
 	}
 	if chain.Dialer != "UPSTREAM②" {
-		t.Fatalf("chain.Dialer = %q, want UPSTREAM②", chain.Dialer)
+		t.Fatalf("chain.Dialer = %q，期望 UPSTREAM②", chain.Dialer)
 	}
 	if group := targetGroupByName(projected.NodeGroups, "GRP_CHAIN"); group == nil || len(group.Members) != 1 || group.Members[0] != chain.Name {
-		t.Fatalf("GRP_CHAIN = %+v, want %q", group, chain.Name)
+		t.Fatalf("GRP_CHAIN = %+v，期望 %q", group, chain.Name)
 	}
 }
 
-// T-TGT-014: projection-invariant failures use target-specific codes.
+// T-TGT-014：投影不变量失败时使用各目标格式专用的错误码。
 func TestInternalFilterError_UsesDedicatedProjectionCode(t *testing.T) {
 	tests := []struct {
 		name string
@@ -662,10 +662,10 @@ func TestInternalFilterError_UsesDedicatedProjectionCode(t *testing.T) {
 			err := internalFilterError(test.opts, "boom")
 			var targetErr *errtype.TargetError
 			if !errors.As(err, &targetErr) {
-				t.Fatalf("error = %T, want TargetError", err)
+				t.Fatalf("error = %T，期望 TargetError", err)
 			}
 			if targetErr.Code != test.want {
-				t.Fatalf("Code = %q, want %q", targetErr.Code, test.want)
+				t.Fatalf("Code = %q，期望 %q", targetErr.Code, test.want)
 			}
 		})
 	}

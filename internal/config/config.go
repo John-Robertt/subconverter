@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the top-level user configuration.
+// Config 是用户配置的顶层结构。
 type Config struct {
 	Sources   Sources              `yaml:"sources" json:"sources"`
 	Filters   Filters              `yaml:"filters" json:"filters"`
@@ -20,8 +20,8 @@ type Config struct {
 	Templates Templates            `yaml:"templates,omitempty" json:"templates,omitempty"`
 }
 
-// Templates declares optional base config templates per output format.
-// Locations may be local paths or HTTP(S) URLs; Inline stores editable bodies.
+// Templates 按输出格式声明可选的底版配置模板。
+// 位置可以是本地路径或 HTTP(S) URL；Inline 存放可编辑的模板正文。
 type Templates struct {
 	Clash  string            `yaml:"clash,omitempty" json:"clash,omitempty"`
 	Surge  string            `yaml:"surge,omitempty" json:"surge,omitempty"`
@@ -29,24 +29,23 @@ type Templates struct {
 	Inline map[string]string `yaml:"inline,omitempty" json:"inline,omitempty"`
 }
 
-// Sources declares subscription and custom proxy inputs.
+// Sources 声明订阅与自定义代理输入。
 //
-// FetchOrder records the YAML declaration order of the fetch-kind keys
-// (subscriptions / snell / vless) so the Source pipeline stage can traverse
-// them in the user-declared order. It is populated by the custom UnmarshalYAML.
-// custom_proxies is not a fetch-kind and is excluded from FetchOrder.
+// FetchOrder 记录拉取类键（subscriptions / snell / vless）在 YAML 中的声明顺序，
+// 让流水线的 Source 阶段按用户声明的顺序遍历它们。它由自定义的 UnmarshalYAML 填充。
+// custom_proxies 不属于拉取类，不计入 FetchOrder。
 type Sources struct {
 	Subscriptions []Source      `yaml:"subscriptions" json:"subscriptions"`
 	Snell         []Source      `yaml:"snell" json:"snell"`
 	VLess         []Source      `yaml:"vless" json:"vless"`
 	CustomProxies []CustomProxy `yaml:"custom_proxies" json:"custom_proxies"`
 
-	// FetchOrder holds fetch-kind keys in YAML declaration order.
-	// Set by UnmarshalYAML; empty when Sources is zero-valued (tests).
+	// FetchOrder 按 YAML 声明顺序存放拉取类键。
+	// 由 UnmarshalYAML 设置；Sources 为零值时（测试中）为空。
 	FetchOrder []string `yaml:"-" json:"fetch_order"`
 }
 
-// Source declares a URL, editable body or local body file. Format is only used by subscriptions.
+// Source 声明一个 URL、可编辑正文或本地正文文件。Format 仅用于 subscriptions。
 type Source struct {
 	Name        string `yaml:"name,omitempty" json:"name,omitempty"`
 	URL         string `yaml:"url,omitempty" json:"url,omitempty"`
@@ -55,21 +54,20 @@ type Source struct {
 	Format      string `yaml:"format,omitempty" json:"format,omitempty"`
 }
 
-// SourceList identifies a source collection without changing its declared order.
+// SourceList 标识一组来源，并保持其声明顺序不变。
 type SourceList struct {
 	Kind    string
 	Entries []Source
 }
 
-// Lists exposes editable sources in a fixed order for validation, storage and archives.
-// Runtime traversal uses FetchOrder instead.
+// Lists 按固定顺序给出可编辑的来源，供校验、存储和归档使用。
+// 运行时遍历改用 FetchOrder。
 func (s Sources) Lists() []SourceList {
 	return []SourceList{{"subscriptions", s.Subscriptions}, {"snell", s.Snell}, {"vless", s.VLess}}
 }
 
-// sourceFetchKeys enumerates the YAML keys under `sources:` that correspond
-// to fetch-kind inputs (remote-sourced proxies). custom_proxies is excluded:
-// it is user-declared inline and does not participate in FetchOrder.
+// sourceFetchKeys 列出 `sources:` 下对应拉取类输入（远程来源的节点）的 YAML 键。
+// custom_proxies 不在其中：它由用户直接内联声明，不参与 FetchOrder。
 var sourceFetchKeys = map[string]bool{
 	"subscriptions": true,
 	"snell":         true,
@@ -78,27 +76,25 @@ var sourceFetchKeys = map[string]bool{
 
 var defaultSourceFetchOrder = []string{"subscriptions", "snell", "vless"}
 
-// UnmarshalYAML implements yaml.Unmarshaler for Sources.
+// UnmarshalYAML 为 Sources 实现 yaml.Unmarshaler。
 //
-// It walks the mapping node in YAML declaration order, decoding each known key
-// into the corresponding struct field AND appending fetch-kind keys to
-// FetchOrder. The Source pipeline stage uses FetchOrder to traverse fetch
-// inputs in the exact order the user wrote them (e.g. snell → vless →
-// subscriptions), which determines the final proxy slice ordering.
+// 它按 YAML 声明顺序遍历映射节点，把每个已知键解码到对应的结构体字段，
+// 同时把拉取类键追加到 FetchOrder。流水线的 Source 阶段用 FetchOrder
+// 按用户书写的顺序遍历拉取类输入（例如 snell → vless → subscriptions），
+// 这决定了最终节点切片的顺序。
 //
-// Reference pattern: OrderedMap.UnmarshalYAML in orderedmap.go.
+// 参考写法：orderedmap.go 中的 OrderedMap.UnmarshalYAML。
 //
-// Design decisions embedded here:
-//   - Unknown top-level keys error out (protects against typos like "vles").
-//   - A key appearing twice errors out (matches OrderedMap's approach).
-//   - An empty section (e.g. `vless:` with nil body or empty list) still
-//     records the key in FetchOrder: declaration intent matters even if the
-//     list is empty — the Source loop simply has nothing to fetch for that
-//     kind, producing no proxies.
-//   - custom_proxies is decoded but NOT recorded in FetchOrder.
+// 这里包含的设计决策：
+//   - 未知的顶层键直接报错（防止 "vles" 这类拼写错误）。
+//   - 同一个键出现两次时报错（与 OrderedMap 的做法一致）。
+//   - 空的段落（例如 `vless:` 内容为 nil 或空列表）仍会把键记入 FetchOrder：
+//     即使列表为空，声明意图也有意义——Source 循环只是对该类型无可拉取，
+//     不产生节点。
+//   - custom_proxies 会被解码，但不记入 FetchOrder。
 func (s *Sources) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.MappingNode {
-		return fmt.Errorf("sources: expected mapping node, got kind %d", node.Kind)
+		return fmt.Errorf("sources: 应为映射节点，实际节点类型为 %d", node.Kind)
 	}
 
 	seen := make(map[string]bool, len(node.Content)/2)
@@ -109,7 +105,7 @@ func (s *Sources) UnmarshalYAML(node *yaml.Node) error {
 		key := keyNode.Value
 
 		if seen[key] {
-			return fmt.Errorf("sources: duplicate key %q at line %d", key, keyNode.Line)
+			return fmt.Errorf("sources: 键 %q 重复（第 %d 行）", key, keyNode.Line)
 		}
 		seen[key] = true
 
@@ -131,7 +127,7 @@ func (s *Sources) UnmarshalYAML(node *yaml.Node) error {
 				return fmt.Errorf("sources.custom_proxies: %w", err)
 			}
 		default:
-			return fmt.Errorf("sources: unknown key %q at line %d", key, keyNode.Line)
+			return fmt.Errorf("sources: 未知的键 %q（第 %d 行）", key, keyNode.Line)
 		}
 
 		if sourceFetchKeys[key] {
@@ -142,7 +138,7 @@ func (s *Sources) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-// MarshalYAML implements yaml.Marshaler for stable sources key order.
+// MarshalYAML 实现 yaml.Marshaler，让 sources 的键顺序保持稳定。
 func (s Sources) MarshalYAML() (any, error) {
 	node := &yaml.Node{Kind: yaml.MappingNode}
 	order := completeSourceFetchOrder(s.FetchOrder)
@@ -156,7 +152,7 @@ func (s Sources) MarshalYAML() (any, error) {
 		case "vless":
 			value = s.VLess
 		default:
-			return nil, fmt.Errorf("sources.fetch_order: unknown key %q", key)
+			return nil, fmt.Errorf("sources.fetch_order: 未知的键 %q", key)
 		}
 		if err := appendMappingNode(node, key, value); err != nil {
 			return nil, err
@@ -168,8 +164,8 @@ func (s Sources) MarshalYAML() (any, error) {
 	return node, nil
 }
 
-// MarshalJSON emits sources with complete fetch_order and [] instead of null
-// for list fields so API round trips are stable.
+// MarshalJSON 输出带完整 fetch_order 的 sources，列表字段用 [] 代替 null，
+// 让经过 API 的往返结果保持稳定。
 func (s Sources) MarshalJSON() ([]byte, error) {
 	type sourcesJSON struct {
 		Subscriptions []Source      `json:"subscriptions"`
@@ -187,8 +183,8 @@ func (s Sources) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// UnmarshalJSON accepts the API object shape. fetch_order validation is done
-// by the app-layer API wrapper so callers can receive structured diagnostics.
+// UnmarshalJSON 接受 API 使用的对象结构。fetch_order 的校验由 app 层的 API 封装完成，
+// 这样调用方能拿到结构化的诊断信息。
 func (s *Sources) UnmarshalJSON(data []byte) error {
 	type sourcesJSON struct {
 		Subscriptions []Source      `json:"subscriptions"`
@@ -243,30 +239,29 @@ func nonNilSlice[T any](items []T) []T {
 	return items
 }
 
-// CustomProxy is a user-defined proxy node declared via a protocol URL.
-// The runtime parse result is produced later by pipeline.Source; the config
-// layer only preserves raw YAML fields.
+// CustomProxy 是用户通过协议 URL 声明的自定义代理节点。
+// 运行时的解析结果稍后由 pipeline.Source 产出；config 层只保留原始 YAML 字段。
 type CustomProxy struct {
 	URL          string        `yaml:"url" json:"url"`
 	Name         string        `yaml:"name" json:"name"`
 	RelayThrough *RelayThrough `yaml:"relay_through,omitempty" json:"relay_through,omitempty"`
 }
 
-// RelayThrough defines how a custom proxy chains through upstream nodes.
+// RelayThrough 定义自定义代理如何经由上游节点做链式连接。
 type RelayThrough struct {
 	Type     string `yaml:"type" json:"type"`                       // "group" | "select" | "all"
 	Strategy string `yaml:"strategy" json:"strategy"`               // "select" | "url-test"
-	Name     string `yaml:"name,omitempty" json:"name,omitempty"`   // required when Type=group
-	Match    string `yaml:"match,omitempty" json:"match,omitempty"` // required when Type=select
+	Name     string `yaml:"name,omitempty" json:"name,omitempty"`   // Type=group 时必填
+	Match    string `yaml:"match,omitempty" json:"match,omitempty"` // Type=select 时必填
 }
 
-// Group defines a region node group.
+// Group 定义一个区域节点组。
 type Group struct {
 	Match    string `yaml:"match" json:"match"`
 	Strategy string `yaml:"strategy" json:"strategy"` // "select" | "url-test"
 }
 
-// Filters defines subscription node filtering rules.
+// Filters 定义订阅节点的过滤规则。
 type Filters struct {
 	Exclude string `yaml:"exclude,omitempty" json:"exclude,omitempty"`
 }

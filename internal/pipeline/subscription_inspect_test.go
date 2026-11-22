@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// T-SRC-CHECK-001: inspection uses content evidence, preserves ambiguity, and parses real nodes.
+// T-SRC-CHECK-001：识别依据内容判断格式，无法区分时保留歧义，并解析出真实节点。
 func TestSubscription_Inspect(t *testing.T) {
 	for _, tt := range []struct {
 		name, location, body, format, want string
@@ -28,7 +28,7 @@ func TestSubscription_Inspect(t *testing.T) {
 			got, err := InspectSubscription(tt.location, []byte(tt.body), tt.format, tt.inline)
 			if tt.invalid {
 				if err == nil {
-					t.Fatal("invalid subscription was recognized")
+					t.Fatal("无效订阅被识别成功")
 				}
 				return
 			}
@@ -36,28 +36,28 @@ func TestSubscription_Inspect(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(got.Proxies) != 1 || got.Proxies[0].ID == 0 {
-				t.Fatalf("parsed nodes=%+v", got.Proxies)
+				t.Fatalf("解析出的节点=%+v", got.Proxies)
 			}
 			if tt.ambiguous {
 				if !reflect.DeepEqual(got.Candidates, []string{"surge", "loon"}) || got.Format != "" {
-					t.Fatalf("ambiguity=%+v", got)
+					t.Fatalf("歧义结果=%+v", got)
 				}
 			} else if got.Format != tt.want || len(got.Candidates) != 0 {
-				t.Fatalf("format=%q want %q candidates=%v", got.Format, tt.want, got.Candidates)
+				t.Fatalf("format=%q，期望 %q，candidates=%v", got.Format, tt.want, got.Candidates)
 			}
 		})
 	}
 }
 
-// T-SRC-CHECK-002: inspecting content never changes the existing .conf auto contract.
+// T-SRC-CHECK-002：内容识别不改变现有 .conf 在 auto 模式下的约定。
 func TestSubscription_InspectKeepsLegacyAuto(t *testing.T) {
 	body := []byte("[Proxy]\nHK = anytls, hk.example.com, 443, \"pw\"\n")
 	_, format, err := parseSubscriptionBody("https://example.com/sub.conf", body, "auto", false)
 	if err != nil || format != "surge" {
-		t.Fatalf("legacy auto changed: format=%q err=%v", format, err)
+		t.Fatalf("原有 auto 行为发生变化：format=%q err=%v", format, err)
 	}
 	_, format, err = parseSubscriptionBody("https://example.com/sub.conf", []byte("anytls://pw@hk.example.com:443#HK"), "text", false)
 	if err != nil || format != "text" {
-		t.Fatalf("explicit text failed: format=%q err=%v", format, err)
+		t.Fatalf("显式指定 text 失败：format=%q err=%v", format, err)
 	}
 }

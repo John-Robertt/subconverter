@@ -11,7 +11,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// TestExecute_HappyPath verifies the full pipeline produces a valid Pipeline.
+// TestExecute_HappyPath 验证完整流水线产出有效的 Pipeline。
 func TestExecute_HappyPath(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	body := makeSubResponse(
@@ -35,35 +35,35 @@ func TestExecute_HappyPath(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// Pipeline should contain the parsed proxies.
+	// Pipeline 应包含解析出的节点。
 	if len(p.Proxies) != 2 {
-		t.Errorf("got %d proxies, want 2", len(p.Proxies))
+		t.Errorf("得到 %d 个节点，期望 2 个", len(p.Proxies))
 	}
 
-	// Should have 1 node group (HK) and 1 route group (proxy).
+	// 应有 1 个节点组（HK）和 1 个路由组（proxy）。
 	if len(p.NodeGroups) != 1 {
-		t.Errorf("got %d node groups, want 1", len(p.NodeGroups))
+		t.Errorf("得到 %d 个节点组，期望 1 个", len(p.NodeGroups))
 	}
 	if len(p.RouteGroups) != 1 {
-		t.Errorf("got %d route groups, want 1", len(p.RouteGroups))
+		t.Errorf("得到 %d 个路由组，期望 1 个", len(p.RouteGroups))
 	}
 
-	// Fallback recorded.
+	// 记录了 Fallback。
 	if p.Fallback != "proxy" {
-		t.Errorf("fallback = %q, want %q", p.Fallback, "proxy")
+		t.Errorf("fallback = %q，期望 %q", p.Fallback, "proxy")
 	}
 
-	// @all should contain original proxies only.
+	// @all 应只包含原始节点。
 	if len(p.AllProxies) != 2 {
-		t.Errorf("AllProxies = %d, want 2", len(p.AllProxies))
+		t.Errorf("AllProxies = %d，期望 2", len(p.AllProxies))
 	}
 }
 
-// T-EXEC-ANYTLS-001: AnyTLS subscription nodes flow through filter, grouping,
-// routing, and @all like other original subscription nodes.
+// T-EXEC-ANYTLS-001：AnyTLS 订阅节点和其他原始订阅节点一样，
+// 依次经过过滤、分组、路由和 @all。
 func TestExecute_AnyTLSEndToEnd(t *testing.T) {
 	subURL := "https://sub.example.com/anytls"
 	body := makeSubResponse(
@@ -86,30 +86,30 @@ func TestExecute_AnyTLSEndToEnd(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(p.Proxies) != 2 {
-		t.Fatalf("got %d active proxies, want 2: %+v", len(p.Proxies), p.Proxies)
+		t.Fatalf("得到 %d 个有效节点，期望 2 个：%+v", len(p.Proxies), p.Proxies)
 	}
 	for _, proxy := range p.Proxies {
 		if proxy.Kind != model.KindSubscription || proxy.Type != "anytls" {
-			t.Errorf("proxy %q Kind/Type = %q/%q, want subscription/anytls", proxy.Name, proxy.Kind, proxy.Type)
+			t.Errorf("节点 %q Kind/Type = %q/%q，期望 subscription/anytls", proxy.Name, proxy.Kind, proxy.Type)
 		}
 	}
 	if len(p.NodeGroups) != 1 || !containsProxyName(p.Proxies, p.NodeGroups[0].Members, "HK-AnyTLS") {
-		t.Fatalf("HK group members = %+v, want HK-AnyTLS", p.NodeGroups)
+		t.Fatalf("HK 组成员 = %+v，期望 HK-AnyTLS", p.NodeGroups)
 	}
 	if !containsProxyName(p.Proxies, p.AllProxies, "HK-AnyTLS") || !containsProxyName(p.Proxies, p.AllProxies, "SG-AnyTLS") {
-		t.Fatalf("@all = %+v, want active AnyTLS nodes", p.AllProxies)
+		t.Fatalf("@all = %+v，期望包含有效的 AnyTLS 节点", p.AllProxies)
 	}
 	if containsProxyName(p.Proxies, p.AllProxies, "Traffic Reset") {
-		t.Fatalf("@all leaked filtered info node: %+v", p.AllProxies)
+		t.Fatalf("@all 混入了已过滤的信息节点：%+v", p.AllProxies)
 	}
 }
 
-// T-EXEC-DOC-001: structured subscription nodes retain the ordinary
-// KindSubscription filter/group/@all semantics across native target formats.
+// T-EXEC-DOC-001：结构化订阅节点（各客户端原生格式）保持普通
+// KindSubscription 在过滤、分组、@all 上的语义。
 func TestExecute_StructuredSubscriptionsEndToEnd(t *testing.T) {
 	const clashURL = "https://sub.example.com/nodes.yml"
 	const surgeURL = "https://sub.example.com/nodes.conf"
@@ -138,16 +138,16 @@ SG-CONF = trojan, sg.example.com, 443, password=pw
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("Execute() error: %v", err)
+		t.Fatalf("Execute() 出错：%v", err)
 	}
 	if len(p.Proxies) != 2 {
-		t.Fatalf("active proxies = %d, want 2: %+v", len(p.Proxies), p.Proxies)
+		t.Fatalf("有效节点 = %d，期望 2：%+v", len(p.Proxies), p.Proxies)
 	}
 	if !containsProxyName(p.Proxies, p.AllProxies, "HK-YAML") || !containsProxyName(p.Proxies, p.AllProxies, "SG-CONF") {
-		t.Fatalf("@all = %+v, want both structured subscription nodes", p.AllProxies)
+		t.Fatalf("@all = %+v，期望同时包含两个结构化订阅节点", p.AllProxies)
 	}
 	if containsProxyName(p.Proxies, p.AllProxies, "Traffic Reset") || containsProxyName(p.Proxies, p.AllProxies, "DIRECT") {
-		t.Fatalf("@all leaked filtered or reserved entry: %+v", p.AllProxies)
+		t.Fatalf("@all 混入了已过滤或保留的条目：%+v", p.AllProxies)
 	}
 
 	groupMembers := make(map[string][]model.ProxyID, len(p.NodeGroups))
@@ -155,11 +155,11 @@ SG-CONF = trojan, sg.example.com, 443, password=pw
 		groupMembers[group.Name] = group.Members
 	}
 	if !containsProxyName(p.Proxies, groupMembers["HK"], "HK-YAML") || !containsProxyName(p.Proxies, groupMembers["SG"], "SG-CONF") {
-		t.Fatalf("structured nodes did not participate in region matching: %+v", groupMembers)
+		t.Fatalf("结构化节点没有参与区域匹配：%+v", groupMembers)
 	}
 }
 
-// TestExecute_FetchError verifies that a subscription fetch error propagates.
+// TestExecute_FetchError 验证订阅拉取错误会向上传递。
 func TestExecute_FetchError(t *testing.T) {
 	f := &fakeFetcher{err: errors.New("connection refused")}
 
@@ -173,19 +173,18 @@ func TestExecute_FetchError(t *testing.T) {
 
 	_, err := Execute(context.Background(), cfg, f)
 	if err == nil {
-		t.Fatal("expected error, got nil")
+		t.Fatal("期望出错，实际为 nil")
 	}
 
 	var fetchErr *errtype.FetchError
 	if !errors.As(err, &fetchErr) {
-		t.Errorf("expected *errtype.FetchError, got %T: %v", err, err)
+		t.Errorf("期望 *errtype.FetchError，实际 %T：%v", err, err)
 	}
 }
 
-// TestExecute_SnellSourceEndToEnd verifies that a Snell source flows through
-// the full Source→Filter→Group→Route→ValidateGraph pipeline and the resulting
-// Pipeline contains KindSnell proxies tagged with Type=snell, ready for the
-// format-specific renderers to handle.
+// TestExecute_SnellSourceEndToEnd 验证 Snell 来源能走完
+// Source→Filter→Group→Route→ValidateGraph 整条流水线，产出的 Pipeline
+// 包含标记为 Type=snell 的 KindSnell 节点，可交给各格式的渲染器处理。
 func TestExecute_SnellSourceEndToEnd(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	subBody := makeSubResponse(
@@ -219,40 +218,40 @@ func TestExecute_SnellSourceEndToEnd(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// Pipeline should carry all three proxies: 1 ss + 2 snell.
+	// Pipeline 应带上全部三个节点：1 个 ss + 2 个 snell。
 	if len(p.Proxies) != 3 {
-		t.Fatalf("got %d proxies, want 3", len(p.Proxies))
+		t.Fatalf("得到 %d 个节点，期望 3 个", len(p.Proxies))
 	}
 
-	// Count by Kind.
+	// 按 Kind 计数。
 	snellCount, subCount := 0, 0
 	for _, px := range p.Proxies {
 		switch px.Kind {
 		case model.KindSnell:
 			snellCount++
 			if px.Type != "snell" {
-				t.Errorf("KindSnell proxy %q has Type=%q, want snell", px.Name, px.Type)
+				t.Errorf("KindSnell 节点 %q 的 Type=%q，期望 snell", px.Name, px.Type)
 			}
 		case model.KindSubscription:
 			subCount++
 		}
 	}
 	if snellCount != 2 {
-		t.Errorf("snell proxies = %d, want 2", snellCount)
+		t.Errorf("snell 节点 = %d，期望 2", snellCount)
 	}
 	if subCount != 1 {
-		t.Errorf("subscription proxies = %d, want 1", subCount)
+		t.Errorf("订阅节点 = %d，期望 1", subCount)
 	}
 
-	// @all expansion includes snell nodes (they are original nodes).
+	// @all 展开结果包含 snell 节点（它们是原始节点）。
 	if len(p.AllProxies) != 3 {
-		t.Errorf("AllProxies = %d, want 3 (ss + 2 snell)", len(p.AllProxies))
+		t.Errorf("AllProxies = %d，期望 3（ss + 2 个 snell）", len(p.AllProxies))
 	}
 
-	// HK node group should contain both HK-01 and HK-Snell (regex-matched).
+	// HK 节点组应同时包含 HK-01 和 HK-Snell（由正则匹配）。
 	var hkGroup *model.NodeGroup
 	for i, g := range p.NodeGroups {
 		if g.Name == "HK" {
@@ -261,7 +260,7 @@ func TestExecute_SnellSourceEndToEnd(t *testing.T) {
 		}
 	}
 	if hkGroup == nil {
-		t.Fatal("HK node group not found")
+		t.Fatal("没有找到 HK 节点组")
 	}
 	wantMembers := map[string]bool{"HK-01": true, "HK-Snell": true}
 	gotMembers := make(map[string]bool)
@@ -270,17 +269,15 @@ func TestExecute_SnellSourceEndToEnd(t *testing.T) {
 	}
 	for m := range wantMembers {
 		if !gotMembers[m] {
-			t.Errorf("HK group missing member %q (got %v)", m, hkGroup.Members)
+			t.Errorf("HK 组缺少成员 %q（实际 %v）", m, hkGroup.Members)
 		}
 	}
 }
 
-// TestExecute_SnellAsRelayThroughUpstream verifies that Snell nodes are valid
-// upstream candidates for a custom proxy's relay_through chain. The resulting
-// Pipeline should contain a HK-Snell→MY-PROXY chained node with DialerID set
-// to the Snell node's identity; Clash rendering later cascades it out, while
-// Surge includes it. This test guards against accidentally narrowing the
-// upstream pool back to KindSubscription only.
+// TestExecute_SnellAsRelayThroughUpstream 验证 Snell 节点可以作为自定义节点
+// relay_through 链的上游候选。产出的 Pipeline 应包含链式节点 HK-Snell→MY-PROXY，
+// 其 DialerID 指向该 Snell 节点的编号；之后 Clash 渲染会把它级联剔除，Surge 则保留它。
+// 本测试防止上游候选池被意外收窄回只认 KindSubscription。
 func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 	snellURL := "https://snell.example.com/nodes.txt"
 	snellBody := []byte("HK-Snell = snell, 1.2.3.4, 57891, psk=xxx, version=4\n")
@@ -301,10 +298,10 @@ func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// Find the chained proxy.
+	// 找到链式节点。
 	var chained *model.Proxy
 	for i, px := range p.Proxies {
 		if px.Kind == model.KindChained {
@@ -313,30 +310,30 @@ func TestExecute_SnellAsRelayThroughUpstream(t *testing.T) {
 		}
 	}
 	if chained == nil {
-		t.Fatal("no chained proxy found; Snell should have been a valid upstream")
+		t.Fatal("没有找到链式节点；Snell 本应是有效的上游")
 	}
 	if chained.Name != "HK-Snell→MY-PROXY" {
-		t.Errorf("chained.Name = %q, want HK-Snell→MY-PROXY", chained.Name)
+		t.Errorf("chained.Name = %q，期望 HK-Snell→MY-PROXY", chained.Name)
 	}
 	if got := proxyNameByID(p.Proxies, chained.DialerID); got != "HK-Snell" {
-		t.Errorf("chained.DialerID resolves to %q, want HK-Snell (the snell upstream)", got)
+		t.Errorf("chained.DialerID 解析为 %q，期望 HK-Snell（snell 上游）", got)
 	}
 
-	// AllProxies must NOT include the chained node but MUST include HK-Snell.
+	// AllProxies 不得包含链式节点，但必须包含 HK-Snell。
 	inAll := map[string]bool{}
 	for _, id := range p.AllProxies {
 		inAll[proxyNameByID(p.Proxies, id)] = true
 	}
 	if !inAll["HK-Snell"] {
-		t.Error("AllProxies should include HK-Snell (original node)")
+		t.Error("AllProxies 应包含 HK-Snell（原始节点）")
 	}
 	if inAll["HK-Snell→MY-PROXY"] {
-		t.Error("AllProxies must not include chained node")
+		t.Error("AllProxies 不得包含链式节点")
 	}
 }
 
-// TestExecute_SnellFilterAppliesExclude verifies that filters.exclude removes
-// Snell nodes the same way it removes subscription nodes.
+// TestExecute_SnellFilterAppliesExclude 验证 filters.exclude 移除 Snell 节点的方式
+// 与移除订阅节点相同。
 func TestExecute_SnellFilterAppliesExclude(t *testing.T) {
 	snellURL := "https://snell.example.com/nodes.txt"
 	snellBody := []byte("HK-Snell = snell, 1.2.3.4, 57891, psk=xxx, version=4\n" +
@@ -356,18 +353,18 @@ func TestExecute_SnellFilterAppliesExclude(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(p.Proxies) != 1 {
-		t.Fatalf("got %d proxies, want 1 (one filtered)", len(p.Proxies))
+		t.Fatalf("得到 %d 个节点，期望 1 个（过滤掉一个）", len(p.Proxies))
 	}
 	if p.Proxies[0].Name != "HK-Snell" {
-		t.Errorf("surviving proxy = %q, want HK-Snell", p.Proxies[0].Name)
+		t.Errorf("保留下来的节点 = %q，期望 HK-Snell", p.Proxies[0].Name)
 	}
 }
 
-// TestExecute_FilterExcludes verifies that exclude filter reduces proxy count.
+// TestExecute_FilterExcludes 验证 exclude 过滤会减少节点数量。
 func TestExecute_FilterExcludes(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	body := makeSubResponse(
@@ -390,25 +387,24 @@ func TestExecute_FilterExcludes(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// The "过期提醒" node should be filtered out.
+	// "过期提醒" 节点应被过滤掉。
 	if len(p.Proxies) != 2 {
-		t.Errorf("got %d proxies, want 2 (one filtered)", len(p.Proxies))
+		t.Errorf("得到 %d 个节点，期望 2 个（过滤掉一个）", len(p.Proxies))
 	}
 	for _, px := range p.Proxies {
 		if px.Kind != model.KindSubscription {
-			t.Errorf("unexpected kind %q for %q", px.Kind, px.Name)
+			t.Errorf("意外的 kind %q，节点 %q", px.Kind, px.Name)
 		}
 	}
 }
 
-// T-EXECUTE-VLESS-001: Mixed subscription + VLESS source end-to-end.
-// Pipeline should carry both kinds; region groups match across kinds; unknown
-// VLESS transport falls back to tcp; non-none encryption is preserved; and
-// FetchOrder (default fallback here since cfg built in-memory) produces
-// subscription → snell → vless ordering.
+// T-EXECUTE-VLESS-001：订阅 + VLESS 混合来源的端到端测试。
+// Pipeline 应带上两类节点；区域组跨类型匹配；未知的 VLESS 传输方式回退为 tcp；
+// 非 none 的 encryption 原样保留；FetchOrder（cfg 在内存中构造，这里走默认回退）
+// 产出 subscription → snell → vless 的顺序。
 func TestExecute_VLessEndToEnd(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	subBody := makeSubResponse(
@@ -444,12 +440,12 @@ func TestExecute_VLessEndToEnd(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// 1 ss + 2 vless
+	// 1 个 ss + 2 个 vless
 	if len(p.Proxies) != 3 {
-		t.Fatalf("got %d proxies, want 3", len(p.Proxies))
+		t.Fatalf("得到 %d 个节点，期望 3 个", len(p.Proxies))
 	}
 
 	vlessCount, subCount := 0, 0
@@ -462,7 +458,7 @@ func TestExecute_VLessEndToEnd(t *testing.T) {
 		case model.KindVLess:
 			vlessCount++
 			if px.Type != "vless" {
-				t.Errorf("KindVLess proxy %q has Type=%q, want vless", px.Name, px.Type)
+				t.Errorf("KindVLess 节点 %q 的 Type=%q，期望 vless", px.Name, px.Type)
 			}
 			if px.Name == "HK-VL" {
 				hkVL = px
@@ -473,22 +469,22 @@ func TestExecute_VLessEndToEnd(t *testing.T) {
 		}
 	}
 	if vlessCount != 2 {
-		t.Errorf("vless proxies = %d, want 2", vlessCount)
+		t.Errorf("vless 节点 = %d，期望 2", vlessCount)
 	}
 	if subCount != 1 {
-		t.Errorf("subscription proxies = %d, want 1", subCount)
+		t.Errorf("订阅节点 = %d，期望 1", subCount)
 	}
 	if !foundHK {
-		t.Fatal("HK-VL proxy not found")
+		t.Fatal("没有找到 HK-VL 节点")
 	}
 	if hkVL.Params["network"] != "tcp" {
-		t.Errorf("HK-VL network = %q, want tcp fallback", hkVL.Params["network"])
+		t.Errorf("HK-VL network = %q，期望回退为 tcp", hkVL.Params["network"])
 	}
 	if hkVL.Params["encryption"] != "mlkem768x25519plus.native" {
-		t.Errorf("HK-VL encryption = %q, want passthrough value", hkVL.Params["encryption"])
+		t.Errorf("HK-VL encryption = %q，期望原样透传的值", hkVL.Params["encryption"])
 	}
 
-	// HK region group: HK-01 (ss) + HK-VL (vless).
+	// HK 区域组：HK-01（ss）+ HK-VL（vless）。
 	var hk *model.NodeGroup
 	for i, g := range p.NodeGroups {
 		if g.Name == "HK" {
@@ -497,7 +493,7 @@ func TestExecute_VLessEndToEnd(t *testing.T) {
 		}
 	}
 	if hk == nil {
-		t.Fatal("HK region group not found")
+		t.Fatal("没有找到 HK 区域组")
 	}
 	wantHK := map[string]bool{"HK-01": true, "HK-VL": true}
 	gotHK := map[string]bool{}
@@ -506,13 +502,13 @@ func TestExecute_VLessEndToEnd(t *testing.T) {
 	}
 	for m := range wantHK {
 		if !gotHK[m] {
-			t.Errorf("HK group missing %q (got %v)", m, hk.Members)
+			t.Errorf("HK 组缺少 %q（实际 %v）", m, hk.Members)
 		}
 	}
 }
 
-// T-EXECUTE-VLESS-003: VLESS node is a valid upstream for relay_through
-// chaining (sibling of TestExecute_SnellAsRelayThroughUpstream).
+// T-EXECUTE-VLESS-003：VLESS 节点可以作为 relay_through 链式连接的上游
+// （与 TestExecute_SnellAsRelayThroughUpstream 对应）。
 func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 	vlessURL := "https://vless.example.com/nodes.txt"
 	vlessBody := []byte(
@@ -534,7 +530,7 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	var chained *model.Proxy
@@ -545,31 +541,30 @@ func TestExecute_VLessAsRelayThroughUpstream(t *testing.T) {
 		}
 	}
 	if chained == nil {
-		t.Fatal("no chained proxy found; VLESS should have been a valid upstream")
+		t.Fatal("没有找到链式节点；VLESS 本应是有效的上游")
 	}
 	if chained.Name != "HK-VL→MY-PROXY" {
-		t.Errorf("chained.Name = %q, want HK-VL→MY-PROXY", chained.Name)
+		t.Errorf("chained.Name = %q，期望 HK-VL→MY-PROXY", chained.Name)
 	}
 	if got := proxyNameByID(p.Proxies, chained.DialerID); got != "HK-VL" {
-		t.Errorf("chained.DialerID resolves to %q, want HK-VL (the vless upstream)", got)
+		t.Errorf("chained.DialerID 解析为 %q，期望 HK-VL（vless 上游）", got)
 	}
 
-	// @all includes original vless node, not the chained derivative.
+	// @all 包含原始 vless 节点，不包含派生出的链式节点。
 	inAll := map[string]bool{}
 	for _, id := range p.AllProxies {
 		inAll[proxyNameByID(p.Proxies, id)] = true
 	}
 	if !inAll["HK-VL"] {
-		t.Error("AllProxies should include HK-VL (original node)")
+		t.Error("AllProxies 应包含 HK-VL（原始节点）")
 	}
 	if inAll["HK-VL→MY-PROXY"] {
-		t.Error("AllProxies must not include chained node")
+		t.Error("AllProxies 不得包含链式节点")
 	}
 }
 
-// End-to-end guard: if a user declares a region group and a chain-template
-// custom_proxy with the same name, the collision must now surface at startup
-// preparation time rather than being deferred into the request pipeline.
+// 端到端防护：用户声明了同名的区域组和链式模板 custom_proxy 时，
+// 冲突必须在启动准备阶段暴露，而不是推迟到请求流水线里。
 func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	body := makeSubResponse(
@@ -578,9 +573,8 @@ func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 
 	f := &fakeFetcher{responses: map[string][]byte{subURL: body}}
 
-	// Both a region group named "HK-ISP" and a chain-template cp named
-	// "HK-ISP" — the chain template will try to create a node group with the
-	// same name, triggering a duplicate-declaration error at ValidateGraph.
+	// 区域组和链式模板 cp 都叫 "HK-ISP"——链式模板会尝试创建一个同名节点组，
+	// 在 ValidateGraph 处触发重复声明错误。
 	cfg := &config.Config{
 		Sources: config.Sources{
 			Subscriptions: []config.Source{{URL: subURL}},
@@ -595,23 +589,22 @@ func TestExecute_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 
 	_, err := Execute(context.Background(), cfg, f)
 	if err == nil {
-		t.Fatal("expected duplicate-group error, got nil")
+		t.Fatal("期望重复组错误，实际为 nil")
 	}
 
 	var configErr *errtype.ConfigError
 	if !errors.As(err, &configErr) {
-		t.Fatalf("err type = %T, want *errtype.ConfigError", err)
+		t.Fatalf("错误类型 = %T，期望 *errtype.ConfigError", err)
 	}
 	if !strings.Contains(err.Error(), `名称 "HK-ISP" 同时被 节点组 和 链式组 使用`) {
-		t.Errorf("error should mention startup static-name collision, got: %v", err)
+		t.Errorf("错误应提到启动时的静态名称冲突，实际：%v", err)
 	}
 }
 
-// T-EXEC-SS-01: SS custom proxy end-to-end (no relay_through).
+// T-EXEC-SS-01：SS 自定义节点端到端测试（不带 relay_through）。
 //
-// Verifies that an ss-typed custom_proxy traverses the full pipeline and
-// surfaces in Proxies + AllProxies as a KindCustom node with cipher/password
-// in Params, while staying out of region group regex matching.
+// 验证 ss 类型的 custom_proxy 走完整条流水线，以 KindCustom 节点出现在
+// Proxies 和 AllProxies 中，Params 里带 cipher/password，同时不参与区域组正则匹配。
 func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	subBody := makeSubResponse(
@@ -634,10 +627,10 @@ func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("Execute: %v", err)
+		t.Fatalf("Execute 出错：%v", err)
 	}
 
-	// MY-SS appears in Proxies as KindCustom with ss type.
+	// MY-SS 以 ss 类型的 KindCustom 节点出现在 Proxies 中。
 	var mySS *model.Proxy
 	for i := range p.Proxies {
 		if p.Proxies[i].Name == "MY-SS" {
@@ -646,19 +639,19 @@ func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
 		}
 	}
 	if mySS == nil {
-		t.Fatal("MY-SS missing from Proxies")
+		t.Fatal("Proxies 中缺少 MY-SS")
 	}
 	if mySS.Type != "ss" {
-		t.Errorf("MY-SS Type = %q, want ss", mySS.Type)
+		t.Errorf("MY-SS Type = %q，期望 ss", mySS.Type)
 	}
 	if mySS.Kind != model.KindCustom {
-		t.Errorf("MY-SS Kind = %q, want custom", mySS.Kind)
+		t.Errorf("MY-SS Kind = %q，期望 custom", mySS.Kind)
 	}
 	if mySS.Params["cipher"] != "aes-256-gcm" || mySS.Params["password"] != "mypass" {
 		t.Errorf("MY-SS Params = %v", mySS.Params)
 	}
 
-	// MY-SS appears in @all expansion.
+	// MY-SS 出现在 @all 展开结果中。
 	foundInAll := false
 	for _, id := range p.AllProxies {
 		if proxyNameByID(p.Proxies, id) == "MY-SS" {
@@ -667,29 +660,27 @@ func TestExecute_SSCustomProxyEndToEnd(t *testing.T) {
 		}
 	}
 	if !foundInAll {
-		t.Error("MY-SS missing from AllProxies")
+		t.Error("AllProxies 中缺少 MY-SS")
 	}
 
-	// MY-SS does NOT appear in HK region group (KindCustom is excluded
-	// from region regex matching).
+	// MY-SS 不出现在 HK 区域组中（KindCustom 不参与区域正则匹配）。
 	for _, g := range p.NodeGroups {
 		if g.Name != "HK" {
 			continue
 		}
 		for _, m := range g.Members {
 			if proxyNameByID(p.Proxies, m) == "MY-SS" {
-				t.Errorf("MY-SS leaked into HK region group; KindCustom must not match region regex")
+				t.Errorf("MY-SS 混入了 HK 区域组；KindCustom 不得匹配区域正则")
 			}
 		}
 	}
 }
 
-// T-EXEC-SS-02: SS custom proxy chained end-to-end (with relay_through + plugin).
+// T-EXEC-SS-02：SS 自定义节点链式连接端到端测试（带 relay_through + plugin）。
 //
-// Verifies that an ss-typed custom_proxy with relay_through generates
-// KindChained nodes that inherit Type=ss + cipher/password + plugin from the
-// chain template, do NOT appear as standalone proxies, and feed into a chain
-// group named after cp.Name.
+// 验证带 relay_through 的 ss 类型 custom_proxy 生成的 KindChained 节点从链式模板
+// 继承 Type=ss、cipher/password 和 plugin；模板本身不作为独立节点出现；
+// 这些链式节点归入以 cp.Name 命名的链式组。
 func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 	subURL := "https://sub.example.com/api"
 	subBody := makeSubResponse(
@@ -713,17 +704,17 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 
 	p, err := Execute(context.Background(), cfg, f)
 	if err != nil {
-		t.Fatalf("Execute: %v", err)
+		t.Fatalf("Execute 出错：%v", err)
 	}
 
-	// Chain template itself does NOT appear as a standalone proxy.
+	// 链式模板本身不作为独立节点出现。
 	for _, px := range p.Proxies {
 		if px.Name == "SS-Chain" {
-			t.Errorf("SS-Chain should not exist as a standalone proxy; it's a chain template")
+			t.Errorf("SS-Chain 不应作为独立节点存在；它是链式模板")
 		}
 	}
 
-	// Chained nodes exist: HK-01→SS-Chain and HK-02→SS-Chain.
+	// 存在链式节点：HK-01→SS-Chain 和 HK-02→SS-Chain。
 	wantChained := map[string]bool{"HK-01→SS-Chain": false, "HK-02→SS-Chain": false}
 	for _, px := range p.Proxies {
 		if _, want := wantChained[px.Name]; !want {
@@ -731,30 +722,30 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 		}
 		wantChained[px.Name] = true
 		if px.Type != "ss" {
-			t.Errorf("chained %q Type = %q, want ss", px.Name, px.Type)
+			t.Errorf("链式节点 %q Type = %q，期望 ss", px.Name, px.Type)
 		}
 		if px.Kind != model.KindChained {
-			t.Errorf("chained %q Kind = %q, want chained", px.Name, px.Kind)
+			t.Errorf("链式节点 %q Kind = %q，期望 chained", px.Name, px.Kind)
 		}
 		if px.Params["cipher"] != "aes-256-gcm" || px.Params["password"] != "chainpass" {
-			t.Errorf("chained %q Params = %v", px.Name, px.Params)
+			t.Errorf("链式节点 %q Params = %v", px.Name, px.Params)
 		}
 		if px.Plugin == nil {
-			t.Errorf("chained %q lost Plugin from chain template", px.Name)
+			t.Errorf("链式节点 %q 丢失了链式模板的 Plugin", px.Name)
 		} else if px.Plugin.Name != "obfs-local" || px.Plugin.Opts["obfs"] != "http" {
-			t.Errorf("chained %q Plugin = %+v", px.Name, px.Plugin)
+			t.Errorf("链式节点 %q Plugin = %+v", px.Name, px.Plugin)
 		}
 		if px.DialerID == 0 {
-			t.Errorf("chained %q missing DialerID", px.Name)
+			t.Errorf("链式节点 %q 缺少 DialerID", px.Name)
 		}
 	}
 	for name, found := range wantChained {
 		if !found {
-			t.Errorf("chained node %q not found in Proxies", name)
+			t.Errorf("Proxies 中没有找到链式节点 %q", name)
 		}
 	}
 
-	// Chain group "SS-Chain" exists in NodeGroups containing both chained members.
+	// NodeGroups 中存在链式组 "SS-Chain"，并包含两个链式成员。
 	var chainGroup *model.NodeGroup
 	for i := range p.NodeGroups {
 		if p.NodeGroups[i].Name == "SS-Chain" {
@@ -763,18 +754,17 @@ func TestExecute_SSCustomProxyChainedEndToEnd(t *testing.T) {
 		}
 	}
 	if chainGroup == nil {
-		t.Fatal("chain group SS-Chain missing from NodeGroups")
+		t.Fatal("NodeGroups 中缺少链式组 SS-Chain")
 	}
 	if len(chainGroup.Members) != 2 {
-		t.Errorf("chain group has %d members, want 2", len(chainGroup.Members))
+		t.Errorf("链式组有 %d 个成员，期望 2 个", len(chainGroup.Members))
 	}
 
-	// SS-Chain does NOT enter @all expansion (chained nodes excluded; chain
-	// template doesn't produce a standalone node).
+	// SS-Chain 不进入 @all 展开结果（链式节点被排除；链式模板不产生独立节点）。
 	for _, id := range p.AllProxies {
 		name := proxyNameByID(p.Proxies, id)
 		if name == "SS-Chain" || strings.Contains(name, "→SS-Chain") {
-			t.Errorf("chain-related %q leaked into @all", name)
+			t.Errorf("与链式相关的 %q 混入了 @all", name)
 		}
 	}
 }

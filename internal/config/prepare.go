@@ -35,13 +35,11 @@ type routingScope struct {
 	routeNameSet map[string]bool
 }
 
-// Prepare validates the raw YAML config and produces the startup-prepared
-// configuration consumed by the request-time pipeline.
+// Prepare 校验原始 YAML 配置，产出启动时预处理好的配置，供请求阶段的流水线使用。
 //
-// Stage ordering is enforced by function signatures: each stage that depends
-// on a prior stage's output takes that output as an explicit parameter.
-// Swapping stages in the main body causes a compile error rather than a
-// silent nil-map read.
+// 各阶段的先后顺序由函数签名保证：依赖前一阶段输出的阶段，
+// 会把该输出作为显式参数接收。在主体中调换阶段顺序会导致编译错误，
+// 而不会悄悄读到 nil map。
 func Prepare(cfg *Config) (*RuntimeConfig, error) {
 	if cfg == nil {
 		var c collector
@@ -422,7 +420,7 @@ func prepareRelayThrough(c *collector, rt *RelayThrough, parent diagnosticPath, 
 			}
 		}
 	case "all":
-		// no-op
+		// 无需处理
 	case "":
 		c.addCode(childPath(parent, prefix+".type"), errtype.CodeConfigRequired, "必填")
 	default:

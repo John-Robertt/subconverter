@@ -18,12 +18,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// --- test helpers ---
+// --- 测试辅助函数 ---
 
-// fakeFetcher maps URLs to canned responses.
+// fakeFetcher 把 URL 映射到预设的响应。
 type fakeFetcher struct {
 	responses map[string][]byte
-	err       error // if set, all fetches fail
+	err       error // 设置后，所有拉取都会失败
 }
 
 func (f *fakeFetcher) Fetch(_ context.Context, rawURL string) ([]byte, error) {
@@ -63,7 +63,7 @@ func mustParseOrderedMapStrings(t *testing.T, yamlStr string) config.OrderedMap[
 const subURL = "https://sub.example.com/api"
 const accessToken = "secret-token"
 
-// validConfig returns a minimal config that produces a valid Pipeline.
+// validConfig 返回一份能生成有效 Pipeline 的最小配置。
 func validConfig(t *testing.T) *config.Config {
 	t.Helper()
 	return &config.Config{
@@ -88,7 +88,7 @@ func mustRuntimeConfig(t *testing.T, cfg *config.Config) *config.RuntimeConfig {
 	return rt
 }
 
-// validFetcher returns a fetcher that serves valid subscription data.
+// validFetcher 返回一个提供有效订阅数据的 fetcher。
 func validFetcher() *fakeFetcher {
 	return &fakeFetcher{
 		responses: map[string][]byte{
@@ -100,7 +100,7 @@ func validFetcher() *fakeFetcher {
 	}
 }
 
-// startTestServer creates and starts a test HTTP server.
+// startTestServer 创建并启动一个测试用 HTTP 服务。
 func startTestServer(t *testing.T, cfg *config.Config, f *fakeFetcher) *httptest.Server {
 	t.Helper()
 	appSvc := app.NewWithRuntime("", mustRuntimeConfig(t, cfg), f, generate.Options{})
@@ -119,9 +119,9 @@ func startTestServerWithOptions(t *testing.T, cfg *config.Config, f *fakeFetcher
 	return ts
 }
 
-// --- E2E tests ---
+// --- 端到端测试 ---
 
-// T-E2E-LOON-001: HTTP generation accepts Loon, applies configured groups and uses its default filename.
+// T-E2E-LOON-001：HTTP 生成接口接受 Loon，应用配置中的分组，并使用 Loon 的默认文件名。
 func TestE2E_GenerateLoon(t *testing.T) {
 	cfg := validConfig(t)
 	cfg.Sources.Subscriptions[0].Format = "loon"
@@ -143,32 +143,32 @@ func TestE2E_GenerateLoon(t *testing.T) {
 	}
 	for _, want := range []string{"HK = select, HK-LOON", "[Remote Rule]", "https://example.com/rules.list,proxy", "FINAL,proxy"} {
 		if !strings.Contains(string(body), want) {
-			t.Errorf("Loon output missing %q:\n%s", want, body)
+			t.Errorf("Loon 输出缺少 %q：\n%s", want, body)
 		}
 	}
 	if strings.Contains(string(body), "PROVIDER") || strings.Contains(string(body), "MANAGED-CONFIG") {
-		t.Fatalf("Loon output includes provider graph or Surge header:\n%s", body)
+		t.Fatalf("Loon 输出包含了订阅提供方的分组或 Surge 文件头：\n%s", body)
 	}
 }
 
-// T-E2E-001: HTTP generate Clash success
+// T-E2E-001：HTTP 成功生成 Clash 配置
 func TestE2E_GenerateClash(t *testing.T) {
 	ts := startTestServer(t, validConfig(t), validFetcher())
 
 	resp, err := http.Get(ts.URL + "/generate?format=clash")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, body)
+		t.Fatalf("status = %d，期望 200；body: %s", resp.StatusCode, body)
 	}
 
 	ct := resp.Header.Get("Content-Type")
 	if ct != "text/yaml; charset=utf-8" {
-		t.Errorf("Content-Type = %q, want %q", ct, "text/yaml; charset=utf-8")
+		t.Errorf("Content-Type = %q，期望 %q", ct, "text/yaml; charset=utf-8")
 	}
 	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="clash.yaml"; filename*=UTF-8''clash.yaml` {
 		t.Errorf("Content-Disposition = %q", cd)
@@ -184,45 +184,45 @@ func TestE2E_GenerateClash(t *testing.T) {
 		} `yaml:"rule-providers"`
 	}
 	if err := yaml.Unmarshal(body, &doc); err != nil {
-		t.Fatalf("parse clash response yaml: %v", err)
+		t.Fatalf("解析 Clash 响应 YAML 失败：%v", err)
 	}
 	if len(doc.Proxies) == 0 {
-		t.Error("response should contain proxies")
+		t.Error("响应应包含 proxies")
 	}
 	if len(doc.ProxyGroups) == 0 {
-		t.Error("response should contain proxy-groups")
+		t.Error("响应应包含 proxy-groups")
 	}
 	if len(doc.Rules) == 0 {
-		t.Error("response should contain rules")
+		t.Error("响应应包含 rules")
 	}
 	if len(doc.RuleProviders) == 0 {
-		t.Fatal("response should contain rule-providers")
+		t.Fatal("响应应包含 rule-providers")
 	}
 	for name, provider := range doc.RuleProviders {
 		if provider.Format != "text" {
-			t.Errorf("rule-provider %q format = %q, want %q", name, provider.Format, "text")
+			t.Errorf("rule-provider %q 的 format = %q，期望 %q", name, provider.Format, "text")
 		}
 	}
 }
 
-// T-E2E-002: HTTP generate Surge success
+// T-E2E-002：HTTP 成功生成 Surge 配置
 func TestE2E_GenerateSurge(t *testing.T) {
 	ts := startTestServer(t, validConfig(t), validFetcher())
 
 	resp, err := http.Get(ts.URL + "/generate?format=surge")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, body)
+		t.Fatalf("status = %d，期望 200；body: %s", resp.StatusCode, body)
 	}
 
 	ct := resp.Header.Get("Content-Type")
 	if ct != "text/plain; charset=utf-8" {
-		t.Errorf("Content-Type = %q, want %q", ct, "text/plain; charset=utf-8")
+		t.Errorf("Content-Type = %q，期望 %q", ct, "text/plain; charset=utf-8")
 	}
 	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="surge.conf"; filename*=UTF-8''surge.conf` {
 		t.Errorf("Content-Disposition = %q", cd)
@@ -232,11 +232,11 @@ func TestE2E_GenerateSurge(t *testing.T) {
 	content := string(body)
 	for _, want := range []string{"[Proxy]", "[Proxy Group]", "[Rule]", "#!MANAGED-CONFIG"} {
 		if !strings.Contains(content, want) {
-			t.Errorf("response body missing %q", want)
+			t.Errorf("响应 body 缺少 %q", want)
 		}
 	}
 	if !strings.Contains(content, "https://my-server.com/generate?format=surge&filename=surge.conf") {
-		t.Errorf("managed config header missing default filename: %s", content)
+		t.Errorf("managed config 头缺少默认文件名：%s", content)
 	}
 }
 
@@ -245,13 +245,13 @@ func TestE2E_GenerateWithCustomFilename(t *testing.T) {
 
 	resp, err := http.Get(ts.URL + "/generate?format=clash&filename=my-profile")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, body)
+		t.Fatalf("status = %d，期望 200；body: %s", resp.StatusCode, body)
 	}
 	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="my-profile.yaml"; filename*=UTF-8''my-profile.yaml` {
 		t.Errorf("Content-Disposition = %q", cd)
@@ -263,13 +263,13 @@ func TestE2E_GenerateSurgeWithTokenAndCustomFilename(t *testing.T) {
 
 	resp, err := http.Get(ts.URL + "/generate?format=surge&token=" + accessToken + "&filename=my-profile")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, body)
+		t.Fatalf("status = %d，期望 200；body: %s", resp.StatusCode, body)
 	}
 	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="my-profile.conf"; filename*=UTF-8''my-profile.conf` {
 		t.Errorf("Content-Disposition = %q", cd)
@@ -277,7 +277,7 @@ func TestE2E_GenerateSurgeWithTokenAndCustomFilename(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	content := string(body)
 	if !strings.Contains(content, "https://my-server.com/generate?format=surge&token=secret-token&filename=my-profile.conf") {
-		t.Errorf("managed config header missing token or filename: %s", content)
+		t.Errorf("managed config 头缺少 token 或文件名：%s", content)
 	}
 }
 
@@ -291,22 +291,22 @@ func TestE2E_GenerateSurgeWithAdminSessionUsesServerTokenInManagedURL(t *testing
 
 	resp, err := http.Get(ts.URL + "/generate?format=surge&filename=admin-profile")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, body)
+		t.Fatalf("status = %d，期望 200；body: %s", resp.StatusCode, body)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	content := string(body)
 	if !strings.Contains(content, "https://my-server.com/generate?format=surge&token=secret-token&filename=admin-profile.conf") {
-		t.Errorf("admin-session managed config should use server token and filename: %s", content)
+		t.Errorf("管理后台会话下的 managed config 应使用服务端 token 和文件名：%s", content)
 	}
 }
 
-// T-E2E-003: Invalid format returns 400
+// T-E2E-003：无效的 format 返回 400
 func TestE2E_InvalidFormat(t *testing.T) {
 	ts := startTestServer(t, validConfig(t), validFetcher())
 
@@ -322,12 +322,12 @@ func TestE2E_InvalidFormat(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			resp, err := http.Get(tc.url)
 			if err != nil {
-				t.Fatalf("request failed: %v", err)
+				t.Fatalf("请求失败：%v", err)
 			}
 			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusBadRequest {
-				t.Errorf("status = %d, want 400", resp.StatusCode)
+				t.Errorf("status = %d，期望 400", resp.StatusCode)
 			}
 		})
 	}
@@ -351,17 +351,17 @@ func TestE2E_InvalidFilename(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			resp, err := http.Get(tc.url)
 			if err != nil {
-				t.Fatalf("request failed: %v", err)
+				t.Fatalf("请求失败：%v", err)
 			}
 			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusBadRequest {
 				body, _ := io.ReadAll(resp.Body)
-				t.Errorf("status = %d, want 400; body: %s", resp.StatusCode, body)
+				t.Errorf("status = %d，期望 400；body: %s", resp.StatusCode, body)
 			}
 			body, _ := io.ReadAll(resp.Body)
 			if !strings.Contains(string(body), "filename 参数无效") {
-				t.Errorf("body = %q, want filename 参数无效", body)
+				t.Errorf("body = %q，期望包含 filename 参数无效", body)
 			}
 		})
 	}
@@ -382,45 +382,45 @@ func TestE2E_TokenRequired(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			resp, err := http.Get(tc.url)
 			if err != nil {
-				t.Fatalf("request failed: %v", err)
+				t.Fatalf("请求失败：%v", err)
 			}
 			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusUnauthorized {
 				body, _ := io.ReadAll(resp.Body)
-				t.Errorf("status = %d, want 401; body: %s", resp.StatusCode, body)
+				t.Errorf("status = %d，期望 401；body: %s", resp.StatusCode, body)
 			}
 			body, _ := io.ReadAll(resp.Body)
 			if !strings.Contains(string(body), "访问令牌缺失或无效") {
-				t.Errorf("body = %q, want 访问令牌缺失或无效", body)
+				t.Errorf("body = %q，期望包含 访问令牌缺失或无效", body)
 			}
 		})
 	}
 }
 
-// T-E2E-004: Source fetch failure returns 502
+// T-E2E-004：拉取来源失败时返回 502
 func TestE2E_FetchFailure(t *testing.T) {
 	f := &fakeFetcher{err: errors.New("connection refused")}
 	ts := startTestServer(t, validConfig(t), f)
 
 	resp, err := http.Get(ts.URL + "/generate?format=clash")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502", resp.StatusCode)
+		t.Errorf("status = %d，期望 502", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "拉取失败") {
-		t.Errorf("body = %q, want 拉取失败", body)
+		t.Errorf("body = %q，期望包含 拉取失败", body)
 	}
 }
 
-// T-E2E-005: Dynamic graph validation error returns 400
+// T-E2E-005：动态关系图校验失败时返回 400
 func TestE2E_BuildError(t *testing.T) {
-	// Config passes startup preparation but fails request-time graph validation:
+	// 配置能通过启动时的预处理，但在请求时的关系图校验中失败：
 	// HK 节点组在当前远程结果中为空。
 	cfg := validConfig(t)
 	cfg.Sources.Subscriptions = []config.Source{{URL: subURL}}
@@ -437,62 +437,62 @@ func TestE2E_BuildError(t *testing.T) {
 
 	resp, err := http.Get(ts.URL + "/generate?format=clash")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("status = %d, want 400; body: %s", resp.StatusCode, body)
+		t.Errorf("status = %d，期望 400；body: %s", resp.StatusCode, body)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "构建错误") {
-		t.Errorf("body = %q, want 构建错误", body)
+		t.Errorf("body = %q，期望包含 构建错误", body)
 	}
 }
 
-// T-E2E-005b: Invalid subscription content returns 502
+// T-E2E-005b：订阅内容无效时返回 502
 func TestE2E_InvalidSubscriptionContent(t *testing.T) {
 	f := &fakeFetcher{responses: map[string][]byte{subURL: []byte("")}}
 	ts := startTestServer(t, validConfig(t), f)
 
 	resp, err := http.Get(ts.URL + "/generate?format=clash")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadGateway {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("status = %d, want 502; body: %s", resp.StatusCode, body)
+		t.Errorf("status = %d，期望 502；body: %s", resp.StatusCode, body)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "拉取失败") {
-		t.Errorf("body = %q, want 拉取失败", body)
+		t.Errorf("body = %q，期望包含 拉取失败", body)
 	}
 }
 
-// T-E2E-006: /healthz returns 200
+// T-E2E-006：/healthz 返回 200
 func TestE2E_Healthz(t *testing.T) {
 	ts := startTestServer(t, validConfig(t), validFetcher())
 
 	resp, err := http.Get(ts.URL + "/healthz")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want 200", resp.StatusCode)
+		t.Errorf("status = %d，期望 200", resp.StatusCode)
 	}
 
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "ok" {
-		t.Errorf("body = %q, want %q", body, "ok")
+		t.Errorf("body = %q，期望 %q", body, "ok")
 	}
 }
 
-// T-E2E-007: Missing local template should be treated as server error.
+// T-E2E-007：本地模板缺失应按服务端错误处理。
 func TestE2E_LocalTemplateReadError(t *testing.T) {
 	cfg := validConfig(t)
 	cfg.Templates.Clash = "/nonexistent/path/base_clash.yaml"
@@ -501,19 +501,19 @@ func TestE2E_LocalTemplateReadError(t *testing.T) {
 
 	resp, err := http.Get(ts.URL + "/generate?format=clash")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf("请求失败：%v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusInternalServerError {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("status = %d, want 500; body: %s", resp.StatusCode, body)
+		t.Errorf("status = %d，期望 500；body: %s", resp.StatusCode, body)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "资源读取失败") {
-		t.Errorf("body = %q, want containing %q", body, "资源读取失败")
+		t.Errorf("body = %q，期望包含 %q", body, "资源读取失败")
 	}
 	if !strings.Contains(string(body), cfg.Templates.Clash) {
-		t.Errorf("body = %q, want containing %q", body, cfg.Templates.Clash)
+		t.Errorf("body = %q，期望包含 %q", body, cfg.Templates.Clash)
 	}
 }

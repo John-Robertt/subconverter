@@ -56,7 +56,7 @@ func TestSanitizeURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := SanitizeURL(tt.raw)
 			if got != tt.want {
-				t.Errorf("SanitizeURL(%q) = %q, want %q", tt.raw, got, tt.want)
+				t.Errorf("SanitizeURL(%q) = %q，期望 %q", tt.raw, got, tt.want)
 			}
 		})
 	}
@@ -74,10 +74,10 @@ func TestHTTPFetcher_Success(t *testing.T) {
 	f := &HTTPFetcher{Client: srv.Client()}
 	got, err := f.Fetch(context.Background(), srv.URL+"/sub?token=secret")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 	if string(got) != body {
-		t.Errorf("body = %q, want %q", got, body)
+		t.Errorf("body = %q，期望 %q", got, body)
 	}
 }
 
@@ -90,46 +90,46 @@ func TestHTTPFetcher_Non2xx(t *testing.T) {
 	f := &HTTPFetcher{Client: srv.Client()}
 	_, err := f.Fetch(context.Background(), srv.URL+"/sub?token=secret")
 	if err == nil {
-		t.Fatal("expected error for 403 response")
+		t.Fatal("403 响应应返回错误")
 	}
 
 	var fetchErr *errtype.FetchError
 	if !errors.As(err, &fetchErr) {
-		t.Fatalf("error type = %T, want *errtype.FetchError", err)
+		t.Fatalf("错误类型 = %T，期望 *errtype.FetchError", err)
 	}
 	if fetchErr.Code != errtype.CodeFetchStatusInvalid {
-		t.Errorf("code = %q, want %q", fetchErr.Code, errtype.CodeFetchStatusInvalid)
+		t.Errorf("code = %q，期望 %q", fetchErr.Code, errtype.CodeFetchStatusInvalid)
 	}
 	if fetchErr.Message != "上游返回 HTTP 403" {
-		t.Errorf("message = %q, want %q", fetchErr.Message, "上游返回 HTTP 403")
+		t.Errorf("message = %q，期望 %q", fetchErr.Message, "上游返回 HTTP 403")
 	}
-	// URL should be sanitized (no query params)
+	// URL 应已清理（不含查询参数）
 	if fetchErr.URL != srv.URL+"/sub" {
-		t.Errorf("URL = %q, want query params stripped", fetchErr.URL)
+		t.Errorf("URL = %q，期望已去掉查询参数", fetchErr.URL)
 	}
 }
 
 func TestHTTPFetcher_NetworkError(t *testing.T) {
 	f := &HTTPFetcher{Client: &http.Client{Timeout: 100 * time.Millisecond}}
-	// Use a URL that will fail to connect.
+	// 使用一个必然连接失败的 URL。
 	_, err := f.Fetch(context.Background(), "http://192.0.2.1:1/sub?token=secret")
 	if err == nil {
-		t.Fatal("expected error for unreachable host")
+		t.Fatal("主机不可达时应返回错误")
 	}
 
 	var fetchErr *errtype.FetchError
 	if !errors.As(err, &fetchErr) {
-		t.Fatalf("error type = %T, want *errtype.FetchError", err)
+		t.Fatalf("错误类型 = %T，期望 *errtype.FetchError", err)
 	}
 	if fetchErr.Code != errtype.CodeFetchRequestFailed {
-		t.Errorf("code = %q, want %q", fetchErr.Code, errtype.CodeFetchRequestFailed)
+		t.Errorf("code = %q，期望 %q", fetchErr.Code, errtype.CodeFetchRequestFailed)
 	}
 	if fetchErr.Cause == nil {
-		t.Error("expected Cause to be set for network errors")
+		t.Error("网络错误应设置 Cause")
 	}
-	// URL should be sanitized
+	// URL 应已清理
 	if fetchErr.URL != "http://192.0.2.1:1/sub" {
-		t.Errorf("URL = %q, want query params stripped", fetchErr.URL)
+		t.Errorf("URL = %q，期望已去掉查询参数", fetchErr.URL)
 	}
 }
 
@@ -154,74 +154,74 @@ func TestCachedFetcher_TTLHitAndMiss(t *testing.T) {
 	mock := &mockFetcher{body: []byte("data")}
 	cf := NewCachedFetcher(mock, 5*time.Minute)
 
-	// Inject a controllable clock.
+	// 注入一个可控的时钟。
 	now := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	cf.now = func() time.Time { return now }
 
 	ctx := context.Background()
 	url := "https://sub.example.com/api?token=x"
 
-	// First call: cache miss, fetches from inner.
+	// 第一次调用：缓存未命中，从内层拉取。
 	body1, err := cf.Fetch(ctx, url)
 	if err != nil {
-		t.Fatalf("first fetch: %v", err)
+		t.Fatalf("第一次拉取：%v", err)
 	}
 	if string(body1) != "data" {
-		t.Errorf("body = %q, want %q", body1, "data")
+		t.Errorf("body = %q，期望 %q", body1, "data")
 	}
 	if mock.calls != 1 {
-		t.Errorf("calls = %d, want 1", mock.calls)
+		t.Errorf("calls = %d，期望 1", mock.calls)
 	}
 
-	// Second call within TTL: cache hit.
+	// 第二次调用在 TTL 内：缓存命中。
 	now = now.Add(2 * time.Minute)
 	body2, err := cf.Fetch(ctx, url)
 	if err != nil {
-		t.Fatalf("second fetch: %v", err)
+		t.Fatalf("第二次拉取：%v", err)
 	}
 	if string(body2) != "data" {
-		t.Errorf("body = %q, want %q", body2, "data")
+		t.Errorf("body = %q，期望 %q", body2, "data")
 	}
 	if mock.calls != 1 {
-		t.Errorf("calls = %d after cache hit, want 1", mock.calls)
+		t.Errorf("缓存命中后 calls = %d，期望 1", mock.calls)
 	}
 
-	// Third call after TTL: cache miss, re-fetches.
-	now = now.Add(4 * time.Minute) // total 6 min > 5 min TTL
+	// 第三次调用在 TTL 之后：缓存未命中，重新拉取。
+	now = now.Add(4 * time.Minute) // 累计 6 分钟，超过 5 分钟的 TTL
 	body3, err := cf.Fetch(ctx, url)
 	if err != nil {
-		t.Fatalf("third fetch: %v", err)
+		t.Fatalf("第三次拉取：%v", err)
 	}
 	if string(body3) != "data" {
-		t.Errorf("body = %q, want %q", body3, "data")
+		t.Errorf("body = %q，期望 %q", body3, "data")
 	}
 	if mock.calls != 2 {
-		t.Errorf("calls = %d after TTL expiry, want 2", mock.calls)
+		t.Errorf("TTL 过期后 calls = %d，期望 2", mock.calls)
 	}
 }
 
 func TestCachedFetcher_ErrorNotCached(t *testing.T) {
-	mock := &mockFetcher{err: fmt.Errorf("network error")}
+	mock := &mockFetcher{err: fmt.Errorf("网络错误")}
 	cf := NewCachedFetcher(mock, 5*time.Minute)
 	ctx := context.Background()
 	url := "https://sub.example.com/api"
 
-	// First call: error.
+	// 第一次调用：返回错误。
 	_, err := cf.Fetch(ctx, url)
 	if err == nil {
-		t.Fatal("expected error")
+		t.Fatal("应返回错误")
 	}
 	if mock.calls != 1 {
-		t.Errorf("calls = %d, want 1", mock.calls)
+		t.Errorf("calls = %d，期望 1", mock.calls)
 	}
 
-	// Second call: should retry (error was not cached).
+	// 第二次调用：应重试（错误没有被缓存）。
 	_, err = cf.Fetch(ctx, url)
 	if err == nil {
-		t.Fatal("expected error")
+		t.Fatal("应返回错误")
 	}
 	if mock.calls != 2 {
-		t.Errorf("calls = %d, want 2 (error should not be cached)", mock.calls)
+		t.Errorf("calls = %d，期望 2（错误不应被缓存）", mock.calls)
 	}
 }
 
@@ -235,16 +235,16 @@ func TestCachedFetcher_ReturnsCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mutate the returned slice.
+	// 修改返回的切片。
 	body1[0] = 'X'
 
-	// Fetch again — should still return original data.
+	// 再次拉取，应仍返回原始数据。
 	body2, err := cf.Fetch(ctx, "https://example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(body2) != "original" {
-		t.Errorf("cached data was mutated: got %q, want %q", body2, "original")
+		t.Errorf("缓存数据被修改：得到 %q，期望 %q", body2, "original")
 	}
 }
 
@@ -260,6 +260,6 @@ func TestCachedFetcher_MissReturnsCopy(t *testing.T) {
 	body[0] = 'X'
 
 	if string(mock.body) != "original" {
-		t.Errorf("inner fetcher body was mutated: got %q, want %q", mock.body, "original")
+		t.Errorf("内层 fetcher 的 body 被修改：得到 %q，期望 %q", mock.body, "original")
 	}
 }

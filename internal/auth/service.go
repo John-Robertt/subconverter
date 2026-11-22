@@ -23,7 +23,7 @@ import (
 const (
 	SessionCookieName = "session_id"
 
-	passwordAlgorithm  = "pbkdf2-sha256" // #nosec G101 -- algorithm identifier, not a hardcoded credential.
+	passwordAlgorithm  = "pbkdf2-sha256" // #nosec G101 -- 这是算法标识，不是硬编码的凭据。
 	passwordIterations = 600000
 	passwordSaltBytes  = 32
 	passwordKeyBytes   = 32
@@ -119,7 +119,7 @@ func New(opts Options) (*Service, error) {
 			return nil, err
 		}
 		s.setupToken = token
-		s.logger.Printf("subconverter setup token: %s", token)
+		s.logger.Printf("subconverter 首次初始化用的 setup token：%s", token)
 	}
 	return s, nil
 }
@@ -488,7 +488,7 @@ func writeStateAtomically(path string, data []byte) error {
 }
 
 func syncDirBestEffort(dir string) {
-	d, err := os.Open(dir) // #nosec G304 -- dir is the cleaned parent of the configured auth state path.
+	d, err := os.Open(dir) // #nosec G304 -- dir 是配置的 auth state 路径经清理后的父目录。
 	if err != nil {
 		return
 	}

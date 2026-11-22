@@ -30,12 +30,12 @@ func bootstrapService(t *testing.T) *Service {
 	dir := t.TempDir()
 	svc, err := New(context.Background(), Options{ConfigLocation: filepath.Join(dir, "config.yaml"), DataDir: filepath.Join(dir, "data")})
 	if err != nil {
-		t.Fatalf("missing local config should start setup mode: %v", err)
+		t.Fatalf("缺少本地配置时应进入初始化模式：%v", err)
 	}
 	return svc
 }
 
-// T-APP-BOOT-001: an empty deployment can import either package type, create a config and explicitly load it.
+// T-APP-BOOT-001：空部署可以导入任一种包类型，创建配置并显式加载。
 func TestBootstrap_ImportSaveReload(t *testing.T) {
 	for _, kind := range []string{"yaml", "zip"} {
 		t.Run(kind, func(t *testing.T) {
@@ -46,14 +46,14 @@ func TestBootstrap_ImportSaveReload(t *testing.T) {
 				t.Fatal(err)
 			}
 			if status.ConfigSource.Exists || !status.ConfigSource.Writable || !status.Capabilities.ConfigWrite || status.Capabilities.Reload || status.ConfigDirty || status.ConfigLoadedAt != "" || status.RuntimeConfigRevision != "" || status.ConfigRevision != missingConfigRevision {
-				t.Fatalf("invalid setup status: %+v", status)
+				t.Fatalf("初始化状态不正确：%+v", status)
 			}
 			snapshot, err := svc.ConfigSnapshot(ctx)
 			if err != nil || snapshot.ConfigRevision != status.ConfigRevision {
-				t.Fatalf("empty draft/revision: snapshot=%+v err=%v", snapshot, err)
+				t.Fatalf("空草稿/revision 不正确：snapshot=%+v err=%v", snapshot, err)
 			}
 			if _, err := svc.SaveConfig(ctx, &SaveConfigInput{ConfigRevision: snapshot.ConfigRevision, Config: snapshot.Config}); err == nil {
-				t.Fatal("an invalid empty draft was saved")
+				t.Fatal("无效的空草稿被保存了")
 			}
 			var imported *ImportConfigYAMLResult
 			if kind == "yaml" {
@@ -70,13 +70,13 @@ func TestBootstrap_ImportSaveReload(t *testing.T) {
 				t.Fatal(err)
 			}
 			if _, err := os.Stat(svc.configLocation); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("import created a main config: %v", err)
+				t.Fatalf("导入时创建了主配置：%v", err)
 			}
 			if _, err := os.Stat(svc.dataDir); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("import published body files: %v", err)
+				t.Fatalf("导入时发布了正文文件：%v", err)
 			}
 			if _, err := svc.PreviewNodesFromDraft(ctx, imported.Config); err != nil {
-				t.Fatalf("draft preview needs no active config: %v", err)
+				t.Fatalf("草稿预览不应依赖已生效的配置：%v", err)
 			}
 			saved, err := svc.SaveConfig(ctx, &SaveConfigInput{ConfigRevision: snapshot.ConfigRevision, Config: imported.Config})
 			if err != nil {
@@ -84,42 +84,42 @@ func TestBootstrap_ImportSaveReload(t *testing.T) {
 			}
 			info, err := os.Stat(svc.configLocation)
 			if err != nil || info.Mode().Perm() != 0o600 {
-				t.Fatalf("created main config permissions: info=%v err=%v", info, err)
+				t.Fatalf("新建主配置的权限不正确：info=%v err=%v", info, err)
 			}
 			status, err = svc.Status(ctx)
 			if err != nil || !status.ConfigSource.Exists || !status.Capabilities.Reload || !status.ConfigDirty || status.RuntimeConfigRevision != "" || saved.ConfigRevision == missingConfigRevision {
-				t.Fatalf("save must await reload: status=%+v saved=%+v err=%v", status, saved, err)
+				t.Fatalf("保存后应等待热重载才生效：status=%+v saved=%+v err=%v", status, saved, err)
 			}
 			if _, err := svc.SavedConfigArchive(ctx); err != nil {
-				t.Fatalf("saved export before reload: %v", err)
+				t.Fatalf("热重载前导出已保存配置失败：%v", err)
 			}
 			if _, err := svc.EffectiveConfigYAML(ctx); err == nil {
-				t.Fatal("save activated a config without reload")
+				t.Fatal("保存在未热重载时就让配置生效了")
 			}
 			if _, err := svc.Reload(ctx); err != nil {
 				t.Fatal(err)
 			}
 			status, err = svc.Status(ctx)
 			if err != nil || status.ConfigDirty || status.RuntimeConfigRevision != saved.ConfigRevision || status.ConfigLoadedAt == "" {
-				t.Fatalf("loaded status=%+v err=%v", status, err)
+				t.Fatalf("加载后的状态不正确：status=%+v err=%v", status, err)
 			}
 			for _, format := range []string{"clash", "surge", "loon"} {
 				output, err := svc.Generate(ctx, GenerateInput{Format: format, Filename: "config"})
 				if err != nil {
-					t.Fatalf("%s generation: %v", format, err)
+					t.Fatalf("%s 生成失败：%v", format, err)
 				}
 				if !strings.Contains(string(output.Body), "HK_BOOT") {
-					t.Fatalf("%s lost imported node", format)
+					t.Fatalf("%s 丢失了导入的节点", format)
 				}
 			}
 			if _, err := New(ctx, Options{ConfigLocation: svc.configLocation, DataDir: svc.dataDir}); err != nil {
-				t.Fatalf("restart after first save: %v", err)
+				t.Fatalf("首次保存后重启失败：%v", err)
 			}
 		})
 	}
 }
 
-// T-APP-BOOT-002: runtime-only operations fail explicitly while editing and draft checks remain available.
+// T-APP-BOOT-002：依赖运行时配置的操作明确失败，编辑和草稿检查仍然可用。
 func TestBootstrap_RuntimeUnavailable(t *testing.T) {
 	svc := bootstrapService(t)
 	ctx := context.Background()
@@ -140,13 +140,13 @@ func TestBootstrap_RuntimeUnavailable(t *testing.T) {
 			var configErr *errtype.ConfigError
 			err := tt.run()
 			if !errors.As(err, &configErr) || configErr.Code != errtype.CodeConfigNotInitialized {
-				t.Fatalf("got=%v want config_not_initialized", err)
+				t.Fatalf("实际=%v，期望 config_not_initialized", err)
 			}
 		})
 	}
 }
 
-// T-APP-BOOT-003: first publication cannot overwrite an externally created file and rolls back new body versions.
+// T-APP-BOOT-003：首次发布不能覆盖外部创建的文件，并回滚新建的正文版本。
 func TestBootstrap_CreateConflict(t *testing.T) {
 	for _, timing := range []string{"before save", "during body publication"} {
 		t.Run(timing, func(t *testing.T) {
@@ -181,21 +181,21 @@ func TestBootstrap_CreateConflict(t *testing.T) {
 			_, err = svc.SaveConfig(ctx, &SaveConfigInput{ConfigRevision: missingConfigRevision, Config: imported.Config})
 			var conflict *errtype.RevisionConflictError
 			if !errors.As(err, &conflict) || conflict.CurrentConfigRevision != configRevision(external) {
-				t.Fatalf("got=%v want first-create revision conflict", err)
+				t.Fatalf("实际=%v，期望首次创建时的 revision 冲突", err)
 			}
-			actual, err := os.ReadFile(path) // #nosec G304 -- fixture path is inside t.TempDir.
+			actual, err := os.ReadFile(path) // #nosec G304 -- fixture 路径位于 t.TempDir 内。
 			if err != nil || string(actual) != string(external) {
-				t.Fatalf("external file changed: body=%q err=%v", actual, err)
+				t.Fatalf("外部文件被改动：body=%q err=%v", actual, err)
 			}
 			entries, err := os.ReadDir(svc.dataDir)
 			if err != nil && !errors.Is(err, os.ErrNotExist) || len(entries) != 0 {
-				t.Fatalf("failed save retained body versions: entries=%v err=%v", entries, err)
+				t.Fatalf("保存失败后仍残留正文版本：entries=%v err=%v", entries, err)
 			}
 		})
 	}
 }
 
-// T-APP-BOOT-004: directory permissions and existing invalid files do not become writable setup defaults.
+// T-APP-BOOT-004：目录权限不足或已有无效文件时，不会被当作可写的初始化默认状态。
 func TestBootstrap_PermissionsAndInvalidFiles(t *testing.T) {
 	t.Run("broken existing symlink", func(t *testing.T) {
 		dir := t.TempDir()
@@ -204,19 +204,19 @@ func TestBootstrap_PermissionsAndInvalidFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := New(context.Background(), Options{ConfigLocation: path}); err == nil {
-			t.Fatal("an existing unreadable symlink silently entered setup mode")
+			t.Fatal("已存在但无法读取的符号链接被静默当作初始化模式")
 		}
 	})
 	t.Run("readonly directory", func(t *testing.T) {
 		svc := bootstrapService(t)
 		dir := filepath.Dir(svc.configLocation)
-		if err := os.Chmod(dir, 0o500); err != nil { // #nosec G302 -- Owner search/read access keeps the missing config inspectable.
+		if err := os.Chmod(dir, 0o500); err != nil { // #nosec G302 -- 保留所有者的读取和检索权限，以便检查缺失的配置。
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) // #nosec G302 -- Restores temporary directory access for cleanup.
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) // #nosec G302 -- 恢复临时目录的访问权限以便清理。
 		status, err := svc.Status(context.Background())
 		if err != nil || status.ConfigSource.Exists || status.ConfigSource.Writable || status.Capabilities.ConfigWrite {
-			t.Fatalf("readonly setup status=%+v err=%v", status, err)
+			t.Fatalf("只读目录下的初始化状态不正确：status=%+v err=%v", status, err)
 		}
 		snapshot, err := svc.ConfigSnapshot(context.Background())
 		if err != nil {
@@ -224,7 +224,7 @@ func TestBootstrap_PermissionsAndInvalidFiles(t *testing.T) {
 		}
 		_, err = svc.SaveConfig(context.Background(), &SaveConfigInput{ConfigRevision: snapshot.ConfigRevision, Config: json.RawMessage(`{}`)})
 		if !errors.Is(err, errtype.ErrConfigFileNotWritable) {
-			t.Fatalf("readonly first save: %v", err)
+			t.Fatalf("只读目录下首次保存：%v", err)
 		}
 	})
 	for _, body := range []string{"", "sources: [", "{}"} {
@@ -234,13 +234,13 @@ func TestBootstrap_PermissionsAndInvalidFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			if _, err := New(context.Background(), Options{ConfigLocation: path}); err == nil {
-				t.Fatal("an existing invalid file silently entered setup mode")
+				t.Fatal("已存在的无效文件被静默当作初始化模式")
 			}
 		})
 	}
 }
 
-// T-APP-BOOT-005: independent service instances cannot both publish the first main config.
+// T-APP-BOOT-005：两个独立的服务实例不能都发布首个主配置。
 func TestBootstrap_ConcurrentCreators(t *testing.T) {
 	ctx := context.Background()
 	first := bootstrapService(t)
@@ -272,14 +272,14 @@ func TestBootstrap_ConcurrentCreators(t *testing.T) {
 		case errors.As(err, &conflict):
 			conflicts++
 		default:
-			t.Fatalf("unexpected create failure: %v", err)
+			t.Fatalf("创建时出现意外失败：%v", err)
 		}
 	}
 	if successes != 1 || conflicts != 1 {
-		t.Fatalf("successful creators=%d conflicting creators=%d want 1/1", successes, conflicts)
+		t.Fatalf("成功创建者=%d，冲突创建者=%d，期望 1/1", successes, conflicts)
 	}
 	entries, err := os.ReadDir(first.dataDir)
 	if err != nil || len(entries) != 1 {
-		t.Fatalf("losing creator retained body versions: entries=%v err=%v", entries, err)
+		t.Fatalf("冲突失败的创建者残留了正文版本：entries=%v err=%v", entries, err)
 	}
 }

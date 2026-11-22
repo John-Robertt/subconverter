@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// T-CFG-005: ordered map preserves insertion order
+// T-CFG-005：有序映射保留插入顺序
 func TestOrderedMap_PreservesOrder(t *testing.T) {
 	input := `
 c: 3
@@ -22,11 +22,11 @@ b: 2
 
 	wantKeys := []string{"c", "a", "b"}
 	if !slices.Equal(m.Keys(), wantKeys) {
-		t.Errorf("Keys() = %v, want %v", m.Keys(), wantKeys)
+		t.Errorf("Keys() = %v，期望 %v", m.Keys(), wantKeys)
 	}
 }
 
-// T-CFG-006: ordered map with struct values
+// T-CFG-006：值为结构体的有序映射
 func TestOrderedMap_StructValue(t *testing.T) {
 	type item struct {
 		Match    string `yaml:"match"`
@@ -42,19 +42,19 @@ SG: { match: "(SG)", strategy: url-test }
 	}
 
 	if m.Len() != 2 {
-		t.Fatalf("Len() = %d, want 2", m.Len())
+		t.Fatalf("Len() = %d，期望 2", m.Len())
 	}
 
 	hk, ok := m.Get("HK")
 	if !ok {
-		t.Fatal("Get(HK) not found")
+		t.Fatal("Get(HK) 未找到")
 	}
 	if hk.Match != "(港|HK)" || hk.Strategy != "select" {
 		t.Errorf("HK = %+v", hk)
 	}
 }
 
-// T-CFG-007: ordered map with slice values
+// T-CFG-007：值为切片的有序映射
 func TestOrderedMap_SliceValue(t *testing.T) {
 	input := `
 fast: [HK, SG, DIRECT]
@@ -67,7 +67,7 @@ manual: ["@all"]
 
 	wantKeys := []string{"fast", "manual"}
 	if !slices.Equal(m.Keys(), wantKeys) {
-		t.Errorf("Keys() = %v, want %v", m.Keys(), wantKeys)
+		t.Errorf("Keys() = %v，期望 %v", m.Keys(), wantKeys)
 	}
 
 	fast, _ := m.Get("fast")
@@ -76,7 +76,7 @@ manual: ["@all"]
 	}
 }
 
-// T-CFG-008: ordered map get returns zero for missing key
+// T-CFG-008：键不存在时有序映射的 Get 返回零值
 func TestOrderedMap_Get_Missing(t *testing.T) {
 	input := `a: 1`
 	var m OrderedMap[int]
@@ -86,11 +86,11 @@ func TestOrderedMap_Get_Missing(t *testing.T) {
 
 	_, ok := m.Get("missing")
 	if ok {
-		t.Error("Get(missing) should return false")
+		t.Error("Get(missing) 应返回 false")
 	}
 }
 
-// T-CFG-009: ordered map handles empty YAML
+// T-CFG-009：有序映射能处理空 YAML
 func TestOrderedMap_Empty(t *testing.T) {
 	input := `{}`
 	var m OrderedMap[int]
@@ -99,20 +99,20 @@ func TestOrderedMap_Empty(t *testing.T) {
 	}
 
 	if m.Len() != 0 {
-		t.Errorf("Len() = %d, want 0", m.Len())
+		t.Errorf("Len() = %d，期望 0", m.Len())
 	}
 }
 
-// T-CFG-010: ordered map returns error for non-mapping YAML
+// T-CFG-010：YAML 不是映射时有序映射返回错误
 func TestOrderedMap_NonMapping_Error(t *testing.T) {
 	input := `[1, 2, 3]`
 	var m OrderedMap[int]
 	if err := yaml.Unmarshal([]byte(input), &m); err == nil {
-		t.Error("expected error for non-mapping input")
+		t.Error("输入不是映射时应返回错误")
 	}
 }
 
-// T-CFG-011: ordered map returns error for duplicate key
+// T-CFG-011：键重复时有序映射返回错误
 func TestOrderedMap_DuplicateKey_Error(t *testing.T) {
 	input := `
 a: 1
@@ -121,36 +121,36 @@ a: 3
 `
 	var m OrderedMap[int]
 	if err := yaml.Unmarshal([]byte(input), &m); err == nil {
-		t.Error("expected error for duplicate key")
+		t.Error("键重复时应返回错误")
 	}
 }
 
-// T-CFG-012: ordered map zero value is safe to use
+// T-CFG-012：有序映射的零值可以安全使用
 func TestOrderedMap_ZeroValue_Safe(t *testing.T) {
 	var m OrderedMap[int]
 
 	if m.Len() != 0 {
-		t.Errorf("Len() = %d, want 0", m.Len())
+		t.Errorf("Len() = %d，期望 0", m.Len())
 	}
 	if m.Keys() != nil {
-		t.Errorf("Keys() = %v, want nil", m.Keys())
+		t.Errorf("Keys() = %v，期望 nil", m.Keys())
 	}
 	_, ok := m.Get("any")
 	if ok {
-		t.Error("Get on zero value should return false")
+		t.Error("在零值上调用 Get 应返回 false")
 	}
 
-	// Entries on zero value should not panic
+	// 在零值上调用 Entries 不应 panic
 	count := 0
 	for range m.Entries() {
 		count++
 	}
 	if count != 0 {
-		t.Errorf("Entries() yielded %d items, want 0", count)
+		t.Errorf("Entries() 产出 %d 项，期望 0", count)
 	}
 }
 
-// T-CFG-013: ordered map entries returns key-value pairs in order
+// T-CFG-013：有序映射的 Entries 按顺序返回键值对
 func TestOrderedMap_Entries(t *testing.T) {
 	input := `
 z: 26
@@ -177,7 +177,7 @@ m: 13
 	}
 }
 
-// T-CFG-014: ordered map JSON round-trip preserves order
+// T-CFG-014：有序映射经 JSON 往返后保持顺序
 func TestOrderedMap_JSONRoundTripPreservesOrder(t *testing.T) {
 	input := []byte(`[
 		{"key":"HK","value":{"match":"(HK)","strategy":"select"}},
@@ -199,7 +199,7 @@ func TestOrderedMap_JSONRoundTripPreservesOrder(t *testing.T) {
 	}
 }
 
-// T-CFG-015: ordered map YAML marshal preserves order
+// T-CFG-015：有序映射序列化为 YAML 时保持顺序
 func TestOrderedMap_MarshalYAMLPreservesOrder(t *testing.T) {
 	var m OrderedMap[int]
 	if err := json.Unmarshal([]byte(`[{"key":"b","value":2},{"key":"a","value":1}]`), &m); err != nil {

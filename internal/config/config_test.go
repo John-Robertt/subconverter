@@ -24,7 +24,7 @@ func TestIntegration_GroupsOrder(t *testing.T) {
 		"🇺🇲 United States",
 	}
 	if !slices.Equal(cfg.Groups.Keys(), want) {
-		t.Errorf("Groups.Keys() = %v\nwant %v", cfg.Groups.Keys(), want)
+		t.Errorf("Groups.Keys() = %v\n期望 %v", cfg.Groups.Keys(), want)
 	}
 }
 
@@ -54,7 +54,7 @@ func TestIntegration_RoutingOrder(t *testing.T) {
 		"🐟 FINAL",
 	}
 	if !slices.Equal(cfg.Routing.Keys(), want) {
-		t.Errorf("Routing.Keys() = %v\nwant %v", cfg.Routing.Keys(), want)
+		t.Errorf("Routing.Keys() = %v\n期望 %v", cfg.Routing.Keys(), want)
 	}
 }
 
@@ -81,7 +81,7 @@ func TestIntegration_RulesetsOrder(t *testing.T) {
 		"🎯 Global",
 	}
 	if !slices.Equal(cfg.Rulesets.Keys(), want) {
-		t.Errorf("Rulesets.Keys() = %v\nwant %v", cfg.Rulesets.Keys(), want)
+		t.Errorf("Rulesets.Keys() = %v\n期望 %v", cfg.Rulesets.Keys(), want)
 	}
 }
 
@@ -89,14 +89,14 @@ func TestIntegration_PrepareExampleConfig(t *testing.T) {
 	cfg := mustLoadExample(t)
 	rt, err := Prepare(cfg)
 	if err != nil {
-		t.Fatalf("Prepare example config: %v", err)
+		t.Fatalf("Prepare 示例配置：%v", err)
 	}
 	if len(rt.GroupInput()) != cfg.Groups.Len() {
-		t.Errorf("prepared groups = %d, want %d", len(rt.GroupInput()), cfg.Groups.Len())
+		t.Errorf("预处理后的 groups 数量 = %d，期望 %d", len(rt.GroupInput()), cfg.Groups.Len())
 	}
 	routing, _, _, _ := rt.RouteInput()
 	if len(routing) != cfg.Routing.Len() {
-		t.Errorf("prepared routing = %d, want %d", len(routing), cfg.Routing.Len())
+		t.Errorf("预处理后的 routing 数量 = %d，期望 %d", len(routing), cfg.Routing.Len())
 	}
 }
 
@@ -113,10 +113,10 @@ func TestIntegration_SpotCheckValues(t *testing.T) {
 		t.Errorf("Fallback = %q", cfg.Fallback)
 	}
 
-	// first group
+	// 第一个组
 	hk, ok := cfg.Groups.Get("🇭🇰 Hong Kong")
 	if !ok {
-		t.Fatal("group 🇭🇰 Hong Kong not found")
+		t.Fatal("未找到组 🇭🇰 Hong Kong")
 	}
 	if hk.Match != "(港|HK|Hong Kong)" {
 		t.Errorf("HK Match = %q", hk.Match)
@@ -125,31 +125,31 @@ func TestIntegration_SpotCheckValues(t *testing.T) {
 		t.Errorf("HK Strategy = %q", hk.Strategy)
 	}
 
-	// Japan strategy is url-test
+	// Japan 的策略是 url-test
 	jp, ok := cfg.Groups.Get("🇯🇵 Japan")
 	if !ok {
-		t.Fatal("group 🇯🇵 Japan not found")
+		t.Fatal("未找到组 🇯🇵 Japan")
 	}
 	if jp.Strategy != "url-test" {
-		t.Errorf("JP Strategy = %q, want url-test", jp.Strategy)
+		t.Errorf("JP Strategy = %q，期望 url-test", jp.Strategy)
 	}
 
-	// first routing entry members (uses @auto shorthand)
+	// 第一个 routing 条目的成员（使用 @auto 简写）
 	fast, ok := cfg.Routing.Get("🚀 快速选择")
 	if !ok {
-		t.Fatal("routing 🚀 快速选择 not found")
+		t.Fatal("未找到 routing 🚀 快速选择")
 	}
 	if len(fast) != 1 || fast[0] != "@auto" {
-		t.Errorf("🚀 快速选择 members = %v, want [@auto]", fast)
+		t.Errorf("🚀 快速选择 成员 = %v，期望 [@auto]", fast)
 	}
 
-	// rulesets: BanList has 3 URLs
+	// rulesets：BanList 有 3 个 URL
 	ban, ok := cfg.Rulesets.Get("🛑 BanList")
 	if !ok {
-		t.Fatal("ruleset 🛑 BanList not found")
+		t.Fatal("未找到规则集 🛑 BanList")
 	}
 	if len(ban) != 3 {
-		t.Errorf("BanList URLs count = %d, want 3", len(ban))
+		t.Errorf("BanList URL 数量 = %d，期望 3", len(ban))
 	}
 
 	// rules
@@ -162,16 +162,16 @@ func TestIntegration_SpotCheckValues(t *testing.T) {
 		t.Errorf("Filters.Exclude = %q", cfg.Filters.Exclude)
 	}
 
-	// custom proxy
+	// 自定义代理
 	cp := cfg.Sources.CustomProxies[0]
 	if cp.RelayThrough.Name != "🇭🇰 Hong Kong" {
 		t.Errorf("RelayThrough.Name = %q", cp.RelayThrough.Name)
 	}
 }
 
-// TestSources_FetchOrderPreserved: FetchOrder records fetch-kind keys in YAML
-// declaration order. Subscriptions/snell/vless each appear exactly when (and
-// in the order) they are declared. custom_proxies does not enter FetchOrder.
+// TestSources_FetchOrderPreserved：FetchOrder 按 YAML 声明顺序记录拉取类键。
+// subscriptions/snell/vless 只在被声明时出现，并按声明顺序排列。
+// custom_proxies 不进入 FetchOrder。
 func TestSources_FetchOrderPreserved(t *testing.T) {
 	cases := []struct {
 		name string
@@ -209,7 +209,7 @@ custom_proxies:
 snell:
   - url: https://example.com/snell.txt
 `,
-			want: []string{"vless", "snell"}, // custom_proxies excluded
+			want: []string{"vless", "snell"}, // 不包含 custom_proxies
 		},
 		{
 			name: "empty_sections_still_recorded",
@@ -225,17 +225,17 @@ snell:
 		t.Run(tc.name, func(t *testing.T) {
 			var s Sources
 			if err := yaml.Unmarshal([]byte(tc.yaml), &s); err != nil {
-				t.Fatalf("unmarshal: %v", err)
+				t.Fatalf("反序列化：%v", err)
 			}
 			if !slices.Equal(s.FetchOrder, tc.want) {
-				t.Errorf("FetchOrder = %v, want %v", s.FetchOrder, tc.want)
+				t.Errorf("FetchOrder = %v，期望 %v", s.FetchOrder, tc.want)
 			}
 		})
 	}
 }
 
-// TestSources_RejectsDuplicateKey: the same top-level key appearing twice
-// (e.g. `vless:` declared twice in one sources block) is an error.
+// TestSources_RejectsDuplicateKey：同一个顶层键出现两次
+// （例如在一个 sources 块中两次声明 `vless:`）属于错误。
 func TestSources_RejectsDuplicateKey(t *testing.T) {
 	y := `
 vless:
@@ -246,7 +246,7 @@ vless:
 	var s Sources
 	err := yaml.Unmarshal([]byte(y), &s)
 	if err == nil {
-		t.Fatal("expected duplicate-key error, got nil")
+		t.Fatal("期望返回键重复错误，实际为 nil")
 	}
 }
 
@@ -256,17 +256,17 @@ func TestSources_JSONIncludesCompleteFetchOrder(t *testing.T) {
 subscriptions:
   - url: https://example.com/sub
 `), &s); err != nil {
-		t.Fatalf("unmarshal yaml: %v", err)
+		t.Fatalf("反序列化 YAML：%v", err)
 	}
 	out, err := json.Marshal(s)
 	if err != nil {
-		t.Fatalf("marshal json: %v", err)
+		t.Fatalf("序列化 JSON：%v", err)
 	}
 	var got struct {
 		FetchOrder []string `json:"fetch_order"`
 	}
 	if err := json.Unmarshal(out, &got); err != nil {
-		t.Fatalf("unmarshal output: %v", err)
+		t.Fatalf("反序列化输出：%v", err)
 	}
 	if !slices.Equal(got.FetchOrder, []string{"subscriptions", "snell", "vless"}) {
 		t.Fatalf("fetch_order = %v", got.FetchOrder)
@@ -283,24 +283,24 @@ func TestSources_MarshalYAMLUsesFetchOrderAndCustomLast(t *testing.T) {
 	}
 	out, err := yaml.Marshal(s)
 	if err != nil {
-		t.Fatalf("marshal yaml: %v", err)
+		t.Fatalf("序列化 YAML：%v", err)
 	}
 	wantOrder := []string{"vless:", "subscriptions:", "snell:", "custom_proxies:"}
 	last := -1
 	for _, marker := range wantOrder {
 		idx := strings.Index(string(out), marker)
 		if idx < 0 {
-			t.Fatalf("YAML missing %q:\n%s", marker, out)
+			t.Fatalf("YAML 缺少 %q：\n%s", marker, out)
 		}
 		if idx <= last {
-			t.Fatalf("%q appeared out of order in:\n%s", marker, out)
+			t.Fatalf("%q 出现的顺序不对，输出为：\n%s", marker, out)
 		}
 		last = idx
 	}
 }
 
-// TestSources_RejectsUnknownKey: typos like `vles` or `subscrition` fail loudly
-// rather than being silently ignored.
+// TestSources_RejectsUnknownKey：`vles`、`subscrition` 这类拼写错误
+// 会明确报错，而不是被悄悄忽略。
 func TestSources_RejectsUnknownKey(t *testing.T) {
 	y := `
 vles:
@@ -309,7 +309,7 @@ vles:
 	var s Sources
 	err := yaml.Unmarshal([]byte(y), &s)
 	if err == nil {
-		t.Fatal("expected unknown-key error, got nil")
+		t.Fatal("期望返回未知键错误，实际为 nil")
 	}
 }
 
@@ -317,7 +317,7 @@ func mustLoadExample(t *testing.T) *Config {
 	t.Helper()
 	cfg, err := Load(context.Background(), exampleConfigPath, nil)
 	if err != nil {
-		t.Fatalf("Load example config: %v", err)
+		t.Fatalf("加载示例配置：%v", err)
 	}
 	return cfg
 }

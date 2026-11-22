@@ -28,7 +28,7 @@ type CheckSourceResult struct {
 	Content       string   `json:"content"`
 }
 
-// CheckSource reads and parses a copy; it never saves a config or changes runtime state.
+// CheckSource 读取并解析来源内容的副本；它从不保存配置，也不改变运行时状态。
 func (s *Service) CheckSource(ctx context.Context, input CheckSourceInput) (*CheckSourceResult, error) {
 	input.Location = strings.TrimSpace(input.Location)
 	if (input.Location == "") == (strings.TrimSpace(input.Content) == "") {

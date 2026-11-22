@@ -88,8 +88,8 @@ type Service struct {
 	saveMu   sync.Mutex
 }
 
-// IncrementRequestCount records an inbound request for the runtime environment
-// stat surface. Called from the HTTP middleware on every non-internal request.
+// IncrementRequestCount 记录一次入站请求，供运行环境统计使用。
+// HTTP 中间件在每个非内部请求上调用它。
 func (s *Service) IncrementRequestCount() {
 	s.requestCount.Add(1)
 }
@@ -166,7 +166,7 @@ func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, er
 	if err != nil {
 		return nil, err
 	}
-	// A missing body must remain repairable through the config editor.
+	// 正文缺失时，仍须能通过配置编辑器修复。
 	_ = s.restoreEditableContent(ctx, cfg)
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {
@@ -209,7 +209,7 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 	if _, err := prepareAdminConfig(cfg, true); err != nil {
 		return nil, err
 	}
-	// Invalid saved YAML must remain replaceable by a valid draft; reuse is best-effort.
+	// 已保存的 YAML 无效时，仍须能被有效草稿替换；复用旧内容只是尽力而为。
 	saved, _ := parseConfigYAML(currentRaw)
 	created, err := s.persistEditableContent(cfg, saved)
 	committed := false
@@ -226,7 +226,7 @@ func (s *Service) SaveConfig(ctx context.Context, input *SaveConfigInput) (*Save
 
 	yamlBytes, err := yaml.Marshal(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("marshal config yaml: %w", err)
+		return nil, fmt.Errorf("序列化配置 YAML：%w", err)
 	}
 	if bytes.Equal(yamlBytes, currentRaw) {
 		committed = true
@@ -251,7 +251,7 @@ func (s *Service) ImportConfigYAML(ctx context.Context, raw []byte) (*ImportConf
 	if err != nil {
 		return nil, err
 	}
-	// Import keeps unreadable local references so the draft can repair them.
+	// 导入时保留无法读取的本地引用，以便在草稿中修复。
 	_ = s.restoreEditableContent(ctx, cfg)
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {

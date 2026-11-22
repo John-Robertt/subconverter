@@ -9,7 +9,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// Loon serializes projected nodes, chains, groups and rules into a Loon profile.
+// Loon 把投影后的节点、链路、分组和规则序列化为 Loon 配置。
 func Loon(p *model.TargetPipeline, baseTemplate []byte) ([]byte, error) {
 	var proxies, chains, rules, remoteRules strings.Builder
 	for _, proxy := range p.Proxies {

@@ -149,41 +149,41 @@ func countErrorContains(err error, substr string) int {
 func TestValidateGraph_ValidGraph(t *testing.T) {
 	p, err := ValidateGraph(validGroupResult(), validRouteResult())
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 	if p == nil {
-		t.Fatal("pipeline is nil")
+		t.Fatal("pipeline 为 nil")
 	}
 	if len(p.Proxies) != 4 {
-		t.Errorf("Proxies count = %d, want 4", len(p.Proxies))
+		t.Errorf("Proxies 数量 = %d，期望 4", len(p.Proxies))
 	}
 	if p.Fallback != "Final" {
-		t.Errorf("Fallback = %q, want Final", p.Fallback)
+		t.Errorf("Fallback = %q，期望 Final", p.Fallback)
 	}
 }
 
-// T-VAL-ID-001: display names may repeat because graph identity is ProxyID.
+// T-VAL-ID-001：关系图用 ProxyID 识别节点，所以显示名可以重复。
 func TestValidateGraph_DuplicateProxyNamesWithDistinctIDsAllowed(t *testing.T) {
 	gr := validGroupResult()
 	gr.Proxies[1].Name = gr.Proxies[0].Name
 
 	if _, err := ValidateGraph(gr, validRouteResult()); err != nil {
-		t.Fatalf("duplicate display names with distinct IDs should be valid: %v", err)
+		t.Fatalf("ID 不同而显示名重复应当合法：%v", err)
 	}
 }
 
-// T-VAL-ID-002: graph identity itself remains unique.
+// T-VAL-ID-002：关系图中的节点 ID 本身仍须唯一。
 func TestValidateGraph_DuplicateProxyIDsRejected(t *testing.T) {
 	gr := validGroupResult()
 	gr.Proxies[1].ID = gr.Proxies[0].ID
 
 	_, err := ValidateGraph(gr, validRouteResult())
 	if !containsError(err, "代理 ID 1 重复声明") {
-		t.Fatalf("error = %v, want duplicate proxy ID", err)
+		t.Fatalf("error = %v，期望代理 ID 重复错误", err)
 	}
 }
 
-// T-VAL-ID-003: chained proxies may only dial fetched source kinds.
+// T-VAL-ID-003：链式节点只能以拉取类节点作为上游。
 func TestValidateGraph_ChainedUpstreamMustBeFetched(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -201,7 +201,7 @@ func TestValidateGraph_ChainedUpstreamMustBeFetched(t *testing.T) {
 
 			_, err := ValidateGraph(gr, validRouteResult())
 			if !containsError(err, `必须是拉取类节点`) || !containsError(err, `kind="`+string(tt.wantKind)+`"`) {
-				t.Fatalf("error = %v, want rejection for upstream kind %q", err, tt.wantKind)
+				t.Fatalf("error = %v，期望拒绝上游类型 %q", err, tt.wantKind)
 			}
 		})
 	}
@@ -221,10 +221,10 @@ func TestValidateGraph_RouteGroupMemberNotFound(t *testing.T) {
 
 	_, err := ValidateGraph(gr, rr)
 	if !containsError(err, `成员 "Nonexistent" 不存在`) {
-		t.Errorf("error = %v, want mention of Nonexistent", err)
+		t.Errorf("error = %v，期望提到 Nonexistent", err)
 	}
 	if got := countErrorContains(err, `成员 "Nonexistent" 不存在`); got != 2 {
-		t.Errorf("expected declared and resolved missing-member errors, got %d: %v", got, err)
+		t.Errorf("期望声明阶段和解析阶段各报一次成员不存在错误，实际 %d 个：%v", got, err)
 	}
 }
 
@@ -239,7 +239,7 @@ func TestValidateGraph_CircularReference(t *testing.T) {
 
 	_, err := ValidateGraph(validGroupResult(), rr)
 	if !containsError(err, "循环引用") {
-		t.Errorf("error = %v, want circular reference", err)
+		t.Errorf("error = %v，期望循环引用错误", err)
 	}
 }
 
@@ -253,7 +253,7 @@ func TestValidateGraph_SelfReference(t *testing.T) {
 
 	_, err := ValidateGraph(validGroupResult(), rr)
 	if !containsError(err, "循环引用") {
-		t.Errorf("error = %v, want circular reference", err)
+		t.Errorf("error = %v，期望循环引用错误", err)
 	}
 }
 
@@ -296,7 +296,7 @@ func TestValidateGraph_ProxyAndNodeGroupMayShareDisplayName(t *testing.T) {
 	})
 
 	if _, err := ValidateGraph(gr, validRouteResult()); err != nil {
-		t.Fatalf("proxy display name should not occupy group namespace: %v", err)
+		t.Fatalf("节点显示名不应占用分组的命名空间：%v", err)
 	}
 }
 
@@ -334,7 +334,7 @@ func TestValidateGraph_RouteGroupExpandedProxyMembersAllowedViaAtAll(t *testing.
 	}
 
 	if _, err := ValidateGraph(gr, rr); err != nil {
-		t.Fatalf("@all-expanded proxies should remain valid: %v", err)
+		t.Fatalf("由 @all 展开的节点应保持合法：%v", err)
 	}
 }
 
@@ -360,7 +360,7 @@ func TestValidateGraph_DirectRejectAreValid(t *testing.T) {
 	}
 
 	if _, err := ValidateGraph(validGroupResult(), rr); err != nil {
-		t.Fatalf("DIRECT/REJECT should be valid members: %v", err)
+		t.Fatalf("DIRECT/REJECT 应是合法成员：%v", err)
 	}
 }
 
@@ -381,19 +381,19 @@ func TestValidateGraph_MultipleErrors(t *testing.T) {
 	_, err := ValidateGraph(gr, rr)
 	errs := unwrapAll(err)
 	if len(errs) < 2 {
-		t.Errorf("expected at least 2 errors, got %d: %v", len(errs), err)
+		t.Errorf("期望至少 2 个错误，实际 %d 个：%v", len(errs), err)
 	}
 	for _, e := range errs {
 		var buildErr *errtype.BuildError
 		if !errors.As(e, &buildErr) {
-			t.Errorf("expected *errtype.BuildError, got %T", e)
+			t.Errorf("期望 *errtype.BuildError，实际 %T", e)
 		} else if buildErr.Phase != "validate" {
-			t.Errorf("Phase = %q, want validate", buildErr.Phase)
+			t.Errorf("Phase = %q，期望 validate", buildErr.Phase)
 		}
 	}
 }
 
-// T-VAL-SNELL-001: Snell proxies are ordinary ID-addressed graph nodes.
+// T-VAL-SNELL-001：Snell 节点是按 ID 寻址的普通关系图节点。
 func TestValidateGraph_WithSnellProxy(t *testing.T) {
 	gr := &GroupResult{
 		Proxies: []model.Proxy{
@@ -417,10 +417,10 @@ func TestValidateGraph_WithSnellProxy(t *testing.T) {
 
 	p, err := ValidateGraph(gr, rr)
 	if err != nil {
-		t.Fatalf("ValidateGraph with Snell proxies failed: %v", err)
+		t.Fatalf("含 Snell 节点的 ValidateGraph 失败：%v", err)
 	}
 	if len(p.Proxies) != 3 {
-		t.Errorf("Proxies count = %d, want 3", len(p.Proxies))
+		t.Errorf("Proxies 数量 = %d，期望 3", len(p.Proxies))
 	}
 }
 
@@ -445,6 +445,6 @@ func TestValidateGraph_ChainGroupNameCollidesWithRegionGroup(t *testing.T) {
 
 	_, err := ValidateGraph(gr, rr)
 	if !containsError(err, `节点组 "HK" 重复声明`) {
-		t.Errorf("error = %v, want duplicate-declaration for HK", err)
+		t.Errorf("error = %v，期望 HK 重复声明错误", err)
 	}
 }

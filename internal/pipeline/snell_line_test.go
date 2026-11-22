@@ -8,7 +8,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// T-SNELL-001: Valid Snell Surge-line parsing (basic + ShadowTLS + whitespace variants).
+// T-SNELL-001: 解析合法的 Snell Surge 行（基础写法、ShadowTLS、带空白的变体）。
 func TestParseSnellSurgeLine_Valid(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -113,36 +113,36 @@ func TestParseSnellSurgeLine_Valid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ParseSnellSurgeLine(tt.line)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("意外错误：%v", err)
 			}
 			if got.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", got.Name, tt.wantName)
+				t.Errorf("Name = %q，期望 %q", got.Name, tt.wantName)
 			}
 			if got.Type != tt.wantType {
-				t.Errorf("Type = %q, want %q", got.Type, tt.wantType)
+				t.Errorf("Type = %q，期望 %q", got.Type, tt.wantType)
 			}
 			if got.Server != tt.wantHost {
-				t.Errorf("Server = %q, want %q", got.Server, tt.wantHost)
+				t.Errorf("Server = %q，期望 %q", got.Server, tt.wantHost)
 			}
 			if got.Port != tt.wantPort {
-				t.Errorf("Port = %d, want %d", got.Port, tt.wantPort)
+				t.Errorf("Port = %d，期望 %d", got.Port, tt.wantPort)
 			}
 			if got.Kind != tt.wantKind {
-				t.Errorf("Kind = %q, want %q", got.Kind, tt.wantKind)
+				t.Errorf("Kind = %q，期望 %q", got.Kind, tt.wantKind)
 			}
 			if len(got.Params) != len(tt.params) {
-				t.Errorf("Params count = %d, want %d (got=%v)", len(got.Params), len(tt.params), got.Params)
+				t.Errorf("Params 数量 = %d，期望 %d（实际=%v）", len(got.Params), len(tt.params), got.Params)
 			}
 			for k, v := range tt.params {
 				if got.Params[k] != v {
-					t.Errorf("Params[%q] = %q, want %q", k, got.Params[k], v)
+					t.Errorf("Params[%q] = %q，期望 %q", k, got.Params[k], v)
 				}
 			}
 		})
 	}
 }
 
-// T-SNELL-002: Skipped lines (empty, comments).
+// T-SNELL-002: 跳过的行（空行、注释）。
 func TestParseSnellSurgeLine_Skip(t *testing.T) {
 	skipLines := []string{
 		"",
@@ -155,12 +155,12 @@ func TestParseSnellSurgeLine_Skip(t *testing.T) {
 	for _, line := range skipLines {
 		_, err := ParseSnellSurgeLine(line)
 		if !errors.Is(err, errSnellLineSkip) {
-			t.Errorf("line %q: expected errSnellLineSkip, got %v", line, err)
+			t.Errorf("行 %q：期望 errSnellLineSkip，实际为 %v", line, err)
 		}
 	}
 }
 
-// T-SNELL-003: Invalid lines produce BuildError with CodeBuildSnellLineInvalid.
+// T-SNELL-003: 非法行产生带 CodeBuildSnellLineInvalid 的 BuildError。
 func TestParseSnellSurgeLine_Invalid(t *testing.T) {
 	badLines := []struct {
 		name string
@@ -182,30 +182,30 @@ func TestParseSnellSurgeLine_Invalid(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := ParseSnellSurgeLine(tc.line)
 			if err == nil {
-				t.Fatalf("expected error for line %q, got nil", tc.line)
+				t.Fatalf("期望行 %q 返回错误，实际为 nil", tc.line)
 			}
 			var be *errtype.BuildError
 			if !errors.As(err, &be) {
-				t.Fatalf("expected BuildError, got %T: %v", err, err)
+				t.Fatalf("期望 BuildError，实际为 %T：%v", err, err)
 			}
 			if be.Code != errtype.CodeBuildSnellLineInvalid {
-				t.Errorf("Code = %q, want %q", be.Code, errtype.CodeBuildSnellLineInvalid)
+				t.Errorf("Code = %q，期望 %q", be.Code, errtype.CodeBuildSnellLineInvalid)
 			}
 			if be.Phase != "source" {
-				t.Errorf("Phase = %q, want %q", be.Phase, "source")
+				t.Errorf("Phase = %q，期望 %q", be.Phase, "source")
 			}
 		})
 	}
 }
 
-// T-SNELL-004: Duplicate keys — last one wins (matches Surge's permissive behaviour).
+// T-SNELL-004: 重复键以最后一个为准（与 Surge 的宽松行为一致）。
 func TestParseSnellSurgeLine_DuplicateKey(t *testing.T) {
 	line := "HK = snell, 1.2.3.4, 443, psk=first, psk=second, version=4"
 	got, err := ParseSnellSurgeLine(line)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 	if got.Params["psk"] != "second" {
-		t.Errorf("Params[psk] = %q, want %q (last-wins semantics)", got.Params["psk"], "second")
+		t.Errorf("Params[psk] = %q，期望 %q（后者覆盖前者）", got.Params["psk"], "second")
 	}
 }

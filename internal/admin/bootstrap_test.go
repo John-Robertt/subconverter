@@ -15,7 +15,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/auth"
 )
 
-// T-ADM-BOOT-001: setup/import/first-save/reload remains authenticated even without a main config.
+// T-ADM-BOOT-001：即使没有主配置，setup、导入、首次保存和 reload 仍然需要认证。
 func TestAdmin_BootstrapConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -30,16 +30,16 @@ func TestAdmin_BootstrapConfig(t *testing.T) {
 	handler := New(svc, authSvc)
 	anonymous := serve(handler, http.MethodGet, "/api/config", "", nil)
 	if anonymous.Code != http.StatusUnauthorized {
-		t.Fatalf("bootstrap leaked config without a session: %d", anonymous.Code)
+		t.Fatalf("初始化阶段在没有 session 时泄露了配置：%d", anonymous.Code)
 	}
 	setup := serve(handler, http.MethodPost, "/api/auth/setup", `{"username":"admin","password":"long-enough-password","setup_token":"setup-secret"}`, nil)
 	if setup.Code != http.StatusOK || len(setup.Result().Cookies()) == 0 {
-		t.Fatalf("setup status=%d body=%s", setup.Code, setup.Body.String())
+		t.Fatalf("setup 状态码=%d 响应体=%s", setup.Code, setup.Body.String())
 	}
 	headers := map[string]string{"Cookie": auth.SessionCookieName + "=" + setup.Result().Cookies()[0].Value}
 	status := serve(handler, http.MethodGet, "/api/status", "", headers)
 	if status.Code != http.StatusOK || !strings.Contains(status.Body.String(), `"exists":false`) || !strings.Contains(status.Body.String(), `"config_write":true`) {
-		t.Fatalf("setup status=%d body=%s", status.Code, status.Body.String())
+		t.Fatalf("setup 后状态接口 状态码=%d 响应体=%s", status.Code, status.Body.String())
 	}
 	snapshot := serve(handler, http.MethodGet, "/api/config", "", headers)
 	var baseline struct {
@@ -49,12 +49,12 @@ func TestAdmin_BootstrapConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if snapshot.Code != http.StatusOK || baseline.ConfigRevision == "" {
-		t.Fatalf("blank draft status=%d body=%s", snapshot.Code, snapshot.Body.String())
+		t.Fatalf("空白草稿 状态码=%d 响应体=%s", snapshot.Code, snapshot.Body.String())
 	}
 	for _, endpoint := range []string{"/api/config/saved.zip", "/api/config/effective.yaml", "/api/config/effective.zip", "/api/preview/nodes", "/api/preview/groups", "/api/generate/preview?format=clash", "/api/generate/link?format=clash"} {
 		response := serve(handler, http.MethodGet, endpoint, "", headers)
 		if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"config_not_initialized"`) {
-			t.Fatalf("%s status=%d body=%s", endpoint, response.Code, response.Body.String())
+			t.Fatalf("%s 状态码=%d 响应体=%s", endpoint, response.Code, response.Body.String())
 		}
 	}
 	const raw = "sources:\n  subscriptions:\n    - {format: text, content_file: subscriptions/1.txt}\ngroups:\n  HK: {match: HK, strategy: select}\nrouting:\n  proxy: [HK, DIRECT]\nfallback: proxy\n"
@@ -62,10 +62,10 @@ func TestAdmin_BootstrapConfig(t *testing.T) {
 	zipHeaders := map[string]string{"Cookie": headers["Cookie"], "Content-Type": "application/zip"}
 	imported := serve(handler, http.MethodPost, "/api/config/import", string(archive), zipHeaders)
 	if imported.Code != http.StatusOK {
-		t.Fatalf("first ZIP import status=%d body=%s", imported.Code, imported.Body.String())
+		t.Fatalf("首次 ZIP 导入 状态码=%d 响应体=%s", imported.Code, imported.Body.String())
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("import created the main file: %v", err)
+		t.Fatalf("导入操作创建了主配置文件：%v", err)
 	}
 	var draft struct {
 		Config json.RawMessage `json:"config"`
@@ -79,16 +79,16 @@ func TestAdmin_BootstrapConfig(t *testing.T) {
 	}
 	saved := serve(handler, http.MethodPut, "/api/config", string(body), headers)
 	if saved.Code != http.StatusOK {
-		t.Fatalf("first save status=%d body=%s", saved.Code, saved.Body.String())
+		t.Fatalf("首次保存 状态码=%d 响应体=%s", saved.Code, saved.Body.String())
 	}
 	reloaded := serve(handler, http.MethodPost, "/api/reload", "", headers)
 	if reloaded.Code != http.StatusOK {
-		t.Fatalf("first reload status=%d body=%s", reloaded.Code, reloaded.Body.String())
+		t.Fatalf("首次 reload 状态码=%d 响应体=%s", reloaded.Code, reloaded.Body.String())
 	}
 	for _, format := range []string{"clash", "surge", "loon"} {
 		preview := serve(handler, http.MethodGet, "/api/generate/preview?format="+format, "", headers)
 		if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), "HK_BOOT") {
-			t.Fatalf("%s status=%d body=%s", format, preview.Code, preview.Body.String())
+			t.Fatalf("%s 状态码=%d 响应体=%s", format, preview.Code, preview.Body.String())
 		}
 	}
 }

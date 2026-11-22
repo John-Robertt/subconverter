@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// T-SS-001: ParseBody decodes valid base64 SS URIs
+// T-SS-001：ParseBody 能解码合法的 base64 SS URI
 func TestParseBody_Valid(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -145,40 +145,40 @@ func TestParseBody_Valid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r, err := ParseBody(tt.body, tt.keepFragment)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("意外错误：%v", err)
 			}
 			if r.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", r.Name, tt.wantName)
+				t.Errorf("Name = %q，期望 %q", r.Name, tt.wantName)
 			}
 			if r.Server != tt.wantServer {
-				t.Errorf("Server = %q, want %q", r.Server, tt.wantServer)
+				t.Errorf("Server = %q，期望 %q", r.Server, tt.wantServer)
 			}
 			if r.Port != tt.wantPort {
-				t.Errorf("Port = %d, want %d", r.Port, tt.wantPort)
+				t.Errorf("Port = %d，期望 %d", r.Port, tt.wantPort)
 			}
 			if r.Cipher != tt.wantCipher {
-				t.Errorf("Cipher = %q, want %q", r.Cipher, tt.wantCipher)
+				t.Errorf("Cipher = %q，期望 %q", r.Cipher, tt.wantCipher)
 			}
 			if r.Password != tt.wantPassword {
-				t.Errorf("Password = %q, want %q", r.Password, tt.wantPassword)
+				t.Errorf("Password = %q，期望 %q", r.Password, tt.wantPassword)
 			}
 			if tt.wantPlugin == nil {
 				if r.Plugin != nil {
-					t.Errorf("Plugin = %#v, want nil", r.Plugin)
+					t.Errorf("Plugin = %#v，期望 nil", r.Plugin)
 				}
 			} else {
 				if r.Plugin == nil {
-					t.Fatalf("Plugin = nil, want %#v", tt.wantPlugin)
+					t.Fatalf("Plugin = nil，期望 %#v", tt.wantPlugin)
 				}
 				if r.Plugin.Name != tt.wantPlugin.Name {
-					t.Errorf("Plugin.Name = %q, want %q", r.Plugin.Name, tt.wantPlugin.Name)
+					t.Errorf("Plugin.Name = %q，期望 %q", r.Plugin.Name, tt.wantPlugin.Name)
 				}
 				if len(r.Plugin.Opts) != len(tt.wantPlugin.Opts) {
-					t.Fatalf("Plugin.Opts len = %d, want %d", len(r.Plugin.Opts), len(tt.wantPlugin.Opts))
+					t.Fatalf("Plugin.Opts 长度 = %d，期望 %d", len(r.Plugin.Opts), len(tt.wantPlugin.Opts))
 				}
 				for key, want := range tt.wantPlugin.Opts {
 					if got := r.Plugin.Opts[key]; got != want {
-						t.Errorf("Plugin.Opts[%q] = %q, want %q", key, got, want)
+						t.Errorf("Plugin.Opts[%q] = %q，期望 %q", key, got, want)
 					}
 				}
 			}
@@ -186,7 +186,7 @@ func TestParseBody_Valid(t *testing.T) {
 	}
 }
 
-// T-SS-002: ParseBody returns errors for invalid input
+// T-SS-002：ParseBody 对非法输入返回错误
 func TestParseBody_Invalid(t *testing.T) {
 	tests := []struct {
 		name string
@@ -209,7 +209,7 @@ func TestParseBody_Invalid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ParseBody(tt.body, false)
 			if err == nil {
-				t.Fatal("expected error, got nil")
+				t.Fatal("期望返回错误，实际为 nil")
 			}
 		})
 	}

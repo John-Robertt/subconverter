@@ -18,8 +18,8 @@ type subscriptionDocument struct {
 	Proxies []model.Proxy
 }
 
-// DetectSubscriptionFormat uses the same precedence as Source before a document is copied.
-// An empty result denotes the legacy text/Base64 subscription formats.
+// DetectSubscriptionFormat 在复制文档之前，按与 Source 相同的优先级判断格式。
+// 返回空字符串表示传统的文本/Base64 订阅格式。
 func DetectSubscriptionFormat(location string, body []byte) string {
 	document, _ := parseSubscriptionDocument(location, body, "auto")
 	if document == nil {

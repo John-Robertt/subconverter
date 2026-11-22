@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// --- test helpers ---
+// --- 测试辅助函数 ---
 
 func makeSubProxy(name string) model.Proxy {
 	return model.Proxy{
@@ -39,7 +39,7 @@ func mustGroupsMap(t *testing.T, yamlStr string) config.OrderedMap[config.Group]
 	t.Helper()
 	var m config.OrderedMap[config.Group]
 	if err := yaml.Unmarshal([]byte(yamlStr), &m); err != nil {
-		t.Fatalf("mustGroupsMap: %v", err)
+		t.Fatalf("mustGroupsMap 出错：%v", err)
 	}
 	return m
 }
@@ -48,14 +48,14 @@ func mustRoutingMap(t *testing.T, yamlStr string) config.OrderedMap[[]string] {
 	t.Helper()
 	var m config.OrderedMap[[]string]
 	if err := yaml.Unmarshal([]byte(yamlStr), &m); err != nil {
-		t.Fatalf("mustRoutingMap: %v", err)
+		t.Fatalf("mustRoutingMap 出错：%v", err)
 	}
 	return m
 }
 
-// --- Group tests ---
+// --- Group 测试 ---
 
-// T-GRP-001: Region group regex matching
+// T-GRP-001：区域组正则匹配
 func TestGroup_RegionGroupMatching(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -75,54 +75,54 @@ func TestGroup_RegionGroupMatching(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result.NodeGroups) != 2 {
-		t.Fatalf("got %d node groups, want 2", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 2 个", len(result.NodeGroups))
 	}
 
-	// HK group
+	// HK 组
 	hk := result.NodeGroups[0]
 	if hk.Name != "🇭🇰 Hong Kong" {
-		t.Errorf("group[0].Name = %q, want %q", hk.Name, "🇭🇰 Hong Kong")
+		t.Errorf("group[0].Name = %q，期望 %q", hk.Name, "🇭🇰 Hong Kong")
 	}
 	if hk.Strategy != "select" {
-		t.Errorf("group[0].Strategy = %q, want %q", hk.Strategy, "select")
+		t.Errorf("group[0].Strategy = %q，期望 %q", hk.Strategy, "select")
 	}
 	wantHK := []string{"HK-01", "HK-02"}
 	if len(hk.Members) != len(wantHK) {
-		t.Fatalf("HK members = %v, want %v", hk.Members, wantHK)
+		t.Fatalf("HK 成员 = %v，期望 %v", hk.Members, wantHK)
 	}
 	for i, want := range wantHK {
 		if got := proxyNameByID(result.Proxies, hk.Members[i]); got != want {
-			t.Errorf("HK.Members[%d] resolves to %q, want %q", i, got, want)
+			t.Errorf("HK.Members[%d] 解析为 %q，期望 %q", i, got, want)
 		}
 	}
 
-	// SG group
+	// SG 组
 	sg := result.NodeGroups[1]
 	if sg.Name != "🇸🇬 Singapore" {
-		t.Errorf("group[1].Name = %q, want %q", sg.Name, "🇸🇬 Singapore")
+		t.Errorf("group[1].Name = %q，期望 %q", sg.Name, "🇸🇬 Singapore")
 	}
 	if sg.Strategy != "url-test" {
-		t.Errorf("group[1].Strategy = %q, want %q", sg.Strategy, "url-test")
+		t.Errorf("group[1].Strategy = %q，期望 %q", sg.Strategy, "url-test")
 	}
 	if len(sg.Members) != 1 || proxyNameByID(result.Proxies, sg.Members[0]) != "SG-01" {
-		t.Errorf("SG.Members = %v, want [SG-01]", sg.Members)
+		t.Errorf("SG.Members = %v，期望 [SG-01]", sg.Members)
 	}
 
-	// Custom proxy "MY-PROXY" should NOT appear in any region group.
+	// 自定义节点 "MY-PROXY" 不应出现在任何区域组中。
 	for _, g := range result.NodeGroups {
 		for _, m := range g.Members {
 			if proxyNameByID(result.Proxies, m) == "MY-PROXY" {
-				t.Errorf("custom proxy MY-PROXY should not be matched by region group %q", g.Name)
+				t.Errorf("自定义节点 MY-PROXY 不应被区域组 %q 匹配", g.Name)
 			}
 		}
 	}
 }
 
-// T-GRP-002: relay_through type=group
+// T-GRP-002：relay_through type=group
 func TestGroup_ChainedTypeGroup(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -146,61 +146,61 @@ func TestGroup_ChainedTypeGroup(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// Should have 2 node groups: region + chain.
+	// 应有 2 个节点组：区域组 + 链式组。
 	if len(result.NodeGroups) != 2 {
-		t.Fatalf("got %d node groups, want 2", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 2 个", len(result.NodeGroups))
 	}
 
 	chainGroup := result.NodeGroups[1]
 	if chainGroup.Name != "HK-ISP" {
-		t.Errorf("chain group name = %q, want %q", chainGroup.Name, "HK-ISP")
+		t.Errorf("链式组名称 = %q，期望 %q", chainGroup.Name, "HK-ISP")
 	}
 	if chainGroup.Strategy != "select" {
-		t.Errorf("chain group strategy = %q, want %q", chainGroup.Strategy, "select")
+		t.Errorf("链式组策略 = %q，期望 %q", chainGroup.Strategy, "select")
 	}
 
 	wantMembers := []string{"HK-01→HK-ISP", "HK-02→HK-ISP"}
 	if len(chainGroup.Members) != len(wantMembers) {
-		t.Fatalf("chain members = %v, want %v", chainGroup.Members, wantMembers)
+		t.Fatalf("链式组成员 = %v，期望 %v", chainGroup.Members, wantMembers)
 	}
 	for i, want := range wantMembers {
 		if got := proxyNameByID(result.Proxies, chainGroup.Members[i]); got != want {
-			t.Errorf("chain.Members[%d] resolves to %q, want %q", i, got, want)
+			t.Errorf("chain.Members[%d] 解析为 %q，期望 %q", i, got, want)
 		}
 	}
 
-	// 2 sub + 2 chained = 4. Source stage drops custom proxies with
-	// relay_through (see convertCustomProxies), so HK-ISP never enters the
-	// proxy list as a KindCustom entry.
+	// 2 个订阅节点 + 2 个链式节点 = 4。Source 阶段会丢弃带 relay_through 的
+	// 自定义节点（见 convertCustomProxies），所以 HK-ISP 不会以 KindCustom
+	// 条目进入节点列表。
 	if len(result.Proxies) != 4 {
-		t.Fatalf("got %d proxies, want 4", len(result.Proxies))
+		t.Fatalf("得到 %d 个节点，期望 4 个", len(result.Proxies))
 	}
 
-	chained := result.Proxies[2] // first chained proxy
+	chained := result.Proxies[2] // 第一个链式节点
 	if chained.Name != "HK-01→HK-ISP" {
-		t.Errorf("chained.Name = %q, want %q", chained.Name, "HK-01→HK-ISP")
+		t.Errorf("chained.Name = %q，期望 %q", chained.Name, "HK-01→HK-ISP")
 	}
 	if chained.Kind != model.KindChained {
-		t.Errorf("chained.Kind = %q, want %q", chained.Kind, model.KindChained)
+		t.Errorf("chained.Kind = %q，期望 %q", chained.Kind, model.KindChained)
 	}
 	if got := proxyNameByID(result.Proxies, chained.DialerID); got != "HK-01" {
-		t.Errorf("chained.DialerID resolves to %q, want %q", got, "HK-01")
+		t.Errorf("chained.DialerID 解析为 %q，期望 %q", got, "HK-01")
 	}
 	if chained.Type != "socks5" {
-		t.Errorf("chained.Type = %q, want %q", chained.Type, "socks5")
+		t.Errorf("chained.Type = %q，期望 %q", chained.Type, "socks5")
 	}
 	if chained.Server != "154.197.1.1" {
-		t.Errorf("chained.Server = %q, want %q", chained.Server, "154.197.1.1")
+		t.Errorf("chained.Server = %q，期望 %q", chained.Server, "154.197.1.1")
 	}
 	if chained.Port != 45002 {
-		t.Errorf("chained.Port = %d, want %d", chained.Port, 45002)
+		t.Errorf("chained.Port = %d，期望 %d", chained.Port, 45002)
 	}
 }
 
-// T-GRP-ID-001: filtered source identities are never reused by chained nodes.
+// T-GRP-ID-001：已被过滤的来源节点编号永远不会被链式节点复用。
 func TestGroup_ChainedIDStartsAfterSourceAllocationHighWatermark(t *testing.T) {
 	source := &SourceResult{
 		Proxies: []model.Proxy{
@@ -218,22 +218,22 @@ func TestGroup_ChainedIDStartsAfterSourceAllocationHighWatermark(t *testing.T) {
 				},
 			},
 		},
-		NextProxyID: 3, // ID 2 belonged to an original proxy removed by Filter.
+		NextProxyID: 3, // ID 2 属于一个被 Filter 移除的原始节点。
 	}
 
 	result, err := Group(source, nil)
 	if err != nil {
-		t.Fatalf("Group: %v", err)
+		t.Fatalf("Group 出错：%v", err)
 	}
 	if len(result.Proxies) != 2 {
-		t.Fatalf("Proxies = %+v, want one original and one chained proxy", result.Proxies)
+		t.Fatalf("Proxies = %+v，期望一个原始节点和一个链式节点", result.Proxies)
 	}
 	if got := result.Proxies[1].ID; got != 3 {
-		t.Fatalf("chained proxy ID = %d, want 3; filtered source ID 2 must not be reused", got)
+		t.Fatalf("链式节点 ID = %d，期望 3；已过滤的来源 ID 2 不得被复用", got)
 	}
 }
 
-// T-GRP-003: relay_through type=select
+// T-GRP-003：relay_through type=select
 func TestGroup_ChainedTypeSelect(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -255,25 +255,25 @@ func TestGroup_ChainedTypeSelect(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result.NodeGroups) != 1 {
-		t.Fatalf("got %d node groups, want 1 (chain group only)", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 1 个（只有链式组）", len(result.NodeGroups))
 	}
 
 	chainGroup := result.NodeGroups[0]
 	if chainGroup.Strategy != "url-test" {
-		t.Errorf("chain group strategy = %q, want %q", chainGroup.Strategy, "url-test")
+		t.Errorf("链式组策略 = %q，期望 %q", chainGroup.Strategy, "url-test")
 	}
 
 	wantMembers := []string{"HK-01→PROXY-A", "SG-01→PROXY-A"}
 	if len(chainGroup.Members) != len(wantMembers) {
-		t.Fatalf("chain members = %v, want %v", chainGroup.Members, wantMembers)
+		t.Fatalf("链式组成员 = %v，期望 %v", chainGroup.Members, wantMembers)
 	}
 	for i, want := range wantMembers {
 		if got := proxyNameByID(result.Proxies, chainGroup.Members[i]); got != want {
-			t.Errorf("Members[%d] resolves to %q, want %q", i, got, want)
+			t.Errorf("Members[%d] 解析为 %q，期望 %q", i, got, want)
 		}
 	}
 }
@@ -305,18 +305,18 @@ func TestGroup_ChainedTypeSelectNoMatchingUpstreams(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("Group stage should tolerate no-match, got error: %v", err)
+		t.Fatalf("Group 阶段应容忍匹配不到上游，却得到错误：%v", err)
 	}
 
 	if len(result.NodeGroups) != 1 {
-		t.Fatalf("got %d node groups, want 1 (empty chain group)", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 1 个（空链式组）", len(result.NodeGroups))
 	}
 	chainGroup := result.NodeGroups[0]
 	if chainGroup.Name != "UNREACHED-CHAIN" {
-		t.Errorf("chain group Name = %q, want %q", chainGroup.Name, "UNREACHED-CHAIN")
+		t.Errorf("链式组 Name = %q，期望 %q", chainGroup.Name, "UNREACHED-CHAIN")
 	}
 	if len(chainGroup.Members) != 0 {
-		t.Fatalf("chain group Members = %v, want empty", chainGroup.Members)
+		t.Fatalf("链式组 Members = %v，期望为空", chainGroup.Members)
 	}
 
 	// 把这个空链式组喂给 ValidateGraph，确认下游兜底链路依然生效——
@@ -359,9 +359,9 @@ func TestGroup_ChainedTypeSelectNoMatchingUpstreams(t *testing.T) {
 	}
 
 	if _, err := ValidateGraph(gr, rr); err == nil {
-		t.Fatal("ValidateGraph should reject empty chain group")
+		t.Fatal("ValidateGraph 应拒绝空链式组")
 	} else if !strings.Contains(err.Error(), "UNREACHED-CHAIN") || !strings.Contains(err.Error(), "没有成员") {
-		t.Errorf("ValidateGraph error should mention empty chain group by name, got: %v", err)
+		t.Errorf("ValidateGraph 的错误应点名这个空链式组，实际：%v", err)
 	}
 }
 
@@ -385,25 +385,25 @@ func TestGroup_ProxyInvariantValidation(t *testing.T) {
 		},
 	}, nil)
 	if err == nil {
-		t.Fatal("expected invariant error, got nil")
+		t.Fatal("期望不变量错误，实际为 nil")
 	}
 	if result != nil {
-		t.Fatalf("result = %+v, want nil", result)
+		t.Fatalf("result = %+v，期望 nil", result)
 	}
 
 	var buildErr *errtype.BuildError
 	if !errors.As(err, &buildErr) {
-		t.Fatalf("err type = %T, want *errtype.BuildError", err)
+		t.Fatalf("错误类型 = %T，期望 *errtype.BuildError", err)
 	}
 	if buildErr.Phase != "group" {
-		t.Errorf("Phase = %q, want group", buildErr.Phase)
+		t.Errorf("Phase = %q，期望 group", buildErr.Phase)
 	}
 	if !strings.Contains(buildErr.Message, "type=ss 缺少必填参数 password") {
-		t.Fatalf("unexpected message: %s", buildErr.Message)
+		t.Fatalf("意外的错误信息：%s", buildErr.Message)
 	}
 }
 
-// T-GRP-004: relay_through type=all
+// T-GRP-004：relay_through type=all
 func TestGroup_ChainedTypeAll(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -423,26 +423,26 @@ func TestGroup_ChainedTypeAll(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result.NodeGroups) != 1 {
-		t.Fatalf("got %d node groups, want 1", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 1 个", len(result.NodeGroups))
 	}
 
 	wantMembers := []string{"HK-01→PROXY-B", "SG-01→PROXY-B"}
 	chainGroup := result.NodeGroups[0]
 	if len(chainGroup.Members) != len(wantMembers) {
-		t.Fatalf("chain members = %v, want %v", chainGroup.Members, wantMembers)
+		t.Fatalf("链式组成员 = %v，期望 %v", chainGroup.Members, wantMembers)
 	}
 	for i, want := range wantMembers {
 		if got := proxyNameByID(result.Proxies, chainGroup.Members[i]); got != want {
-			t.Errorf("Members[%d] resolves to %q, want %q", i, got, want)
+			t.Errorf("Members[%d] 解析为 %q，期望 %q", i, got, want)
 		}
 	}
 }
 
-// T-GRP-005: @all excludes chained nodes
+// T-GRP-005：@all 不包含链式节点
 func TestGroup_AllProxiesExcludesChained(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -463,33 +463,33 @@ func TestGroup_AllProxiesExcludesChained(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// AllProxies should contain subscription + custom, but NOT chained.
+	// AllProxies 应包含订阅节点和自定义节点，但不包含链式节点。
 	wantAll := []string{"HK-01", "SG-01", "MY-PROXY"}
 	if len(result.AllProxies) != len(wantAll) {
-		t.Fatalf("AllProxies = %v, want %v", result.AllProxies, wantAll)
+		t.Fatalf("AllProxies = %v，期望 %v", result.AllProxies, wantAll)
 	}
 	for i, want := range wantAll {
 		if got := proxyNameByID(result.Proxies, result.AllProxies[i]); got != want {
-			t.Errorf("AllProxies[%d] resolves to %q, want %q", i, got, want)
+			t.Errorf("AllProxies[%d] 解析为 %q，期望 %q", i, got, want)
 		}
 	}
 
-	// Chained proxies should NOT be in AllProxies.
+	// 链式节点不应出现在 AllProxies 中。
 	allSet := make(map[string]bool)
 	for _, id := range result.AllProxies {
 		allSet[proxyNameByID(result.Proxies, id)] = true
 	}
 	for _, p := range result.Proxies {
 		if p.Kind == model.KindChained && allSet[p.Name] {
-			t.Errorf("chained proxy %q should not be in AllProxies", p.Name)
+			t.Errorf("链式节点 %q 不应出现在 AllProxies 中", p.Name)
 		}
 	}
 }
 
-// T-GRP-006: relay_through type=group referencing non-existent group
+// T-GRP-006：relay_through type=group 引用不存在的组
 func TestGroup_ChainedGroupRefNotFound(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -512,19 +512,19 @@ func TestGroup_ChainedGroupRefNotFound(t *testing.T) {
 
 	_, err := groupFromConfig(cfg, proxies)
 	if err == nil {
-		t.Fatal("expected error for non-existent group reference")
+		t.Fatal("引用不存在的组时应返回错误")
 	}
 
 	var buildErr *errtype.BuildError
 	if !errors.As(err, &buildErr) {
-		t.Fatalf("error type = %T, want *errtype.BuildError", err)
+		t.Fatalf("错误类型 = %T，期望 *errtype.BuildError", err)
 	}
 	if buildErr.Phase != "group" {
-		t.Errorf("Phase = %q, want %q", buildErr.Phase, "group")
+		t.Errorf("Phase = %q，期望 %q", buildErr.Phase, "group")
 	}
 }
 
-// T-GRP-007: No custom proxies with relay_through
+// T-GRP-007：没有带 relay_through 的自定义节点
 func TestGroup_NoChaining(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -544,24 +544,24 @@ func TestGroup_NoChaining(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// Only 1 region group, no chain groups.
+	// 只有 1 个区域组，没有链式组。
 	if len(result.NodeGroups) != 1 {
-		t.Fatalf("got %d node groups, want 1", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 1 个", len(result.NodeGroups))
 	}
 	if result.NodeGroups[0].Name != "🇭🇰 Hong Kong" {
-		t.Errorf("group name = %q, want region group", result.NodeGroups[0].Name)
+		t.Errorf("组名 = %q，期望区域组", result.NodeGroups[0].Name)
 	}
 
-	// Proxies unchanged (no chained added).
+	// Proxies 不变（没有新增链式节点）。
 	if len(result.Proxies) != 3 {
-		t.Errorf("got %d proxies, want 3 (no chained)", len(result.Proxies))
+		t.Errorf("得到 %d 个节点，期望 3 个（无链式节点）", len(result.Proxies))
 	}
 }
 
-// T-GRP-008: Multiple custom proxies with relay_through
+// T-GRP-008：多个带 relay_through 的自定义节点
 func TestGroup_MultipleChainedGroups(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -582,33 +582,33 @@ func TestGroup_MultipleChainedGroups(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// 1 region group + 2 chain groups = 3.
+	// 1 个区域组 + 2 个链式组 = 3。
 	if len(result.NodeGroups) != 3 {
-		t.Fatalf("got %d node groups, want 3", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 3 个", len(result.NodeGroups))
 	}
 
-	// Chain groups follow region groups, in custom proxy declaration order.
+	// 链式组排在区域组之后，按自定义节点的声明顺序排列。
 	if result.NodeGroups[1].Name != "ISP-A" {
-		t.Errorf("group[1].Name = %q, want %q", result.NodeGroups[1].Name, "ISP-A")
+		t.Errorf("group[1].Name = %q，期望 %q", result.NodeGroups[1].Name, "ISP-A")
 	}
 	if result.NodeGroups[2].Name != "ISP-B" {
-		t.Errorf("group[2].Name = %q, want %q", result.NodeGroups[2].Name, "ISP-B")
+		t.Errorf("group[2].Name = %q，期望 %q", result.NodeGroups[2].Name, "ISP-B")
 	}
 
-	// ISP-A chains through HK group (1 member: HK-01).
+	// ISP-A 经由 HK 组链式连接（1 个成员：HK-01）。
 	if len(result.NodeGroups[1].Members) != 1 {
-		t.Errorf("ISP-A chain members = %v, want 1 member", result.NodeGroups[1].Members)
+		t.Errorf("ISP-A 链式组成员 = %v，期望 1 个成员", result.NodeGroups[1].Members)
 	}
-	// ISP-B chains through all (2 members: HK-01, SG-01).
+	// ISP-B 经由全部节点链式连接（2 个成员：HK-01、SG-01）。
 	if len(result.NodeGroups[2].Members) != 2 {
-		t.Errorf("ISP-B chain members = %v, want 2 members", result.NodeGroups[2].Members)
+		t.Errorf("ISP-B 链式组成员 = %v，期望 2 个成员", result.NodeGroups[2].Members)
 	}
 }
 
-// T-GRP-009: Chained node properties (username/password)
+// T-GRP-009：链式节点的属性（username/password）
 func TestGroup_ChainedNodeProperties(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -627,10 +627,10 @@ func TestGroup_ChainedNodeProperties(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// Find the chained proxy.
+	// 找到链式节点。
 	var chained *model.Proxy
 	for i := range result.Proxies {
 		if result.Proxies[i].Kind == model.KindChained {
@@ -639,34 +639,33 @@ func TestGroup_ChainedNodeProperties(t *testing.T) {
 		}
 	}
 	if chained == nil {
-		t.Fatal("no chained proxy found")
+		t.Fatal("没有找到链式节点")
 	}
 
 	if chained.Type != "socks5" {
-		t.Errorf("Type = %q, want socks5", chained.Type)
+		t.Errorf("Type = %q，期望 socks5", chained.Type)
 	}
 	if chained.Server != "10.0.0.1" {
-		t.Errorf("Server = %q, want 10.0.0.1", chained.Server)
+		t.Errorf("Server = %q，期望 10.0.0.1", chained.Server)
 	}
 	if chained.Port != 9090 {
-		t.Errorf("Port = %d, want 9090", chained.Port)
+		t.Errorf("Port = %d，期望 9090", chained.Port)
 	}
 	if chained.Params["username"] != "admin" {
-		t.Errorf("username = %q, want admin", chained.Params["username"])
+		t.Errorf("username = %q，期望 admin", chained.Params["username"])
 	}
 	if chained.Params["password"] != "secret" {
-		t.Errorf("password = %q, want secret", chained.Params["password"])
+		t.Errorf("password = %q，期望 secret", chained.Params["password"])
 	}
 	if got := proxyNameByID(result.Proxies, chained.DialerID); got != "HK-01" {
-		t.Errorf("DialerID resolves to %q, want HK-01", got)
+		t.Errorf("DialerID 解析为 %q，期望 HK-01", got)
 	}
 }
 
-// T-GRP-SS-01: SS chain template plugin propagation to chained nodes.
+// T-GRP-SS-01：SS 链式模板的 plugin 传递到链式节点。
 //
-// Verifies that an ss-typed custom_proxy with a plugin propagates the plugin
-// into every chained node derived from it. Without explicit propagation,
-// chained ss nodes would silently drop their obfs/v2ray-plugin spec.
+// 验证带 plugin 的 ss 类型 custom_proxy 会把 plugin 传给由它派生的每个链式节点。
+// 如果不显式传递，链式 ss 节点会悄无声息地丢掉 obfs/v2ray-plugin 配置。
 func TestGroup_ChainedSSNodePluginPropagation(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -686,7 +685,7 @@ func TestGroup_ChainedSSNodePluginPropagation(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	chainedCount := 0
@@ -696,31 +695,31 @@ func TestGroup_ChainedSSNodePluginPropagation(t *testing.T) {
 		}
 		chainedCount++
 		if px.Type != "ss" {
-			t.Errorf("chained %q Type = %q, want ss", px.Name, px.Type)
+			t.Errorf("链式节点 %q Type = %q，期望 ss", px.Name, px.Type)
 		}
 		if px.Params["cipher"] != "aes-256-gcm" || px.Params["password"] != "chainpass" {
-			t.Errorf("chained %q Params = %v", px.Name, px.Params)
+			t.Errorf("链式节点 %q Params = %v", px.Name, px.Params)
 		}
 		if _, ok := px.Params["username"]; ok {
-			t.Errorf("chained %q ss node should not carry username in Params", px.Name)
+			t.Errorf("链式节点 %q 是 ss 节点，Params 中不应带 username", px.Name)
 		}
 		if px.Plugin == nil {
-			t.Errorf("chained %q dropped Plugin from chain template", px.Name)
+			t.Errorf("链式节点 %q 丢失了链式模板的 Plugin", px.Name)
 			continue
 		}
 		if px.Plugin.Name != "obfs-local" {
-			t.Errorf("chained %q Plugin.Name = %q", px.Name, px.Plugin.Name)
+			t.Errorf("链式节点 %q Plugin.Name = %q", px.Name, px.Plugin.Name)
 		}
 		if px.Plugin.Opts["obfs"] != "http" || px.Plugin.Opts["obfs-host"] != "example.com" {
-			t.Errorf("chained %q Plugin.Opts = %v", px.Name, px.Plugin.Opts)
+			t.Errorf("链式节点 %q Plugin.Opts = %v", px.Name, px.Plugin.Opts)
 		}
 	}
 	if chainedCount != 2 {
-		t.Errorf("got %d chained nodes, want 2 (one per upstream)", chainedCount)
+		t.Errorf("得到 %d 个链式节点，期望 2 个（每个上游一个）", chainedCount)
 	}
 }
 
-// T-GRP-010: Proxies merge order (original first, then chained)
+// T-GRP-010：Proxies 合并顺序（先原始节点，后链式节点）
 func TestGroup_ProxiesMergeOrder(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -737,32 +736,31 @@ func TestGroup_ProxiesMergeOrder(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result.Proxies) != 3 {
-		t.Fatalf("got %d proxies, want 3", len(result.Proxies))
+		t.Fatalf("得到 %d 个节点，期望 3 个", len(result.Proxies))
 	}
 
-	// Original proxies first.
+	// 原始节点在前。
 	if result.Proxies[0].Name != "HK-01" || result.Proxies[0].Kind != model.KindSubscription {
-		t.Errorf("proxy[0] = %q (%s), want HK-01 (subscription)", result.Proxies[0].Name, result.Proxies[0].Kind)
+		t.Errorf("proxy[0] = %q (%s)，期望 HK-01 (subscription)", result.Proxies[0].Name, result.Proxies[0].Kind)
 	}
 	if result.Proxies[1].Name != "MY-PROXY" || result.Proxies[1].Kind != model.KindCustom {
-		t.Errorf("proxy[1] = %q (%s), want MY-PROXY (custom)", result.Proxies[1].Name, result.Proxies[1].Kind)
+		t.Errorf("proxy[1] = %q (%s)，期望 MY-PROXY (custom)", result.Proxies[1].Name, result.Proxies[1].Kind)
 	}
-	// Chained proxy last.
+	// 链式节点在最后。
 	if result.Proxies[2].Kind != model.KindChained {
-		t.Errorf("proxy[2].Kind = %q, want chained", result.Proxies[2].Kind)
+		t.Errorf("proxy[2].Kind = %q，期望 chained", result.Proxies[2].Kind)
 	}
 	if result.Proxies[2].Name != "HK-01→CHAIN-PROXY" {
-		t.Errorf("proxy[2].Name = %q, want HK-01→CHAIN-PROXY", result.Proxies[2].Name)
+		t.Errorf("proxy[2].Name = %q，期望 HK-01→CHAIN-PROXY", result.Proxies[2].Name)
 	}
 }
 
-// T-GRP-SNELL-001: Snell nodes participate in region group regex matching
-// alongside subscription nodes. Guards against a future change that narrows
-// isFetchedKind/fetchedProxies back to KindSubscription only.
+// T-GRP-SNELL-001：Snell 节点与订阅节点一起参与区域组正则匹配。
+// 防止将来的改动把 isFetchedKind/fetchedProxies 收窄回只认 KindSubscription。
 func TestGroup_SnellParticipatesInRegionMatch(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -780,51 +778,51 @@ func TestGroup_SnellParticipatesInRegionMatch(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// HK group should contain HK-01 (sub) and HK-Snell (snell).
+	// HK 组应包含 HK-01（订阅）和 HK-Snell（snell）。
 	hk := result.NodeGroups[0]
 	if hk.Name != "HK" {
-		t.Fatalf("group[0].Name = %q, want HK", hk.Name)
+		t.Fatalf("group[0].Name = %q，期望 HK", hk.Name)
 	}
 	gotHK := map[string]bool{}
 	for _, m := range hk.Members {
 		gotHK[proxyNameByID(result.Proxies, m)] = true
 	}
 	if !gotHK["HK-01"] || !gotHK["HK-Snell"] {
-		t.Errorf("HK members = %v, want both HK-01 and HK-Snell", hk.Members)
+		t.Errorf("HK 成员 = %v，期望同时包含 HK-01 和 HK-Snell", hk.Members)
 	}
 
-	// SG group should contain SG-Snell only.
+	// SG 组应只包含 SG-Snell。
 	sg := result.NodeGroups[1]
 	if len(sg.Members) != 1 || proxyNameByID(result.Proxies, sg.Members[0]) != "SG-Snell" {
-		t.Errorf("SG members = %v, want [SG-Snell]", sg.Members)
+		t.Errorf("SG 成员 = %v，期望 [SG-Snell]", sg.Members)
 	}
 
-	// Custom proxy must not appear in any region group.
+	// 自定义节点不得出现在任何区域组中。
 	for _, g := range result.NodeGroups {
 		for _, m := range g.Members {
 			if proxyNameByID(result.Proxies, m) == "MY-PROXY" {
-				t.Errorf("custom proxy MY-PROXY leaked into region group %q", g.Name)
+				t.Errorf("自定义节点 MY-PROXY 混入了区域组 %q", g.Name)
 			}
 		}
 	}
 
-	// @all expansion includes snell nodes.
+	// @all 展开结果包含 snell 节点。
 	gotAll := map[string]bool{}
 	for _, id := range result.AllProxies {
 		gotAll[proxyNameByID(result.Proxies, id)] = true
 	}
 	for _, want := range []string{"HK-01", "HK-Snell", "SG-Snell", "MY-PROXY"} {
 		if !gotAll[want] {
-			t.Errorf("AllProxies missing %q (got %v)", want, result.AllProxies)
+			t.Errorf("AllProxies 缺少 %q（实际 %v）", want, result.AllProxies)
 		}
 	}
 }
 
-// T-GROUP-VLESS-001 + T-GROUP-VLESS-003: VLESS nodes participate in region
-// group regex matching and are included in @all (mirror Snell behaviour).
+// T-GROUP-VLESS-001 + T-GROUP-VLESS-003：VLESS 节点参与区域组正则匹配，
+// 并被包含在 @all 中（与 Snell 的行为一致）。
 func TestGroup_VLessParticipatesInRegionMatch(t *testing.T) {
 	proxies := []model.Proxy{
 		makeSubProxy("HK-01"),
@@ -846,52 +844,52 @@ func TestGroup_VLessParticipatesInRegionMatch(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// HK group should contain HK-01 (sub) and HK-VL (vless).
+	// HK 组应包含 HK-01（订阅）和 HK-VL（vless）。
 	hk := result.NodeGroups[0]
 	if hk.Name != "HK" {
-		t.Fatalf("group[0].Name = %q, want HK", hk.Name)
+		t.Fatalf("group[0].Name = %q，期望 HK", hk.Name)
 	}
 	gotHK := map[string]bool{}
 	for _, m := range hk.Members {
 		gotHK[proxyNameByID(result.Proxies, m)] = true
 	}
 	if !gotHK["HK-01"] || !gotHK["HK-VL"] {
-		t.Errorf("HK members = %v, want both HK-01 and HK-VL", hk.Members)
+		t.Errorf("HK 成员 = %v，期望同时包含 HK-01 和 HK-VL", hk.Members)
 	}
 
-	// SG group should contain SG-VL only.
+	// SG 组应只包含 SG-VL。
 	sg := result.NodeGroups[1]
 	if len(sg.Members) != 1 || proxyNameByID(result.Proxies, sg.Members[0]) != "SG-VL" {
-		t.Errorf("SG members = %v, want [SG-VL]", sg.Members)
+		t.Errorf("SG 成员 = %v，期望 [SG-VL]", sg.Members)
 	}
 
-	// Custom proxy must not appear in any region group.
+	// 自定义节点不得出现在任何区域组中。
 	for _, g := range result.NodeGroups {
 		for _, m := range g.Members {
 			if proxyNameByID(result.Proxies, m) == "MY-PROXY" {
-				t.Errorf("custom proxy MY-PROXY leaked into region group %q", g.Name)
+				t.Errorf("自定义节点 MY-PROXY 混入了区域组 %q", g.Name)
 			}
 		}
 	}
 
-	// @all expansion includes VLESS nodes.
+	// @all 展开结果包含 VLESS 节点。
 	gotAll := map[string]bool{}
 	for _, id := range result.AllProxies {
 		gotAll[proxyNameByID(result.Proxies, id)] = true
 	}
 	for _, want := range []string{"HK-01", "HK-VL", "SG-VL", "MY-PROXY"} {
 		if !gotAll[want] {
-			t.Errorf("AllProxies missing %q (got %v)", want, result.AllProxies)
+			t.Errorf("AllProxies 缺少 %q（实际 %v）", want, result.AllProxies)
 		}
 	}
 }
 
-// T-GROUP-VLESS-002: VLESS nodes are valid upstreams for relay_through
-// chains. Custom proxies with relay_through{type:all} produce chained
-// proxies whose DialerID points at the VLESS node's identity.
+// T-GROUP-VLESS-002：VLESS 节点可以作为 relay_through 链的上游。
+// 带 relay_through{type:all} 的自定义节点生成的链式节点，其 DialerID
+// 指向 VLESS 节点的编号。
 func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 	proxies := []model.Proxy{
 		{Name: "HK-VL", Type: "vless", Server: "hk.example.com", Port: 443,
@@ -912,10 +910,10 @@ func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
-	// Expect exactly one chained proxy whose DialerID resolves to HK-VL.
+	// 期望恰好一个链式节点，其 DialerID 解析为 HK-VL。
 	var chained model.Proxy
 	found := false
 	for _, p := range result.Proxies {
@@ -926,19 +924,18 @@ func TestGroup_VLessEligibleAsChainUpstream(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("no chained proxy generated; Proxies=%v", result.Proxies)
+		t.Fatalf("没有生成链式节点；Proxies=%v", result.Proxies)
 	}
 	if got := proxyNameByID(result.Proxies, chained.DialerID); got != "HK-VL" {
-		t.Errorf("chained.DialerID resolves to %q, want HK-VL", got)
+		t.Errorf("chained.DialerID 解析为 %q，期望 HK-VL", got)
 	}
 	if chained.Name != "HK-VL→MY-CHAIN" {
-		t.Errorf("chained.Name = %q, want HK-VL→MY-CHAIN", chained.Name)
+		t.Errorf("chained.Name = %q，期望 HK-VL→MY-CHAIN", chained.Name)
 	}
 }
 
-// Chain group name is the custom proxy name verbatim — no system-injected
-// prefix. Guards against regressions that would reintroduce a 🔗 (or any
-// other) hard-coded marker in front of cp.Name.
+// 链式组名就是自定义节点名原样照搬，系统不注入任何前缀。
+// 防止回归到在 cp.Name 前重新加上 🔗（或其他）硬编码标记。
 func TestGroup_ChainedGroupNameEqualsCustomProxyName(t *testing.T) {
 	proxies := []model.Proxy{makeSubProxy("HK-01")}
 
@@ -952,23 +949,22 @@ func TestGroup_ChainedGroupNameEqualsCustomProxyName(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 	if len(result.NodeGroups) != 1 {
-		t.Fatalf("got %d node groups, want 1", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 1 个", len(result.NodeGroups))
 	}
 	if got := result.NodeGroups[0].Name; got != "HK-ISP" {
-		t.Errorf("chain group name = %q, want %q (no prefix)", got, "HK-ISP")
+		t.Errorf("链式组名称 = %q，期望 %q（无前缀）", got, "HK-ISP")
 	}
 }
 
-// A user-supplied emoji prefix in cp.Name must flow through verbatim to the
-// chain group name — the system never adds or strips visual markers. This
-// is the positive companion to the regression guard above: users who *want*
-// a 🔗 (or any other decoration) get exactly what they wrote.
+// 用户在 cp.Name 里自带的 emoji 前缀必须原样带到链式组名上——系统从不添加
+// 或去除视觉标记。这是上面那条回归防护的正向搭档：*想要* 🔗（或其他装饰）
+// 的用户，得到的正是自己写的内容。
 //
-// Built in Go directly (not YAML) to sidestep the astral-plane escape issue
-// flagged in CLAUDE.md §"YAML 断言避坑".
+// 直接用 Go 构造（不用 YAML），以避开 AGENTS.md「几个容易出错的地方」中提到的
+// 辅助平面字符转义问题。
 func TestGroup_ChainedGroupNamePreservesUserEmojiPrefix(t *testing.T) {
 	proxies := []model.Proxy{makeSubProxy("HK-01")}
 
@@ -982,15 +978,15 @@ func TestGroup_ChainedGroupNamePreservesUserEmojiPrefix(t *testing.T) {
 
 	result, err := groupFromConfig(cfg, proxies)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 	if len(result.NodeGroups) != 1 {
-		t.Fatalf("got %d node groups, want 1", len(result.NodeGroups))
+		t.Fatalf("得到 %d 个节点组，期望 1 个", len(result.NodeGroups))
 	}
 	if got := result.NodeGroups[0].Name; got != "🔗 HK-ISP" {
-		t.Errorf("chain group name = %q, want %q (user prefix preserved)", got, "🔗 HK-ISP")
+		t.Errorf("链式组名称 = %q，期望 %q（保留用户前缀）", got, "🔗 HK-ISP")
 	}
-	// The chained proxy name still uses cp.Name verbatim after the "→".
+	// 链式节点名在 "→" 之后同样原样使用 cp.Name。
 	wantChainedName := "HK-01→🔗 HK-ISP"
 	found := false
 	for _, p := range result.Proxies {
@@ -1000,6 +996,6 @@ func TestGroup_ChainedGroupNamePreservesUserEmojiPrefix(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("chained proxy %q not found in proxies; got %+v", wantChainedName, result.Proxies)
+		t.Errorf("在 proxies 中没有找到链式节点 %q；实际 %+v", wantChainedName, result.Proxies)
 	}
 }

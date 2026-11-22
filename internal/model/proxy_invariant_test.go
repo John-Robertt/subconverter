@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-// T-MDL-LOON-001: native Loon declarations use subscription invariants without normalized params.
+// T-MDL-LOON-001：Loon 原生声明按订阅节点的不变量校验，不要求规范化参数。
 func TestModel_LoonNativeInvariant(t *testing.T) {
 	proxy := Proxy{ID: 1, Name: "HK", Type: "anytls", Kind: KindSubscription,
 		Native: &NativeProxy{Format: NativeProxyFormatLoon, Payload: `anytls, node.example.com, 443, "pw"`}}
 	if err := ValidateProxyInvariant(proxy); err != nil {
-		t.Fatalf("native Loon invariant: %v", err)
+		t.Fatalf("Loon 原生声明不变量校验失败：%v", err)
 	}
 }
 
-// T-MDL-004: valid proxy invariant cases pass validation
+// T-MDL-004：合法的代理通过不变量校验
 func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -120,13 +120,13 @@ func TestValidateProxyInvariant_ValidCases(t *testing.T) {
 				proxy.ID = 1
 			}
 			if err := ValidateProxyInvariant(proxy); err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("意外错误：%v", err)
 			}
 		})
 	}
 }
 
-// T-MDL-005: invalid proxy invariant cases return errors
+// T-MDL-005：非法的代理在不变量校验中返回错误
 func TestValidateProxyInvariant_InvalidCases(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -250,10 +250,10 @@ func TestValidateProxyInvariant_InvalidCases(t *testing.T) {
 			}
 			err := ValidateProxyInvariant(proxy)
 			if err == nil {
-				t.Fatal("expected error, got nil")
+				t.Fatal("期望返回错误，实际为 nil")
 			}
 			if !strings.Contains(err.Error(), tt.wantSubstr) {
-				t.Fatalf("error = %q, want substring %q", err.Error(), tt.wantSubstr)
+				t.Fatalf("error = %q，期望包含子串 %q", err.Error(), tt.wantSubstr)
 			}
 		})
 	}

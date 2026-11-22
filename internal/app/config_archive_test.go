@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// T-APP-ARCHIVE-001: both exports package exact local bytes, preserve names and leave remote sources unchanged.
+// T-APP-ARCHIVE-001：两种导出都原样打包本地字节，保留名称，远程来源保持不变。
 func TestConfigArchive_SubscriptionsRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	svc, cfg, _ := contentStoreFixture(t)
@@ -56,24 +56,24 @@ func TestConfigArchive_SubscriptionsRoundTrip(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(entries) != 3 || string(entries["subscriptions/2.txt"]) != surgeBody || string(entries["subscriptions/3.txt"]) != loonBody {
-				t.Fatalf("archive did not preserve separate subscription files: entries=%v", entries)
+				t.Fatalf("配置包没有保留各自独立的订阅文件：entries=%v", entries)
 			}
 			if strings.Contains(string(entries[archiveConfigEntry]), dir) || strings.Contains(string(entries[archiveConfigEntry]), "password=pw") {
-				t.Fatal("archive config retained local paths or embedded subscription bytes")
+				t.Fatal("配置包中的配置残留了本地路径或内嵌的订阅内容")
 			}
 			exported, err := parseConfigYAML(entries[archiveConfigEntry])
 			if err != nil {
 				t.Fatal(err)
 			}
 			if exported.Sources.Subscriptions[0] != cfg.Sources.Subscriptions[0] {
-				t.Fatalf("remote subscription changed: got=%+v want=%+v", exported.Sources.Subscriptions[0], cfg.Sources.Subscriptions[0])
+				t.Fatalf("远程订阅被改动：实际=%+v 期望=%+v", exported.Sources.Subscriptions[0], cfg.Sources.Subscriptions[0])
 			}
 			for i, want := range []config.Source{
 				{Name: "同名/../订阅", ContentFile: "subscriptions/2.txt", Format: "surge"},
 				{Name: "同名/../订阅", ContentFile: "subscriptions/3.txt", Format: "loon"},
 			} {
 				if got := exported.Sources.Subscriptions[i+1]; got != want {
-					t.Fatalf("source %d got=%+v want=%+v", i+1, got, want)
+					t.Fatalf("来源 %d：实际=%+v 期望=%+v", i+1, got, want)
 				}
 			}
 			before, err := os.ReadDir(dir)
@@ -91,18 +91,18 @@ func TestConfigArchive_SubscriptionsRoundTrip(t *testing.T) {
 			for i, body := range []string{surgeBody, loonBody} {
 				got := back.Sources.Subscriptions[i+1]
 				if got.Content != body || got.ContentFile != "" || got.Name != cfg.Sources.Subscriptions[i+1].Name {
-					t.Fatalf("imported source %d lost name or content: %+v", i+1, got)
+					t.Fatalf("导入后的来源 %d 丢失了名称或内容：%+v", i+1, got)
 				}
 			}
 			after, err := os.ReadDir(dir)
 			if err != nil || len(after) != len(before) {
-				t.Fatalf("import wrote files: before=%d after=%d err=%v", len(before), len(after), err)
+				t.Fatalf("导入时写入了文件：before=%d after=%d err=%v", len(before), len(after), err)
 			}
 		})
 	}
 }
 
-// T-APP-ARCHIVE-002: imported sources must be complete package files within the shared size limit.
+// T-APP-ARCHIVE-002：导入的来源必须是包内的完整文件，且总大小在共享上限之内。
 func TestConfigArchive_InvalidSourceFiles(t *testing.T) {
 	svc, cfg, _ := contentStoreFixture(t)
 	cfg.Templates = config.Templates{}
@@ -158,14 +158,14 @@ func TestConfigArchive_InvalidSourceFiles(t *testing.T) {
 				_, err = svc.ImportConfigArchive(context.Background(), archive)
 				var badReq *BadRequestError
 				if !errors.As(err, &badReq) || badReq.Code != "invalid_archive" || !strings.Contains(badReq.Message, tt.message) {
-					t.Fatalf("got=%v want invalid_archive containing %q", err, tt.message)
+					t.Fatalf("实际=%v，期望包含 %q 的 invalid_archive", err, tt.message)
 				}
 			})
 		}
 	}
 }
 
-// T-APP-ARCHIVE-003: an unpacked config generates all three formats from its relative file references.
+// T-APP-ARCHIVE-003：解包后的配置通过相对文件引用生成全部三种格式。
 func TestConfigArchive_UnpackedConfig(t *testing.T) {
 	ctx := context.Background()
 	svc, cfg, revision := contentStoreFixture(t)
@@ -203,10 +203,10 @@ func TestConfigArchive_UnpackedConfig(t *testing.T) {
 			}
 			output, err := unpacked.Generate(ctx, request)
 			if err != nil {
-				t.Fatalf("unpacked %s generation failed: %v", format, err)
+				t.Fatalf("解包后生成 %s 失败：%v", format, err)
 			}
 			if !strings.Contains(string(output.Body), "HK-SAVED") {
-				t.Fatalf("unpacked %s generation lost the saved node", format)
+				t.Fatalf("解包后生成的 %s 丢失了已保存的节点", format)
 			}
 		})
 	}

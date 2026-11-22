@@ -218,7 +218,7 @@ func buildConfigArchive(entries []archiveEntry, modifiedAt time.Time) ([]byte, e
 		}
 	}
 	if err := zw.Close(); err != nil {
-		return nil, fmt.Errorf("finalize config archive: %w", err)
+		return nil, fmt.Errorf("完成配置包写入：%w", err)
 	}
 	return buf.Bytes(), nil
 }
@@ -232,10 +232,10 @@ func writeArchiveEntry(zw *zip.Writer, entry archiveEntry, modifiedAt time.Time)
 	header.SetMode(0o600)
 	w, err := zw.CreateHeader(header)
 	if err != nil {
-		return fmt.Errorf("create config archive entry %q: %w", entry.Name, err)
+		return fmt.Errorf("创建配置包条目 %q：%w", entry.Name, err)
 	}
 	if _, err := w.Write(entry.Body); err != nil {
-		return fmt.Errorf("write config archive entry %q: %w", entry.Name, err)
+		return fmt.Errorf("写入配置包条目 %q：%w", entry.Name, err)
 	}
 	return nil
 }

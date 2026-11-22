@@ -11,9 +11,9 @@ import (
 
 // T-SRC-VLESS-001: ParseVLessURI_Valid
 //
-// Covers the sample URI shipped by the feature owner (TCP + Reality + Vision),
-// plus common variants: tcp+tls with alpn list, tcp+none, non-none encryption
-// passthrough, uppercase UUID, URL-escaped CJK fragment, IPv6 server, empty sid.
+// 覆盖功能负责人提供的样例 URI（TCP + Reality + Vision），以及常见变体：
+// 带 alpn 列表的 tcp+tls、tcp+none、非 none 的 encryption 原样透传、
+// 大写 UUID、URL 转义的 CJK 片段、IPv6 服务器、空 sid。
 func TestParseVLessURI_Valid(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -115,7 +115,7 @@ func TestParseVLessURI_Valid(t *testing.T) {
 				"security":           "reality",
 				"reality-public-key": "KEY",
 				"network":            "tcp",
-				// reality-short-id intentionally absent — empty value not stored.
+				// 有意不含 reality-short-id：空值不会被存储。
 			},
 		},
 	}
@@ -127,26 +127,26 @@ func TestParseVLessURI_Valid(t *testing.T) {
 				t.Fatalf("ParseVLessURI: %v", err)
 			}
 			if got.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", got.Name, tt.wantName)
+				t.Errorf("Name = %q，期望 %q", got.Name, tt.wantName)
 			}
 			if got.Type != "vless" {
-				t.Errorf("Type = %q, want vless", got.Type)
+				t.Errorf("Type = %q，期望 vless", got.Type)
 			}
 			if got.Server != tt.wantServer {
-				t.Errorf("Server = %q, want %q", got.Server, tt.wantServer)
+				t.Errorf("Server = %q，期望 %q", got.Server, tt.wantServer)
 			}
 			if got.Port != tt.wantPort {
-				t.Errorf("Port = %d, want %d", got.Port, tt.wantPort)
+				t.Errorf("Port = %d，期望 %d", got.Port, tt.wantPort)
 			}
 			if got.Kind != model.KindVLess {
-				t.Errorf("Kind = %q, want %q", got.Kind, model.KindVLess)
+				t.Errorf("Kind = %q，期望 %q", got.Kind, model.KindVLess)
 			}
 			if len(got.Params) != len(tt.wantParams) {
-				t.Errorf("Params len = %d, want %d; got = %v", len(got.Params), len(tt.wantParams), got.Params)
+				t.Errorf("Params 长度 = %d，期望 %d；实际 = %v", len(got.Params), len(tt.wantParams), got.Params)
 			}
 			for k, want := range tt.wantParams {
 				if gv := got.Params[k]; gv != want {
-					t.Errorf("Params[%q] = %q, want %q", k, gv, want)
+					t.Errorf("Params[%q] = %q，期望 %q", k, gv, want)
 				}
 			}
 		})
@@ -155,9 +155,9 @@ func TestParseVLessURI_Valid(t *testing.T) {
 
 // T-SRC-VLESS-002: ParseVLessURI_Invalid
 //
-// Exercises rejection paths for malformed URIs and invalid specific fields.
-// Unknown `type` values are not invalid: they normalize to tcp in
-// T-SRC-VLESS-002b.
+// 验证格式错误的 URI 和取值非法的特定字段会被拒绝。
+// 未知的 `type` 值不算非法：它们会被归一化为 tcp，见
+// T-SRC-VLESS-002b。
 func TestParseVLessURI_Invalid(t *testing.T) {
 	cases := []struct {
 		name string
@@ -181,25 +181,25 @@ func TestParseVLessURI_Invalid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ParseVLessURI(tt.uri)
 			if err == nil {
-				t.Fatalf("ParseVLessURI(%q) = nil error, want failure", tt.uri)
+				t.Fatalf("ParseVLessURI(%q) 未返回错误，期望失败", tt.uri)
 			}
 			var be *errtype.BuildError
 			if !errors.As(err, &be) {
-				t.Fatalf("error %T is not *BuildError", err)
+				t.Fatalf("错误 %T 不是 *BuildError", err)
 			}
 			if be.Code != errtype.CodeBuildVLessURIInvalid {
-				t.Errorf("Code = %q, want %q", be.Code, errtype.CodeBuildVLessURIInvalid)
+				t.Errorf("Code = %q，期望 %q", be.Code, errtype.CodeBuildVLessURIInvalid)
 			}
 			if be.Phase != "source" {
-				t.Errorf("Phase = %q, want source", be.Phase)
+				t.Errorf("Phase = %q，期望 source", be.Phase)
 			}
 		})
 	}
 }
 
-// T-SRC-VLESS-002b: Network values are normalized to Mihomo-compatible
-// transport names. Known values in {tcp, ws, http, h2, grpc, xhttp} are kept;
-// missing or unknown values fall back to tcp.
+// T-SRC-VLESS-002b: network 值被归一化为 Mihomo 兼容的传输名称。
+// {tcp, ws, http, h2, grpc, xhttp} 中的已知值保持不变；
+// 缺失或未知的值回退为 tcp。
 func TestParseVLessURI_NetworkNormalization(t *testing.T) {
 	baseTemplate := "vless://11111111-2222-3333-4444-555555555555@example.com:443?security=tls&sni=a.b&type=%s#n"
 
@@ -209,10 +209,10 @@ func TestParseVLessURI_NetworkNormalization(t *testing.T) {
 				uri := strings.Replace(baseTemplate, "%s", network, 1)
 				got, err := ParseVLessURI(uri)
 				if err != nil {
-					t.Fatalf("ParseVLessURI(%q) errored: %v", uri, err)
+					t.Fatalf("ParseVLessURI(%q) 出错：%v", uri, err)
 				}
 				if got.Params["network"] != network {
-					t.Errorf("Params[network] = %q, want %q", got.Params["network"], network)
+					t.Errorf("Params[network] = %q，期望 %q", got.Params["network"], network)
 				}
 			})
 		}
@@ -224,10 +224,10 @@ func TestParseVLessURI_NetworkNormalization(t *testing.T) {
 				uri := strings.Replace(baseTemplate, "%s", network, 1)
 				got, err := ParseVLessURI(uri)
 				if err != nil {
-					t.Fatalf("ParseVLessURI(%q) errored: %v", uri, err)
+					t.Fatalf("ParseVLessURI(%q) 出错：%v", uri, err)
 				}
 				if got.Params["network"] != "tcp" {
-					t.Errorf("Params[network] = %q, want tcp fallback", got.Params["network"])
+					t.Errorf("Params[network] = %q，期望回退为 tcp", got.Params["network"])
 				}
 			})
 		}
@@ -237,10 +237,10 @@ func TestParseVLessURI_NetworkNormalization(t *testing.T) {
 		uri := "vless://11111111-2222-3333-4444-555555555555@example.com:443?security=tls&sni=a.b#n"
 		got, err := ParseVLessURI(uri)
 		if err != nil {
-			t.Fatalf("missing type should default to tcp, got err: %v", err)
+			t.Fatalf("缺少 type 时应默认为 tcp，实际出错：%v", err)
 		}
 		if got.Params["network"] != "tcp" {
-			t.Errorf("Params[network] = %q, want tcp (default)", got.Params["network"])
+			t.Errorf("Params[network] = %q，期望 tcp（默认值）", got.Params["network"])
 		}
 	})
 
@@ -251,22 +251,22 @@ func TestParseVLessURI_NetworkNormalization(t *testing.T) {
 		} {
 			got, err := ParseVLessURI(uri)
 			if err != nil {
-				t.Fatalf("ParseVLessURI(%q) errored: %v", uri, err)
+				t.Fatalf("ParseVLessURI(%q) 出错：%v", uri, err)
 			}
 			if got.Params["network"] != "tcp" {
-				t.Errorf("ParseVLessURI(%q) Params[network] = %q, want tcp", uri, got.Params["network"])
+				t.Errorf("ParseVLessURI(%q) Params[network] = %q，期望 tcp", uri, got.Params["network"])
 			}
 			got.ID = 1
 			if err := model.ValidateProxyInvariant(got); err != nil {
-				t.Errorf("ParseVLessURI(%q) failed proxy invariant: %v", uri, err)
+				t.Errorf("ParseVLessURI(%q) 不满足节点不变量：%v", uri, err)
 			}
 		}
 	})
 }
 
-// T-SRC-VLESS-002c: Per-network transport query dispatch — path/host/
-// serviceName/mode land in transport-specific Params keys so the renderer
-// can emit the matching *-opts block without runtime dispatch.
+// T-SRC-VLESS-002c: 按 network 分派传输相关的查询参数：path/host/
+// serviceName/mode 落到各传输专属的 Params 键中，渲染器无需在运行时
+// 再分派，就能输出对应的 *-opts 块。
 func TestParseVLessURI_TransportQueryDispatch(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -342,23 +342,23 @@ func TestParseVLessURI_TransportQueryDispatch(t *testing.T) {
 			}
 			for k, want := range tc.wantParams {
 				if got.Params[k] != want {
-					t.Errorf("Params[%q] = %q, want %q", k, got.Params[k], want)
+					t.Errorf("Params[%q] = %q，期望 %q", k, got.Params[k], want)
 				}
 			}
 			for _, k := range tc.forbidKeys {
 				if _, exists := got.Params[k]; exists {
-					t.Errorf("Params should NOT contain %q for network=%q (dispatcher should route elsewhere)", k, tc.wantParams["network"])
+					t.Errorf("Params 不应包含 %q（network=%q，分派逻辑应把它放到别处）", k, tc.wantParams["network"])
 				}
 			}
 		})
 	}
 }
 
-// T-SRC-VLESS-003: Key naming in Params follows Clash target names.
+// T-SRC-VLESS-003: Params 中的键名沿用 Clash 目标格式的名称。
 //
-// Guards the domain-model convention that parsers rename URI query keys
-// to Clash YAML keys (e.g. sni→servername, fp→client-fingerprint), so the
-// renderer reads Params directly without a rename lookup.
+// 守护领域模型的约定：解析器把 URI 查询键改名为 Clash YAML 键
+// （例如 sni→servername、fp→client-fingerprint），渲染器因此直接读取
+// Params，无需再查改名表。
 func TestParseVLessURI_KeyNamingMatchesClashTarget(t *testing.T) {
 	uri := "vless://b33a72bf-75ab-4be2-b182-223a727b37a5@11.11.11.11:443?security=reality&sni=www.cloudflare.com&fp=chrome&pbk=KEY&sid=SHORT&type=tcp#x"
 
@@ -378,19 +378,19 @@ func TestParseVLessURI_KeyNamingMatchesClashTarget(t *testing.T) {
 
 	for k, want := range mustHave {
 		if got.Params[k] != want {
-			t.Errorf("Params[%q] = %q, want %q", k, got.Params[k], want)
+			t.Errorf("Params[%q] = %q，期望 %q", k, got.Params[k], want)
 		}
 	}
 	for _, k := range mustNotHave {
 		if _, exists := got.Params[k]; exists {
-			t.Errorf("Params should NOT carry URI-native key %q", k)
+			t.Errorf("Params 不应携带 URI 原生键 %q", k)
 		}
 	}
 }
 
-// T-SRC-VLESS-004: Kind assertion — returned Proxy carries KindVLess.
+// T-SRC-VLESS-004: Kind 断言，返回的 Proxy 带有 KindVLess。
 //
-// Sibling of TestParseSnellSurgeLine's Kind check.
+// 与 TestParseSnellSurgeLine 中的 Kind 检查相对应。
 func TestParseVLessURI_KindIsKindVLess(t *testing.T) {
 	uri := "vless://11111111-2222-3333-4444-555555555555@1.2.3.4:443?security=tls&type=tcp#n"
 	got, err := ParseVLessURI(uri)
@@ -398,9 +398,9 @@ func TestParseVLessURI_KindIsKindVLess(t *testing.T) {
 		t.Fatalf("ParseVLessURI: %v", err)
 	}
 	if got.Kind != model.KindVLess {
-		t.Errorf("Kind = %q, want %q", got.Kind, model.KindVLess)
+		t.Errorf("Kind = %q，期望 %q", got.Kind, model.KindVLess)
 	}
 	if got.Type != "vless" {
-		t.Errorf("Type = %q, want vless", got.Type)
+		t.Errorf("Type = %q，期望 vless", got.Type)
 	}
 }

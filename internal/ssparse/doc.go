@@ -1,9 +1,7 @@
-// Package ssparse implements SIP002 Shadowsocks URI body parsing.
+// Package ssparse 实现 SIP002 Shadowsocks URI 主体部分的解析。
 //
-// It extracts server, port, cipher, password, node name, and optional
-// plugin specifications from the body portion of an ss:// URI (after
-// stripping the scheme prefix). Both base64 and plaintext userinfo
-// forms are supported.
+// 它从 ss:// URI 去掉协议前缀后的主体部分中，提取服务器、端口、加密方式、
+// 密码、节点名，以及可选的插件声明。userinfo 支持 base64 和明文两种形式。
 //
-// This package is a leaf dependency with no internal imports.
+// 本包是叶子依赖，不引用任何内部包。
 package ssparse

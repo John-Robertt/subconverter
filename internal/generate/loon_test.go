@@ -8,7 +8,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/config"
 )
 
-// T-GEN-LOON-001: Loon imports only nodes and uses configured groups, rules and template.
+// T-GEN-LOON-001：Loon 订阅只导入节点，分组、规则和模板都使用配置中的设置。
 func TestService_LoonEndToEnd(t *testing.T) {
 	cfg := validConfig(t)
 	cfg.Sources.Subscriptions = []config.Source{{URL: testSubURL, Format: "loon"}, {URL: "https://example.com/plain.txt"}}
@@ -27,20 +27,20 @@ func TestService_LoonEndToEnd(t *testing.T) {
 			}
 			body := string(result.Body)
 			if !strings.Contains(body, "HK-TXT") {
-				t.Fatalf("%s output lost shared node:\n%s", format, body)
+				t.Fatalf("%s 输出丢失了共享节点：\n%s", format, body)
 			}
 			if (strings.Contains(body, "native-secret")) != (format == "loon") {
-				t.Fatalf("%s native isolation failed:\n%s", format, body)
+				t.Fatalf("%s 原生节点隔离失败：\n%s", format, body)
 			}
 			for _, bad := range []string{"PROVIDER_GROUP", "MISSING", "source-host.example.com", "OLD_GROUP", "old.list"} {
 				if strings.Contains(body, bad) {
-					t.Errorf("%s output includes provider/template graph %q", format, bad)
+					t.Errorf("%s 输出包含了订阅提供方或模板中的分组规则 %q", format, bad)
 				}
 			}
 			if format == "loon" {
 				for _, want := range []string{"dns-server = system", "base-host.example.com = alias.example.com", "HK = select, HK-LOON, HK-TXT", "https://example.com/rules.list,proxy", "GEOIP,CN,proxy", "FINAL,proxy"} {
 					if !strings.Contains(body, want) {
-						t.Errorf("Loon output missing %q:\n%s", want, body)
+						t.Errorf("Loon 输出缺少 %q：\n%s", want, body)
 					}
 				}
 				if result.Filename != "loon.lcf" || result.ContentType != "text/plain; charset=utf-8" {
@@ -51,7 +51,7 @@ func TestService_LoonEndToEnd(t *testing.T) {
 	}
 }
 
-// T-GEN-LOON-002: filename and link helpers expose the new format consistently.
+// T-GEN-LOON-002：文件名和链接辅助函数对新格式的处理保持一致。
 func TestGenerate_LoonRequest(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -66,7 +66,7 @@ func TestGenerate_LoonRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ResolveFilename(tt.name, tt.present, "loon")
 			if got != tt.want || (err != nil) != tt.invalid {
-				t.Fatalf("filename=%q error=%v, want %q invalid=%v", got, err, tt.want, tt.invalid)
+				t.Fatalf("filename=%q error=%v，期望 %q invalid=%v", got, err, tt.want, tt.invalid)
 			}
 		})
 	}

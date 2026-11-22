@@ -13,7 +13,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// T-SRC-LOCAL-001: all input forms share parsing, ordering and unique IDs across source kinds.
+// T-SRC-LOCAL-001：各种输入形式共用解析和排序逻辑，不同来源类型之间的 ID 保持唯一。
 func TestSource_LocalNodePools(t *testing.T) {
 	const snell = "HK = snell, hk.example.com, 443, psk=pw, version=4\n"
 	vless := vlessURIFor("HK", "hk.example.com", 443) + "\n"
@@ -46,18 +46,18 @@ func TestSource_LocalNodePools(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(result.Proxies) != 3 {
-				t.Fatalf("nodes=%d want 3", len(result.Proxies))
+				t.Fatalf("节点数=%d，期望 3", len(result.Proxies))
 			}
 			for i, kind := range []model.ProxyKind{model.KindVLess, model.KindSubscription, model.KindSnell} {
 				if got := result.Proxies[i]; got.ID != model.ProxyID(i+1) || got.Kind != kind || got.Name != "HK" {
-					t.Fatalf("node %d=%+v want ID=%d kind=%s name=HK", i, got, i+1, kind)
+					t.Fatalf("节点 %d=%+v，期望 ID=%d kind=%s name=HK", i, got, i+1, kind)
 				}
 			}
 		})
 	}
 }
 
-// T-SRC-LOCAL-002: inline/file failures are strict and identify the original physical line.
+// T-SRC-LOCAL-002：内联和文件来源严格报错，并指出原始文件中的物理行号。
 func TestSource_LocalNodePoolFailures(t *testing.T) {
 	for _, kind := range []string{"snell", "vless"} {
 		for _, mode := range []string{"inline", "file"} {
@@ -86,12 +86,12 @@ func TestSource_LocalNodePoolFailures(t *testing.T) {
 					if empty {
 						var fetchErr *errtype.FetchError
 						if !errors.As(err, &fetchErr) || fetchErr.Code != errtype.CodeFetchSubscriptionEmpty || fetchErr.URL != location {
-							t.Fatalf("want located empty-source error, got=%v", err)
+							t.Fatalf("期望带位置的空来源错误，实际=%v", err)
 						}
 					} else {
 						var buildErr *errtype.BuildError
 						if !errors.As(err, &buildErr) || !strings.Contains(buildErr.Message, location) || !strings.Contains(buildErr.Message, "第 3 行") {
-							t.Fatalf("want located physical-line error, got=%v", err)
+							t.Fatalf("期望带物理行号的错误，实际=%v", err)
 						}
 					}
 				})

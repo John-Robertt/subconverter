@@ -11,7 +11,7 @@ func TestResolveListenAddress(t *testing.T) {
 		t.Setenv(listenEnvVar, "")
 
 		if got := resolveListenAddress(""); got != defaultListenAddr {
-			t.Fatalf("resolveListenAddress() = %q, want %q", got, defaultListenAddr)
+			t.Fatalf("resolveListenAddress() = %q，期望 %q", got, defaultListenAddr)
 		}
 	})
 
@@ -19,7 +19,7 @@ func TestResolveListenAddress(t *testing.T) {
 		t.Setenv(listenEnvVar, ":9090")
 
 		if got := resolveListenAddress(""); got != ":9090" {
-			t.Fatalf("resolveListenAddress() = %q, want %q", got, ":9090")
+			t.Fatalf("resolveListenAddress() = %q，期望 %q", got, ":9090")
 		}
 	})
 
@@ -27,7 +27,7 @@ func TestResolveListenAddress(t *testing.T) {
 		t.Setenv(listenEnvVar, ":9090")
 
 		if got := resolveListenAddress(":7070"); got != ":7070" {
-			t.Fatalf("resolveListenAddress() = %q, want %q", got, ":7070")
+			t.Fatalf("resolveListenAddress() = %q，期望 %q", got, ":7070")
 		}
 	})
 }
@@ -37,7 +37,7 @@ func TestResolveAccessToken(t *testing.T) {
 		t.Setenv(accessTokenEnvVar, "")
 
 		if got := resolveAccessToken(""); got != "" {
-			t.Fatalf("resolveAccessToken() = %q, want empty string", got)
+			t.Fatalf("resolveAccessToken() = %q，期望空字符串", got)
 		}
 	})
 
@@ -45,7 +45,7 @@ func TestResolveAccessToken(t *testing.T) {
 		t.Setenv(accessTokenEnvVar, "env-token")
 
 		if got := resolveAccessToken(""); got != "env-token" {
-			t.Fatalf("resolveAccessToken() = %q, want %q", got, "env-token")
+			t.Fatalf("resolveAccessToken() = %q，期望 %q", got, "env-token")
 		}
 	})
 
@@ -53,7 +53,7 @@ func TestResolveAccessToken(t *testing.T) {
 		t.Setenv(accessTokenEnvVar, "env-token")
 
 		if got := resolveAccessToken("flag-token"); got != "flag-token" {
-			t.Fatalf("resolveAccessToken() = %q, want %q", got, "flag-token")
+			t.Fatalf("resolveAccessToken() = %q，期望 %q", got, "flag-token")
 		}
 	})
 }
@@ -63,7 +63,7 @@ func TestResolveCORS(t *testing.T) {
 		t.Setenv(corsEnvVar, "true")
 
 		if got := resolveCORS(false, false); !got {
-			t.Fatal("resolveCORS() = false, want true")
+			t.Fatal("resolveCORS() = false，期望 true")
 		}
 	})
 
@@ -71,7 +71,7 @@ func TestResolveCORS(t *testing.T) {
 		t.Setenv(corsEnvVar, "true")
 
 		if got := resolveCORS(false, true); got {
-			t.Fatal("resolveCORS() = true, want false")
+			t.Fatal("resolveCORS() = true，期望 false")
 		}
 	})
 
@@ -79,7 +79,7 @@ func TestResolveCORS(t *testing.T) {
 		t.Setenv(corsEnvVar, "")
 
 		if got := resolveCORS(true, true); !got {
-			t.Fatal("resolveCORS() = false, want true")
+			t.Fatal("resolveCORS() = false，期望 true")
 		}
 	})
 }
@@ -90,19 +90,19 @@ func TestNewHTTPServerTimeouts(t *testing.T) {
 	srv := newHTTPServer(":9090", http.NewServeMux())
 
 	if srv.Addr != ":9090" {
-		t.Fatalf("Addr = %q, want :9090", srv.Addr)
+		t.Fatalf("Addr = %q，期望 :9090", srv.Addr)
 	}
 	if srv.ReadHeaderTimeout <= 0 || srv.ReadHeaderTimeout > 30*time.Second {
-		t.Fatalf("ReadHeaderTimeout = %v, want positive and within slowloris bound (<=30s)", srv.ReadHeaderTimeout)
+		t.Fatalf("ReadHeaderTimeout = %v，期望为正数且不超过防 slowloris 的上限（<=30s）", srv.ReadHeaderTimeout)
 	}
 	if srv.IdleTimeout < srv.ReadHeaderTimeout {
-		t.Fatalf("IdleTimeout = %v should be >= ReadHeaderTimeout = %v", srv.IdleTimeout, srv.ReadHeaderTimeout)
+		t.Fatalf("IdleTimeout = %v，应当 >= ReadHeaderTimeout = %v", srv.IdleTimeout, srv.ReadHeaderTimeout)
 	}
 	if srv.WriteTimeout != 0 {
-		t.Fatalf("WriteTimeout = %v, want 0 (generate responses are legitimately slow)", srv.WriteTimeout)
+		t.Fatalf("WriteTimeout = %v，期望 0（生成响应本来就可能很慢）", srv.WriteTimeout)
 	}
 	if srv.ReadTimeout != 0 {
-		t.Fatalf("ReadTimeout = %v, want 0 (GET endpoint has no request body)", srv.ReadTimeout)
+		t.Fatalf("ReadTimeout = %v，期望 0（GET 端点没有请求 body）", srv.ReadTimeout)
 	}
 }
 
@@ -123,10 +123,10 @@ func TestHealthcheckURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := healthcheckURL(tt.listen)
 			if err != nil {
-				t.Fatalf("healthcheckURL(%q) returned error: %v", tt.listen, err)
+				t.Fatalf("healthcheckURL(%q) 返回错误：%v", tt.listen, err)
 			}
 			if got != tt.want {
-				t.Fatalf("healthcheckURL(%q) = %q, want %q", tt.listen, got, tt.want)
+				t.Fatalf("healthcheckURL(%q) = %q，期望 %q", tt.listen, got, tt.want)
 			}
 		})
 	}
@@ -134,11 +134,11 @@ func TestHealthcheckURL(t *testing.T) {
 
 func TestHealthcheckURLRejectsInvalidListenAddress(t *testing.T) {
 	if _, err := healthcheckURL("8080"); err == nil {
-		t.Fatal("healthcheckURL() error = nil, want non-nil")
+		t.Fatal("healthcheckURL() error = nil，期望非 nil")
 	}
 }
 
-// T-CLI-STORE-001: flags override environment and the default is /config.
+// T-CLI-STORE-001：flag 覆盖环境变量，默认值为 /config。
 func TestResolveDataDir(t *testing.T) {
 	for _, tt := range []struct{ name, flag, env, want string }{
 		{"default", "", "", "/config"}, {"environment", "", "custom/config", "custom/config"}, {"flag", "local/config", "other/config", "local/config"},
@@ -146,7 +146,7 @@ func TestResolveDataDir(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv(dataDirEnvVar, tt.env)
 			if got := resolveDataDir(tt.flag); got != tt.want {
-				t.Fatalf("got %q want %q", got, tt.want)
+				t.Fatalf("得到 %q，期望 %q", got, tt.want)
 			}
 		})
 	}

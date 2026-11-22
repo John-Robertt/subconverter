@@ -7,27 +7,26 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// FilteredProxy is a proxy plus its preview-only filtering status.
+// FilteredProxy 是一个节点加上它的过滤状态，过滤状态只供预览使用。
 type FilteredProxy struct {
 	Proxy    model.Proxy
 	Filtered bool
 }
 
-// FilterResult keeps both sides of the filter decision. Generation consumes
-// Included; preview APIs also expose Excluded and All.
+// FilterResult 同时保留过滤判定的两侧结果。生成配置只使用 Included；
+// 预览接口还会展示 Excluded 和 All。
 type FilterResult struct {
 	Included []model.Proxy
 	Excluded []model.Proxy
 	All      []FilteredProxy
 }
 
-// Filter executes pipeline stage 4: apply exclude regex to fetched nodes.
+// Filter 执行流水线第 4 阶段：对拉取类节点应用 exclude 正则。
 //
-// Filtering covers all nodes sourced via remote fetch (KindSubscription /
-// KindSnell / KindVLess — see isFetchedKind). Custom proxies and any other
-// kinds pass through unconditionally.
+// 过滤覆盖所有通过远程拉取得到的节点（KindSubscription / KindSnell /
+// KindVLess，见 isFetchedKind）。自定义节点和其他类型一律直接放行。
 //
-// If excludePattern is empty, all proxies pass through unchanged.
+// excludePattern 为空时，所有节点原样通过。
 func Filter(proxies []model.Proxy, excludePattern string) ([]model.Proxy, error) {
 	re, err := regexp.Compile(excludePattern)
 	if excludePattern == "" {
@@ -73,10 +72,9 @@ func filterCompiledDetailed(proxies []model.Proxy, excludePattern *regexp.Regexp
 	return result, nil
 }
 
-// isFetchedKind reports whether a proxy Kind was sourced via remote fetch
-// (subscription, Snell, or VLESS source). These kinds participate in name
-// filtering, region-group regex matching, and chain upstream candidacy.
-// @all is computed separately from the non-chained original proxy set.
+// isFetchedKind 判断某个节点 Kind 是否来自远程拉取（订阅、Snell 或 VLESS
+// 来源）。这些类型参与名称过滤、区域分组正则匹配，并可作为链式上游候选。
+// @all 另行从非链式的原始节点集合计算。
 func isFetchedKind(k model.ProxyKind) bool {
 	return k == model.KindSubscription || k == model.KindSnell || k == model.KindVLess
 }

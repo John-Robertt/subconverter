@@ -5,21 +5,20 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// ResolvedRouteMember stores one typed route reference plus its declaration
-// provenance for validation and preview.
+// ResolvedRouteMember 保存一条带类型的路由引用及其声明来源，供校验和预览使用。
 type ResolvedRouteMember struct {
 	Ref    model.PolicyRef
 	Raw    string
 	Origin config.RouteMemberOrigin
 }
 
-// ResolvedRouteGroup stores the final request-time route members with provenance.
+// ResolvedRouteGroup 保存请求时最终确定的路由成员及其来源。
 type ResolvedRouteGroup struct {
 	Name    string
 	Members []ResolvedRouteMember
 }
 
-// RouteResult holds the output of the Route stage (pipeline stage 6).
+// RouteResult 保存 Route 阶段（流水线第 6 阶段）的输出。
 type RouteResult struct {
 	RouteGroups         []model.RouteGroup
 	PreparedRouteGroups []config.PreparedRouteGroup
@@ -29,8 +28,7 @@ type RouteResult struct {
 	Fallback            string
 }
 
-// Route executes pipeline stage 6: build service groups, rulesets,
-// and record fallback.
+// Route 执行流水线第 6 阶段：构建服务组、规则集，并记录 fallback。
 func Route(
 	routing []config.PreparedRouteGroup,
 	rulesets []config.PreparedRuleset,
@@ -55,9 +53,9 @@ func Route(
 	}, nil
 }
 
-// buildRouteGroups creates service-level proxy groups from routing config.
-// @auto has already been expanded at startup; Route only expands @all.
-// Service group strategy is always "select".
+// buildRouteGroups 根据 routing 配置创建服务级代理组。
+// @auto 已在启动期展开；Route 只展开 @all。
+// 服务组的策略始终为 "select"。
 func buildRouteGroups(routing []config.PreparedRouteGroup, gr *GroupResult) ([]model.RouteGroup, []ResolvedRouteGroup) {
 	modelGroups := make([]model.RouteGroup, 0, len(routing))
 	resolvedGroups := make([]ResolvedRouteGroup, 0, len(routing))
@@ -131,8 +129,7 @@ func resolveNamedPolicyRef(name string, nodeGroupNames, routeGroupNames map[stri
 	}
 }
 
-// buildRulesets creates Ruleset entries from rulesets config, preserving
-// declaration order.
+// buildRulesets 根据 rulesets 配置创建 Ruleset 条目，保持声明顺序。
 func buildRulesets(rulesets []config.PreparedRuleset) []model.Ruleset {
 	result := make([]model.Ruleset, 0, len(rulesets))
 	for _, ruleset := range rulesets {

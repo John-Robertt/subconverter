@@ -10,30 +10,27 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// errSnellLineSkip is a sentinel signalling that the caller should skip this
-// line without treating it as a fatal error (blank lines, comments).
-var errSnellLineSkip = errors.New("snell line skipped")
+// errSnellLineSkip 是一个哨兵错误，表示调用方应跳过这一行，
+// 而不把它当作致命错误（空行、注释）。
+var errSnellLineSkip = errors.New("已跳过 snell 行")
 
-// ParseSnellSurgeLine parses a single Surge-style Snell proxy declaration
-// into a model.Proxy. The expected shape is:
+// ParseSnellSurgeLine 把一行 Surge 风格的 Snell 节点声明解析为 model.Proxy。
+// 期望的形式是：
 //
 //	NAME = snell, SERVER, PORT, KEY=VALUE[, KEY=VALUE ...]
 //
-// Surrounding whitespace around ` = ` and `,` is tolerated. Blank lines and
-// lines starting with `#` or `//` return errSnellLineSkip so the caller can
-// ignore them without treating them as hard errors.
+// ` = ` 和 `,` 两侧的空白可以容忍。空行以及以 `#` 或 `//` 开头的行返回
+// errSnellLineSkip，调用方可以忽略它们，而不当作硬错误处理。
 //
-// The returned Proxy carries Kind=KindSnell and Type="snell". All KEY=VALUE
-// pairs are copied into Params verbatim (keys kept in their Surge
-// lowercase-hyphen form). `psk` is required; all other pairs are optional.
+// 返回的 Proxy 带有 Kind=KindSnell 和 Type="snell"。所有 KEY=VALUE 键值对
+// 原样复制到 Params 中（键保持 Surge 的小写连字符形式）。`psk` 必填，
+// 其余键值对都是可选的。
 //
-// Layering note: Params stores ALL parsed keys, but the Surge renderer only
-// emits keys listed in surgeSnellKeyOrder (see internal/render/surge.go);
-// unknown keys survive in Params but are not written to Surge output. This
-// split lets the parser stay lenient (forward-compatible with new Surge
-// options) while the renderer stays deterministic for golden-file testing.
-// To support a new Surge option, extend surgeSnellKeyOrder — the parser
-// does not need changes.
+// 分层说明：Params 保存所有解析出的键，但 Surge 渲染器只输出
+// surgeSnellKeyOrder 中列出的键（见 internal/render/surge.go）；
+// 未知键保留在 Params 中，但不会写入 Surge 输出。这样拆分后，解析器可以保持宽松
+// （向前兼容 Surge 新增的选项），渲染器则保持输出确定，便于 golden 文件测试。
+// 要支持新的 Surge 选项，扩展 surgeSnellKeyOrder 即可，解析器无需改动。
 func ParseSnellSurgeLine(line string) (model.Proxy, error) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
@@ -43,7 +40,7 @@ func ParseSnellSurgeLine(line string) (model.Proxy, error) {
 		return model.Proxy{}, errSnellLineSkip
 	}
 
-	// Split NAME from the rest on the first '='.
+	// 在第一个 '=' 处把 NAME 与其余部分分开。
 	eqIdx := strings.Index(trimmed, "=")
 	if eqIdx < 0 {
 		return model.Proxy{}, snellLineError(line, "缺少 '=' 分隔 name 与 type")
@@ -54,7 +51,7 @@ func ParseSnellSurgeLine(line string) (model.Proxy, error) {
 	}
 	rest := trimmed[eqIdx+1:]
 
-	// Split remainder by ','. Need at least: type, server, port.
+	// 剩余部分按 ',' 拆分。至少需要：type、server、port。
 	segments := splitAndTrim(rest, ",")
 	if len(segments) < 3 {
 		return model.Proxy{}, snellLineError(line, "字段数不足，至少需要 type、server、port")
@@ -91,7 +88,7 @@ func ParseSnellSurgeLine(line string) (model.Proxy, error) {
 		if key == "" {
 			return model.Proxy{}, snellLineError(line, fmt.Sprintf("参数 %q 的 key 为空", pair))
 		}
-		// Duplicate keys: last one wins (matches Surge's permissive behaviour).
+		// 键重复时以最后一个为准（与 Surge 的宽松行为一致）。
 		params[key] = value
 	}
 
@@ -109,9 +106,8 @@ func ParseSnellSurgeLine(line string) (model.Proxy, error) {
 	}, nil
 }
 
-// splitAndTrim splits s on sep, trims each part, and returns the slice.
-// Empty trailing parts caused by trailing separators are retained as "" so
-// callers can distinguish "a,b," from "a,b".
+// splitAndTrim 按 sep 拆分 s，去掉每段两侧空白后返回切片。
+// 末尾分隔符产生的空段会保留为 ""，调用方因此可以区分 "a,b," 和 "a,b"。
 func splitAndTrim(s, sep string) []string {
 	raw := strings.Split(s, sep)
 	out := make([]string, len(raw))

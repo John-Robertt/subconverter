@@ -1,6 +1,6 @@
-// Command subconverter runs the proxy configuration generation HTTP service.
+// Command subconverter 运行生成代理配置的 HTTP 服务。
 //
-// Usage:
+// 用法：
 //
 //	subconverter -config <path> [-listen :8080] [-cache-ttl 5m] [-timeout 30s] [-access-token secret]
 //	subconverter -healthcheck [-listen :8080]
@@ -40,11 +40,11 @@ var (
 const (
 	defaultListenAddr = ":8080"
 	listenEnvVar      = "SUBCONVERTER_LISTEN"
-	//nolint:gosec // This is an environment variable name, not an embedded credential.
+	//nolint:gosec // 这是环境变量名，不是内嵌的凭据。
 	accessTokenEnvVar = "SUBCONVERTER_TOKEN"
 	dataDirEnvVar     = "SUBCONVERTER_DATA_DIR"
 	authStateEnvVar   = "SUBCONVERTER_AUTH_STATE"
-	//nolint:gosec // This is an environment variable name, not an embedded credential.
+	//nolint:gosec // 这是环境变量名，不是内嵌的凭据。
 	setupTokenEnvVar = "SUBCONVERTER_SETUP_TOKEN"
 	corsEnvVar       = "SUBCONVERTER_CORS"
 
@@ -53,17 +53,17 @@ const (
 )
 
 func main() {
-	configPath := flag.String("config", "", "path to YAML config file (required)")
-	listen := flag.String("listen", "", "listen address (overrides SUBCONVERTER_LISTEN)")
-	accessToken := flag.String("access-token", "", "access token for /generate (overrides SUBCONVERTER_TOKEN)")
-	dataDir := flag.String("data-dir", "", "directory for editable content (overrides SUBCONVERTER_DATA_DIR; default /config)")
-	authState := flag.String("auth-state", "", "path to admin auth state (overrides SUBCONVERTER_AUTH_STATE)")
-	setupToken := flag.String("setup-token", "", "bootstrap token for first admin setup (overrides SUBCONVERTER_SETUP_TOKEN)")
-	enableCORS := flag.Bool("cors", false, "enable localhost-only development CORS (overrides SUBCONVERTER_CORS)")
-	cacheTTL := flag.Duration("cache-ttl", 5*time.Minute, "subscription and template cache TTL")
-	timeout := flag.Duration("timeout", 30*time.Second, "HTTP fetch timeout for subscriptions")
-	showVersion := flag.Bool("version", false, "print version information and exit")
-	healthcheck := flag.Bool("healthcheck", false, "check service health and exit")
+	configPath := flag.String("config", "", "YAML 配置文件路径（必填）")
+	listen := flag.String("listen", "", "监听地址（覆盖 SUBCONVERTER_LISTEN）")
+	accessToken := flag.String("access-token", "", "/generate 的访问令牌（覆盖 SUBCONVERTER_TOKEN）")
+	dataDir := flag.String("data-dir", "", "存放可编辑内容的目录（覆盖 SUBCONVERTER_DATA_DIR；默认 /config）")
+	authState := flag.String("auth-state", "", "管理后台认证状态文件路径（覆盖 SUBCONVERTER_AUTH_STATE）")
+	setupToken := flag.String("setup-token", "", "首次初始化管理员时使用的引导令牌（覆盖 SUBCONVERTER_SETUP_TOKEN）")
+	enableCORS := flag.Bool("cors", false, "启用仅限 localhost 的开发用 CORS（覆盖 SUBCONVERTER_CORS）")
+	cacheTTL := flag.Duration("cache-ttl", 5*time.Minute, "订阅和模板的缓存 TTL")
+	timeout := flag.Duration("timeout", 30*time.Second, "拉取订阅的 HTTP 超时时间")
+	showVersion := flag.Bool("version", false, "打印版本信息后退出")
+	healthcheck := flag.Bool("healthcheck", false, "检查服务健康状态后退出")
 	flag.Parse()
 
 	if *showVersion {
@@ -85,18 +85,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Printf("starting subconverter %s (commit=%s built=%s)", version, commit, date)
+	log.Printf("正在启动 subconverter %s (commit=%s built=%s)", version, commit, date)
 
-	// Build dependency chain: HTTPFetcher -> CachedFetcher.
+	// 组装依赖链：HTTPFetcher -> CachedFetcher。
 	httpFetcher := &fetch.HTTPFetcher{Client: &http.Client{Timeout: *timeout}}
 	cachedFetcher := fetch.NewCachedFetcher(httpFetcher, *cacheTTL)
 
 	resolvedAuthState, err := resolveAuthStatePath(*authState)
 	if err != nil {
-		log.Fatalf("failed to resolve auth state path: %v", err)
+		log.Fatalf("解析认证状态文件路径失败：%v", err)
 	}
 
-	// Load an existing config or serve the authenticated setup UI for a missing local file.
+	// 加载已有配置；本地配置文件不存在时，提供需要认证的初始化界面。
 	appSvc, err := app.New(context.Background(), app.Options{
 		ConfigLocation: *configPath,
 		DataDir:        resolveDataDir(*dataDir),
@@ -108,17 +108,17 @@ func main() {
 		BuildDate:      date,
 	})
 	if err != nil {
-		log.Fatalf("failed to initialize app service: %v", err)
+		log.Fatalf("初始化 app 服务失败：%v", err)
 	}
 	authSvc, err := auth.New(auth.Options{
 		StatePath:  resolvedAuthState,
 		SetupToken: resolvedSetupToken,
 	})
 	if err != nil {
-		log.Fatalf("failed to initialize auth service: %v", err)
+		log.Fatalf("初始化 auth 服务失败：%v", err)
 	}
 
-	// Start HTTP server.
+	// 启动 HTTP 服务。
 	adminHandler := admin.New(appSvc, authSvc)
 	srv := server.New(appSvc, server.Options{
 		AccessToken:  resolvedAccessToken,
@@ -133,23 +133,23 @@ func main() {
 	})
 	httpServer := newHTTPServer(listenAddr, srv.Handler())
 
-	// Graceful shutdown on SIGINT / SIGTERM.
+	// 收到 SIGINT / SIGTERM 时优雅关闭。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
-		log.Printf("listening on %s", listenAddr)
+		log.Printf("正在监听 %s", listenAddr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
+			log.Fatalf("服务出错：%v", err)
 		}
 	}()
 
 	<-ctx.Done()
-	log.Println("shutting down...")
+	log.Println("正在关闭……")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("shutdown error: %v", err)
+		log.Printf("关闭出错：%v", err)
 	}
 }
 
@@ -224,7 +224,7 @@ func newHTTPServer(listen string, handler http.Handler) *http.Server {
 func runHealthcheck(listen string) int {
 	target, err := healthcheckURL(listen)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "healthcheck: invalid listen address %q: %v\n", listen, err)
+		fmt.Fprintf(os.Stderr, "healthcheck: 监听地址 %q 无效：%v\n", listen, err)
 		return 1
 	}
 	client := &http.Client{Timeout: 3 * time.Second}
@@ -235,7 +235,7 @@ func runHealthcheck(listen string) int {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "healthcheck: status %d\n", resp.StatusCode)
+		fmt.Fprintf(os.Stderr, "healthcheck: 状态码 %d\n", resp.StatusCode)
 		return 1
 	}
 	return 0

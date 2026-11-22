@@ -10,9 +10,8 @@ import (
 //go:embed dist
 var embeddedDist embed.FS
 
-// FS returns the embedded web/dist filesystem for production single-image
-// builds. pnpm web:embed syncs web/dist here before compiling with -tags
-// webui.
+// FS 返回嵌入的 web/dist 文件系统，供生产环境的单镜像构建使用。
+// 使用 -tags webui 编译前，pnpm web:embed 会把 web/dist 同步到这里。
 func FS() fs.FS {
 	dist, err := fs.Sub(embeddedDist, "dist")
 	if err != nil {

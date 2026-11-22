@@ -23,7 +23,7 @@ type savedConfig struct {
 	exists   bool
 }
 
-// readSavedConfig distinguishes an absent local file from an existing empty or invalid document.
+// readSavedConfig 区分本地文件不存在与文件存在但内容为空或无效这两种情况。
 func (s *Service) readSavedConfig(ctx context.Context, invalidate bool) (savedConfig, error) {
 	if s.configLocation != "" && !isRemoteConfig(s.configLocation) {
 		if _, err := os.Lstat(filepath.Clean(s.configLocation)); errors.Is(err, os.ErrNotExist) {
@@ -65,7 +65,7 @@ func writeFileAtomically(path string, data []byte, createOnly bool) error {
 	clean := filepath.Clean(path)
 	dir := filepath.Dir(clean)
 	base := filepath.Base(clean)
-	tmp, err := os.OpenFile(filepath.Join(dir, "."+base+".tmp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304 -- path is derived from the configured local config file location.
+	tmp, err := os.OpenFile(filepath.Join(dir, "."+base+".tmp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304 -- 路径来自已配置的本地配置文件位置。
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			tmp, err = os.CreateTemp(dir, "."+base+".tmp-*")
@@ -134,7 +134,7 @@ func ensureLocalConfigWritable(path string) error {
 }
 
 func syncDirBestEffort(dir string) {
-	d, err := os.Open(dir) // #nosec G304 -- dir is the cleaned parent of the configured local config path.
+	d, err := os.Open(dir) // #nosec G304 -- dir 是已配置本地配置路径经清理后的父目录。
 	if err != nil {
 		return
 	}

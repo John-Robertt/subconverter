@@ -25,9 +25,9 @@ var allowedProxyTypesByKind = map[ProxyKind]map[string]bool{
 	},
 }
 
-// ValidateProxyInvariant validates the structural invariants of one IR proxy.
-// It centralizes the meaning of ID/Kind/Type/Params/DialerID so downstream stages
-// don't each need to re-interpret partially overlapping rules.
+// ValidateProxyInvariant 校验单个 IR 代理的结构不变量。
+// 它集中规定 ID/Kind/Type/Params/DialerID 的含义，下游各阶段
+// 不必各自重新解释这些部分重叠的规则。
 func ValidateProxyInvariant(p Proxy) error {
 	if p.ID == 0 {
 		return fmt.Errorf("id 不能为空")

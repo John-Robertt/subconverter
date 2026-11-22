@@ -9,14 +9,13 @@ import (
 	"github.com/John-Robertt/subconverter/internal/ssparse"
 )
 
-// PluginSpec is a protocol-agnostic plugin declaration attached to a parsed
-// proxy URL.
+// PluginSpec 是附加在已解析代理 URL 上的插件声明，与具体协议无关。
 type PluginSpec struct {
 	Name string
 	Opts map[string]string
 }
 
-// Result is the normalized parse result for a custom proxy URL.
+// Result 是自定义代理 URL 经规范化后的解析结果。
 type Result struct {
 	Type   string
 	Server string
@@ -25,8 +24,8 @@ type Result struct {
 	Plugin *PluginSpec
 }
 
-// ParseURL parses a custom proxy URL into a runtime-neutral structure.
-// Supported schemes: ss://, socks5://, http://.
+// ParseURL 把自定义代理 URL 解析成与运行时无关的结构。
+// 支持的协议：ss://、socks5://、http://。
 func ParseURL(rawURL string) (Result, error) {
 	switch {
 	case strings.HasPrefix(rawURL, "ss://"):

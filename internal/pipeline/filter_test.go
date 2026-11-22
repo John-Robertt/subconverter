@@ -16,7 +16,7 @@ func makeProxy(name string, kind model.ProxyKind) model.Proxy {
 	}
 }
 
-// T-FLT-001: exclude filters subscription nodes
+// T-FLT-001：exclude 过滤订阅节点
 func TestFilter_ExcludeSubscriptionNodes(t *testing.T) {
 	proxies := []model.Proxy{
 		makeProxy("HK-01", model.KindSubscription),
@@ -28,22 +28,22 @@ func TestFilter_ExcludeSubscriptionNodes(t *testing.T) {
 
 	result, err := Filter(proxies, "(过期|剩余流量)")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result) != 3 {
-		t.Fatalf("got %d proxies, want 3", len(result))
+		t.Fatalf("得到 %d 个节点，期望 3 个", len(result))
 	}
 
 	wantNames := []string{"HK-01", "SG-01", "US-01"}
 	for i, want := range wantNames {
 		if result[i].Name != want {
-			t.Errorf("result[%d].Name = %q, want %q", i, result[i].Name, want)
+			t.Errorf("result[%d].Name = %q，期望 %q", i, result[i].Name, want)
 		}
 	}
 }
 
-// T-FLT-002: custom proxies not filtered
+// T-FLT-002：自定义节点不参与过滤
 func TestFilter_CustomProxiesNotFiltered(t *testing.T) {
 	proxies := []model.Proxy{
 		makeProxy("过期-sub-node", model.KindSubscription),
@@ -53,22 +53,22 @@ func TestFilter_CustomProxiesNotFiltered(t *testing.T) {
 
 	result, err := Filter(proxies, "过期")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result) != 2 {
-		t.Fatalf("got %d proxies, want 2", len(result))
+		t.Fatalf("得到 %d 个节点，期望 2 个", len(result))
 	}
 
-	// Custom proxy survives even though name matches.
+	// 自定义节点即使名称匹配也会保留。
 	if result[0].Name != "过期-custom-proxy" {
-		t.Errorf("result[0].Name = %q, want custom proxy to survive", result[0].Name)
+		t.Errorf("result[0].Name = %q，期望自定义节点被保留", result[0].Name)
 	}
 	if result[0].Kind != model.KindCustom {
-		t.Errorf("result[0].Kind = %q, want custom", result[0].Kind)
+		t.Errorf("result[0].Kind = %q，期望 custom", result[0].Kind)
 	}
 	if result[1].Name != "HK-01" {
-		t.Errorf("result[1].Name = %q, want HK-01", result[1].Name)
+		t.Errorf("result[1].Name = %q，期望 HK-01", result[1].Name)
 	}
 }
 
@@ -80,11 +80,11 @@ func TestFilter_EmptyPattern(t *testing.T) {
 
 	result, err := Filter(proxies, "")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result) != 2 {
-		t.Fatalf("got %d proxies, want 2 (no filtering)", len(result))
+		t.Fatalf("得到 %d 个节点，期望 2 个（不做过滤）", len(result))
 	}
 }
 
@@ -96,11 +96,11 @@ func TestFilter_AllFiltered(t *testing.T) {
 
 	result, err := Filter(proxies, "test")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result) != 0 {
-		t.Fatalf("got %d proxies, want 0", len(result))
+		t.Fatalf("得到 %d 个节点，期望 0 个", len(result))
 	}
 }
 
@@ -112,15 +112,15 @@ func TestFilter_NoMatch(t *testing.T) {
 
 	result, err := Filter(proxies, "NOMATCH")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result) != 2 {
-		t.Fatalf("got %d proxies, want 2", len(result))
+		t.Fatalf("得到 %d 个节点，期望 2 个", len(result))
 	}
 }
 
-// T-FLT-SNELL: Snell nodes share subscription-like filtering semantics.
+// T-FLT-SNELL：Snell 节点与订阅节点使用相同的过滤语义。
 func TestFilter_SnellNodesFiltered(t *testing.T) {
 	proxies := []model.Proxy{
 		makeProxy("HK-Snell", model.KindSnell),
@@ -131,23 +131,23 @@ func TestFilter_SnellNodesFiltered(t *testing.T) {
 
 	result, err := Filter(proxies, "过期")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result) != 2 {
-		t.Fatalf("got %d proxies, want 2 (过期-Snell and 过期-sub both filtered)", len(result))
+		t.Fatalf("得到 %d 个节点，期望 2 个（过期-Snell 和 过期-sub 都被过滤）", len(result))
 	}
 	wantNames := []string{"HK-Snell", "HK-01"}
 	for i, want := range wantNames {
 		if result[i].Name != want {
-			t.Errorf("result[%d].Name = %q, want %q", i, result[i].Name, want)
+			t.Errorf("result[%d].Name = %q，期望 %q", i, result[i].Name, want)
 		}
 	}
 }
 
-// T-FLT-VLESS: VLESS nodes share subscription-like filtering semantics.
-// Guards the isFetchedKind extension — if someone narrows it back to only
-// Source/Snell, this test trips.
+// T-FLT-VLESS：VLESS 节点与订阅节点使用相同的过滤语义。
+// 守护 isFetchedKind 的扩展：如果有人把它改回只包含 Source/Snell，
+// 这个测试会失败。
 func TestFilter_ExcludesVLessNodesByName(t *testing.T) {
 	proxies := []model.Proxy{
 		makeProxy("HK-VL", model.KindVLess),
@@ -157,16 +157,16 @@ func TestFilter_ExcludesVLessNodesByName(t *testing.T) {
 
 	result, err := Filter(proxies, "过期")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result) != 2 {
-		t.Fatalf("got %d proxies, want 2 (过期-VL filtered)", len(result))
+		t.Fatalf("得到 %d 个节点，期望 2 个（过期-VL 被过滤）", len(result))
 	}
 	wantNames := []string{"HK-VL", "HK-01"}
 	for i, want := range wantNames {
 		if result[i].Name != want {
-			t.Errorf("result[%d].Name = %q, want %q", i, result[i].Name, want)
+			t.Errorf("result[%d].Name = %q，期望 %q", i, result[i].Name, want)
 		}
 	}
 }
@@ -179,28 +179,28 @@ func TestFilter_ChainedProxiesNotFiltered(t *testing.T) {
 
 	result, err := Filter(proxies, "过期")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误：%v", err)
 	}
 
 	if len(result) != 2 {
-		t.Fatalf("got %d proxies, want 2 (chained not filtered)", len(result))
+		t.Fatalf("得到 %d 个节点，期望 2 个（链式节点不参与过滤）", len(result))
 	}
 	if result[0].Name != "过期-chain" {
-		t.Errorf("chained proxy should survive filter, got %q", result[0].Name)
+		t.Errorf("链式节点应在过滤后保留，实际 %q", result[0].Name)
 	}
 }
 
 func TestFilter_InvalidRegex(t *testing.T) {
 	_, err := Filter(nil, "[invalid")
 	if err == nil {
-		t.Fatal("expected error for invalid regex")
+		t.Fatal("无效正则应返回错误")
 	}
 
 	var buildErr *errtype.BuildError
 	if !errors.As(err, &buildErr) {
-		t.Fatalf("error type = %T, want *errtype.BuildError", err)
+		t.Fatalf("错误类型 = %T，期望 *errtype.BuildError", err)
 	}
 	if buildErr.Phase != "filter" {
-		t.Errorf("Phase = %q, want %q", buildErr.Phase, "filter")
+		t.Errorf("Phase = %q，期望 %q", buildErr.Phase, "filter")
 	}
 }

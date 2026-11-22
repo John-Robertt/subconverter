@@ -9,13 +9,12 @@ import (
 
 const MaxFilenameLength = 255
 
-// ValidFormat reports whether format is one of the supported generation
-// targets.
+// ValidFormat 判断 format 是否属于支持的生成目标。
 func ValidFormat(format string) bool {
 	return format == "clash" || format == "surge" || format == "loon"
 }
 
-// ResolveFilename normalizes the optional filename query parameter.
+// ResolveFilename 规范化可选的 filename 查询参数。
 func ResolveFilename(raw string, present bool, format string) (string, error) {
 	name := DefaultFilename(format)
 	if present {
@@ -56,8 +55,8 @@ func ResolveFilename(raw string, present bool, format string) (string, error) {
 	return name, nil
 }
 
-// ValidateFilename enforces the filename character set shared by /generate,
-// preview, and server-generated subscription links.
+// ValidateFilename 检查文件名字符集，/generate、预览和服务端生成的
+// 订阅链接共用这套规则。
 func ValidateFilename(name string) error {
 	for _, r := range name {
 		switch {
@@ -102,8 +101,8 @@ func expectedExtension(format string) string {
 	}
 }
 
-// BuildGenerateURL builds a client-facing /generate URL from a validated
-// base_url and normalized filename.
+// BuildGenerateURL 用已校验的 base_url 和已规范化的文件名，
+// 构造给客户端使用的 /generate URL。
 func BuildGenerateURL(baseURL, format, filename, accessToken string, includeToken bool) (string, error) {
 	base, err := url.Parse(baseURL)
 	if err != nil {

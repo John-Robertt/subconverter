@@ -10,7 +10,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
-// T-SRV-LOON-001: an empty Loon fallback is user-fixable; projection invariants remain server errors.
+// T-SRV-LOON-001：Loon fallback 为空属于用户可修复的错误；投影不变量异常仍属于服务端错误。
 func TestServer_LoonTargetErrors(t *testing.T) {
 	for _, tt := range []struct {
 		code   errtype.Code
@@ -21,12 +21,12 @@ func TestServer_LoonTargetErrors(t *testing.T) {
 	} {
 		status, message := presentError(&errtype.TargetError{Code: tt.code, Format: "loon", Message: "输出不可用"})
 		if status != tt.status || !strings.Contains(message, "[loon]") {
-			t.Fatalf("code=%s status=%d message=%q, want status=%d", tt.code, status, message, tt.status)
+			t.Fatalf("code=%s status=%d message=%q，期望 status=%d", tt.code, status, message, tt.status)
 		}
 	}
 }
 
-// T-SRV-004: presentError formats multiple fetch errors as 502
+// T-SRV-004：presentError 把多个拉取错误格式化为 502
 func TestPresentError_MultipleFetchErrors(t *testing.T) {
 	err := errors.Join(
 		&errtype.FetchError{
@@ -44,23 +44,23 @@ func TestPresentError_MultipleFetchErrors(t *testing.T) {
 	code, msg := presentError(err)
 
 	if code != http.StatusBadGateway {
-		t.Fatalf("status = %d, want %d", code, http.StatusBadGateway)
+		t.Fatalf("status = %d，期望 %d", code, http.StatusBadGateway)
 	}
 	if !strings.Contains(msg, "sub1.example.com") {
-		t.Errorf("message should mention first URL, got %q", msg)
+		t.Errorf("message 应提到第一个 URL，实际为 %q", msg)
 	}
 	if !strings.Contains(msg, "sub2.example.com") {
-		t.Errorf("message should mention second URL, got %q", msg)
+		t.Errorf("message 应提到第二个 URL，实际为 %q", msg)
 	}
 	if !strings.Contains(msg, "连接超时") {
-		t.Errorf("message should contain first error detail, got %q", msg)
+		t.Errorf("message 应包含第一个错误的详情，实际为 %q", msg)
 	}
 	if !strings.Contains(msg, "HTTP 503") {
-		t.Errorf("message should contain second error detail, got %q", msg)
+		t.Errorf("message 应包含第二个错误的详情，实际为 %q", msg)
 	}
 }
 
-// T-SRV-005: presentError formats resource error as 500
+// T-SRV-005：presentError 把资源错误格式化为 500
 func TestPresentError_ResourceError(t *testing.T) {
 	err := &errtype.ResourceError{
 		Code:     errtype.CodeResourceLocalReadFailed,
@@ -71,20 +71,20 @@ func TestPresentError_ResourceError(t *testing.T) {
 	code, msg := presentError(err)
 
 	if code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", code, http.StatusInternalServerError)
+		t.Fatalf("status = %d，期望 %d", code, http.StatusInternalServerError)
 	}
 	if !strings.Contains(msg, "资源读取失败") {
-		t.Fatalf("message should contain 资源读取失败, got %q", msg)
+		t.Fatalf("message 应包含 资源读取失败，实际为 %q", msg)
 	}
 	if !strings.Contains(msg, "/tmp/base.yaml") {
-		t.Errorf("message should mention location, got %q", msg)
+		t.Errorf("message 应提到资源位置，实际为 %q", msg)
 	}
 	if !strings.Contains(msg, "no such file or directory") {
-		t.Errorf("message should contain os error detail, got %q", msg)
+		t.Errorf("message 应包含操作系统错误的详情，实际为 %q", msg)
 	}
 }
 
-// T-SRV-006: presentError formats target error as 400/500 based on code
+// T-SRV-006：presentError 按错误码把目标投影错误格式化为 400 或 500
 func TestPresentError_TargetError(t *testing.T) {
 	err := &errtype.TargetError{
 		Code:    errtype.CodeTargetClashFallbackEmpty,
@@ -95,17 +95,17 @@ func TestPresentError_TargetError(t *testing.T) {
 	code, msg := presentError(err)
 
 	if code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", code, http.StatusBadRequest)
+		t.Fatalf("status = %d，期望 %d", code, http.StatusBadRequest)
 	}
 	if !strings.Contains(msg, "目标投影错误 [clash]") {
-		t.Fatalf("message should contain target projection prefix, got %q", msg)
+		t.Fatalf("message 应包含目标投影错误前缀，实际为 %q", msg)
 	}
 	if !strings.Contains(msg, "FINAL") {
-		t.Errorf("message should contain target error detail, got %q", msg)
+		t.Errorf("message 应包含目标投影错误的详情，实际为 %q", msg)
 	}
 }
 
-// T-SRV-007: presentError unwraps TargetError from errors.Join
+// T-SRV-007：presentError 能从 errors.Join 中取出 TargetError
 //
 // TargetError 可能被 generate.Service 包进 errors.Join 与其他非 errtype 错误一起返回。
 // 锁定：flattenErrors 会拆分 Join，collect* 对非 errtype 叶子不匹配，最终 errors.As 能找到
@@ -122,17 +122,17 @@ func TestPresentError_TargetErrorWrappedInErrorsJoin(t *testing.T) {
 	code, msg := presentError(err)
 
 	if code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", code, http.StatusBadRequest)
+		t.Fatalf("status = %d，期望 %d", code, http.StatusBadRequest)
 	}
 	if !strings.Contains(msg, "目标投影错误 [surge]") {
-		t.Fatalf("message should contain target projection prefix, got %q", msg)
+		t.Fatalf("message 应包含目标投影错误前缀，实际为 %q", msg)
 	}
 	if !strings.Contains(msg, "FINAL") {
-		t.Errorf("message should contain target error detail, got %q", msg)
+		t.Errorf("message 应包含目标投影错误的详情，实际为 %q", msg)
 	}
 }
 
-// T-SRV-008: presentError unwraps TargetError from fmt.Errorf wrap
+// T-SRV-008：presentError 能从 fmt.Errorf 的包装中取出 TargetError
 //
 // 锁定：errors.As 穿透 fmt.Errorf 单层 %w 包装仍能提取 TargetError。
 // 管道任何一层用 fmt.Errorf("...: %w", targetErr) 再返回，HTTP 层映射不退化。
@@ -147,20 +147,20 @@ func TestPresentError_TargetErrorThroughFmtErrorfWrap(t *testing.T) {
 	code, msg := presentError(err)
 
 	if code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", code, http.StatusInternalServerError)
+		t.Fatalf("status = %d，期望 %d", code, http.StatusInternalServerError)
 	}
 	if !strings.Contains(msg, "目标投影错误 [clash]") {
-		t.Fatalf("message should contain target projection prefix, got %q", msg)
+		t.Fatalf("message 应包含目标投影错误前缀，实际为 %q", msg)
 	}
 	if !strings.Contains(msg, "内部不变量异常") {
-		t.Errorf("message should contain inner detail, got %q", msg)
+		t.Errorf("message 应包含内层错误的详情，实际为 %q", msg)
 	}
 }
 
-// T-SRV-BOOT-001: the public generator reports an initialization conflict rather than a pipeline failure.
+// T-SRV-BOOT-001：公开生成接口报告的是“尚未初始化”冲突，而不是流水线失败。
 func TestServer_ConfigNotInitialized(t *testing.T) {
 	status, message := presentError(&errtype.ConfigError{Code: errtype.CodeConfigNotInitialized, Message: "请先保存并热重载配置"})
 	if status != http.StatusConflict || !strings.Contains(message, "请先保存并热重载配置") {
-		t.Fatalf("status=%d message=%q want 409 initialization guidance", status, message)
+		t.Fatalf("status=%d message=%q，期望 409 和初始化指引", status, message)
 	}
 }

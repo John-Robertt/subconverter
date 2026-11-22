@@ -12,7 +12,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/config"
 )
 
-// T-APP-LOON-001: archive import, config saving and export preserve Loon format and template.
+// T-APP-LOON-001：配置包导入、配置保存和导出都保留 Loon 格式与模板。
 func TestApp_LoonArchiveRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -38,7 +38,7 @@ func TestApp_LoonArchiveRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.Templates.Loon != "" || cfg.Templates.Inline["loon"] != tmpl || cfg.Sources.Subscriptions[0].Format != "loon" {
-		t.Fatalf("import lost Loon config: %+v", cfg)
+		t.Fatalf("导入后丢失了 Loon 配置：%+v", cfg)
 	}
 	snapshot, err := svc.ConfigSnapshot(context.Background())
 	if err != nil {
@@ -56,12 +56,12 @@ func TestApp_LoonArchiveRoundTrip(t *testing.T) {
 	}
 	entries := readArchiveEntriesForTest(t, exported.Body)
 	if _, ok := entries["templates/loon.conf"]; ok {
-		t.Fatal("archive used .conf for Loon template")
+		t.Fatal("配置包给 Loon 模板用了 .conf 后缀")
 	}
 	if string(entries[archiveLoonTemplateEntry].Body) != tmpl || !strings.Contains(string(entries[archiveConfigEntry].Body), "format: loon") {
-		t.Fatalf("archive lost Loon template or format: %+v", entries)
+		t.Fatalf("配置包丢失了 Loon 模板或格式：%+v", entries)
 	}
 	if !strings.Contains(string(entries[archiveConfigEntry].Body), "templates/loon.lcf") {
-		t.Fatalf("archive config lost .lcf reference: %s", entries[archiveConfigEntry].Body)
+		t.Fatalf("配置包中的配置丢失了 .lcf 引用：%s", entries[archiveConfigEntry].Body)
 	}
 }

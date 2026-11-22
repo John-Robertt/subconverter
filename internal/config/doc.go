@@ -1,16 +1,15 @@
-// Package config handles YAML configuration loading, order-preserving
-// map parsing, static field validation, and startup preparation.
+// Package config 负责加载 YAML 配置、按声明顺序解析映射、
+// 静态校验字段，以及启动时的预处理。
 //
-// Responsibilities:
-//   - Config struct definitions and YAML deserialization
-//   - OrderedMap for groups, routing, rulesets (preserving declaration order)
-//   - YAML loader (local file or HTTP URL via fetch.LoadResource)
-//   - Static validation (required fields, enums, regex compilation)
-//   - Prepare: validates config completeness (name uniqueness, routing
-//     member references) and produces startup-prepared RuntimeConfig
-//     (compiled regexes, parsed custom proxy URLs, expanded @auto, static
-//     namespace, cycle detection). Request-time stages consume RuntimeConfig
-//     as read-only input.
+// 职责：
+//   - 定义 Config 结构体并完成 YAML 反序列化
+//   - 为 groups、routing、rulesets 提供 OrderedMap（保留声明顺序）
+//   - YAML 加载器（本地文件，或经 fetch.LoadResource 读取 HTTP URL）
+//   - 静态校验（必填字段、枚举值、正则编译）
+//   - Prepare：校验配置完整性（名称唯一、routing 成员引用），
+//     并产出启动时预处理好的 RuntimeConfig（已编译的正则、已解析的
+//     自定义代理 URL、已展开的 @auto、静态命名空间、循环检测）。
+//     请求阶段把 RuntimeConfig 当作只读输入使用。
 //
-// Design reference: docs/design/config-schema.md
+// 设计参考：docs/design/config-schema.md
 package config

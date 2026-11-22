@@ -14,7 +14,7 @@ type ResourceContentResult struct {
 	Format  string `json:"format,omitempty"`
 }
 
-// ReadResource returns an editable copy without changing the source or config.
+// ReadResource 返回资源内容的可编辑副本，不修改来源和配置。
 func (s *Service) ReadResource(ctx context.Context, location string) (*ResourceContentResult, error) {
 	if strings.TrimSpace(location) == "" {
 		return nil, newBadRequestError("invalid_request", "资源 URL 或路径不能为空")

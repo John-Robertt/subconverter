@@ -9,25 +9,25 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// reservedPolicies are built-in policy names that need no group/proxy resolution.
+// reservedPolicies 是内置策略名，不需要解析到分组或节点。
 var reservedPolicies = map[string]bool{
 	"DIRECT": true,
 	"REJECT": true,
 }
 
-// ValidateGraph performs graph-level semantic validation on the outputs of the
-// Group and Route stages, then assembles a Pipeline.
+// ValidateGraph 对 Group 和 Route 阶段的输出做图级别的语义校验，
+// 然后组装出 Pipeline。
 //
-// Checks (in order):
-//  1. Proxy identity integrity and shared group/output namespace collisions
-//  2. @all expansion excludes chained proxies
-//  3. Empty node groups (region and chained)
-//  4. Declared route members only use allowed reference kinds
-//  5. Resolved route members only reference existing objects
-//  6. Circular references among route groups
+// 检查项（按顺序）：
+//  1. 节点编号完整，且分组与输出共用的命名空间中没有名称冲突
+//  2. @all 展开结果不含链式节点
+//  3. 空节点组（区域组和链式组）
+//  4. 声明的路由成员只使用允许的引用类型
+//  5. 解析后的路由成员只引用存在的对象
+//  6. 路由组之间的循环引用
 //
-// Ruleset/rule policy existence and fallback existence are guaranteed by
-// config.Prepare at startup and not re-checked here.
+// 规则集/规则的策略是否存在、fallback 是否存在，已由启动期的
+// config.Prepare 保证，这里不再重复检查。
 func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 	if gr == nil {
 		gr = &GroupResult{}
@@ -41,7 +41,7 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 	index := buildNamespaceIndex(&c, gr.Proxies, gr.NodeGroups, rr.RouteGroups)
 	validateProxyReferences(&c, gr.Proxies, gr.NodeGroups, index)
 
-	// 2. @all must exclude chained proxies.
+	// 2. @all 必须不含链式节点。
 	chainedProxyIDs := buildChainedProxyIDSet(gr.Proxies)
 	for _, id := range gr.AllProxies {
 		if !index.proxyIDs[id] {
@@ -51,14 +51,14 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 		}
 	}
 
-	// 3. Empty node groups.
+	// 3. 空节点组。
 	for _, g := range gr.NodeGroups {
 		if len(g.Members) == 0 {
 			c.add(fmt.Sprintf("节点组 %q 没有成员", g.Name))
 		}
 	}
 
-	// 4. Declared route member contract.
+	// 4. 声明的路由成员须符合约定。
 	for _, g := range preparedRouteGroups(rr) {
 		for _, member := range g.DeclaredMembers {
 			switch {
@@ -72,20 +72,20 @@ func ValidateGraph(gr *GroupResult, rr *RouteResult) (*model.Pipeline, error) {
 		}
 	}
 
-	// 5. Resolved route member resolution with provenance.
+	// 5. 结合来源信息解析路由成员。
 	for _, g := range resolvedRouteGroups(rr) {
 		for _, member := range g.Members {
 			validateResolvedRouteMember(&c, g.Name, member, index)
 		}
 	}
 
-	// 6. Circular references among route groups.
+	// 6. 路由组之间的循环引用。
 	if cycle := detectCycle(rr.RouteGroups, index.routeGroupNames); cycle != "" {
 		c.add(cycle)
 	}
 
-	// Checks 7-9 (ruleset/rule policy existence, fallback existence) are
-	// guaranteed by config.Prepare at startup and omitted here.
+	// 检查 7-9（规则集/规则的策略是否存在、fallback 是否存在）已由
+	// 启动期的 config.Prepare 保证，这里省略。
 
 	if err := c.result(); err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func allowsProxyReference(origin config.RouteMemberOrigin) bool {
 	return origin == config.RouteMemberOriginAutoExpanded || origin == config.RouteMemberOriginAllExpanded
 }
 
-// graphCollector accumulates graph validation errors.
+// graphCollector 累积图校验错误。
 type graphCollector struct {
 	errs []error
 }

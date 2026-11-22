@@ -11,23 +11,21 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// uuidRe matches a standard dash-delimited UUID (case-insensitive).
-// VLESS has no base64 userinfo convention (unlike SS), so the parser only
-// accepts this canonical form. Non-standard 32-char "pseudo-UUID" values
-// that some V2Ray forks accept are rejected here to keep parser strict.
+// uuidRe 匹配以短横线分隔的标准 UUID（不区分大小写）。
+// VLESS 不像 SS 那样有 base64 userinfo 的惯例，所以解析器只接受这种规范形式。
+// 部分 V2Ray 分支接受非标准的 32 字符“伪 UUID”，这里一律拒绝，以保持解析严格。
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// vlessKnownQueryKeys maps transport-independent URI query keys to Params
-// keys. Keys are stored under Clash target names so the renderer reads them
-// verbatim without rename indirection (domain-model.md convention).
+// vlessKnownQueryKeys 把与传输方式无关的 URI query 键映射到 Params 键。
+// 键按 Clash 目标字段名存储，渲染器可以原样读取，无需再做一层改名
+// （domain-model.md 中的约定）。
 //
-// Note `type` is NOT in this map: it is handled separately as a transport
-// normalization + dispatch key (see applyVLessQuery). `path` / `host` / `serviceName` /
-// `mode` are also not here — they are transport-specific and dispatched by
-// applyVLessTransportQuery into network-specific Params keys.
+// 注意 `type` 不在这个 map 中：它作为传输方式的规范化与分派键单独处理
+// （见 applyVLessQuery）。`path` / `host` / `serviceName` / `mode` 也不在这里：
+// 它们与具体传输方式相关，由 applyVLessTransportQuery 分派到对应传输方式的 Params 键。
 //
-// Keys NOT in this map and not handled above are silently ignored (lenient,
-// matches ssuri.go).
+// 既不在这个 map 中、也不属于上面单独处理的键，会被静默忽略（宽松处理，
+// 与 ssuri.go 一致）。
 var vlessKnownQueryKeys = map[string]string{
 	"security":   "security",
 	"encryption": "encryption",
@@ -40,10 +38,9 @@ var vlessKnownQueryKeys = map[string]string{
 	"spx":        "reality-spider-x",
 }
 
-// vlessAllowedNetworks enumerates the transport values that receive dedicated
-// Clash transport-opts handling in this codebase. Values outside this set are
-// normalized to tcp (see normalizeVLessNetwork) to match Mihomo's documented
-// fallback behavior.
+// vlessAllowedNetworks 列出本代码库为其专门处理 Clash 传输选项（transport-opts）的
+// 传输方式取值。不在这个集合中的值会被规范化为 tcp（见 normalizeVLessNetwork），
+// 与 Mihomo 文档描述的后备行为一致。
 var vlessAllowedNetworks = map[string]bool{
 	"tcp":   true,
 	"ws":    true,
@@ -53,26 +50,23 @@ var vlessAllowedNetworks = map[string]bool{
 	"xhttp": true,
 }
 
-// ParseVLessURI parses a standard VLESS URI into a model.Proxy.
+// ParseVLessURI 把一条标准 VLESS URI 解析为 model.Proxy。
 //
-// Supported form: vless://UUID@server:port[/][?query][#NodeName]
+// 支持的形式：vless://UUID@server:port[/][?query][#NodeName]
 //
-// Design choices embedded here:
-//   - `security` accepts only "none" / "tls" / "reality"; other values error.
-//     Rationale: these are the VLESS spec's three modes; any other value
-//     would mean a Clash client that can't dial the node.
-//   - `encryption` is copied through when non-empty. Rationale: Mihomo now
-//     supports non-"none" VLESS encryption modes, so rejecting them would
-//     make otherwise valid URIs unusable.
-//   - `type` (transport) is normalized into Params["network"] using Mihomo's
-//     fallback semantics: known values {tcp,ws,http,h2,grpc,xhttp} are kept,
-//     while missing/unknown values become tcp.
-//   - Empty-value query keys are not stored. Rationale: match ssuri.go's
-//     treatment of empty plugin values; reduces churn in Params.
-//   - Unknown query keys are silently ignored. Rationale: forward-compat with
-//     future V2Ray/Xray query extensions.
+// 这里内含的设计取舍：
+//   - `security` 只接受 "none" / "tls" / "reality"，其他值报错。
+//     理由：这是 VLESS 规范中的三种模式；其他取值意味着 Clash 客户端
+//     无法连接该节点。
+//   - `encryption` 非空时原样复制。理由：Mihomo 现已支持非 "none" 的 VLESS
+//     加密模式，拒绝它们会让本来有效的 URI 无法使用。
+//   - `type`（传输方式）按 Mihomo 的后备语义规范化到 Params["network"]：
+//     已知值 {tcp,ws,http,h2,grpc,xhttp} 保留，缺失或未知的值变为 tcp。
+//   - 值为空的 query 键不存储。理由：与 ssuri.go 处理空 plugin 值的方式一致，
+//     减少 Params 中的无用条目。
+//   - 未知的 query 键被静默忽略。理由：向前兼容未来 V2Ray/Xray 的 query 扩展。
 //
-// Returned Proxy: Kind=KindVLess, Type="vless".
+// 返回的 Proxy：Kind=KindVLess，Type="vless"。
 func ParseVLessURI(raw string) (model.Proxy, error) {
 	const prefix = "vless://"
 	if !strings.HasPrefix(raw, prefix) {
@@ -81,7 +75,7 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 
 	body := raw[len(prefix):]
 
-	// Fragment → Name. Required, non-empty.
+	// Fragment → Name。必填且不能为空。
 	name := ""
 	if idx := strings.LastIndex(body, "#"); idx >= 0 {
 		fragment := body[idx+1:]
@@ -96,7 +90,7 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 		return model.Proxy{}, vlessURIError(raw, "节点名称为空")
 	}
 
-	// Query.
+	// Query 部分。
 	query := ""
 	if idx := strings.Index(body, "?"); idx >= 0 {
 		query = body[idx+1:]
@@ -104,9 +98,8 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 	}
 	body = strings.TrimSuffix(body, "/")
 
-	// Userinfo (UUID) / hostport split on LAST '@' — a fragment might contain '@'
-	// but we stripped that already; this handles unusual encoded passwords
-	// in uncommon fork dialects.
+	// 在最后一个 '@' 处拆分 Userinfo（UUID）与 hostport。fragment 里可能含有 '@'，
+	// 但前面已经去掉了；这样处理是为了兼容少见分支方言中经过编码的特殊密码。
 	atIdx := strings.LastIndex(body, "@")
 	if atIdx < 0 {
 		return model.Proxy{}, vlessURIError(raw, "缺少 @ 分隔符")
@@ -158,14 +151,13 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 	}, nil
 }
 
-// applyVLessQuery validates and copies known query values into params.
+// applyVLessQuery 校验已知的 query 值并复制到 params 中。
 //
-// Step 1: determine `network` by reading the `type` query. Missing or unknown
-// values normalize to tcp, matching Mihomo's documented fallback behavior.
-// Step 2: copy transport-independent keys via vlessKnownQueryKeys.
-// Step 3: dispatch transport-specific keys (path/host/serviceName/mode) into
-// network-specific Params keys so the renderer emits the right *-opts block
-// without runtime dispatch.
+// 第 1 步：读取 `type` query 确定 `network`。缺失或未知的值规范化为 tcp，
+// 与 Mihomo 文档描述的后备行为一致。
+// 第 2 步：按 vlessKnownQueryKeys 复制与传输方式无关的键。
+// 第 3 步：把与传输方式相关的键（path/host/serviceName/mode）分派到对应
+// 传输方式的 Params 键，渲染器因此无需在运行时分派，就能输出正确的 *-opts 块。
 func applyVLessQuery(values url.Values, params map[string]string) error {
 	network := normalizeVLessNetwork(values.Get("type"))
 	params["network"] = network
@@ -190,10 +182,9 @@ func applyVLessQuery(values url.Values, params map[string]string) error {
 	return nil
 }
 
-// normalizeVLessNetwork maps URI query `type` values onto the transport names
-// we persist in Params["network"]. Mihomo documents tcp as the default when
-// `type` is omitted or set to any unknown value, so this helper mirrors that
-// client-facing contract instead of failing strict.
+// normalizeVLessNetwork 把 URI query 中的 `type` 值映射为保存在
+// Params["network"] 中的传输方式名称。Mihomo 文档规定，`type` 省略或取任何
+// 未知值时默认为 tcp，所以这个函数沿用该面向客户端的约定，而不是严格报错。
 func normalizeVLessNetwork(raw string) string {
 	network := strings.TrimSpace(raw)
 	if network == "" {
@@ -205,21 +196,20 @@ func normalizeVLessNetwork(raw string) string {
 	return network
 }
 
-// applyVLessTransportQuery dispatches transport-layer query keys into
-// transport-specific Params entries based on network. The key naming maps
-// 1:1 to the Clash *-opts fields (ws-opts.path, grpc-opts.grpc-service-name,
-// etc.), so the renderer looks up `<network>-<field>` directly.
+// applyVLessTransportQuery 按 network 把传输层 query 键分派到对应传输方式的
+// Params 条目。键名与 Clash 的 *-opts 字段一一对应（ws-opts.path、
+// grpc-opts.grpc-service-name 等），渲染器因此直接查找 `<network>-<field>`。
 //
-// URI query keys handled per network:
-//   - ws:    path → ws-path; host → ws-host (becomes ws-opts.headers.Host)
-//   - http:  path → http-path; host → http-host (becomes http-opts.headers.Host list)
-//   - h2:    path → h2-path; host → h2-host (becomes h2-opts.host list)
+// 各传输方式处理的 URI query 键：
+//   - ws:    path → ws-path；host → ws-host（变为 ws-opts.headers.Host）
+//   - http:  path → http-path；host → http-host（变为 http-opts.headers.Host 列表）
+//   - h2:    path → h2-path；host → h2-host（变为 h2-opts.host 列表）
 //   - grpc:  serviceName → grpc-service-name
-//   - xhttp: path → xhttp-path; host → xhttp-host; mode → xhttp-mode
-//   - tcp:   (no transport-specific keys)
+//   - xhttp: path → xhttp-path；host → xhttp-host；mode → xhttp-mode
+//   - tcp:   （没有传输方式专属的键）
 //
-// Values are trimmed; empty values are not stored. The renderer treats a
-// missing transport key as "emit the opts block without that sub-field".
+// 值会去掉两侧空白；空值不存储。渲染器把缺失的传输键理解为
+// “输出 opts 块，但不含该子字段”。
 func applyVLessTransportQuery(values url.Values, params map[string]string, network string) {
 	trimmed := func(k string) string { return strings.TrimSpace(values.Get(k)) }
 
@@ -262,8 +252,8 @@ func applyVLessTransportQuery(values url.Values, params map[string]string, netwo
 	}
 }
 
-// vlessURIError produces a BuildError with the URI truncated for display,
-// matching the ssError truncation convention in ssuri.go.
+// vlessURIError 生成一个 BuildError，其中的 URI 会截断后显示，
+// 截断方式与 ssuri.go 中 ssError 的约定一致。
 func vlessURIError(uri, reason string) error {
 	display := uri
 	if len(display) > 80 {

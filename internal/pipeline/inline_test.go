@@ -10,7 +10,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/errtype"
 )
 
-// T-SRC-INLINE-001: native fragments, documents and URI lists share existing parsing.
+// T-SRC-INLINE-001：原生片段、完整文档和 URI 列表共用现有解析逻辑。
 func TestSource_InlineSubscription(t *testing.T) {
 	for _, tt := range []struct {
 		name, format, body string
@@ -27,18 +27,18 @@ func TestSource_InlineSubscription(t *testing.T) {
 			proxies, err := loadSubscription(context.Background(), nil, config.Source{Content: tt.body, Format: tt.format})
 			if tt.invalid {
 				if err == nil || strings.Contains(err.Error(), "do-not-log") {
-					t.Fatalf("want sanitized inline failure, got %v", err)
+					t.Fatalf("期望脱敏后的内联来源错误，实际 %v", err)
 				}
 				return
 			}
 			if err != nil || len(proxies) == 0 {
-				t.Fatalf("inline parsing: count=%d err=%v", len(proxies), err)
+				t.Fatalf("内联解析：count=%d err=%v", len(proxies), err)
 			}
 		})
 	}
 }
 
-// T-SRC-INLINE-002: errors identify the inline source without exposing its body.
+// T-SRC-INLINE-002：错误信息指明是哪个内联来源，但不暴露其内容。
 func TestSource_InlineFailureLocation(t *testing.T) {
 	_, err := sourcePrepared(context.Background(), config.PreparedSources{Subscriptions: []config.Source{
 		{Content: "anytls://pw@hk.example.com:443#HK"},
@@ -46,9 +46,9 @@ func TestSource_InlineFailureLocation(t *testing.T) {
 	}}, nil)
 	var sourceErr *errtype.FetchError
 	if !errors.As(err, &sourceErr) || !strings.Contains(sourceErr.Message, "sources.subscriptions[1].content") {
-		t.Fatalf("structured error lacks source location: %v", err)
+		t.Fatalf("结构化错误缺少来源位置：%v", err)
 	}
 	if err == nil || !strings.Contains(err.Error(), "sources.subscriptions[1].content") || strings.Contains(err.Error(), "do-not-log") {
-		t.Fatalf("want source path and sanitized failure, got %v", err)
+		t.Fatalf("期望包含来源路径且已脱敏的错误，实际 %v", err)
 	}
 }

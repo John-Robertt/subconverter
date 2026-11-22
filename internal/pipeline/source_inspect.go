@@ -6,14 +6,14 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// SourceInspection describes parsed nodes without applying global filters or groups.
+// SourceInspection 描述解析出的节点，不应用全局过滤和分组。
 type SourceInspection struct {
 	Format     string
 	Candidates []string
 	Proxies    []model.Proxy
 }
 
-// InspectSource parses a source copy without applying global filters or groups.
+// InspectSource 解析一份来源副本，不应用全局过滤和分组。
 func InspectSource(kind, location string, body []byte, format string, allowFragment bool) (*SourceInspection, error) {
 	if kind == "subscriptions" {
 		return InspectSubscription(location, body, format, allowFragment)
@@ -25,8 +25,8 @@ func InspectSource(kind, location string, body []byte, format string, allowFragm
 	return &SourceInspection{Proxies: assignProxyIDs(proxies)}, nil
 }
 
-// InspectSubscription prefers document evidence and asks the caller to resolve ambiguous INI syntax.
-// The legacy Source auto-selection order is intentionally unchanged.
+// InspectSubscription 优先依据文档本身的特征判断格式；INI 语法有歧义时，交给调用方决定。
+// 传统 Source 的自动选择顺序有意保持不变。
 func InspectSubscription(location string, body []byte, format string, allowFragment bool) (*SourceInspection, error) {
 	if format == "" || format == "auto" {
 		if document, _ := parseClashSubscriptionDocument(body, false); document != nil {

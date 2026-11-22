@@ -30,15 +30,15 @@ func requireLoginFailure(t *testing.T, svc *Service, remoteAddr, username, code 
 	_, err := svc.Login(remoteAddr, LoginInput{Username: username, Password: "wrong-password"})
 	var failure *Error
 	if !errors.As(err, &failure) {
-		t.Fatalf("login %s/%s error=%T %v want auth error", remoteAddr, username, err, err)
+		t.Fatalf("登录 %s/%s 返回 error=%T %v，期望 auth 错误", remoteAddr, username, err, err)
 	}
 	if failure.Code != code || failure.Remaining != remaining {
-		t.Fatalf("login %s/%s got code=%s remaining=%d until=%s want code=%s remaining=%d", remoteAddr, username, failure.Code, failure.Remaining, failure.Until, code, remaining)
+		t.Fatalf("登录 %s/%s 得到 code=%s remaining=%d until=%s，期望 code=%s remaining=%d", remoteAddr, username, failure.Code, failure.Remaining, failure.Until, code, remaining)
 	}
 	return *failure
 }
 
-// T-AUTH-004: failed attempts expire after 15 idle minutes, including across service restarts.
+// T-AUTH-004：失败记录在空闲 15 分钟后过期，服务重启后同样适用。
 func TestLogin_FailureIdleExpiry(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
@@ -66,7 +66,7 @@ func TestLogin_FailureIdleExpiry(t *testing.T) {
 	}
 }
 
-// T-AUTH-005: the idle period starts at the most recent failure and counters remain isolated by IP and username.
+// T-AUTH-005：空闲期从最近一次失败开始计算，计数器按 IP 和用户名相互隔离。
 func TestLogin_FailureIdlePeriodAndIsolation(t *testing.T) {
 	svc, now := loginFailureFixture(t)
 	requireLoginFailure(t, svc, "127.0.0.1:1000", "admin", CodeInvalidCredentials, 4)
@@ -80,7 +80,7 @@ func TestLogin_FailureIdlePeriodAndIsolation(t *testing.T) {
 	requireLoginFailure(t, svc, "127.0.0.1:1000", "admin", CodeInvalidCredentials, 4)
 }
 
-// T-AUTH-006: active locks cannot be extended by retries; their expiry restores a fresh failure budget.
+// T-AUTH-006：重试不会延长生效中的锁定；锁定到期后恢复完整的失败次数额度。
 func TestLogin_LockExpires(t *testing.T) {
 	svc, now := loginFailureFixture(t)
 	for i := 1; i < 5; i++ {
@@ -89,23 +89,23 @@ func TestLogin_LockExpires(t *testing.T) {
 	locked := requireLoginFailure(t, svc, "127.0.0.1:1000", "admin", CodeAuthLocked, 0)
 	until := now.Add(15 * time.Minute)
 	if !locked.Until.Equal(until) {
-		t.Fatalf("locked until=%s want %s", locked.Until, until)
+		t.Fatalf("锁定截止 until=%s，期望 %s", locked.Until, until)
 	}
 	*now = until.Add(-time.Nanosecond)
 	_, err := svc.Login("127.0.0.1:1000", LoginInput{Username: "admin", Password: "long-enough-password"})
 	var active *Error
 	if !errors.As(err, &active) || active.Code != CodeAuthLocked || !active.Until.Equal(until) {
-		t.Fatalf("active lock changed or accepted credentials: %v", err)
+		t.Fatalf("生效中的锁定被改变，或凭据被接受：%v", err)
 	}
 	*now = until
 	status, err := svc.Status("")
 	if err != nil || !status.LockedUntil.IsZero() {
-		t.Fatalf("expired lock status=%+v err=%v", status, err)
+		t.Fatalf("锁定过期后 status=%+v err=%v", status, err)
 	}
 	requireLoginFailure(t, svc, "127.0.0.1:1000", "admin", CodeInvalidCredentials, 4)
 }
 
-// T-AUTH-007: successful authentication clears only its own active failure counter.
+// T-AUTH-007：认证成功只清除自身对应的失败计数器。
 func TestLogin_SuccessClearsFailures(t *testing.T) {
 	svc, _ := loginFailureFixture(t)
 	requireLoginFailure(t, svc, "127.0.0.1:1000", "admin", CodeInvalidCredentials, 4)
@@ -113,16 +113,16 @@ func TestLogin_SuccessClearsFailures(t *testing.T) {
 	requireLoginFailure(t, svc, "127.0.0.2:1000", "admin", CodeInvalidCredentials, 4)
 	session, err := svc.Login("127.0.0.1:2000", LoginInput{Username: "admin", Password: "long-enough-password"})
 	if err != nil || session == nil {
-		t.Fatalf("login failed: session=%v err=%v", session, err)
+		t.Fatalf("登录失败：session=%v err=%v", session, err)
 	}
 	if err := svc.ValidateSession(session.ID); err != nil {
-		t.Fatalf("new session is invalid: %v", err)
+		t.Fatalf("新 session 无效：%v", err)
 	}
 	requireLoginFailure(t, svc, "127.0.0.1:1000", "admin", CodeInvalidCredentials, 4)
 	requireLoginFailure(t, svc, "127.0.0.2:1000", "admin", CodeInvalidCredentials, 3)
 }
 
-// T-AUTH-008: records without failure timestamps cannot preserve stale counts or cancel a still-active lock.
+// T-AUTH-008：没有失败时间戳的记录既不能保留过时的计数，也不能取消仍在生效的锁定。
 func TestLogin_FailuresWithoutTimestamp(t *testing.T) {
 	for _, locked := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unlocked", true: "active lock"}[locked], func(t *testing.T) {
@@ -143,7 +143,7 @@ func TestLogin_FailuresWithoutTimestamp(t *testing.T) {
 			if locked {
 				active := requireLoginFailure(t, svc, "127.0.0.1:1000", "admin", CodeAuthLocked, 0)
 				if !active.Until.Equal(until) {
-					t.Fatalf("existing lock changed: got=%s want=%s", active.Until, until)
+					t.Fatalf("已有锁定被改变：got=%s want=%s", active.Until, until)
 				}
 				*now = until
 			}

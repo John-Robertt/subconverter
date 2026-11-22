@@ -5,9 +5,8 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// ForClash projects a format-agnostic Pipeline into the subset supported by
-// Clash Meta by removing Snell and Surge-native subscription nodes together
-// with their cascading consequences.
+// ForClash 把与格式无关的 Pipeline 投影为 Clash Meta 支持的子集：去掉 Snell
+// 节点和 Surge 原生订阅节点，并一并处理由此引起的级联后果。
 func ForClash(p *model.Pipeline) (*model.TargetPipeline, error) {
 	opts := cascadeOptions{
 		formatName:        "clash",

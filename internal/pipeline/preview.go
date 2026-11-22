@@ -8,8 +8,8 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// GroupPreviewStageResult carries the intermediate outputs needed by the
-// group preview API without exposing pipeline internals to HTTP handlers.
+// GroupPreviewStageResult 携带分组预览接口所需的中间输出，
+// 同时不把流水线内部结构暴露给 HTTP 处理器。
 type GroupPreviewStageResult struct {
 	Filter   *FilterResult
 	Group    *GroupResult
@@ -17,8 +17,8 @@ type GroupPreviewStageResult struct {
 	Pipeline *model.Pipeline
 }
 
-// SourceAndFilter executes the Source + Filter stages and keeps both included
-// and excluded nodes for preview diagnostics.
+// SourceAndFilter 执行 Source + Filter 阶段，同时保留保留下来的节点和被排除的节点，
+// 供预览诊断使用。
 func SourceAndFilter(ctx context.Context, cfg *config.RuntimeConfig, fetcher fetch.Fetcher) (*FilterResult, error) {
 	source, err := sourcePrepared(ctx, cfg.SourceInput(), fetcher)
 	if err != nil {
@@ -27,8 +27,8 @@ func SourceAndFilter(ctx context.Context, cfg *config.RuntimeConfig, fetcher fet
 	return filterCompiledDetailed(source.Proxies, cfg.FilterInput().ExcludePattern)
 }
 
-// SourceFilterGroupRouteValidate executes the preview path through graph
-// validation. It returns no partial group result when ValidateGraph fails.
+// SourceFilterGroupRouteValidate 执行预览路径，一直到图校验为止。
+// ValidateGraph 失败时不返回部分分组结果。
 func SourceFilterGroupRouteValidate(ctx context.Context, cfg *config.RuntimeConfig, fetcher fetch.Fetcher) (*GroupPreviewStageResult, error) {
 	source, err := sourcePrepared(ctx, cfg.SourceInput(), fetcher)
 	if err != nil {

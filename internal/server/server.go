@@ -8,35 +8,35 @@ import (
 	"github.com/John-Robertt/subconverter/internal/generate"
 )
 
-// Generator abstracts the generation use case behind the HTTP transport.
+// Generator 把生成用例从 HTTP 传输层中抽象出来。
 type Generator interface {
 	Generate(ctx context.Context, req generate.Request) (*generate.Result, error)
 }
 
-// Server holds the dependencies for the HTTP handlers.
+// Server 保存 HTTP 处理器所需的依赖。
 type Server struct {
 	generator Generator
 	opts      Options
 }
 
-// Options holds runtime-only server behavior toggles.
+// Options 保存只在运行时生效的服务行为开关。
 type Options struct {
 	AccessToken           string
 	AdminHandler          http.Handler
 	AdminSessionValidator func(*http.Request) bool
 	EnableCORS            bool
 	WebFS                 fs.FS
-	// RequestCounter, if set, is invoked once per inbound request and feeds
-	// the runtime environment surface on /api/status.
+	// RequestCounter 设置后，每个入站请求调用一次，为 /api/status 上的运行环境
+	// 信息提供数据。
 	RequestCounter func()
 }
 
-// New creates a Server with the given generator.
+// New 用给定的 generator 创建 Server。
 func New(generator Generator, opts Options) *Server {
 	return &Server{generator: generator, opts: opts}
 }
 
-// Handler returns an http.Handler with all routes registered.
+// Handler 返回注册好全部路由的 http.Handler。
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	if s.opts.AdminHandler != nil {
@@ -59,8 +59,7 @@ func (s *Server) Handler() http.Handler {
 
 func requestCounterMiddleware(next http.Handler, counter func()) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip CORS preflight and the health probe so the counter reflects
-		// real client / admin traffic only.
+		// 跳过 CORS 预检请求和健康探测，让计数只反映真实的客户端和管理后台流量。
 		if r.Method != http.MethodOptions && r.URL.Path != "/healthz" {
 			counter()
 		}

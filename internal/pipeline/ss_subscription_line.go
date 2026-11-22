@@ -9,9 +9,8 @@ import (
 	"github.com/John-Robertt/subconverter/internal/model"
 )
 
-// ParseSubscriptionLine parses one subscription line in any supported
-// plain-text format: SIP002 ss:// URI, AnyTLS URI, Quantumult X lines, or
-// Surge proxy lines.
+// ParseSubscriptionLine 解析一行订阅，支持所有明文格式：SIP002 ss:// URI、
+// AnyTLS URI、Quantumult X 行或 Surge 节点行。
 func ParseSubscriptionLine(line string) (model.Proxy, error) {
 	trimmed := strings.TrimSpace(line)
 	if strings.HasPrefix(trimmed, "anytls://") {
@@ -26,9 +25,8 @@ func ParseSubscriptionLine(line string) (model.Proxy, error) {
 	return ParseSSSubscriptionLine(trimmed)
 }
 
-// ParseSSSubscriptionLine parses one SS subscription line in any supported
-// plain-text format: SIP002 ss:// URI, Quantumult X shadowsocks line, or Surge
-// proxy line.
+// ParseSSSubscriptionLine 解析一行 SS 订阅，支持所有明文格式：SIP002 ss:// URI、
+// Quantumult X shadowsocks 行或 Surge 节点行。
 func ParseSSSubscriptionLine(line string) (model.Proxy, error) {
 	trimmed := strings.TrimSpace(line)
 	if strings.HasPrefix(trimmed, "ss://") {

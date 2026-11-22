@@ -255,7 +255,7 @@ func (h *Handler) handleConfigEffectiveYAML(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="config.yaml"; filename*=UTF-8''config.yaml`)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body) // #nosec G705 -- admin-only YAML export is downloaded as a non-HTML attachment.
+	_, _ = w.Write(body) // #nosec G705 -- 仅管理员可用的 YAML 导出，以非 HTML 附件形式下载。
 }
 
 func (h *Handler) handleConfigArchive(w http.ResponseWriter, r *http.Request, effective bool) {
@@ -273,7 +273,7 @@ func (h *Handler) handleConfigArchive(w http.ResponseWriter, r *http.Request, ef
 	w.Header().Set("Content-Type", result.ContentType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+result.Filename+`"; filename*=UTF-8''`+result.Filename)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(result.Body) // #nosec G705 -- admin-only ZIP export is downloaded as an attachment.
+	_, _ = w.Write(result.Body) // #nosec G705 -- 仅管理员可用的 ZIP 导出，以附件形式下载。
 }
 
 func (h *Handler) handleConfigImport(w http.ResponseWriter, r *http.Request) {
@@ -413,7 +413,7 @@ func (h *Handler) handleGeneratePreview(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", result.ContentType)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(result.Body) // #nosec G705 -- preview returns generated config bytes with an explicit non-HTML content type.
+	_, _ = w.Write(result.Body) // #nosec G705 -- 预览返回生成的配置字节，并显式设置非 HTML 的 Content-Type。
 }
 
 func (h *Handler) handleGenerateLink(w http.ResponseWriter, r *http.Request) {
@@ -644,7 +644,7 @@ func sessionID(r *http.Request) string {
 }
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, session *auth.Session) {
-	cookie := &http.Cookie{ // #nosec G124 -- Secure follows the inbound scheme so local HTTP admin sessions keep working.
+	cookie := &http.Cookie{ // #nosec G124 -- Secure 跟随入站请求的协议，本地 HTTP 访问时管理员 session 仍可正常使用。
 		Name:     auth.SessionCookieName,
 		Value:    session.ID,
 		Path:     "/",
@@ -660,7 +660,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, session *auth.Sess
 }
 
 func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure follows the inbound scheme so local HTTP admin sessions can be cleared.
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure 跟随入站请求的协议，本地 HTTP 访问时管理员 session 也能被清除。
 		Name:     auth.SessionCookieName,
 		Value:    "",
 		Path:     "/",

@@ -9,17 +9,16 @@ import (
 	"github.com/John-Robertt/subconverter/internal/ssparse"
 )
 
-// ParseSSURI parses a SIP002 Shadowsocks URI into a model.Proxy.
+// ParseSSURI 把一条 SIP002 Shadowsocks URI 解析为 model.Proxy。
 //
-// Supported form: ss://userinfo@server:port[/][?query][#NodeName]
+// 支持的形式：ss://userinfo@server:port[/][?query][#NodeName]
 //
-// userinfo may be either:
-//   - base64/base64url encoded method:password
-//   - plain method:password with percent-encoding when required
+// userinfo 可以是以下任一种：
+//   - base64/base64url 编码的 method:password
+//   - 明文 method:password，必要时使用百分号编码
 //
-// Query parameters are parsed according to SIP002. Unknown query parameters are
-// ignored. The plugin query is preserved in a generic Plugin structure and is
-// interpreted later by target renderers.
+// query 参数按 SIP002 解析，未知的 query 参数被忽略。plugin 参数保存在通用的
+// Plugin 结构中，稍后由各目标格式的渲染器解释。
 func ParseSSURI(raw string) (model.Proxy, error) {
 	const prefix = "ss://"
 	if !strings.HasPrefix(raw, prefix) {

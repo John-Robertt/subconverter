@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// T-ADM-013: admin package does not directly import pipeline or model
+// T-ADM-013：admin 包不直接引入 pipeline 或 model
 func TestAdminDoesNotImportPipelineOrModel(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -22,14 +22,14 @@ func TestAdminDoesNotImportPipelineOrModel(t *testing.T) {
 		path := filepath.Join(".", entry.Name())
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
 		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
+			t.Fatalf("解析 %s 失败：%v", path, err)
 		}
 		for _, imp := range file.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 			if strings.HasSuffix(importPath, "/internal/pipeline") ||
 				strings.HasSuffix(importPath, "/internal/model") ||
 				strings.HasSuffix(importPath, "/internal/generate") {
-				t.Fatalf("%s imports forbidden package %s", path, importPath)
+				t.Fatalf("%s 引入了禁止引用的包 %s", path, importPath)
 			}
 		}
 	}

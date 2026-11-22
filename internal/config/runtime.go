@@ -8,9 +8,8 @@ import (
 	"github.com/John-Robertt/subconverter/internal/proxyparse"
 )
 
-// RuntimeConfig is the startup-prepared configuration consumed by request-time
-// pipeline stages. It is treated as read-only after Prepare; request-time code
-// should derive new dynamic results instead of mutating prepared inputs.
+// RuntimeConfig 是启动时预处理好的配置，供请求阶段的流水线各站使用。
+// Prepare 之后视为只读；请求阶段的代码应派生新的动态结果，而不是修改预处理好的输入。
 type RuntimeConfig struct {
 	sources   PreparedSources
 	filters   PreparedFilters
@@ -23,7 +22,7 @@ type RuntimeConfig struct {
 	templates Templates
 }
 
-// PreparedSources is the startup-prepared subset consumed by the Source stage.
+// PreparedSources 是启动时预处理好的子集，供 Source 阶段使用。
 type PreparedSources struct {
 	Subscriptions []Source
 	Snell         []Source
@@ -32,13 +31,13 @@ type PreparedSources struct {
 	FetchOrder    []string
 }
 
-// PreparedFilters stores startup-compiled filter regexes.
+// PreparedFilters 存放启动时编译好的过滤正则。
 type PreparedFilters struct {
 	RawExclude     string
 	ExcludePattern *regexp.Regexp
 }
 
-// PreparedGroup stores a compiled region-group definition.
+// PreparedGroup 存放编译好的区域组定义。
 type PreparedGroup struct {
 	Name     string
 	Strategy string
@@ -46,7 +45,7 @@ type PreparedGroup struct {
 	Match    *regexp.Regexp
 }
 
-// RouteMemberOrigin records how a route-group member entered the runtime graph.
+// RouteMemberOrigin 记录服务组成员是如何进入运行时关系图的。
 type RouteMemberOrigin string
 
 const (
@@ -55,40 +54,40 @@ const (
 	RouteMemberOriginAllExpanded  RouteMemberOrigin = "all_expanded"
 )
 
-// PreparedRouteMember stores one route-group member token plus its origin.
+// PreparedRouteMember 存放一个服务组成员标记及其来源。
 type PreparedRouteMember struct {
 	Raw    string
 	Origin RouteMemberOrigin
 }
 
-// PreparedRouteGroup stores both user-declared and startup-expanded route members.
-// @auto has already been expanded in ExpandedMembers; @all may remain for Route.
+// PreparedRouteGroup 同时存放用户声明的成员和启动时展开后的成员。
+// ExpandedMembers 中的 @auto 已经展开；@all 可能保留，留给 Route 阶段处理。
 type PreparedRouteGroup struct {
 	Name            string
 	DeclaredMembers []PreparedRouteMember
 	ExpandedMembers []PreparedRouteMember
 }
 
-// PreparedRuleset stores a validated ruleset binding.
+// PreparedRuleset 存放一条校验过的规则集绑定。
 type PreparedRuleset struct {
 	Policy string
 	URLs   []string
 }
 
-// PreparedRule stores a startup-parsed inline rule.
+// PreparedRule 存放一条启动时解析好的内联规则。
 type PreparedRule struct {
 	Raw    string
 	Policy string
 }
 
-// PreparedCustomProxy stores a startup-parsed custom proxy declaration.
+// PreparedCustomProxy 存放一条启动时解析好的自定义代理声明。
 type PreparedCustomProxy struct {
 	Name         string
 	Parsed       proxyparse.Result
 	RelayThrough *PreparedRelayThrough
 }
 
-// PreparedRelayThrough stores a startup-validated relay_through declaration.
+// PreparedRelayThrough 存放一条启动时校验过的 relay_through 声明。
 type PreparedRelayThrough struct {
 	Type     string
 	Strategy string
@@ -97,7 +96,7 @@ type PreparedRelayThrough struct {
 	Match    *regexp.Regexp
 }
 
-// SourceInput returns the Source-stage inputs.
+// SourceInput 返回 Source 阶段的输入。
 func (rt *RuntimeConfig) SourceInput() PreparedSources {
 	if rt == nil {
 		return PreparedSources{}
@@ -105,7 +104,7 @@ func (rt *RuntimeConfig) SourceInput() PreparedSources {
 	return rt.sources
 }
 
-// FilterInput returns the Filter-stage inputs.
+// FilterInput 返回 Filter 阶段的输入。
 func (rt *RuntimeConfig) FilterInput() PreparedFilters {
 	if rt == nil {
 		return PreparedFilters{}
@@ -113,7 +112,7 @@ func (rt *RuntimeConfig) FilterInput() PreparedFilters {
 	return rt.filters
 }
 
-// GroupInput returns the Group-stage inputs.
+// GroupInput 返回 Group 阶段的输入。
 func (rt *RuntimeConfig) GroupInput() []PreparedGroup {
 	if rt == nil {
 		return nil
@@ -121,7 +120,7 @@ func (rt *RuntimeConfig) GroupInput() []PreparedGroup {
 	return rt.groups
 }
 
-// RouteInput returns the Route-stage inputs.
+// RouteInput 返回 Route 阶段的输入。
 func (rt *RuntimeConfig) RouteInput() ([]PreparedRouteGroup, []PreparedRuleset, []PreparedRule, string) {
 	if rt == nil {
 		return nil, nil, nil, ""
@@ -129,7 +128,7 @@ func (rt *RuntimeConfig) RouteInput() ([]PreparedRouteGroup, []PreparedRuleset, 
 	return rt.routing, rt.rulesets, rt.rules, rt.fallback
 }
 
-// BaseURL returns the prepared base_url value.
+// BaseURL 返回预处理好的 base_url 值。
 func (rt *RuntimeConfig) BaseURL() string {
 	if rt == nil {
 		return ""
@@ -137,7 +136,7 @@ func (rt *RuntimeConfig) BaseURL() string {
 	return rt.baseURL
 }
 
-// Templates returns a copy of the prepared template configuration.
+// Templates 返回预处理好的模板配置的副本。
 func (rt *RuntimeConfig) Templates() Templates {
 	if rt == nil {
 		return Templates{}
@@ -145,7 +144,7 @@ func (rt *RuntimeConfig) Templates() Templates {
 	return cloneTemplates(rt.templates)
 }
 
-// IsReservedPolicyName reports whether name is a built-in policy name.
+// IsReservedPolicyName 判断 name 是否为内置策略名。
 func IsReservedPolicyName(name string) bool {
 	switch name {
 	case "DIRECT", "REJECT":
@@ -155,7 +154,7 @@ func IsReservedPolicyName(name string) bool {
 	}
 }
 
-// ClonePreparedRouteMembers returns a shallow copy of a PreparedRouteMember slice.
+// ClonePreparedRouteMembers 返回 PreparedRouteMember 切片的浅拷贝。
 func ClonePreparedRouteMembers(src []PreparedRouteMember) []PreparedRouteMember {
 	if len(src) == 0 {
 		return nil
@@ -165,9 +164,9 @@ func ClonePreparedRouteMembers(src []PreparedRouteMember) []PreparedRouteMember 
 	return cloned
 }
 
-// DetectRouteCycle runs DFS cycle detection on a directed graph defined by adj.
-// order determines the traversal sequence for deterministic results.
-// Returns an error message on cycle, or empty string if acyclic.
+// DetectRouteCycle 在由 adj 定义的有向图上用 DFS 检测环。
+// order 决定遍历顺序，使结果确定。
+// 存在环时返回错误信息，无环时返回空字符串。
 func DetectRouteCycle(adj map[string][]string, order []string) string {
 	const (
 		white = 0

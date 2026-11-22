@@ -8,7 +8,7 @@ import (
 	"github.com/John-Robertt/subconverter/internal/config"
 )
 
-// T-GEN-INLINE-001: pasted nodes and templates generate without external resources.
+// T-GEN-INLINE-001：粘贴的节点和模板无需外部资源即可生成配置。
 func TestService_InlineNodesAndTemplates(t *testing.T) {
 	for _, format := range []string{"clash", "surge", "loon"} {
 		t.Run(format, func(t *testing.T) {
@@ -25,7 +25,7 @@ func TestService_InlineNodesAndTemplates(t *testing.T) {
 			}
 			body := string(result.Body)
 			if !strings.Contains(body, "HK-INLINE") || !strings.Contains(body, strings.TrimSpace(template)) {
-				t.Fatalf("lost inline node or template: %s", body)
+				t.Fatalf("内联节点或模板丢失：%s", body)
 			}
 		})
 	}

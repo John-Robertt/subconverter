@@ -26,7 +26,7 @@ func loonRenderFixture() *model.TargetPipeline {
 	}
 }
 
-// T-RND-LOON-001: the golden covers native and normalized nodes, chains, ordered groups and rulesets.
+// T-RND-LOON-001: golden 覆盖原生节点、归一化节点、链路、有序分组和规则集。
 func TestLoon_GoldenNoTemplate(t *testing.T) {
 	got, err := Loon(loonRenderFixture(), nil)
 	if err != nil {
@@ -37,11 +37,11 @@ func TestLoon_GoldenNoTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(got) != string(want) {
-		t.Fatalf("Loon golden mismatch\ngot:\n%s\nwant:\n%s", got, want)
+		t.Fatalf("Loon 输出与 golden 不一致\n实际：\n%s\n期望：\n%s", got, want)
 	}
 }
 
-// T-RND-LOON-002: all generated sections replace provider content while base settings survive.
+// T-RND-LOON-002: 所有生成的段落替换模板中原有的内容，底版设置保留。
 func TestLoon_TemplateMerge(t *testing.T) {
 	template := []byte(`#!MANAGED-CONFIG https://example.com/old-surge
 [General]
@@ -71,17 +71,17 @@ hostname = *.example.com
 	}
 	for _, want := range []string{"dns-server = system", "node.example.com = alias.example.com", "# base rewrite", "# base script", "hostname = *.example.com", "https://example.com/a.list,OUT"} {
 		if !strings.Contains(string(got), want) {
-			t.Errorf("output missing %q:\n%s", want, got)
+			t.Errorf("输出缺少 %q：\n%s", want, got)
 		}
 	}
 	for _, unwanted := range []string{"OLD_", "old.list", "MANAGED-CONFIG"} {
 		if strings.Contains(string(got), unwanted) {
-			t.Errorf("output retains %q:\n%s", unwanted, got)
+			t.Errorf("输出仍保留 %q：\n%s", unwanted, got)
 		}
 	}
 }
 
-// T-RND-LOON-003: normalized fields use Loon's positional credentials and parameter names.
+// T-RND-LOON-003: 归一化字段使用 Loon 的位置式凭据和参数名。
 func TestLoon_NormalizedProtocols(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
@@ -101,14 +101,14 @@ func TestLoon_NormalizedProtocols(t *testing.T) {
 			}
 			for _, want := range tt.want {
 				if !strings.Contains(got, want) {
-					t.Errorf("line=%q missing %q", got, want)
+					t.Errorf("行 %q 缺少 %q", got, want)
 				}
 			}
 		})
 	}
 }
 
-// T-RND-LOON-004: incompatible native declarations, protocols and unprojected chains fail explicitly.
+// T-RND-LOON-004: 不兼容的原生声明、协议和未投影的链路明确报错。
 func TestLoon_InvalidProxy(t *testing.T) {
 	for _, proxy := range []model.TargetProxy{
 		{Name: "WRONG", Native: &model.NativeProxy{Format: model.NativeProxyFormatSurge, Payload: "ss,..."}},
@@ -120,7 +120,7 @@ func TestLoon_InvalidProxy(t *testing.T) {
 			_, err := Loon(&model.TargetPipeline{Proxies: []model.TargetProxy{proxy}}, nil)
 			var renderErr *errtype.RenderError
 			if !errors.As(err, &renderErr) || renderErr.Code != errtype.CodeRenderLoonProxyInvalid || !strings.Contains(err.Error(), proxy.Name) {
-				t.Fatalf("error=%v, want named Loon RenderError", err)
+				t.Fatalf("错误=%v，期望带节点名的 Loon RenderError", err)
 			}
 		})
 	}

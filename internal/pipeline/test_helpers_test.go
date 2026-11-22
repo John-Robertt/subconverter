@@ -10,8 +10,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Execute is kept as a test-only alias so existing stage-composition tests can
-// stay focused on behavior while production code uses the renamed Build API.
+// Execute 是仅供测试使用的别名：生产代码已改用重命名后的 Build API，
+// 现有的阶段组合测试借助它继续专注于验证行为。
 func Execute(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*model.Pipeline, error) {
 	rt, err := prepareRuntimeForStage(cfg)
 	if err != nil {
@@ -38,8 +38,8 @@ func containsProxyName(proxies []model.Proxy, ids []model.ProxyID, want string) 
 	return false
 }
 
-// Source is kept as a test-only helper so stage tests can still start from raw
-// Config while production code always goes through config.Prepare first.
+// Source 是仅供测试使用的辅助函数：生产代码总是先经过 config.Prepare，
+// 阶段测试借助它仍可直接从原始 Config 开始。
 func Source(ctx context.Context, cfg *config.Config, fetcher fetch.Fetcher) (*SourceResult, error) {
 	rt, err := prepareRuntimeForStage(cfg)
 	if err != nil {
