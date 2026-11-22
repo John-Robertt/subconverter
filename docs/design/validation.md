@@ -19,6 +19,8 @@
 - 条件字段是否成对出现
 - 正则表达式是否可编译
 - URL 是否满足基本格式要求
+- 静态命名空间冲突（`DIRECT` / `REJECT` / 地区组 / 链式组 / 服务组共享命名空间，`CodeConfigDuplicateName`）
+- 跨段引用存在性（`routing` 成员、`rulesets` 策略、`rules` 末段策略、`fallback`）与 `@auto` 展开后的服务组循环引用检测
 
 说明：
 
@@ -28,7 +30,7 @@
 
 - 校验 `subscriptions[]`、`snell[]`、`vless[]` 的来源互斥、URL、正文和本地文件字段；节点池不接受订阅的 `format` 字段，完整约束见 [配置规约](config-schema.md#拉取来源的输入与展示)
 - `custom_proxies[].name` 必填；不带 `relay_through` 的节点允许重名，带 `relay_through` 的名称会成为链式组名，仍受组命名空间唯一性约束
-- `custom_proxies[].url` 必填；scheme 必须是 `ss://`、`socks5://` 或 `http://`；URL 解析失败（host/port 缺失、port 越界、SS userinfo 解码失败、SS plugin 选项格式错误等）记为字段错误
+- `custom_proxies[].url` 必填；scheme 必须是 `ss://`、`socks5://` 或 `http://`（`socks5://`/`http://` 不允许携带 path、query 或 fragment）；URL 解析失败（host/port 缺失、port 越界、SS userinfo 解码失败、SS plugin 选项格式错误等）记为字段错误
 - `custom_proxies[].url` 为 SS 时还需含 `cipher` + `password`（base64/明文 userinfo 解码后必须形如 `method:password`）
 - `groups[*].match` 必填
 - `groups[*].strategy` 必填且只能是 `select` 或 `url-test`
@@ -36,12 +38,16 @@
 - `relay_through.strategy` 必填且只能是 `select` 或 `url-test`
 - `relay_through.type=group` 时必须提供 `name`
 - `relay_through.type=select` 时必须提供 `match`
-- `fallback` 必填
+- `fallback` 必填，且必须在 `routing` 中定义（不允许 `DIRECT` / `REJECT`，`CodeConfigInvalidReference`）
 - 应用入口要求 `groups` 不得为空（至少声明一个地区节点组）；由 `app.prepareAdminConfig` 检查，`config.Prepare` 本身不检查组数
-- `base_url` 可选；若非空，必须以 `http://` 或 `https://` 开头
+- `base_url` 可选；若非空，必须为合法 HTTP(S) URL，仅包含 `scheme` 和 `host`，不能包含 `path`、`query` 或 `fragment`（`CodeConfigInvalidURL`）
+- `templates.clash` / `surge` / `loon` 为 HTTP(S) URL 时校验 URL 格式；`templates.inline` 仅允许 `clash` / `surge` / `loon`（`CodeConfigInvalidEnum`）、正文非空（`CodeConfigRequired`），且与同格式模板路径互斥
 - Admin API JSON 输入中的 `sources.fetch_order` 缺失或为空时使用默认顺序；非空时只能包含 `subscriptions`、`snell`、`vless` 且三项各出现一次，否则返回 `invalid_fetch_order`。该规则由 app 层 wrapper 在调用 `config.Prepare()` 前校验，不属于 YAML reload 的通用 Prepare 规则
+- `routing` 中每个服务组至少包含一个成员；成员必须引用节点组、服务组、`DIRECT`、`REJECT`、`@all` 或 `@auto`，禁止直接引用独立自定义代理（`CodeConfigInvalidReference`）；`@auto` 展开后立即检测服务组间循环引用
 - `routing` 中同一 entry 内 `@auto` 最多出现一次
 - `routing` 中同一 entry 内 `@all` 与 `@auto` 不能同时出现
+- `rulesets` 中每项至少包含一个非空 HTTP(S) URL，策略名必须在 `routing` 中定义（不允许 `DIRECT` / `REJECT`，`CodeConfigInvalidReference`）
+- `rules` 每条必须包含逗号（`CodeConfigInvalidRule`），最后一个逗号后的策略名（原样匹配）必须为已定义服务组、`DIRECT` 或 `REJECT`（`CodeConfigInvalidReference`）
 
 ---
 
@@ -58,22 +64,22 @@
 
 重点规则：
 
-- 订阅拉取结果不得为空（0 个有效节点视为上游订阅内容错误）
-- 订阅格式识别优先级为 Clash YAML → Surge CONF → TXT/Base64；`.yaml` / `.yml` / `.conf` URL 后缀强制对应结构化格式
-- Clash YAML 必须含顶层 `proxies` 序列，每个节点必须是带非空 `name` / `type` 的映射；Surge CONF 必须含 `[Proxy]` 段，每条有效内容必须符合非空 `NAME = VALUE`，其中内置 `DIRECT` / `REJECT` 声明不作为节点导入
-- 结构化订阅语法或声明错误返回 `CodeFetchSubscriptionFormatInvalid`，错误 URL 必须脱敏；结构化节点不限制协议白名单，目标客户端是否接受复制字段由对应原生格式负责
-- TXT 响应体可为 Base64 编码的 SS / AnyTLS URI 列表，或明文 SS / AnyTLS 列表（SS: SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`；AnyTLS: `anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）；非 Base64 且不像明文订阅列表的内容视为订阅内容格式错误
+- 订阅拉取结果不得为空（0 个有效节点视为上游订阅内容错误，返回 `FetchError(CodeFetchSubscriptionEmpty)`）
+- 订阅格式识别优先级：显式 `format`（`text`/`clash`/`surge`/`loon`）优先于 URL 后缀与内容识别；`auto`/省略时按 URL 后缀（`.yaml`/`.yml` → Clash、`.lcf` → Loon、`.conf` → Surge）分派；无已知后缀时依次按 Clash YAML → Loon 专属段（`[Remote Proxy]`/`[Remote Filter]`/`[Remote Rule]`/`[Proxy Chain]`）→ Surge CONF（`[Proxy]`）→ TXT/Base64 识别；本地正文/文件在显式 `format: surge` / `loon` 且无 INI 段头时自动补 `[Proxy]`
+- Clash YAML 必须含顶层 `proxies` 序列，每个节点必须是带非空 `name` / `type` 的映射；Surge CONF / Loon 必须含 `[Proxy]` 段，每条有效内容必须符合非空 `NAME = VALUE`，其中内置 `DIRECT` / `REJECT` 声明不作为节点导入
+- 结构化订阅语法或声明错误返回 `FetchError(CodeFetchSubscriptionFormatInvalid)`，错误 URL 必须脱敏；结构化节点不限制协议白名单，目标客户端是否接受复制字段由对应原生格式负责
+- TXT 响应体可为 Base64 编码的 SS / AnyTLS URI 列表，或明文 SS / AnyTLS 列表（SS: SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss/shadowsocks, ...`；AnyTLS: `anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）；非 Base64 且不像明文订阅列表的内容返回 `FetchError(CodeFetchSubscriptionBase64Invalid)`
 - Snell 来源拉取结果不得为空（0 个有效节点报同类错误）
 - VLESS 来源拉取结果不得为空（0 个有效节点报同类错误）
 - Snell 来源中单行解析失败整源报错（与 `subscriptions` 的静默跳过不同，详见 `pipeline.md`）；错误消息附带来源 URL、本地文件路径或正文字段位置，以及 1-based 物理行号；URL 脱敏
 - VLESS 来源中单行解析失败整源报错（与 Snell 一致，详见 `pipeline.md`）；来源位置和行号遵循上述规则
-- 节点在创建阶段获得非零、Build 内唯一且不复用的 ID：Source 分配原始节点，Group 分配链式节点；候选节点名允许跨来源或在自定义代理之间重复
+- 节点在创建阶段获得非零、Build 内唯一且不复用的 ID：Source 分配原始节点，Group 分配链式节点；候选节点名允许跨来源或在自定义代理之间重复；Source 与 Group 返回前均调用 `model.ValidateProxyInvariant` 校验单节点结构不变量，不满足时返回 `BuildError(CodeBuildValidationFailed)`
 - `relay_through.type=group` 引用的节点组必须存在
 - SS / AnyTLS URI 中端口值必须在 1-65535 范围内；Snell / VLESS 节点的 port 字段同理
-- 非法 SS URI、非法 AnyTLS URI、非法 fragment 编码、非法 query 编码、损坏的 plugin 参数都属于 Source 阶段构建期错误
+- 单行解析函数对非法 SS URI、非法 AnyTLS URI、非法 fragment/query 编码、损坏的 plugin 参数返回 `BuildError`；在 TXT `subscriptions` 源解析循环中单行失败会被静默跳过，仅当整源产出 0 个有效节点时向上返回 `FetchError(CodeFetchSubscriptionEmpty)`（502），而 Snell / VLESS 源单行失败会直接中止并向上返回 `BuildError`（400）
 - AnyTLS 的 Surge / Quantumult X 方言字段在 Source 阶段做归一化；`tls=true` / `over-tls=true` 只作为输入兼容字段，不参与渲染输出
 - Snell 行格式错误（缺 `=`、type 非 snell、缺必填 psk 等）属于 Source 阶段构建期错误
-- VLESS URI 中非法 UUID、非法 `security`、非法端口等属于 Source 阶段构建期错误；未知 `type` 不报错，而是按 Mihomo 兼容语义回落到 `tcp`
+- VLESS URI 中非法 UUID、非法 `security`、非法端口等属于 Source 阶段构建期错误；`type` 缺失（含无 query）或未知时统一回落到 `tcp`
 
 ---
 
@@ -101,7 +107,7 @@
 - `routing` 中引用的节点组、服务组、保留字都必须可解析
 - 自动生成的链式组必须至少包含一个成员
 - 地区节点组匹配结果不得为空
-- 若 `@all` 展开后为空列表（所有原始节点被过滤），引用 `@all` 的服务组成员可能为空，由空组检查或 Target 阶段的级联过滤捕获
+- 当所有拉取类节点被过滤时，已有地区节点组会由 `ValidateGraph` 的空节点组检查捕获；`ValidateGraph` 不单独检查空服务组，而 Target 级联过滤仅在发生目标格式专属节点剔除（`dropped > 0`）时才清理因此变空的服务组和 fallback
 - Target 在格式过滤后独立分配唯一输出名；名称冲突通过确定性后缀解决，不属于 Build / ValidateGraph 错误
 
 ---
@@ -125,11 +131,15 @@
 
 HTTP 层映射：
 
-- `400`：请求参数错误、静态配置错误、图级语义错误、可归因于用户配置的构建错误
-- `400`：`TargetError` 中的 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty`。这类错误表示用户配置在目标格式级联过滤后不可生成，用户可通过调整 fallback、分组或格式专属节点配置修复
-- `401`：`/generate` 请求缺少或不匹配订阅访问 token；管理接口缺少、无效或已过期的管理员 session；登录凭据错误
+- `400`：请求参数错误、静态配置错误（`CodeConfigNotInitialized` 除外）、图级语义错误、可归因于用户配置的构建错误
+- `400`：`TargetError` 中的 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` / `CodeTargetLoonFallbackEmpty`。这类错误表示用户配置在目标格式级联过滤后不可生成，用户可通过调整 fallback、分组或格式专属节点配置修复
+- `401`：`/generate` 请求缺少或不匹配订阅访问 token；管理接口缺少、无效或已过期的管理员 session；登录凭据错误或 setup token 缺失/无效
+- `403`：非安全 `/api/*` 请求同源校验失败（`csrf_check_failed`）
+- `409`：`ConfigError` 中的 `CodeConfigNotInitialized`（配置尚未初始化生效）；`ResourceError` 中的 `CodeResourceContentWriteFailed`（托管正文目录写入失败）；以及 `RevisionConflictError` / `ErrConfigSourceReadonly` / `ErrConfigFileNotWritable` / `setup_not_allowed` / `auth_state_not_writable`
+- `423`：管理后台登录失败达上限临时锁定（`auth_locked`）
+- `429`：并发热重载互斥（`ErrReloadInProgress` → `reload_in_progress`）
 - `502`：远程资源拉取失败，或远程订阅内容不可用（如 0 个有效节点）
-- `500`：本地资源读取失败、目标投影内部不变量错误、渲染错误或未分类内部错误
+- `500`：本地资源读取失败（`CodeResourceLocalReadFailed`）、目标投影内部不变量错误（`CodeTarget*ProjectionInvalid`）、渲染错误或未分类内部错误
 
 目标：
 
@@ -142,11 +152,11 @@ HTTP 层映射：
 
 `ValidateGraph` 仍然保持格式无关，只负责统一 IR 上的引用与图结构正确性。目标格式差异则前移到 `Target` 阶段：
 
-- `target.ForClash`：剔除 Snell 节点及其级联影响
-- `target.ForSurge`：剔除 VLESS 节点及其级联影响
-- `target.ForClash` 同时剔除 Surge CONF 原生订阅节点；`target.ForSurge` 同时剔除 Clash YAML 原生订阅节点
+- `target.ForClash`：剔除 Snell 及非 Clash 原生订阅节点（Surge CONF / Loon CONF）及其级联影响
+- `target.ForSurge`：剔除 VLESS 及非 Surge 原生订阅节点（Clash YAML / Loon CONF）及其级联影响
+- `target.ForLoon`：剔除 Snell、非 Loon 原生订阅节点（Clash YAML / Surge CONF），以及 Loon 不支持的规范化 VLESS（非 `tcp`/`ws`/`http` 传输、非空且非 `none` 的 `encryption`、非空且非 `xtls-rprx-vision` 的 `flow`）及其级联影响
 - 若 `fallback` 在目标格式视图中被清空，立即返回带清空路径的错误
-- 级联过滤的诊断路径格式（`(snell)`、`(vless)`、`(Clash YAML 专属)`、`(Surge CONF 专属)`、`(chained)`、`(cycle)` 等标记）详见 `rendering.md`
+- 级联过滤的诊断路径格式（代理带 `#ID` 后缀，含 `(snell)`、`(vless)`、`(Clash YAML 专属)`、`(Surge CONF 专属)`、`(Loon CONF 专属)`、`(chained)`、`(cycle)` 及 Loon VLESS 细化原因标记）详见 `rendering.md`
 
 这样分层后：
 
@@ -154,7 +164,7 @@ HTTP 层映射：
 - `Target` 承接 format-specific 过滤与校验
 - `Render` 只负责文本序列化
 
-当前 Target 阶段统一使用 `TargetError`，以保持阶段语义清晰；HTTP 层按错误码分流：fallback 被清空使用 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty`，映射为 400；内部不变量异常使用独立 projection 错误码，映射为 500。
+当前 Target 阶段统一使用 `TargetError`，以保持阶段语义清晰；HTTP 层按错误码分流：fallback 被清空使用 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` / `CodeTargetLoonFallbackEmpty`，映射为 400；内部不变量异常使用独立 projection 错误码（`CodeTarget*ProjectionInvalid`），映射为 500。
 
 ---
 
@@ -166,7 +176,7 @@ HTTP 语义：
 
 - 请求体合法时始终返回 `200`；配置语义无效时返回 `valid=false` 和诊断数组
 - JSON 无法解析、缺少 `config` 或 `config` 不是对象时返回 `400`
-- `PUT /api/config` 与 `POST /api/reload` 的静态配置错误返回 `400`，Body 复用同一个 `ValidateResult` 结构并设置 `valid=false`
+- `PUT /api/config`、`POST /api/reload`、`POST /api/preview/nodes`、`GET/POST /api/preview/groups`、`GET/POST /api/generate/preview` 的静态配置错误（含 YAML 解析失败 `config_yaml_invalid`，但 `config_not_initialized` 仍返回 `409`）与图级校验错误（`build_validation_failed`，经 `app.GraphValidateResultFromError`）均返回 `400`，Body 复用同一个 `ValidateResult` 结构并设置 `valid=false`
 - 缺少字段、请求 JSON 无法解析、revision 冲突、只读配置源等非配置语义错误不使用 `ValidateResult`，继续返回 `{ "error": { ... } }`
 
 ```json
@@ -227,9 +237,10 @@ HTTP 语义：
 
 前端实时校验：
 
-- 前端在用户编辑时做格式级校验（正则语法、URL 格式、必填检查）
-- 深层校验（跨段引用、命名冲突、环路检测）始终走后端 `Prepare`
+- 前端本地仅做 `base_url` 格式和来源地址前缀/基础表单检查
+- 过滤器与节点组的正则实时校验通过防抖（300ms）调用后端 `POST /api/config/validate` 复用 Go RE2 引擎（不拉取远程订阅）
+- 深层校验（跨段引用、命名冲突、环路检测）同样始终走后端 `Prepare`
 
 ## Loon 扩展校验
 
-Prepare 校验 `sources.subscriptions[].format` 枚举和 `templates.loon` 远程 URL。Loon 原生节点沿用 `KindSubscription` 的 ID、过滤、分组、链式上游与 `@all` 校验；其原生字段保留，具体语法由客户端验证。Target 过滤不兼容来源、Snell 和不支持的 VLESS 传输，fallback 清空返回 `target_loon_fallback_empty`，内部命名或投影异常返回 `target_loon_projection_invalid`。Render 的代理声明错误使用 `render_loon_proxy_invalid`。
+Prepare 校验 `sources.subscriptions[].format` 枚举、`templates.loon` 远程 URL 以及 `templates.inline.loon`（非空且与 `templates.loon` 互斥）。Loon 原生节点沿用 `KindSubscription` 的 ID、过滤、分组、链式上游与 `@all` 校验；其原生字段保留，具体语法由客户端验证。Target 过滤不兼容来源、Snell 以及不支持的 VLESS（非 `tcp`/`ws`/`http` 传输、非空且非 `none` 的 `encryption`、非空且非 `xtls-rprx-vision` 的 `flow`），fallback 清空返回 `target_loon_fallback_empty`（400），内部命名或投影异常返回 `target_loon_projection_invalid`（500）。Render 的代理声明错误使用 `render_loon_proxy_invalid`（500）。

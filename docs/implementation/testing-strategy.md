@@ -13,7 +13,7 @@
 - 保序映射解析
 - SS URI 解析
 - AnyTLS 订阅解析（URI / base64 / Surge 行 / Quantumult X 行；单元测试自构造样本，不依赖外部 fixture）
-- 结构化订阅解析（`.yaml` / `.yml` 的顶层 `proxies`、`.conf` 的 `[Proxy]`、无后缀内容识别、结构化格式优先于 TXT、错误 URL 脱敏）
+- 结构化订阅解析（`.yaml` / `.yml` 的顶层 `proxies`、`.conf` 的 `[Proxy]`、`.lcf` / `format: loon` 与 Loon 专属段、无后缀内容识别、显式 `format` 优先、结构化格式优先于 TXT、错误 URL 脱敏）
 - Snell Surge 行解析（valid / invalid / skip / duplicate key / 边界）
 - VLESS URI 解析（valid / invalid / transport fallback / encryption 透传 / transport query dispatch）
 - SIP002 明文 `userinfo`
@@ -29,7 +29,7 @@
 - `REJECT` 不在 `@auto` 中，需显式声明且位置保持不变
 - 同一 entry 内重复 `@auto` 会被静态校验拒绝
 - `@auto` 与 `@all` 在同一 entry 中互斥
-- `Route(cfg, nil)` 按空 `GroupResult` 处理，不发生 panic
+- `Route(routing, rulesets, rules, fallback, nil)` 按空 `GroupResult` 处理，不发生 panic
 - `routing` 不允许显式引用原始代理名
 - 代理 ID 非零且唯一；节点组名、服务组名与保留策略共享命名空间无冲突
 - 服务组引用校验
@@ -54,10 +54,10 @@
 - Surge 的 VLESS 级联过滤与 fallback 清空路径
 - 清空路径中的 `(snell)` / `(chained)` 标记，以及共享掉落子图不误报 `(cycle)`
 - Clash Meta 的通用 SS plugin 透传
-- Surge 对不支持 SS plugin 的错误路径
+- Surge / Loon 对不支持 SS plugin 的错误路径
 - ruleset 输出顺序
 - fallback 输出位置
-- Clash / Surge 的 `url-test` 默认参数一致
+- Clash / Surge / Loon 的 `url-test` 默认参数一致
 
 ---
 
@@ -65,8 +65,7 @@
 
 建议覆盖：
 
-- 从示例配置生成 Clash Meta
-- 从示例配置生成 Surge
+- 从示例配置生成 Clash Meta / Surge / Loon
 - 真实订阅样本的解析回归
 - 订阅拉取失败场景
 - 配置非法场景
@@ -76,7 +75,7 @@
 ## 验收重点
 
 - 面板顺序与配置书写顺序一致
-- 同一份配置在两种输出中语义一致
+- 同一份配置在三种输出中对共同存活实体语义一致
 - 链式组出现在节点组层，而不是服务组层
 - 所有节点组都显式指定策略
 
@@ -177,7 +176,7 @@
 - `T-PRV-008`：POST 草稿 generate preview 能发现 `config/validate` 不覆盖的生成期问题，例如远程源为空、过滤后组为空、fallback 级联清空或模板渲染错误
 - `T-PRV-009`：Preview groups 执行到 ValidateGraph；空节点组、空链式组、非法引用或循环引用返回 400 结构化诊断，不返回部分成功分组结果
 - `T-PRV-010`：本地配置源的 `GET /api/status` 释放运行时配置锁后每次重算 sha256，能发现同大小且 mtime 未变化的外部改写，且不阻塞 reload 指针替换
-- `T-PRV-011`：`/generate` 与 `/api/generate/preview` 中，`CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` 经 HTTP 层返回 400，projection invariant 类 TargetError 仍返回 500
+- `T-PRV-011`：`/generate` 与 `/api/generate/preview` 中，`CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` / `CodeTargetLoonFallbackEmpty` 经 HTTP 层返回 400，projection invariant 类 TargetError 仍返回 500
 - `T-PRV-012`：reload 期间预览请求不阻塞——慢速 `/api/preview/*` 请求不持有配置读锁，不阻塞 reload 获取写锁
 - `T-PRV-013`：`GET /api/generate/link` 要求管理员 session；`base_url` 缺失返回 `400 base_url_required`；服务端配置订阅 token 时可返回含 token 链接，未配置时返回 `token_included=false`；链接 token 来源必须是服务端订阅访问 token，而不是当前请求鉴权方式
 - `T-PRV-014`：后台 session 调用 `/generate?format=surge` 下载时，即使请求未带 query token，Surge `#!MANAGED-CONFIG` 仍包含服务端订阅访问 token（若启用）和最终 filename
@@ -191,7 +190,7 @@
 - `T-SPA-001`：`pnpm web:embed` 已同步 Web 静态资源后，根 `Dockerfile` 可成功构建内嵌 Web SPA 的单服务镜像
 - `T-SPA-002`：访问 `/` 返回 SPA `index.html`
 - `T-SPA-003`：刷新任意前端路由时由 Go 服务 fallback 到 `index.html`
-- `T-SPA-004`：`/generate?format=clash` 与 `/generate?format=surge` 由同一 Go 服务处理成功，且不被 SPA fallback 接管
+- `T-SPA-004`：`/generate?format=clash`、`/generate?format=surge` 与 `/generate?format=loon` 由同一 Go 服务处理成功，且不被 SPA fallback 接管
 - `T-SPA-005`：`/healthz` 由同一 Go 服务处理成功
 - `T-SPA-006`：生产 Compose 路径不依赖 CORS；浏览器访问的 Web 页面与 API 为同源
 - `T-SPA-007`：`/api/status` 由同一 Go 服务处理成功
@@ -212,14 +211,14 @@
 - `T-WEB-007`：登录页覆盖 idle、validating、invalid credentials、locked、redirecting、network error 和 setup；未登录访问受保护路由跳转 `/login?next=...`，session 失效后提示并跳回登录页
 - `T-WEB-008`：本地可写配置首次保存前显示 YAML 注释、引号和格式风格可能丢失的确认；用户确认后才发起 `PUT /api/config`
 - `T-WEB-009`：reload 成功或 status poll 发现 `runtime_config_revision` 变化后，当前已实现的运行时预览页使用新 query key 重新加载；B1 提供手动重新拉取，B2/B3 依赖页面进入、query key 变化或错误重试重新请求
-- `T-WEB-010`：409 按 `error.code` 分流，分别覆盖 `config_revision_conflict`、`config_source_readonly`、`config_file_not_writable` 和未知 409 code
+- `T-WEB-010`：409 按 `error.code` 分流，分别覆盖 `config_revision_conflict`、`config_source_readonly`、`config_file_not_writable`、`resource_content_write_failed` 和未知 409 code
 - `T-WEB-011`：A5 规则集页面 URL/Policy 绑定编辑，多条 URL 顺序不变（归属 M10）
 - `T-WEB-012`：A6 内联规则页面自由文本 + Policy 选择器编辑（归属 M10）
 - `T-WEB-013`：A7 其他配置页面 fallback / base_url / templates 字段编辑（归属 M10）
 - `T-WEB-014`：A8 静态校验 Drawer 展示 errors/warnings/infos 三级，通过 `locator.json_pointer` 跳转到对应页面字段（归属 M10）
 - `T-WEB-015`：B2 分组预览页面树形展示，ValidateGraph 失败时显示诊断且不展示部分成功结果（归属 M10）
-- `T-WEB-016`：B3 生成下载页面自动双格式运行时预览 → 下载 → 复制订阅链接全流程（归属 M10）
-- `T-WEB-022`：B3 导入 YAML 到前端草稿后保存使用导入后的配置；导出生效配置链接指向 `/api/config/effective.zip`
+- `T-WEB-016`：B3 生成下载页面自动三格式（Clash Meta / Surge / Loon）运行时预览 → 下载 → 复制订阅链接全流程（归属 M10）
+- `T-WEB-022`：B3 导入 YAML 到前端草稿后保存使用导入后的配置；导出已保存/生效配置链接分别指向 `/api/config/saved.zip` 与 `/api/config/effective.zip`
 - `T-WEB-023`：HTTP(S) 或本地只读配置源下 B3 禁用导入配置，仍允许导出生效配置包
 - `T-WEB-UX-001`–`018`：保存与导入期间的新编辑保留、来源必填与诊断直接定位、后端正则与旧预览提示、分组重命名引用、路由候选约束、规则空态、离开提示、错误恢复和运行时长；节点组、规则、规则集绑定与 URL 重排后验证保存顺序
 - `T-WEB-024`：B3 导入 ZIP 配置包到草稿，替换未保存修改前确认，并以 `application/zip` 调用 `POST /api/config/import`
@@ -233,11 +232,11 @@
   - fixture：非法正则配置、会导致 ValidateGraph 失败的空组配置、会导致目标格式 fallback 清空的配置、reload 校验失败配置
   - 操作步骤：分别触发 A8 静态校验、B2 分组预览、B3 运行时生成预览、保存后手动 reload
   - 预期结果：静态校验失败显示 `200 valid=false` 诊断；B2 图级错误不展示部分成功结果；B3 生成期错误可重试；reload 失败后旧 RuntimeConfig 不变并保持 dirty 提示
-- `T-WEB-019`：端到端测试：Clash / Surge 双格式生成与下载路径（归属 M10）
+- `T-WEB-019`：端到端测试：Clash / Surge / Loon 三格式生成与下载路径（归属 M10 + Loon 扩展）
   - 测试入口：正式前端 E2E runner；后端使用同一份已 reload 的本地配置
-  - fixture：同时包含 TXT、Clash YAML、Surge CONF、Snell、VLESS、rulesets、fallback 和 base_url 的配置，覆盖格式专属过滤
-  - 操作步骤：进入 B3 自动加载 Clash Meta 与 Surge 双格式运行时生成预览 → 分别触发下载 → 复制订阅链接确认
-  - 预期结果：Clash 响应为 YAML 且不含 Snell；Surge 响应为 text/plain 且不含 VLESS；预览无 `Content-Disposition`，下载有附件响应；复制含 token 链接前出现确认
+  - fixture：同时包含 TXT、Clash YAML、Surge CONF、Loon、Snell、VLESS、rulesets、fallback 和 base_url 的配置，覆盖格式专属过滤
+  - 操作步骤：进入 B3 自动加载 Clash Meta / Surge / Loon 三格式运行时生成预览 → 分别触发下载 → 复制订阅链接确认
+  - 预期结果：Clash 响应为 YAML 且不含 Snell；Surge 响应为 text/plain 且不含 VLESS；Loon 响应为 text/plain 且仅保留兼容节点与 `[Proxy Chain]`；预览无 `Content-Disposition`，下载有附件响应；复制含 token 链接前出现确认
 - `T-WEB-020`：端到端测试：HTTP(S) 配置源只读模式（归属 M10）
   - 测试入口：正式前端 E2E runner；后端以 HTTP(S) 主配置源启动
   - fixture：远程主配置 URL、fake 订阅源、有效订阅访问 token、可写 auth state
@@ -250,4 +249,13 @@
 
 ## Loon 验证入口
 
-`T-SRC-LOON-*` 覆盖显式格式、后缀与内容识别、节点保留及配置分组；`T-TGT-LOON-*` 覆盖跨格式级联与链式命名；`T-RND-LOON-*` 覆盖 golden、参数映射和底版；`T-GEN-LOON-*`、`T-E2E-LOON-*` 覆盖生成入口；`T-APP-LOON-*` 覆盖配置包往返；`T-WEB-LOON-*` 覆盖来源格式、底版保存与预览入口。所有样本使用合成凭据，不依赖私有供应商文件。
+`T-SRC-LOON-*` 覆盖显式格式、后缀与内容识别、节点保留及配置分组；`T-TGT-LOON-*` 覆盖跨格式级联与链式命名；`T-RND-LOON-*` 覆盖 golden、参数映射和底版；`T-GEN-LOON-*`、`T-SRV-LOON-*`、`T-E2E-LOON-*` 覆盖生成入口与错误映射；`T-APP-LOON-*`、`T-ADM-LOON-*` 覆盖配置包往返与管理接口；`T-WEB-LOON-*` 覆盖来源格式、底版保存与预览入口。所有样本使用合成凭据，不依赖私有供应商文件。
+
+## 实际测试编号映射与已知覆盖缺口
+
+上文 `T-ADM-*`、`T-RLD-*`、`T-CCH-*`、`T-HDR-*`、`T-PRV-*`、`T-SPA-*`、`T-WEB-*` 为设计期规划的验证清单。当前代码库中的实际测试组织如下：
+
+- **Go 后端测试**（16 个包中 15 个含 `*_test.go`，`internal/webui` 无测试文件）：除上述编号外，实际使用 `T-APP-001`–`017`、`T-APP-CHECK-*`、`T-APP-INLINE-*`、`T-ADM-CHECK-*`、`T-ADM-INLINE-*`、`T-ADM-STORE-*`、`T-AUTH-001`–`008`、`T-CLI-STORE-*`、`T-ERR-STORE-*`、`T-SRV-003`–`008`、`T-RLD-001`/`002`/`005`/`008`、`T-PRV-012` 等编号覆盖配置读写、缓存失效、预览、并发热重载防重入与非阻塞快照隔离、鉴权与来源检查。
+- **前端单元测试**（`pnpm web:test`，Vitest，2 个测试文件 / 86 个测试）：`web/src/App.test.tsx`（82 个，含 `T-WEB-011`–`016`、`T-WEB-022`–`024`、`T-WEB-UX-001`–`018`、`T-WEB-LOON-*`、`T-WEB-LOCAL-*`、`T-WEB-SOURCE-*`、`T-WEB-CHECK-*`、`T-WEB-BODY-*`、`T-WEB-INLINE-*`、`T-WEB-BOOT-*`、`T-WEB-AUTH-EXP-001`、`T-WEB-CFG-ERR-001`、`T-WEB-COPY-001`）与 `web/src/pages/LoginPage.test.tsx`（4 个，`T-WEB-AUTH-LOCK-001`–`004`）。
+- **前端 Playwright 集成测试**（`pnpm --filter subconverter-web test:e2e:int`，13 个文件 / 57 个 `T-INT-*` 测试）：位于 `web/e2e/integration/*.spec.ts`，使用 `page.route` mock 后端覆盖认证、A1–A8、B1–B3、C、保存工作流与边界场景。
+- **前后端真实 E2E 测试**（`pnpm --filter subconverter-web test:e2e`，`web/e2e/m10.spec.ts`，3 个测试）：`T-E2E-010`、`T-E2E-014`、`T-E2E-015`（`web/playwright.config.ts` 已通过 `testIgnore: ["**/integration/**"]` 与 mocked 集成测试隔离）。

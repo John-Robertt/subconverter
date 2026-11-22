@@ -122,9 +122,10 @@
 
 错误响应：
 
-- `400`：请求体无法解析或字段缺失
-- `401 invalid_credentials`：用户名或密码错误；响应可携带 `remaining`
-- `423 auth_locked`：失败次数达到上限；响应携带 `until`
+- `400 invalid_request`：请求体无法解析或用户名/密码缺失
+- `401 invalid_credentials`：用户名或密码错误；`error` 对象可携带 `remaining`（剩余尝试次数）
+- `409 auth_state_not_writable`：写入 session 或失败计数时 auth state 不可写
+- `423 auth_locked`：失败次数达到上限；`error` 对象携带 `until`（锁定截止时间）
 
 登录成功后服务端设置 `session_id` Cookie：HttpOnly、SameSite=Lax、Path=/；HTTPS 下必须设置 Secure。未选择 `remember` 时 session 最长 24 小时，选择后最长 7 天。
 
@@ -160,9 +161,15 @@
 - auth state 目录自动创建时权限为 `0700`，文件权限为 `0600`
 - auth state 写入使用同目录临时文件 → 写入 → fsync 文件 → rename → 尽力 fsync 目录；若不可写，返回部署配置错误并保持未初始化状态
 
+成功响应：
+
+- `200`，响应体为 `{ "redirect": "/sources" }`
+- 同时设置非 `remember`（最长 24 小时）的 `session_id` Cookie（HttpOnly、SameSite=Lax、Path=/；HTTPS 下设置 Secure）
+
 错误响应：
 
-- `400`：请求体无法解析、字段缺失或密码不满足策略
+- `400 invalid_request`：请求体无法解析或用户名/密码缺失
+- `400 password_too_weak`：密码少于 12 位
 - `401 setup_token_required`：需要 setup token 但请求未提供
 - `401 setup_token_invalid`：setup token 不匹配
 - `409 setup_not_allowed`：管理员凭据已存在
@@ -170,7 +177,7 @@
 
 ### `POST /api/auth/logout`
 
-用途：注销当前 session。无论当前 session 是否有效，服务端都应返回成功并清除浏览器 Cookie。
+用途：注销当前 session。未携带 Cookie 或 auth state 正常可读写时，无论当前 session 是否有效均返回成功并清除浏览器 Cookie；若请求携带非空 Cookie 且 auth state 不可写或损坏，返回 `409 auth_state_not_writable` 或 `500 auth_error`。
 
 成功响应：
 
@@ -284,8 +291,8 @@
 
 错误响应：
 
-- `400`：缺少 `config_revision`、请求 JSON 无法解析，或校验失败
-- `409`：只读配置源、本地文件不可写，或 `config_revision` 与当前文件不一致；响应必须携带可分流的 `error.code`
+- `400`：请求 JSON 无法解析或缺少 `config`（`invalid_request`）、缺少 `config_revision`（`config_revision_required`）、`config` 不是对象（`invalid_config`），或校验失败（返回 `ValidateResult`）
+- `409`：只读配置源、本地文件不可写、托管正文目录不可写，或 `config_revision` 与当前文件不一致；响应必须携带可分流的 `error.code`
 
 配置语义校验失败响应体与 `POST /api/config/validate` 复用同一结构，但 HTTP 状态为 `400`：
 
@@ -298,7 +305,7 @@
 }
 ```
 
-缺少字段、请求 JSON 无法解析、只读配置源、文件不可写和 revision 冲突等非配置语义错误继续使用 `{ "error": { ... } }` 响应体。
+缺少字段、请求 JSON 无法解析、只读配置源、文件不可写、托管正文目录不可写和 revision 冲突等非配置语义错误继续使用 `{ "error": { ... } }` 响应体。
 
 409 错误码：
 
@@ -307,6 +314,7 @@
 | `config_revision_conflict` | 请求 revision 与当前配置源 revision 不一致 |
 | `config_source_readonly` | 当前配置源是 HTTP(S) URL 等只读来源 |
 | `config_file_not_writable` | 本地配置文件或所在目录不可写 |
+| `resource_content_write_failed` | 托管正文目录无法创建或写入（不修改主配置和运行快照） |
 
 revision 冲突响应示例：
 
@@ -402,7 +410,7 @@ YAML 请求体：
 
 ZIP 请求体：
 
-- `Content-Type: application/zip`
+- `Content-Type: application/zip`（兼容 `application/x-zip-compressed`）
 - Body：ZIP 字节，大小不超过 10 MiB
 - ZIP 必须包含非空 `config.yaml`
 - 可选包含 `templates/clash.yaml`、`templates/surge.conf` 和 `templates/loon.lcf`
@@ -427,7 +435,7 @@ ZIP 请求体：
 - ZIP 导入将 `subscriptions`、`snell`、`vless` 中 `content_file` 引用的包内正文文件还原为对应来源的 `content`，保留 `name` 及订阅的 `format`，清除文件引用；包内模板还原为 `templates.inline` 草稿正文，清除对应模板路径
 - 导入不创建目录、不写任何文件。用户编辑草稿后，通过 `PUT /api/config` 统一校验并保存配置与正文文件；保存失败由保存流程回收本次新增文件
 - 既有 `.imports` 模板路径继续作为普通本地引用读取，新导入不再创建此目录
-- ZIP 导入只读取 `config.yaml`、上述固定模板条目及 `subscriptions/`、`snell/`、`vless/` 下的直接文件，不按 ZIP 内路径解压，也不读取服务器上的同名文件。各来源正文必须通过 `content_file` 引用包内同类目录的文件，内容须为不含 NUL 的非空 UTF-8 文本；缺失或无效文件、目录外引用、重复条目及无效 ZIP 返回 `400 invalid_archive`。压缩包和所读取条目的解压总大小均不能超过 10 MiB
+- ZIP 导入只读取 `config.yaml`、上述固定模板条目及 `subscriptions/`、`snell/`、`vless/` 下的直接文件，不按 ZIP 内路径解压，也不读取服务器上的同名文件。各来源正文必须通过 `content_file` 引用包内同类目录的文件，内容须为不含 NUL 的非空 UTF-8 文本；缺失或无效文件、目录外引用、重复条目及无效 ZIP 返回 `400 invalid_archive`。压缩包和所读取条目的解压总大小均不能超过 10 MiB。JSON 导入缺少 `yaml` 返回 `400 invalid_request`，YAML 语法解析失败（JSON 或 ZIP 内 `config.yaml`）返回 `400 config_yaml_invalid`
 - HTTP(S) 远程配置源导入 ZIP 返回 `409 config_source_readonly`；本地配置文件不可写返回 `409 config_file_not_writable`
 - 导入成功后，前端应只替换草稿；用户仍需显式保存和热重载才会生效
 
@@ -549,12 +557,14 @@ ZIP 请求体：
 
 边界：reload 只执行 `LoadConfig + Prepare`，不拉取订阅（TXT / Clash YAML / Surge CONF / Loon）/Snell/VLESS 来源，不执行 Source / Filter / Group / Target / Render，因此不证明生成一定可用。订阅源不可用、过滤后空组、目标格式级联过滤和渲染错误由预览或生成路径发现。
 
-并发行为：同一时刻只允许一次 reload 操作。若 reload 正在执行时收到第二个 `POST /api/reload` 请求，立即返回 `429 Too Many Requests`，不排队等待。429 响应不携带 `Retry-After` header；客户端应短间隔退避后重试，避免循环重放请求。
+并发行为：同一时刻只允许一次 reload 操作。若 reload 正在执行时收到第二个 `POST /api/reload` 请求，立即返回 `429 Too Many Requests`（`code: "reload_in_progress"`），不排队等待。429 响应不携带 `Retry-After` header；客户端应短间隔退避后重试，避免循环重放请求。
 
 错误响应：
 
-- `400`：配置校验失败（静态诊断）
-- `429`：另一个 reload 正在执行中（不携带 `Retry-After`）
+- `400`：配置校验或 YAML 解析失败（返回 `ValidateResult` 结构诊断）
+- `409 config_not_initialized`：本地主配置尚未创建（同时记录失败的 `last_reload`）
+- `429 reload_in_progress`：另一个 reload 正在执行中（不携带 `Retry-After`）
+- `500 resource_local_read_failed`：本地主配置存在但读取失败
 - `502`：远程主配置源拉取失败（仅当 `-config` 为 HTTP(S) URL 时；不表示订阅源拉取失败）
 
 ---
@@ -602,7 +612,7 @@ ZIP 请求体：
 
 用途：基于前端编辑中的草稿配置预览节点列表，响应结构与 `GET /api/preview/nodes` 相同。
 
-注意：此端点会实际拉取草稿配置中的全部订阅 URL。如果草稿包含新增来源且不在 TTL 缓存中，响应时间受上游网络影响（通常 10-30s）。前端应显示"正在拉取订阅..."等明确提示，而非仅显示 spinner。订阅拉取超时继承 `-timeout` 参数（默认 30s）；超时返回 `502`（`FetchError`），与配置校验失败的 `400` 可通过 HTTP 状态码区分。
+注意：此端点会实际拉取草稿配置中的全部订阅 URL。如果草稿包含新增来源且不在 TTL 缓存中，响应时间受上游网络影响（通常 10-30s）。前端应显示"正在拉取订阅..."等明确提示，而非仅显示 spinner。订阅拉取超时继承 `-timeout` 参数（默认 30s）；超时返回 `502`（`FetchError`），静态配置校验失败返回 `400` + `ValidateResult` 结构诊断（与 `POST /api/config/validate` 同构）。
 
 请求体：
 
@@ -704,13 +714,16 @@ ZIP 请求体：
 查询参数：
 
 - `format=clash|surge|loon`（必填）
+- `filename=<custom-name>`（可选；校验、自动补扩展名和默认值规则同 `/generate`，对 Surge 会影响正文中的 `#!MANAGED-CONFIG` URL）
 
 成功响应：
 
 - `200`
-- `Content-Type: text/yaml; charset=utf-8`（Clash）或 `text/plain; charset=utf-8`（Surge）
+- `Content-Type: text/yaml; charset=utf-8`（Clash）或 `text/plain; charset=utf-8`（Surge / Loon）
 - **不**设置 `Content-Disposition` header（区别于 `/generate`）
 - Body 为完整配置文本，与 `/generate` 内容相同
+
+错误响应中，配置语义错误或图级校验失败（`build_validation_failed`）返回 `400` + `ValidateResult` 结构诊断；目标格式 fallback 被级联清空返回 `400`（`{ "error": ... }`）。
 
 ### `POST /api/generate/preview`
 
@@ -719,6 +732,7 @@ ZIP 请求体：
 查询参数：
 
 - `format=clash|surge|loon`（必填）
+- `filename=<custom-name>`（可选；规则同上）
 
 请求体：
 
@@ -728,7 +742,7 @@ ZIP 请求体：
 }
 ```
 
-成功响应与 `GET /api/generate/preview` 相同。
+成功响应与错误响应结构均与 `GET /api/generate/preview` 相同。
 
 ### `GET /api/generate/link`
 
@@ -752,7 +766,7 @@ ZIP 请求体：
 说明：
 
 - 本接口要求有效管理员 session
-- 若配置未声明 `base_url`，返回 `400 base_url_required`
+- 若配置未声明 `base_url`，返回 `400 base_url_required`；若 `base_url` 无法解析为合法链接，返回 `400 base_url_invalid`
 - 当 `include_token=true` 但服务端未配置订阅访问 token 时，返回不含 token 的链接并设置 `token_included=false`
 - UI 在复制 `token_included=true` 的链接前仍必须展示确认，提示 token 会进入 URL、客户端配置和代理日志
 
@@ -778,7 +792,7 @@ ZIP 请求体：
     "exists": true
   },
   "config_revision": "sha256:9a21...",
-  "runtime_config_revision": "sha256:7d9c...",
+  "runtime_config_revision": "sha256:9a21...",
   "config_loaded_at": "2026-05-01T10:00:00Z",
   "config_dirty": false,
   "capabilities": {
@@ -815,7 +829,7 @@ ZIP 请求体：
 - `capabilities.config_write`：前端是否应启用保存入口；与当前后端实际写回能力保持一致
 - `last_reload`：可选字段。仅在进程曾经触发过 `POST /api/reload`（无论成功或失败）时存在；从未发生过 reload 时该字段被省略（`omitempty`）。这避免用 zero value 同时表达"未发生"与"失败"两种语义——前端据此区分"运行中（未重载）"与"上次重载失败"
 - `last_reload.error`：仅在 `success=false` 时填充，记录最近一次 reload 失败的错误消息（用于 UI 直接展示原因）；`success=true` 时省略
-- `runtime_environment`：当前进程运行环境。`request_count_24h` 当前为进程内请求计数；进程启动未满 24 小时时，前端可按“自启动以来”展示
+- `runtime_environment`：当前进程运行环境。`request_count_24h` 当前实现为自进程启动以来的累计请求计数（跳过 `OPTIONS` 预检与 `/healthz`），暂无 24 小时滚动时间窗；进程启动未满 24 小时时前端按“自启动”展示
 
 ---
 
@@ -828,9 +842,12 @@ ZIP 请求体：
 | 状态码 | 场景 |
 |------|------|
 | `400` | 请求参数非法；配置语义 / 图校验失败；热重载校验失败；目标格式级联过滤导致 fallback 清空 |
-| `401` | `/generate` 缺少或不匹配订阅访问 token；管理接口缺少、无效或已过期的管理员 session；登录凭据错误 |
-| `409` | 配置尚未初始化或生效、当前配置源不支持该操作、本地配置文件不可写，或配置 revision 冲突 |
-| `429` | reload 操作正在执行中，拒绝并发 reload 请求 |
+| `401` | `/generate` 缺少或不匹配订阅访问 token；管理接口缺少、无效或已过期的管理员 session；登录凭据错误；首次 setup 缺少或错误 bootstrap setup token |
+| `403` | 非安全 `/api/*` 请求同源 `Origin` / `Referer` 校验失败（`csrf_check_failed`） |
+| `404` | 未匹配的 `/api/*` 路径或方法（`not_found`） |
+| `409` | 配置尚未初始化或生效（`config_not_initialized`）、当前配置源不支持该操作（`config_source_readonly`）、本地配置文件不可写（`config_file_not_writable`）、托管正文目录不可写（`resource_content_write_failed`）、配置 revision 冲突（`config_revision_conflict`）、管理员已存在（`setup_not_allowed`）或 auth state 不可写（`auth_state_not_writable`） |
+| `423` | 管理后台登录失败达上限，账号临时锁定（`auth_locked`，带 `until`） |
+| `429` | reload 操作正在执行中，拒绝并发 reload 请求（`reload_in_progress`） |
 | `502` | 远程资源拉取失败，或远程订阅内容不可用 |
 | `500` | 本地资源读取失败、内部投影不变量失败，或内部处理 / 渲染失败 |
 
@@ -857,13 +874,13 @@ ZIP 请求体：
 
 管理接口规则：
 
-- `/api/auth/status`、`/api/auth/login`、`/api/auth/setup`、`/api/auth/logout` 是未登录可访问的认证入口；logout 无 session 时也返回成功并清 Cookie
+- `/api/auth/status`、`/api/auth/login`、`/api/auth/setup`、`/api/auth/logout` 是未登录可访问的认证入口；未带 Cookie 或 auth state 正常可读写时，logout 无论 session 是否有效均返回成功并清 Cookie
 - 其他 `/api/*` 管理接口必须携带有效 `session_id` Cookie；不接受 `Authorization: Bearer <SUBCONVERTER_TOKEN>` 作为管理后台权限
 - 前端 API client 使用同源 Cookie，不把订阅访问 token 放入 `/api/*` query 或 header
 - Session 失效后，所有受保护管理接口返回 `401 session_expired` 或 `401 auth_required`，前端全局拦截并跳转 `/login?next=<当前路径>`
 - 失败登录按 IP + 用户名联合计数，最近失败时间随认证状态持久化；连续 15 分钟没有新失败则清零，服务重启保留尚未过期的计数。第 5 次失败返回 `423 auth_locked` 并锁定 15 分钟，截止时间由后端返回；锁定期间的请求不延长锁定，锁定到期或同一 IP + 用户名成功登录后清零
 - 读取认证状态时忽略已过期的失败记录，并在下一次写入时清理。没有失败时间的未锁定记录不继续累计；已有且未到期的锁定仍保持到原截止时间
-- 所有非安全 `/api/*` 请求必须先校验同源 `Origin` 或 `Referer`，包括未登录可访问的 `/api/auth/login`、`/api/auth/setup` 和 `/api/auth/logout`；这些认证入口不要求已有 session，但仍受同源校验约束
+- 所有非安全 `/api/*` 请求必须先校验同源 `Origin` 或 `Referer`，包括未登录可访问的 `/api/auth/login`、`/api/auth/setup` 和 `/api/auth/logout`；这些认证入口不要求已有 session，但仍受同源校验约束，校验失败返回 `403 csrf_check_failed`
 
 `/generate` 规则：
 
@@ -890,10 +907,9 @@ Cookie session 下，所有会修改状态的管理请求必须校验同源 `Ori
 ## CORS
 
 - v2.0 正式生产 Docker Compose 模式不启用 CORS：浏览器访问单个 `subconverter` 服务，同源访问 SPA、`/api/*`、`/generate` 和 `/healthz`
-- 开发模式优先使用 Vite proxy，以便 Cookie session 保持同源语义；仅在不使用 proxy、需要浏览器跨域直连 Go 后端调试非 Cookie 路径时，通过 `-cors` 标志或 `SUBCONVERTER_CORS=true` 启用
+- 开发模式优先使用 Vite proxy，以便 Cookie session 保持同源语义；仅在不使用 proxy、需要本机跨域直连 Go 后端调试时，通过 `-cors` 标志或 `SUBCONVERTER_CORS`（接受 `1` / `true` / `yes`，不区分大小写）启用
 - 启用后仅允许本机开发来源：`http://localhost:*`、`http://127.0.0.1:*`、`http://[::1]:*`
-- CORS middleware 必须处理 preflight：允许 `GET`、`POST`、`PUT`、`OPTIONS`；允许 `Content-Type`
-- 响应需设置 `Vary: Origin`，避免不同来源的缓存污染
+- 命中允许的本机开发来源时，响应设置 `Access-Control-Allow-Origin`、`Access-Control-Allow-Credentials: true` 与 `Vary: Origin`；`OPTIONS` 预检设置 `Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS`、`Access-Control-Allow-Headers: Content-Type` 并返回 `204 No Content`（未携带 `Origin` 或非本机开发来源时不设置上述 CORS 与 `Vary` 头）
 
 ---
 
@@ -906,13 +922,14 @@ Cookie session 下，所有会修改状态的管理请求必须校验同源 `Ori
 - `-cache-ttl`：订阅、模板和远程配置的缓存 TTL（默认 `5m`）
 - `-timeout`：拉取订阅的 HTTP 超时时间（默认 `30s`）
 - `-access-token`：订阅访问 token，只用于 `/generate` 客户端自动更新订阅；空值表示 `/generate` 外部客户端不启用 token 鉴权
+- `-data-dir`：托管正文版本文件目录（默认 `/config`，覆盖 `SUBCONVERTER_DATA_DIR`）
 - `-auth-state`：管理员凭据与持久 session 状态文件路径。Docker Compose Web 后台部署应挂载到可写目录；若无凭据且 auth state 不可写，setup 不可完成，管理接口保持关闭
 - `-setup-token`：首次 setup bootstrap token；未配置且 auth state 无管理员凭据时，服务启动生成一次性 32-byte URL-safe token 并仅打印到日志
 - `-cors`：启用 CORS 中间件（默认 `false`，仅开发模式使用）
 - `-healthcheck`：健康检查模式
 - `-version`：打印版本信息
 
-环境变量：`SUBCONVERTER_LISTEN`、`SUBCONVERTER_TOKEN`、`SUBCONVERTER_AUTH_STATE`、`SUBCONVERTER_SETUP_TOKEN`、`SUBCONVERTER_CORS`
+环境变量：`SUBCONVERTER_LISTEN`、`SUBCONVERTER_TOKEN`、`SUBCONVERTER_DATA_DIR`、`SUBCONVERTER_AUTH_STATE`、`SUBCONVERTER_SETUP_TOKEN`、`SUBCONVERTER_CORS`
 
 ---
 
@@ -939,7 +956,7 @@ Cookie session 下，所有会修改状态的管理请求必须校验同源 `Ori
 2. 若请求携带有效管理员 session，允许后台下载；否则在服务端配置订阅访问 token 时校验 query `token`
 3. 校验并规范化 `filename`
 4. 通过 `app.Service` 获取当前 `RuntimeConfig` 快照（内部 `RLock` 复制指针后立即释放）
-5. 将快照传入 `generate.Generate(ctx, cfg, req)`（无状态调用）执行 `Build → Target → Render`
+5. 将快照传入 `(*generate.Service).Generate(ctx, cfg, req)`（无状态调用）执行 `Build → Target → Render`
 6. 若 `format=surge` 且有 `base_url`，组装 managed URL；请求鉴权方式只决定是否允许下载，managed URL 中的 token 始终来自服务端订阅访问 token（若启用），不依赖当前请求是否携带 query token 或管理员 session；`filename` 使用本次请求规范化后的最终文件名
 7. 返回配置文本（带 `Content-Disposition`）
 

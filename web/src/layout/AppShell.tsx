@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, LogOut, Moon, RefreshCcw, Save, Sun, SunMoon, TriangleAlert } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { getErrorMessage } from "../api/errors";
 import { queryKeys } from "../app/queryKeys";
 import { findPage, pages, type PageSection } from "../app/pages";
 import { useSaveWorkflow } from "../features/useSaveWorkflow";
@@ -9,7 +10,7 @@ import { useConfigState } from "../state/config";
 import { useTheme, type ThemePreference } from "../state/theme";
 import { useToast } from "../state/toast";
 import { useConfirm } from "../state/confirm";
-import { Button, IconButton, LoadingState } from "../components/ui";
+import { Button, ErrorState, IconButton, LoadingState } from "../components/ui";
 
 const sidebarNavGroups: Array<{ label: string; sections: PageSection[] }> = [
   { label: "配置", sections: ["config"] },
@@ -19,7 +20,20 @@ const sidebarNavGroups: Array<{ label: string; sections: PageSection[] }> = [
 export function AppShell() {
   const location = useLocation();
   const currentPage = findPage(location.pathname);
-  const { draft, status, isLoading, isDraftDirty, isReadonly, externalRevisionChanged, resetDraft, statusError } = useConfigState();
+  const {
+    draft,
+    status,
+    isLoading,
+    isConfigFetching,
+    isDraftDirty,
+    isReadonly,
+    externalRevisionChanged,
+    resetDraft,
+    retryConfig,
+    configError,
+    statusError
+  } = useConfigState();
+  const blockConfigPage = Boolean(configError && !draft && currentPage.section === "config");
   const { preference, setPreference } = useTheme();
   const { saveDraft, isSaving, reloadOnly, isReloading } = useSaveWorkflow();
   const queryClient = useQueryClient();
@@ -182,8 +196,30 @@ export function AppShell() {
           </div>
         ) : null}
 
+        {configError && !blockConfigPage ? (
+          <div className="warning-strip" role="alert">
+            <TriangleAlert size={17} aria-hidden="true" />
+            <span>配置读取失败：{getErrorMessage(configError)}</span>
+            <button type="button" disabled={isConfigFetching} onClick={() => void retryConfig()}>
+              重试
+            </button>
+          </div>
+        ) : null}
+
         <section className="workspace-content">
-          <Outlet />
+          {blockConfigPage ? (
+            <ErrorState
+              title="配置加载失败"
+              message={getErrorMessage(configError)}
+              action={
+                <Button variant="secondary" loading={isConfigFetching} onClick={() => void retryConfig()}>
+                  重试
+                </Button>
+              }
+            />
+          ) : (
+            <Outlet />
+          )}
         </section>
       </main>
     </div>

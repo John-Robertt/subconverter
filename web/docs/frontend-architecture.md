@@ -16,7 +16,13 @@
 
 ```text
 web/
+├── index.html
+├── README.md
+├── docs/
 ├── src/
+│   ├── main.tsx
+│   ├── App.tsx
+│   ├── App.test.tsx
 │   ├── app/
 │   ├── api/
 │   ├── components/
@@ -28,6 +34,9 @@ web/
 ├── e2e/
 ├── scripts/
 ├── package.json
+├── tsconfig.json
+├── tsconfig.app.json
+├── tsconfig.node.json
 ├── playwright.config.ts
 ├── playwright.integration.config.ts
 └── vite.config.ts
@@ -43,7 +52,7 @@ web/
 
 ## Query 与 mutation
 
-`app/queryKeys.ts` 集中定义 query key，即 React Query 区分各份缓存数据所用的键：
+`app/queryKeys.ts` 定义核心 query key，即 React Query 区分各份缓存数据所用的键：
 
 - `status`
 - `authStatus`
@@ -52,26 +61,29 @@ web/
 - `previewGroups(runtime_config_revision)`
 - `generatePreview(runtime_config_revision, format)`
 
+另有两处页面内联 key：`StatusPage` 使用 `["healthz"]`，`DownloadPage` 使用 `["generateLink", format, runtime_config_revision]`。
+
 编辑页草稿预览是 mutation 或显式触发的 query，避免每次字段变化都自动打满远程来源。当前 B3 页面只暴露运行时生成预览；后端 `POST /api/generate/preview` 仍保留为 API 能力。
 
 运行时预览必须以 `GET /api/status` 返回的 `runtime_config_revision` 作为配置快照缓存边界。`POST /api/reload` 成功后先刷新 `status`；当 status poll 或 reload 后发现 `runtime_config_revision` 变化时，B1/B2/B3 当前运行时预览通过 query key 变化重新拉取。`config_revision` 只用于已保存配置草稿和 revision 冲突判断，不作为运行时预览 key 的替代。
 
 B1/B2/B3 的结果还依赖订阅、Snell、VLESS 来源和远程模板的 TTL 缓存。远程资源可能在 `runtime_config_revision` 不变时变化；B1 通过“重新拉取”调用 React Query `refetch` 主动重新请求，B2/B3 通过页面进入、query key 变化或错误重试重新请求。页面首次进入时自动请求；后续不做后台轮询，也不把远程资源变化伪装为 revision 变化。query 的 `staleTime` 应保持较短或为 `0`。
 
-## API client
+## API client 与错误处理分层
 
-API client 统一负责：
+`api/client.ts` 统一负责：
 
-- 使用同源 Cookie 发起请求（`credentials: "include"` 或等价封装）。
+- 使用同源 Cookie 发起请求（`credentials: "include"`）。
 - 解析 JSON 与文本响应。
-- 将 HTTP 状态映射到页面可消费的错误对象，至少包含 `status`、`code`、`message`、`details`。
-- 对 `401 auth_required` / `401 session_expired` 触发登录跳转，并保留 `next`。
-- 对 `401 invalid_credentials` 和 `423 auth_locked` 交给登录页展示字段错误或锁定状态。
-- 对 `401 setup_token_required` / `401 setup_token_invalid` 交给 setup 模式展示 bootstrap token 错误。
-- 对 409 按 `code` 区分 revision 冲突、只读配置源和文件不可写。
-- 复制订阅链接使用 `GET /api/generate/link`，不得从前端状态拼接 `SUBCONVERTER_TOKEN`。
+- 将 HTTP 失败响应归一化为 `ApiError`（包含 `status`、`code`、`message`、`payload` / 校验诊断等详情）。
+- 对受保护接口返回的 `401 auth_required` / `401 session_expired` 派发 `subconverter:auth-required` 全局事件。
+- 复制订阅链接调用 `GET /api/generate/link`，不在前端状态拼接 `SUBCONVERTER_TOKEN`。
 
-重载的 429 退避由 `features/useSaveWorkflow.ts` 处理：提示用户已有重载在执行，等待 1.5 秒后重试一次。通用 API client 负责返回错误，保存流程根据操作决定如何处理。
+上层模块分别承接对应错误恢复：
+
+- `app/ProtectedRoute.tsx` 监听 `subconverter:auth-required` 事件，重定向至 `/login?next=<当前路径>`。
+- `pages/LoginPage.tsx` 处理 `401 invalid_credentials`、`423 auth_locked`、`401 setup_token_required` / `401 setup_token_invalid` 与认证网络错误。
+- `features/useSaveWorkflow.ts` 处理 `409` 按 `code` 分流（`config_revision_conflict`、`config_source_readonly`、`config_file_not_writable`、`resource_content_write_failed` 与未知 409），以及重载 `429 reload_in_progress` 退避（提示用户已有重载在执行，等待 1.5 秒后重试一次）。
 
 ## 构建与部署
 

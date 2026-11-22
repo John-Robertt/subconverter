@@ -158,6 +158,34 @@ export async function installMocks(page: Page, state: MockState): Promise<void> 
     await jsonResponse(route, state.validate);
   });
 
+  await page.route("**/api/resources/read", async (route) => {
+    await logCall(route, state);
+    await jsonResponse(route, { content: "ss://YWVzLTI1Ni1jZmI6cGFzcw@hk.example.com:8388#HK-01\n" });
+  });
+
+  await page.route("**/api/subscriptions/check", async (route) => {
+    await logCall(route, state);
+    const body = route.request().postDataJSON() as { kind?: string; format?: string; content?: string } | null;
+    const kind = body?.kind ?? "subscriptions";
+    if (kind === "snell" || kind === "vless") {
+      await jsonResponse(route, {
+        status: "recognized",
+        node_count: 1,
+        output_formats: kind === "snell" ? ["surge"] : ["clash", "loon"],
+        content: body?.content
+      });
+      return;
+    }
+    const format = body?.format && body.format !== "auto" ? body.format : "text";
+    await jsonResponse(route, {
+      status: "recognized",
+      format,
+      node_count: 1,
+      output_formats: format === "text" ? ["clash", "surge", "loon"] : [format],
+      content: body?.content
+    });
+  });
+
   await page.route("**/api/config", async (route) => {
     await logCall(route, state);
     const method = route.request().method();

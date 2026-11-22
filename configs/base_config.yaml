@@ -23,7 +23,7 @@
 # 生成的 managed URL 会使用服务端配置的订阅访问 token（若启用）
 # 和最终文件名，不依赖当前请求是 query token 还是后台 session。
 #
-# 值为 scheme + host，不含路径。为空则 Surge 不输出此头。
+# 值为 scheme + host，不含路径、query 或 fragment。为空则 Surge 不输出此头。
 # 示例: "https://my-server.com" 或 "http://192.168.1.1:8080"
 
 base_url: "https://my-server.com"
@@ -50,12 +50,13 @@ templates:
 
 sources:
   # ---------- 订阅源 ----------
-  # 每个订阅支持以下响应格式（结构化格式优先于 TXT）：
+  # 每个订阅支持以下响应格式（结构化格式优先于 TXT；无已知后缀时按 1 → 2 → 3 → 4 顺序识别）：
   #   1. Clash YAML（.yaml / .yml，或内容含顶层 proxies）：复制 proxies
   #      中的节点映射，只进入 Clash 输出。
-  #   2. Surge CONF（.conf，或内容含 [Proxy]）：复制 [Proxy] 中的节点
+  #   2. Loon（.lcf、显式 format: loon，或内容含 [Remote Proxy] / [Remote Filter] /
+  #      [Remote Rule] / [Proxy Chain] 专属段）：复制 [Proxy] 中的节点，只进入 Loon。
+  #   3. Surge CONF（.conf，或内容含 [Proxy]）：复制 [Proxy] 中的节点
   #      声明，只进入 Surge 输出。
-  #   3. Loon（.lcf，或显式 format: loon）：复制 [Proxy] 中的节点，只进入 Loon。
   #   4. TXT：base64 编码或明文 SS / AnyTLS 节点列表。
   # SS 支持：ss://、QuanX shadowsocks 行、Surge ss 行。
   # AnyTLS 支持：anytls://、QuanX anytls 行、Surge anytls 行。
@@ -64,7 +65,7 @@ sources:
   # format 可选 auto / text / clash / surge / loon，默认 auto；.lcf 自动识别为 Loon，也可显式指定 loon。
   # 只导入节点；来源自带的组、规则、Host 和通用设置由本项目 YAML 与底版负责。
   # url / 非空 content / 本地 content_file 三选一；content 可在 Web 直接编辑。
-  # 保存正文会在 /config 下生成带时间戳的版本文件，主配置改为 content_file 引用。
+  # 保存正文默认会在 /config（可通过 -data-dir / SUBCONVERTER_DATA_DIR 指定）下生成带时间戳的版本文件，主配置改为 content_file 引用。
   # content 不自动更新；正文示例见 docs/design/config-schema.md。
   # 这里的 token 是上游订阅服务自己的 token，和本服务 `/generate`
   # 的访问 token 是两回事。
@@ -104,10 +105,12 @@ sources:
   # 每行一条标准 VLESS URI：
   #   vless://UUID@SERVER:PORT?security=...&sni=...&type=...#NODE_NAME
   # 支持的 query：security（none/tls/reality）/ encryption / flow / type /
-  #              sni / fp / alpn / pbk / sid / spx
+  #              sni / fp / alpn / pbk / sid / spx /
+  #              path / host / serviceName / mode
   # 空行与 # / // 注释行跳过；单行解析失败整源报错（策略与 Snell 一致）。
   # 与其他来源的同名节点保留独立身份；可作为 relay_through 的链式上游。
-  # VLESS 节点进入 Clash；Loon 接受 tcp/ws/http 传输；Surge 级联过滤这些节点及其引用。
+  # VLESS 节点进入 Clash；Loon 接受 tcp/ws/http 传输、空或 none 的 encryption、
+  # 空或 xtls-rprx-vision 的 flow，其余在 Loon 级联过滤；Surge 级联过滤全部 VLESS 节点及其引用。
   #
   vless:
     - url: "https://my-server.com/vless-nodes.txt"
@@ -120,7 +123,8 @@ sources:
   # 不来自订阅、手动定义的节点（如机房专线、ISP 代理）。
   #
   # 字段说明：
-  #   name:  节点显示名候选；允许与其他节点重名，最终输出名按目标格式独立消歧
+  #   name:  无 relay_through 时为节点显示名候选，允许重名并按目标格式独立消歧；
+  #          带 relay_through 时为链式组名，不可与其他组或 DIRECT/REJECT 重名
   #   url:   代理协议链接，支持 ss://、socks5://、http://
   #          - ss:      SIP002 格式 ss://base64(method:password)@server:port[?plugin=...][#ignored]
   #          - socks5:  socks5://[user:pass@]server:port
@@ -250,6 +254,7 @@ routing:
 # Clash Meta: 转为 rule-providers + RULE-SET 引用
 #   - 固定生成 behavior: classical + format: text
 # Surge: 直接 RULE-SET,<url>,<policy>
+# Loon: 写入 [Remote Rule] 段，格式为 <url>,<policy>
 
 rulesets:
   🛑 BanList:

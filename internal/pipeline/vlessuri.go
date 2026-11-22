@@ -134,7 +134,8 @@ func ParseVLessURI(raw string) (model.Proxy, error) {
 	}
 
 	params := map[string]string{
-		"uuid": userinfo,
+		"uuid":    userinfo,
+		"network": normalizeVLessNetwork(""),
 	}
 
 	if query != "" {

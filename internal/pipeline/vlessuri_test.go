@@ -243,6 +243,25 @@ func TestParseVLessURI_NetworkNormalization(t *testing.T) {
 			t.Errorf("Params[network] = %q, want tcp (default)", got.Params["network"])
 		}
 	})
+
+	t.Run("no query defaults to tcp and satisfies proxy invariant", func(t *testing.T) {
+		for _, uri := range []string{
+			"vless://11111111-2222-3333-4444-555555555555@example.com:443#bare",
+			"vless://11111111-2222-3333-4444-555555555555@example.com:443?#empty-query",
+		} {
+			got, err := ParseVLessURI(uri)
+			if err != nil {
+				t.Fatalf("ParseVLessURI(%q) errored: %v", uri, err)
+			}
+			if got.Params["network"] != "tcp" {
+				t.Errorf("ParseVLessURI(%q) Params[network] = %q, want tcp", uri, got.Params["network"])
+			}
+			got.ID = 1
+			if err := model.ValidateProxyInvariant(got); err != nil {
+				t.Errorf("ParseVLessURI(%q) failed proxy invariant: %v", uri, err)
+			}
+		}
+	})
 }
 
 // T-SRC-VLESS-002c: Per-network transport query dispatch — path/host/

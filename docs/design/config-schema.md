@@ -62,7 +62,7 @@ sources:
 - `subscriptions`、`snell`、`vless` 的每条来源共用以下字段。
 - `name` 可选，为 Web 列表中的来源展示名；适用于链接和本地正文，随配置保存及导入导出保留。允许重名，不参与节点命名、代理 ID、分组匹配或文件命名；省略时显示来源地址或正文摘要
 - `url`、`content`、`content_file` 三选一：`url` 为 HTTP(S) URL；`content` 为非空节点正文；`content_file` 为本地正文文件路径。Web 编辑请求使用 `content`，保存后主配置改为 `content_file` 引用
-- Web 编辑与只读查看共用正文读取、检查、展开流程。保存时复用未变正文文件，仅内容变化时发布新版本；存储规则见 [正文存储规则](#templates)，迁移包结构见 [配置包 API](api.md#get-apiconfigeffectivezip)。
+- Web 编辑与只读查看共用正文读取、检查、展开流程。保存时复用未变正文文件，仅内容变化时发布新版本；存储规则见 [正文存储规则](#正文存储规则)，迁移包结构见 [配置包 API](api.md#get-apiconfigeffectivezip)。
 
 ### subscriptions
 
@@ -107,7 +107,7 @@ sources:
 
 1. Clash 顶层 `proxies` 使用 Clash 解析器；声明错误直接报错。
 2. 无 INI 段落且能解析成 SS / AnyTLS 列表时，采用 `text`。
-3. INI 订阅结合段落和节点声明判断：Loon 专属段、位置参数凭证、`Shadowsocks` 类型是 Loon 线索；`ss` / `snell` 类型和键值形式的凭证是 Surge 线索。
+3. INI 订阅结合段落和节点声明判断：Loon 专属段、位置参数凭证、`Shadowsocks` / `ShadowsocksR` 类型是 Loon 线索；`ss` / `snell` 类型和键值形式的凭证是 Surge 线索。
 4. 有一致线索时使用对应解析器；没有线索时可使用 `.lcf` 提示。共享写法或线索冲突返回 Surge / Loon 候选，由用户选择原客户端后重新检查。`.conf` 本身不能在 Web 检查中消除歧义。
 5. 用户更正格式后使用该解析器；成功检查必须提取至少一个节点。原生声明与 TXT 的校验、容错范围沿用既有 Source 规则。
 
@@ -127,7 +127,7 @@ sources:
 - 空行和以 `#` / `//` 开头的注释行会被跳过；单行解析失败时整源报错（与 `subscriptions` 的静默跳过不同——Snell 来源通常是小规模手工清单，严格报错更有利于发现拼写问题）
 - 单行解析失败的错误消息附带来源位置与 1-based 物理行号；URL 会脱敏，本地正文标注 `sources.snell[index].content`，文件标注其路径；原始解析根因保留在 `BuildError.Cause`
 - 节点名是显示名候选；同名节点保留独立 ID，最终输出名在各目标格式投影内独立消歧
-- Snell 节点**只进入 Surge 输出**；Clash 输出会过滤掉这些节点及级联清理的空组、失效链式节点、空规则。详见 `rendering.md`
+- Snell 节点**只进入 Surge 输出**；Clash / Loon 输出会过滤掉这些节点及级联清理的空组、失效链式节点、空规则。详见 `rendering.md`
 
 ### vless
 
@@ -139,12 +139,14 @@ sources:
   vless://UUID@SERVER:PORT?security=...&sni=...&type=...#NODE_NAME
   ```
 
-- 支持的 query 参数：`security`（`none`/`tls`/`reality`）、`encryption`（非空透传）、`flow`、`type`（已知值保留，缺失或未知值回落到 `tcp`）、`sni`、`fp`、`alpn`、`pbk`、`sid`、`spx`
+- 支持的 query 参数：
+  - 通用参数：`security`（`none`/`tls`/`reality`）、`encryption`（非空透传）、`flow`、`type`（已知值 `tcp`/`ws`/`http`/`h2`/`grpc`/`xhttp` 原样保留，缺失（含无 query）或未知值回落到 `tcp`）、`sni`、`fp`、`alpn`、`pbk`、`sid`、`spx`
+  - 传输层参数：`path`（`ws`/`http`/`h2`/`xhttp`）、`host`（`ws`/`http`/`h2`/`xhttp`）、`serviceName`（`grpc`）、`mode`（`xhttp`）
 - 空行和以 `#` / `//` 开头的注释行会被跳过；单行解析失败时整源报错（与 Snell 一致——VLESS 来源通常也是小规模手工清单，严格报错更利于发现拼写问题）
 - 单行解析失败的错误消息附带来源位置与 1-based 物理行号；URL 会脱敏，本地正文标注 `sources.vless[index].content`，文件标注其路径；原始解析根因保留在 `BuildError.Cause`
 - 节点名是显示名候选；同名节点保留独立 ID，最终输出名在各目标格式投影内独立消歧
 - 当前 URI 模型仅承接本节列出的 query；像 `packet-encoding`、`support-x25519mlkem768` 等 Mihomo 代理字段本次不接入，避免在未定义稳定 query 契约前产生隐式支持承诺
-- VLESS 节点进入 Clash；Loon 支持 `tcp` / `ws` / `http` 传输，其余传输在 Loon Target 级联过滤；Surge 过滤全部 VLESS。详见 `rendering.md`
+- VLESS 节点进入 Clash；Loon 仅接受 `tcp` / `ws` / `http` 传输、空或 `none` 的 `encryption` 以及空或 `xtls-rprx-vision` 的 `flow`，其余 VLESS 节点在 Loon Target 级联过滤；Surge 过滤全部 VLESS。详见 `rendering.md`
 
 ### custom_proxies
 
@@ -165,8 +167,8 @@ custom_proxies:
 - `name` 必填。无 `relay_through` 时是代理显示名候选，允许重名；带 `relay_through` 时是链式组名（见下），必须满足组命名空间唯一性
 - `url` 必填。支持三种 scheme：
   - `ss://userinfo@server:port[?plugin=...]`：SIP002 Shadowsocks。`userinfo` 可以是 base64 编码的 `method:password`，也可以是 percent-encoded 明文。`?plugin=` query 由"plugin 名称 + 分号分隔的 KEY=VALUE 选项"组成（参考 SS 客户端通用约定）。URI 末尾的 `#fragment` 节点名**会被静默忽略**，统一以外层 `name` 字段为准
-  - `socks5://[user:pass@]server:port`：SOCKS5
-  - `http://[user:pass@]server:port`：HTTP
+  - `socks5://[user:pass@]server:port`：SOCKS5（不允许携带 `path`、`query` 或 `fragment`）
+  - `http://[user:pass@]server:port`：HTTP（不允许携带 `path`、`query` 或 `fragment`）
 - `relay_through` 可选
 
 校验规则：
@@ -197,7 +199,7 @@ custom_proxies:
 - 系统为每个上游节点生成一个链式节点
 - 系统自动生成一个链式节点组，组名 = `custom_proxy.name` 原样值（无任何前缀，若希望组名带视觉标识如 `🔗 `，由用户自行写入 `name`）
 - 链式组属于节点组，策略取自 `relay_through.strategy`
-- 带 `relay_through` 的 `custom_proxy` 仅作为链式模板，不再作为独立 `KindCustom` 代理出现在 `proxies` 列表和 `@all` 中；如需同时保留"直连 + 链式"两种入口，应声明两条 `custom_proxies` 条目（名字必须不同）
+- 带 `relay_through` 的 `custom_proxy` 仅作为链式模板，不再作为独立 `KindCustom` 代理出现在 `proxies` 列表和 `@all` 中；如需同时保留"直连 + 链式"两种入口，可声明两条 `custom_proxies` 条目（两者同名不会报错，直连节点会在目标投影内自动追加后缀消歧；建议区分命名以便辨识）
 
 ---
 
@@ -275,7 +277,7 @@ routing:
 约束：
 
 - key 为服务组名
-- value 为有序列表
+- value 为非空有序列表（每个服务组至少包含一个成员）
 - 服务组策略固定为 `select`
 - `@all` 展开为全部原始节点（订阅节点 + Snell 节点 + VLESS 节点 + 不带 `relay_through` 的自定义代理），不包含链式节点
 - 带 `relay_through` 的自定义代理仅作链式模板，不以独立代理形式出现在 `proxies` 里，因而也不进入 `@all`
@@ -318,7 +320,7 @@ rules:
 
 - 保持声明顺序
 - 语义由目标客户端规则语法决定
-- 本系统只提取最后一个逗号后的策略名做引用校验，不解析规则类型和值
+- 每条规则必须包含逗号；本系统只提取最后一个逗号后的策略名（原样匹配，不去除前后空白）做引用校验，要求其为已定义服务组、`DIRECT` 或 `REJECT`，不解析规则类型和值
 - 渲染时直接透传原始字符串
 
 ---
@@ -385,7 +387,7 @@ templates:
 - 若为本地路径，不做格式校验（加载时由 OS 报错）
 - 远程模板与订阅共享同一缓存机制（CachedFetcher + TTL）
 
-正文存储规则：
+### 正文存储规则
 
 - 默认直接写入 `/config`，不增加子目录。可通过 `-data-dir` 或 `SUBCONVERTER_DATA_DIR` 指定本地开发或其他部署的目录，参数优先于环境变量
 - 新保存的三类来源正文统一使用 `.txt`，订阅解析格式保存在 `format` 中；模板按客户端格式保存：Clash 使用 `.yaml`、Surge 使用 `.conf`、Loon 使用 `.lcf`
@@ -422,9 +424,11 @@ templates:
 
 以下段落的书写顺序直接影响输出：
 
-- `groups`
-- `routing`
-- `rulesets`
+- `sources` 下的 `subscriptions`、`snell`、`vless` 声明顺序（由 `Sources.FetchOrder` 记录；决定拉取类节点先后顺序）
+- `groups`（依赖 `OrderedMap` 保序）
+- `routing`（依赖 `OrderedMap` 保序）
+- `rulesets`（依赖 `OrderedMap` 保序）
+- `rules`（数组顺序即内联规则顺序）
 
 系统必须保留此顺序，以保证客户端面板与配置书写顺序一致。
 
@@ -439,11 +443,11 @@ Web 管理后台通过 `GET /api/config` 和 `PUT /api/config` 以 JSON 格式�
 ### 总体规则
 
 - JSON 结构与 YAML 结构一一映射（Go struct 的 `json` tag）
-- `GET /api/config` 外层返回 `{config_revision, config}`；`config_revision` 为配置源原始字节的 `sha256:<hex>`
+- `GET /api/config` 外层返回 `{config_revision, config}`；已有配置时 `config_revision` 为配置源原始字节的 `sha256:<hex>`，本地主配置尚未创建时为 `missing`
 - `PUT /api/config` 请求体同样使用 `{config_revision, config}`；服务端仅在 revision 与当前文件一致时写回
 - 写回 YAML 时使用稳定缩进，但不保证保留原始引号、行内样式或字段注释
 - YAML 写回可能丢失原始文件中的注释（`gopkg.in/yaml.v3` 限制）
-- 当 `-config` 是 HTTP(S) URL 时，配置源为只读：`GET /api/config` 可用，`PUT /api/config` 返回 `409`
+- 当 `-config` 是 HTTP(S) URL 时，配置源为只读：`GET /api/config` 可用，`PUT /api/config` 返回 `409 config_source_readonly`；本地配置文件或所在目录不可写时同样进入只读模式，`PUT /api/config` 返回 `409 config_file_not_writable`
 
 ### 保序字段序列化规范
 

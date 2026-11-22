@@ -36,7 +36,7 @@ export const pages: PageDefinition[] = [
   { path: "/validate", label: "静态校验", section: "config", title: "静态校验", subtitle: "保存前的全面校验，错误会集中列出", icon: ShieldCheck },
   { path: "/nodes", label: "节点预览", section: "runtime", title: "节点预览", subtitle: "查看所有来源拉取到的真实节点", icon: Activity },
   { path: "/preview/groups", label: "分组预览", section: "runtime", title: "分组预览", subtitle: "查看每个分组与服务组实际包含的节点", icon: GitBranch },
-  { path: "/download", label: "生成下载", section: "runtime", title: "生成下载", subtitle: "导出 Clash Meta 与 Surge 配置文件", icon: Download },
+  { path: "/download", label: "生成下载", section: "runtime", title: "生成下载", subtitle: "导出 Clash Meta、Surge 与 Loon 配置文件", icon: Download },
   { path: "/status", label: "系统状态", section: "system", title: "系统状态", subtitle: "后端进程、配置加载与热重载历史", icon: Settings }
 ];
 

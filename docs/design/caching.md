@@ -4,19 +4,20 @@
 
 生成配置和预览都会读取远程资源。同一个 URL 在短时间内通常无需重复下载，`CachedFetcher` 因此将成功响应保留一段时间。这个保留时间称为 TTL，由 `-cache-ttl` 设置，默认 5 分钟。
 
-缓存只存在于当前进程内，重启后清空。启动入口创建一个 `CachedFetcher`，供配置读取、生成和预览共用。实现见 [cache.go](../../internal/fetch/cache.go)，装配见 [main.go](../../cmd/subconverter/main.go)。
+缓存只存在于当前进程内，重启后清空。启动入口创建一个 `CachedFetcher`，供配置读取、生成、预览、资源读取、来源检查和配置包导出共用。实现见 [cache.go](../../internal/fetch/cache.go)，装配见 [main.go](../../cmd/subconverter/main.go)。
 
 ## 哪些内容会缓存
 
 | 资源 | 读取方式 | 缓存行为 |
 |------|----------|----------|
-| 订阅、Snell、VLESS 来源 | HTTP(S) | 按完整 URL 缓存响应体 |
-| 远程底版模板 | HTTP(S) | 使用同一缓存和 TTL |
-| 远程主配置 | HTTP(S) | 使用同一缓存；热重载时单独清除该 URL |
-| 本地主配置或底版模板 | `os.ReadFile` | 每次直接读文件 |
-| 远程规则集正文 | 由 Clash / Surge 客户端拉取 | 服务端只输出 URL，不读取正文 |
+| 订阅、Snell、VLESS 来源 | HTTP(S) | 按完整原始 URL 缓存响应体 |
+| 远程底版模板 | HTTP(S) | 使用同一缓存和 TTL（含生成、预览、资源读取与 ZIP 导出） |
+| 远程主配置 | HTTP(S) | 使用同一缓存（`GET /api/config`、`GET /api/config/saved.zip` 命中缓存且不失效）；仅 `POST /api/reload` 先单独清除该 URL |
+| 本地主配置、本地来源文件（`content_file`）或本地底版模板 | `os.ReadFile` | 每次直接读文件，不走缓存 |
+| 内联正文（`content` / `templates.inline`） | 内存文本 | 直接消费，不走缓存 |
+| 远程规则集正文 | 由 Clash / Surge / Loon 客户端拉取 | 服务端只输出 URL，不读取正文 |
 
-缓存键是完整 URL，包括查询参数。更换 URL 会使用不同的缓存项；相同 URL 即使被用于不同资源，也会共用一项。
+缓存键是未规范化的完整原始 URL，包括查询参数和 fragment。更换 URL 会使用不同的缓存项；相同 URL 即使被用于不同资源，也会共用一项。构造用户可见的 `FetchError.URL` 时会经 `fetch.SanitizeURL` 剥离查询参数与 fragment，避免 URL token 泄漏。
 
 ## 一次读取怎样完成
 
@@ -43,7 +44,7 @@ TTL 既影响请求次数，也决定普通读取能看到多新的内容。例�
 
 例如，主配置和订阅使用两个不同的 URL。用户修改了订阅内容，再点“热重载”，服务会刷新主配置，订阅仍可能命中旧缓存。等待订阅 TTL 到期后，再执行生成或节点预览，才会重新下载订阅。
 
-节点预览、分组预览、生成预览和 `/generate` 共用这份缓存。前端点击“重新拉取”会重新请求后端，后端仍按 TTL 决定是否访问上游。
+节点预览、分组预览、生成预览、`/generate`、资源读取（`POST /api/resources/read`）、来源检查（`POST /api/subscriptions/check`）和配置包导出（`GET /api/config/{saved,effective}.zip`）共用这份缓存，且均不触发 `Invalidate`。前端点击“重新拉取”或“重新读取”会重新请求后端，后端仍按 TTL 决定是否访问上游。
 
 `Invalidate` 只删除调用当时的缓存项，不会取消已经在途的下载，也没有阻止这些下载稍后写回缓存。若需要保证失效前发出的响应永远不能再次写入缓存，需要另行调整这项并发约束。
 

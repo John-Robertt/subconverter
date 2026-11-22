@@ -94,6 +94,9 @@ interface MockBackendOptions {
   groupPreviewValidationError?: boolean;
   loginErrorOnce?: boolean;
   uptimeSeconds?: number;
+  configFailCount?: number;
+  nodesPreview?: unknown;
+  statusSessionExpired?: boolean;
 }
 
 function mockBackend(options: MockBackendOptions = {}) {
@@ -119,6 +122,7 @@ function mockBackend(options: MockBackendOptions = {}) {
       capabilities: { ...status.capabilities, reload: false } };
   }
   const reloadErrors = [...(options.reloadErrors ?? [])];
+  let remainingConfigFailures = options.configFailCount ?? 0;
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input.toString();
@@ -134,7 +138,13 @@ function mockBackend(options: MockBackendOptions = {}) {
     }
     if (path === "/api/auth/setup") return json({ redirect: "/sources" });
     if (path === "/api/auth/logout") return json({ success: true });
-    if (path === "/api/status") return json(options.uptimeSeconds === undefined ? status : { ...status, runtime_environment: { uptime_seconds: options.uptimeSeconds } });
+    if (path === "/api/status") {
+      if (options.statusSessionExpired) {
+        authed = false;
+        return json({ error: { code: "session_expired", message: "登录已过期" } }, 401);
+      }
+      return json(options.uptimeSeconds === undefined ? status : { ...status, runtime_environment: { uptime_seconds: options.uptimeSeconds } });
+    }
     if (path === "/api/subscriptions/check") {
       const body = JSON.parse(String(init?.body)) as { kind?: string; location?: string; content?: string; format?: string };
       if (options.subscriptionCheck) return options.subscriptionCheck(body);
@@ -159,6 +169,10 @@ function mockBackend(options: MockBackendOptions = {}) {
         status = { ...status, config_source: { ...status.config_source, exists: true }, capabilities: { ...status.capabilities, reload: true }, config_revision: "sha256:next", config_dirty: true };
         return json({ config_revision: "sha256:next" });
       }
+      if (remainingConfigFailures > 0) {
+        remainingConfigFailures -= 1;
+        return json({ error: { code: "config_load_failed", message: "读取配置文件失败" } }, 500);
+      }
       return json(configOverride === undefined ? configSnapshot : { ...configSnapshot, config: configOverride });
     }
     if (path === "/api/config/effective.yaml") return text("sources: {}\nfallback: Proxy\n");
@@ -182,6 +196,9 @@ function mockBackend(options: MockBackendOptions = {}) {
       return json({ success: true, duration_ms: 12 });
     }
     if (path === "/api/preview/nodes") {
+      if (options.nodesPreview) {
+        return json(options.nodesPreview);
+      }
       return json({
         nodes: [{ id: "proxy-1", name: "HK-01", type: "ss", kind: "subscription", server: "hk.example.com", port: 8388, filtered: false }],
         total: 1,
@@ -1520,5 +1537,63 @@ describe("首次部署配置初始化", () => {
     expect(screen.getByText("主配置文件不存在，配置目录不可写，请检查目录权限。")).toBeTruthy();
     expect(screen.getByRole("button", { name: "导入配置" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true);
+  });
+});
+
+describe("前端契约与文案回归", () => {
+  // T-WEB-AUTH-EXP-001: 401 session_expired redirects to /login and pushes an expiry toast.
+  it("受保护接口返回 401 session_expired 时跳转登录页并提示登录已过期", async () => {
+    mockBackend({ statusSessionExpired: true });
+    renderApp("/sources");
+    await screen.findByRole("heading", { name: "登录管理后台" });
+    expect(screen.getByText("登录已过期")).toBeTruthy();
+  });
+
+  // T-WEB-CFG-ERR-001: config load failure shows ErrorState on config pages with retry recovery and warning strip on status page.
+  it("配置读取失败时在编辑页展示错误态并支持重试恢复", async () => {
+    mockBackend({ configFailCount: 2 });
+    renderApp("/sources");
+    await screen.findByText("配置加载失败", {}, { timeout: 3000 });
+    expect(screen.getByText("500 config_load_failed: 读取配置文件失败")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "添加 节点订阅" })).toBeNull();
+
+    // Non-config pages remain usable while surfacing the config error strip.
+    fireEvent.click(screen.getByRole("link", { name: /系统状态/ }));
+    await screen.findByRole("heading", { level: 1, name: "系统状态" });
+    expect(screen.getByRole("alert").textContent).toContain("配置读取失败");
+
+    fireEvent.click(screen.getByRole("link", { name: /订阅来源/ }));
+    await screen.findByText("配置加载失败");
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("button", { name: "添加 节点订阅" });
+  });
+
+  // T-WEB-COPY-001: updated Loon subtitle, VLESS Clash/Loon table tag, and auth.json login setup copy.
+  it("生成下载副标题、VLESS 节点标签与首次设置提示保持一致", async () => {
+    mockBackend({
+      nodesPreview: {
+        nodes: [
+          { id: "proxy-1", name: "DE-VLESS", type: "vless", kind: "vless", server: "de.example.com", port: 443, filtered: false }
+        ],
+        total: 1,
+        active_count: 1,
+        filtered_count: 0
+      }
+    });
+    renderApp("/download");
+    await screen.findByRole("heading", { level: 1, name: "生成下载" });
+    expect(screen.getByText("导出 Clash Meta、Surge 与 Loon 配置文件")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("link", { name: /节点预览/ }));
+    const row = (await screen.findByText("DE-VLESS")).closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("Clash / Loon")).toBeTruthy();
+
+    cleanup();
+    mockBackend({ authed: false, setupRequired: true });
+    renderApp("/login");
+    await screen.findByRole("heading", { name: "首次创建管理员" });
+    expect(screen.getByText(/凭据将写入\s*auth\.json/)).toBeTruthy();
+    expect(screen.queryByText(/0\.9\.4/)).toBeNull();
   });
 });

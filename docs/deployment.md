@@ -86,7 +86,7 @@ ghcr.io/john-robertt/subconverter
 
 - `X.Y.Z`
 - `X.Y`
-- `latest`
+- `latest`（仅非预发布 tag 推送，即 tag 不含 `-`）
 
 容器内约定：
 
@@ -102,7 +102,7 @@ ghcr.io/john-robertt/subconverter
 /app/subconverter -config /config/config.yaml
 ```
 
-镜像同时内置 `SUBCONVERTER_LISTEN=:8080`，因此默认仍监听 `:8080`。
+镜像内置 `SUBCONVERTER_LISTEN=:8080`、`SUBCONVERTER_AUTH_STATE=/auth/auth.json` 与 `SUBCONVERTER_DATA_DIR=/config`。
 
 如需为当前可用的 `/generate` 启用访问控制，可额外设置 `SUBCONVERTER_TOKEN`。客户端下载配置文件时仍需在 URL 上附带 `token` 查询参数。v2.0 Web 管理后台不复用该 token 作为后台权限；后台使用独立管理员账号和 `session_id` Cookie。正式 Web 部署需要提供可写 auth state，用于保存管理员密码哈希和持久 session；首次 setup 还需要一次性 bootstrap setup token，防止公网首次启动时被抢先初始化。
 
@@ -177,18 +177,24 @@ services:
     image: "${SUBCONVERTER_IMAGE:-subconverter:local}"
     environment:
       SUBCONVERTER_LISTEN: ":8080"
-      SUBCONVERTER_TOKEN: your-token
-      SUBCONVERTER_AUTH_STATE: /auth/auth.json
-      SUBCONVERTER_DATA_DIR: /config
-      SUBCONVERTER_SETUP_TOKEN: change-this-bootstrap-token
+      SUBCONVERTER_TOKEN: "${SUBCONVERTER_TOKEN:-change-this-generate-token}"
+      SUBCONVERTER_AUTH_STATE: "/auth/auth.json"
+      SUBCONVERTER_DATA_DIR: "/config"
+      SUBCONVERTER_SETUP_TOKEN: "${SUBCONVERTER_SETUP_TOKEN:-change-this-bootstrap-token}"
     volumes:
       - ./config:/config
       - ./auth:/auth
     ports:
       - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/subconverter", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
 ```
 
-`SUBCONVERTER_TOKEN` 只用于 `/generate` 订阅访问控制。v2.0 Web 页面访问 `/api/*` 时使用 `session_id` Cookie；复制 Clash / Surge 订阅链接时，前端调用 `GET /api/generate/link`，由后端按需把 token 写入 `/generate?token=...` query 并返回完整链接。
+`SUBCONVERTER_TOKEN` 只用于 `/generate` 订阅访问控制。v2.0 Web 页面访问 `/api/*` 时使用 `session_id` Cookie；复制 Clash / Surge / Loon 订阅链接时，前端调用 `GET /api/generate/link`，由后端按需把 token 写入 `/generate?token=...` query 并返回完整链接。
 
 若 auth state 中没有管理员凭据，首次访问 `/login` 会进入 setup 流程。setup 请求必须携带 bootstrap setup token：生产部署推荐显式设置 `SUBCONVERTER_SETUP_TOKEN`，完成 setup 后移除该环境变量并重启；若未设置，服务启动时会生成一次性 32-byte URL-safe token 并只打印到服务日志，不通过 HTTP 返回。setup 会把管理员 PBKDF2 密码哈希和 session token 哈希写入 `SUBCONVERTER_AUTH_STATE` 指向的文件；该文件权限必须为 `0600`，所在目录建议只允许运行用户访问。如果该路径不可写，后台保持关闭并展示部署配置错误。Demo Compose 额外挂载 `./auth:/auth`，避免把 auth state 混入配置文件写回目录。
 
@@ -212,7 +218,7 @@ healthcheck:
   retries: 20
 ```
 
-镜像默认设置了 `SUBCONVERTER_LISTEN=:8080` 与 `SUBCONVERTER_AUTH_STATE=/auth/auth.json`。后者意味着只要把 `/auth` 挂出到持久卷（如 demo Compose 的 `./auth:/auth`），管理员凭据和 session token 哈希就能跨容器重建保留；如需自定义路径，再在 `environment` 段显式覆盖即可。
+镜像默认设置了 `SUBCONVERTER_LISTEN=:8080`、`SUBCONVERTER_AUTH_STATE=/auth/auth.json` 与 `SUBCONVERTER_DATA_DIR=/config`。后者意味着只要把 `/auth` 挂出到持久卷（如 demo Compose 的 `./auth:/auth`），管理员凭据和 session token 哈希就能跨容器重建保留；正文版本文件默认落盘到 `/config`；如需自定义路径，再在 `environment` 段显式覆盖即可。
 
 若服务监听非默认端口，推荐只改环境变量，让主服务和内置 `HEALTHCHECK` 自动保持一致：
 
@@ -239,6 +245,8 @@ healthcheck:
 若不显式传入 `-auth-state`，进程会按 `SUBCONVERTER_AUTH_STATE` > 默认路径解析 auth state 文件。生产部署应把该路径放在可写持久卷中；若没有管理员凭据且 auth state 不可写，首次 setup 无法完成，管理后台保持关闭。
 
 若不显式传入 `-setup-token`，进程会按 `SUBCONVERTER_SETUP_TOKEN` > 自动生成一次性 token 解析首次 setup bootstrap token。显式配置 token 适合自动化部署；自动生成 token 适合手工首次初始化，但必须从服务日志读取。
+
+若不显式传入 `-data-dir`，进程会按 `SUBCONVERTER_DATA_DIR` > `/config` 解析托管正文版本文件目录；详见下方 [Web 正文版本文件](#web-正文版本文件)。
 
 建议生产环境使用：
 
@@ -293,8 +301,9 @@ git push origin v0.1.0
 
 Release workflow 会为镜像写入 OCI 元数据：
 
+- `org.opencontainers.image.title=subconverter`
 - `org.opencontainers.image.source=https://github.com/John-Robertt/subconverter`
-- 镜像：`org.opencontainers.image.description=Single-user HTTP service that converts proxy subscriptions into Clash Meta and Surge configs.`
+- `org.opencontainers.image.description=单用户订阅转换服务，支持 Clash Meta、Surge 和 Loon 配置。`
 
 对多架构镜像，workflow 还会把描述写入 manifest index annotation，确保 GHCR 包页面可以显示描述信息。
 
@@ -340,7 +349,7 @@ Docker Compose 只启动一个 `subconverter` 服务。默认 Go 二进制构建
 - **前端**：`pnpm --filter subconverter-web dev`（启动 Vite dev server，默认 `localhost:5173`）
 - **后端**：`go run ./cmd/subconverter -config ...`
 
-Vite 配置已把 `/api/*`、`/generate`、`/healthz` 代理到 Go 后端。Cookie session 依赖同源语义，本地调试后台登录也应优先使用 Vite proxy；正式生产 Compose 部署不需要 CORS。
+Vite 配置已把 `/api/*`、`/generate`、`/healthz` 代理到 Go 后端。Cookie session 依赖同源语义，本地调试后台登录也应优先使用 Vite proxy；若不使用 proxy、需要本地跨域直连 Go 后端调试，可通过 `-cors` 标志或 `SUBCONVERTER_CORS=true`（亦接受 `1`/`yes`）开启本机开发 CORS；正式生产 Compose 部署不需要 CORS。
 
 本地开发若不想预先准备管理员凭据，可删除临时 auth state 后重新走 `/login` setup，并从启动日志读取自动生成的 setup token；不要在公网部署中使用临时或弱密码。
 

@@ -23,7 +23,7 @@
 | [`page-specs.md`](page-specs.md) | 逐页字段、动作、状态和测试矩阵 |
 | [`data-contract.md`](data-contract.md) | 前端消费的数据契约索引 |
 | [`workflows.md`](workflows.md) | 草稿、保存、reload、dirty、revision 工作流 |
-| [`frontend-architecture.md`](frontend-architecture.md) | 正式 SPA 技术栈和目录建议 |
+| [`frontend-architecture.md`](frontend-architecture.md) | 正式 SPA 技术栈、当前目录结构、状态边界和 API client 约束 |
 | [`auth-and-security.md`](auth-and-security.md) | 后台登录、session、setup 和订阅链接安全 |
 | [`interaction.md`](interaction.md) | 交互模式与反馈规范 |
 | [`design-system.md`](design-system.md) | 视觉 token 和组件约束 |

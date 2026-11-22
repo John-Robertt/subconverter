@@ -23,7 +23,7 @@
 保存工作流：
 
 1. 用户编辑草稿。
-2. A8 调用 `POST /api/config/validate` 做静态校验。
+2. 点击顶栏“保存”时自动调用 `POST /api/config/validate` 做静态校验（也可在 A8 手动预检）；若校验失败，自动跳转到 `/validate` 展示诊断并阻断保存。
 3. 首次覆写已有本地配置前展示 YAML 注释和格式可能丢失的确认框；主配置缺失时直接保存创建文件。
 4. 调用 `PUT /api/config` 条件写回完整配置。
 
@@ -54,15 +54,15 @@ reload 只执行 `LoadConfig + Prepare`：
 
 - 不覆盖用户草稿。
 - 展示“配置文件已被外部修改”提示。
-- 提供重新加载配置或继续手动合并的入口。
+- 在反馈提示中提供“重新加载配置”入口（不主动覆盖草稿，取消后由用户自行处理）。
 
-编辑页活跃期间，前端建议每 30 秒 poll `GET /api/status` 的 `config_revision`。若 revision 变化，提前提示用户。
+登录后全部受保护页面通过 `ConfigProvider` 每 30 秒 poll 一次 `GET /api/status` 的 `config_revision`。当存在未保存草稿（`isDraftDirty=true`）且 revision 与 `baseRevision` 不同时，顶栏提示“检测到配置 revision 已变化，当前草稿不会被自动覆盖。”，并提供“丢弃草稿”按钮回退至当前已加载基线。
 
 当 `PUT /api/config` 返回 `409 config_source_readonly` 或 `409 config_file_not_writable`：
 
 - 不覆盖用户草稿。
 - 只读配置源进入只读查看模式。
-- 文件不可写错误展示权限或部署挂载问题，并保留可查看详情入口。
+- 文件不可写错误展示含状态码与错误码的持久错误提示，提示权限或部署挂载问题并保留草稿。
 
 ## 只读配置源
 

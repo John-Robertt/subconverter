@@ -12,12 +12,14 @@ interface ConfigContextValue {
   status: StatusResponse | undefined;
   isLoading: boolean;
   isConfigLoading: boolean;
+  isConfigFetching: boolean;
   isStatusLoading: boolean;
   isDraftDirty: boolean;
   isReadonly: boolean;
   externalRevisionChanged: boolean;
   configError: unknown;
   statusError: unknown;
+  retryConfig: () => Promise<void>;
   updateDraft: (updater: (draft: Config) => Config) => void;
   getDraft: () => Config | undefined;
   replaceDraft: (config: Config, revision?: string) => void;
@@ -109,6 +111,11 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   const isReadonly = forcedReadonly || status?.capabilities.config_write === false || status?.config_source.writable === false;
   const externalRevisionChanged = Boolean(isDraftDirty && baseRevision && status?.config_revision && status.config_revision !== baseRevision);
 
+  const refetchConfig = configQuery.refetch;
+  const retryConfig = useCallback(async () => {
+    await refetchConfig();
+  }, [refetchConfig]);
+
   const value = useMemo<ConfigContextValue>(
     () => ({
       draft,
@@ -117,12 +124,14 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       status,
       isLoading: configQuery.isLoading || statusQuery.isLoading,
       isConfigLoading: configQuery.isLoading,
+      isConfigFetching: configQuery.isFetching,
       isStatusLoading: statusQuery.isLoading,
       isDraftDirty,
       isReadonly,
       externalRevisionChanged,
       configError: configQuery.error,
       statusError: statusQuery.error,
+      retryConfig,
       updateDraft,
       getDraft,
       replaceDraft,
@@ -134,11 +143,13 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       baseConfig,
       baseRevision,
       configQuery.error,
+      configQuery.isFetching,
       configQuery.isLoading,
       draft,
       externalRevisionChanged,
       isDraftDirty,
       isReadonly,
+      retryConfig,
       status,
       statusQuery.error,
       statusQuery.isLoading,

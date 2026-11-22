@@ -26,7 +26,8 @@ subconverter/
 │   ├── render/
 │   ├── ssparse/
 │   ├── server/
-│   └── target/
+│   ├── target/
+│   └── webui/
 ├── configs/
 │   ├── base_config.yaml
 │   ├── base_clash.yaml
@@ -125,6 +126,11 @@ subconverter/
 - Shadowsocks URI 解析（SIP002 body 解析、plugin query 解析）
 - 被 `proxyparse`（自定义代理 URL 解析）和 `pipeline`（SS 订阅 URI 解析）共享；AnyTLS URI 由 `pipeline` 内部解析
 
+`internal/webui`
+
+- 可选嵌入式 Web SPA 静态资产（`-tags webui` 时通过 `go:embed dist` 暴露 `fs.FS`，默认构建返回 `nil`）
+- 叶子包，不依赖其他业务包
+
 ---
 
 ## 依赖方向
@@ -196,16 +202,23 @@ fetch
 
 ssparse
   -> (leaf)
+
+model
+  -> (leaf)
+
+errtype
+  -> (leaf)
+
+webui
+  -> (leaf)
 ```
 
 约束：
 
-- `model` 不依赖其他业务包
-- `errtype` 不依赖其他业务包
+- `model`、`errtype`、`auth`、`ssparse`、`webui` 不依赖其他业务包
 - `render` 不直接读取 YAML 配置
 - `server` 不承担业务转换逻辑，`/api/*` 业务通过注入的 `admin.Handler` 处理
-- `admin` 不直接依赖 `pipeline` / `model`，只调用 `app.Service`
-- `auth` 不依赖其他业务包，避免权限逻辑与配置生成逻辑耦合
+- `admin` 不直接依赖 `pipeline` / `model` / `generate`（由 `internal/admin/architecture_test.go` 静态测试守护），只调用 `app.Service` 与 `auth.Service`
 - `config` 不直接依赖 `model`
 - `generate` 直接依赖 `model`（用于在 `pipeline.Build` 与 `target.ForXxx` 之间传递 `Pipeline`）
 
@@ -219,7 +232,7 @@ ssparse
 subconverter/
 ├── web/                          # 前端 SPA 源码
 │   ├── src/                      # React 组件与页面
-│   ├── dist/                     # 构建产物（生产镜像嵌入 Go 二进制）
+│   ├── dist/                     # 前端构建产物（由 pnpm web:embed 同步至 internal/webui/dist 后再嵌入 Go 二进制）
 │   ├── package.json
 │   └── vite.config.ts
 └── internal/
@@ -231,27 +244,31 @@ subconverter/
 
 ### `internal/app` 包职责
 
-- `ConfigSnapshot`：读取配置源，返回 `{config_revision, config}`
-- `SaveConfig`：基于 `config_revision` 做条件写回，revision 冲突返回 `409`
+- `ConfigSnapshot`：读取配置源并还原可读本地来源正文与托管模板正文，返回 `{config_revision, config}`（本地缺失时返回空草稿与 `missing`）
+- `SaveConfig`：基于 `config_revision` 做条件写回（首次创建用 `os.Link` 排他发布，已有文件用 `os.Rename` 原子替换），revision 冲突返回 `409`；托管正文通过 `content_store.go` 复用未变文件、为变更生成版本文件并在提交失败时回收
+- `ImportConfigYAML` / `ImportConfigArchive`：将 YAML 或 ZIP 配置包解析为前端草稿 JSON，不写文件、不替换运行快照
+- `EffectiveConfigYAML` / `EffectiveConfigArchive` / `SavedConfigArchive`：导出当前生效 YAML 或已保存 / 生效的可迁移 ZIP 配置包
+- `ReadResource` / `CheckSource`：读取订阅或模板正文副本；检查三类拉取来源的格式、节点数与三格式输出兼容性
 - `ValidateDraft`：校验草稿配置，返回结构化诊断
 - `Reload`：强制刷新主配置源、Prepare 后原子替换 `RuntimeConfig`
 - `PreviewNodes` / `PreviewGroups`：支持运行时 GET 预览与草稿 POST 预览；返回 `app` 包内定义的 DTO，由 `app.Service` 负责从 `model.Proxy` / `model.NodeGroup` / `model.RouteGroup` 转换，并用 `proxy-N` 暴露本次 Build 内的调试 ID，使 `admin` 层无需导入 `model`
 - `Generate` / `GenerateFromDraft`：分别基于当前 `RuntimeConfig` 快照或草稿配置，传入无状态的生成逻辑输出文本；“preview”只属于 HTTP route / handler 命名，`app.Service` 不新增薄封装方法
 - `GenerateLink`：根据当前配置 `base_url`、格式、文件名和订阅访问 token 生成客户端订阅链接
-- `Status`：返回配置源能力、当前 revision、运行时 revision、dirty 与最近 reload 信息
+- `Status` / `IncrementRequestCount`：返回配置源能力、当前 revision、运行时 revision、dirty、最近 reload 信息及运行环境指标（含请求计数）
 
 ### `internal/admin` 包职责
 
 - 认证 handler（`GET /api/auth/status`、`POST /api/auth/login`、`POST /api/auth/setup`、`POST /api/auth/logout`），调用 `internal/auth`
 - 配置读取与保存 handler（`GET /api/config`、`PUT /api/config`）
-- 配置导入与生效配置导出 handler（`POST /api/config/import`、`GET /api/config/effective.yaml`、`GET /api/config/effective.zip`）
+- 配置导入与导出 handler（`POST /api/config/import`、`GET /api/config/effective.yaml`、`GET /api/config/saved.zip`、`GET /api/config/effective.zip`）
+- 资源读取与来源检查 handler（`POST /api/resources/read`、`POST /api/subscriptions/check`）
 - 配置校验 handler（`POST /api/config/validate`）
 - 热重载 handler（`POST /api/reload`）
 - 运行时和草稿预览 handler（`GET/POST /api/preview/nodes`、`GET/POST /api/preview/groups`）
 - 生成预览 handler（`GET/POST /api/generate/preview`）
 - 订阅链接生成 handler（`GET /api/generate/link`）
 - 系统状态 handler（`GET /api/status`）
-- 不承担管道或渲染逻辑；不直接依赖 `internal/pipeline` 或 `internal/model`
+- 不承担管道或渲染逻辑；不直接依赖 `internal/pipeline`、`internal/model` 或 `internal/generate`
 
 依赖方向以本文 §依赖方向 的单一图为准。`admin` 通过 `app.Service` 间接访问 `RuntimeConfig`（RWMutex 保护），不直接持有配置引用，也不直接编排管道阶段。
 

@@ -12,22 +12,23 @@ test.describe("edge cases", () => {
     const state = createMockState();
     await installMocks(page, state);
 
-    // Override /api/status to fail with session_expired AFTER also flipping
-    // authStatus to logged-out — this mirrors the real flow where the cookie
-    // became invalid, so /login won't bounce the user back via Navigate.
-    state.authStatus = { authed: false, setup_required: false, setup_token_required: false, locked_until: "" };
+    // Let initial /api/auth/status succeed so ProtectedRoute mounts AppShell
+    // and requests /api/status; when /api/status returns 401 session_expired,
+    // flip authStatus to logged-out to mirror an invalidated cookie.
     await page.unroute("**/api/status");
-    await page.route("**/api/status", (route) =>
-      route.fulfill({
+    await page.route("**/api/status", (route) => {
+      state.authStatus = { authed: false, setup_required: false, setup_token_required: false, locked_until: "" };
+      return route.fulfill({
         status: 401,
         contentType: "application/json",
         body: JSON.stringify({ error: { code: "session_expired", message: "登录已过期" } })
-      })
-    );
+      });
+    });
 
     await page.goto("/sources");
     await expect(page).toHaveURL(/\/login(\?next=)?/);
     await expect(page.getByRole("heading", { name: "登录管理后台" })).toBeVisible();
+    await expect(page.locator(".toast-region .toast")).toContainText("登录已过期");
   });
 
   test("T-INT-EDGE-002 reload retries once after 429 in_progress", async ({ page }) => {
@@ -93,7 +94,7 @@ test.describe("edge cases", () => {
     await page.goto("/sources");
     // Save button in the topbar should be disabled in readonly mode.
     await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
-    // The dashed "添加 SS / AnyTLS 订阅" button should also be disabled.
-    await expect(page.getByRole("button", { name: "添加 SS / AnyTLS 订阅" })).toBeDisabled();
+    // The dashed "添加 节点订阅" button should also be disabled.
+    await expect(page.getByRole("button", { name: "添加 节点订阅" })).toBeDisabled();
   });
 });

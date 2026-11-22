@@ -23,7 +23,7 @@ templates:
 - **Snell 来源** — 支持拉取纯文本 Snell 节点清单；Snell 节点仅进入 Surge 输出，Clash / Loon 会做级联过滤
 - **VLESS 来源** — 支持拉取纯文本 VLESS URI 清单；VLESS 节点进入 Clash；tcp/ws/http 传输也进入 Loon，Surge 会做级联过滤；`type` 缺失或未知值回落到 `tcp`，`encryption` 非空时透传
 - **SIP002 兼容** — 支持常见 SS URI 变体，包括 base64/plain userinfo、query 参数和 plugin 声明
-- **自定义代理** — 在订阅之外定义 socks5/http 代理节点（如专线、ISP 代理）
+- **自定义代理** — 在订阅之外定义 ss/socks5/http 代理节点（如专线、ISP 代理）
 - **链式代理** — 通过 `relay_through` 配置上游中转，支持三种选择模式：`group`、`select`、`all`
 - **节点过滤** — 正则排除拉取类节点（订阅 + Snell + VLESS，如到期提醒、流量统计等信息性节点）
 - **地区分组** — 按正则将拉取类节点组织为地区组，支持 `select`（手选）或 `url-test`（自动选延迟最低）策略
@@ -112,7 +112,7 @@ pnpm compose:up
 
 ### 反向代理
 
-Web 管理后台的 `POST /api/*` 请求会校验同源 `Origin` / `Referer`，`/api/auth/setup` 也包含在内。通过 nginx 反代时，后端看到的 `Host` 和 `X-Forwarded-Proto` 必须与浏览器地址栏中的外部访问地址一致；否则 setup / login / save 可能返回 `403 csrf_check_failed: 请求来源无效`。
+Web 管理后台的所有非安全方法（`POST` / `PUT`）`/api/*` 请求都会校验同源 `Origin` / `Referer`，`/api/auth/setup` 也包含在内。通过 nginx 反代时，后端看到的 `Host` 和 `X-Forwarded-Proto` 必须与浏览器地址栏中的外部访问地址一致；否则 setup / login / save 可能返回 `403 csrf_check_failed: 请求来源无效`。
 
 nginx 作为公网入口时，可按以下方式代理到 subconverter：
 
@@ -191,7 +191,7 @@ docker run -d \
 
 部署后访问 `http://localhost:8080/login`。首次进入时使用 `SUBCONVERTER_SETUP_TOKEN` 完成管理员 setup，然后用管理员账号登录。
 
-登录后可以在 Web 管理后台编辑配置、保存到挂载的 `./config/config.yaml`、预览节点和分组，并复制 Clash / Surge 订阅链接。
+登录后可以在 Web 管理后台编辑配置、保存到挂载的 `./config/config.yaml`、预览节点和分组，并复制 Clash / Surge / Loon 订阅链接。
 
 Web 的“订阅来源”支持为节点订阅、Snell 和 VLESS 节点池设置名称、填写链接或编辑本地正文。检查会展示节点数和可用输出；节点订阅无法区分格式时再选择客户端，节点池使用各自的固定解析器。检查链接保留自动更新，也可显式编辑为本地副本。“其他配置”支持编辑 Clash／Surge／Loon 模板正文。保存时复用未变正文文件，仅新增或修改的正文写入 `/config` 下带时间戳的新文件；目录无法写入时保留草稿并提示权限问题。保存并热重载后生效。字段与更新边界见 [配置规约](docs/design/config-schema.md#拉取来源的输入与展示)。
 
@@ -232,7 +232,7 @@ curl "http://localhost:8080/healthz"
 | `-data-dir` | `/config` | 正文版本文件目录；覆盖 `SUBCONVERTER_DATA_DIR` |
 | `-auth-state`   | 系统配置目录 | 管理员密码哈希与 session 状态文件；未显式传入时可由 `SUBCONVERTER_AUTH_STATE` 提供          |
 | `-setup-token`  | 自动生成     | 首次 setup bootstrap token；未显式传入时可由 `SUBCONVERTER_SETUP_TOKEN` 提供                |
-| `-cors`         | `false`      | 仅本地开发调试使用；生产 Compose 由同一个 Go 服务同源托管 SPA 和 API，不需要 CORS           |
+| `-cors`         | `false`      | 仅本地开发调试使用；未显式传入时可由 `SUBCONVERTER_CORS`（`1`/`true`/`yes`）提供；生产 Compose 由同一个 Go 服务同源托管 SPA 和 API，不需要 CORS |
 | `-healthcheck`  |              | 按 `-listen` > `SUBCONVERTER_LISTEN` > `:8080` 解析监听地址后，对本地 `/healthz` 探活并退出 |
 | `-version`      |              | 打印版本信息并退出                                                                          |
 
@@ -249,7 +249,7 @@ curl "http://localhost:8080/healthz"
 - **响应头**：返回 `Content-Disposition: attachment; ...`，浏览器和下载器会使用最终文件名
 - **错误响应**：返回中文纯文本；已分类错误会直接说明问题，未分类内部错误统一返回 `内部错误`
 - **SS plugin 支持**：Clash Meta 通用透传 SS plugin；Surge / Loon 仅支持可映射的 obfs 类 SS plugin，不支持的 plugin 会返回 `500`
-- **错误码**：`400` — 参数无效，或配置语义 / 图校验失败；`401` — 缺少 token 或 token 不匹配；`502` — 远程资源拉取失败，或远程订阅内容无效（如 0 个有效节点）；`500` — 本地资源读取失败、内部处理或渲染错误
+- **错误码**：`400` — 参数无效、配置语义 / 图校验失败，或目标格式级联过滤导致 fallback 清空；`401` — 缺少 token 或 token 不匹配；`409` — 配置尚未初始化生效；`502` — 远程资源拉取失败，或远程订阅内容无效（如 0 个有效节点）；`500` — 本地资源读取失败、内部投影不变量错误或渲染错误
 
 如果配置了 `base_url`，Surge 输出中的 `#!MANAGED-CONFIG` 会使用服务端配置的订阅访问 token（若启用）和最终 `filename`，不依赖当前请求是 query token 还是后台 session，保证客户端后续自动更新仍能访问同一 URL。
 
@@ -269,10 +269,11 @@ base_url: "https://my-server.com" # 可选：用于 Surge 托管配置头
 templates:
   clash: "configs/base_clash.yaml" # Clash Meta 输出的底版模板
   surge: "configs/base_surge.conf" # Surge 输出的底版模板
+  loon: "configs/base_loon.lcf" # Loon 输出的底版模板
 
 sources:
   subscriptions:
-    - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx" # 订阅体可为 Base64、ss://、QuanX 或 Surge SS 明文列表
+    - url: "https://sub.example.com/api/v1/client/subscribe?token=xxx" # 支持 TXT/Base64（SS / AnyTLS）、Clash YAML、Surge CONF 和 Loon 订阅
   snell:
     - url: "https://my-server.com/snell-nodes.txt" # 纯文本 Snell 节点清单；单行失败会报脱敏 URL + 物理行号
   vless:
@@ -379,7 +380,7 @@ subconverter/
     render/              Clash Meta YAML、Surge conf 和 Loon lcf 渲染器
     server/              HTTP 处理器和错误映射
     ssparse/             Shadowsocks URI 解析
-    target/              Clash / Surge 目标格式投影与级联过滤
+    target/              Clash / Surge / Loon 目标格式投影与级联过滤
     webui/               可选嵌入 Web 静态资源；`internal/webui/dist` 由本地 `pnpm web:embed` 更新
   web/                   Vite + React + TypeScript 管理后台
   configs/               示例配置和底版模板

@@ -14,7 +14,7 @@
 | Proxy / NodeGroup / RouteGroup / TargetPipeline 等实体的字段语义 | `design/domain-model.md` |
 | 每个 API 端点的请求/响应格式 | `design/api.md` |
 | `app.Service` 的 Go 层接口契约与 DTO | `design/app-service.md` |
-| Clash Meta / Surge 的输出映射与级联过滤 | `design/rendering.md` |
+| Clash Meta / Surge / Loon 的输出映射与级联过滤 | `design/rendering.md` |
 | 配置校验的三层边界与错误码 | `design/validation.md` |
 | 远程资源拉取的缓存策略 | `design/caching.md` |
 | Web 管理后台的前端页面设计与交互 | `design/web-ui.md` |
@@ -36,6 +36,9 @@
 | Snell / VLESS 来源、链式组、目标格式投影 | 当前可用 | v1.0 | 是 | 由当前 Go 后端实现并有测试覆盖。 |
 | `/api/auth/*` | 当前可用 | M6 | 是 | 管理后台登录、首次 setup、session 状态和注销；M9 已接入前端登录/setup/logout 闭环。 |
 | `GET/PUT /api/config` | 当前可用 | M6 | 是 | 读取和保存配置，保持 JSON/YAML 往返转换；保存后需独立热重载才能生效。 |
+| `POST /api/config/import`、`GET /api/config/{effective.yaml,saved.zip,effective.zip}` | 当前可用 | 扩展 | 是 | 导入 YAML 或配置模板 ZIP 包为内存草稿；导出当前生效 YAML、已保存配置包或当前生效配置包。 |
+| `POST /api/resources/read`、`POST /api/subscriptions/check` | 当前可用 | 扩展 | 是 | 读取订阅/模板文本副本供编辑；检查节点订阅、Snell/VLESS 节点池的格式、节点数与输出兼容性。 |
+| 本地缺失主配置首次初始化与 `-data-dir` 正文版本存储 | 当前可用 | 扩展 | 是 | 本地配置不存在时先启动受认证后台，首次保存创建主配置并版本化托管正文文件，再热重载生效。 |
 | `POST /api/config/validate` | 当前可用 | M6 | 是 | 静态配置校验与结构化诊断。 |
 | `POST /api/reload` | 当前可用 | M6 | 是 | 运行时热重载与 `RuntimeConfig` 快照替换。 |
 | `GET/POST /api/preview/nodes` | 当前可用 | M7 | 是 | 节点预览 API，支持运行时与草稿双模式。 |

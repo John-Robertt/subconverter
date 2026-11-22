@@ -82,13 +82,13 @@
 
 ### 测试编号扩展
 
-v1.0 测试编号（`T-CFG-*`、`T-SRC-*`、`T-FLT-*`、`T-GRP-*`、`T-RTE-*`、`T-VAL-*`、`T-RND-*`、`T-E2E-*`）继续保留。v2.0 新增以下编号域：
+v1.0 测试编号（`T-CFG-*`、`T-SRC-*`、`T-FLT-*`、`T-GRP-*`、`T-RTE-*`、`T-VAL-*`、`T-RND-*`、`T-E2E-*`）继续保留。v2.0 及后续扩展使用以下编号域：
 
-- `T-ADM-*`：Admin API 测试（配置 CRUD、鉴权）
-- `T-RLD-*`：热重载测试（并发安全、失败回滚）
-- `T-PRV-*`：预览 API 测试（部分管道执行、状态查询）
-- `T-SPA-*`：Web 与 Compose 测试（嵌入式静态资源、Go fallback、单服务 Compose）
-- `T-WEB-*`：前端组件/集成测试（页面渲染、交互流程）
+- `T-ADM-*` / `T-APP-*` / `T-AUTH-*` / `T-SRV-*`：Admin API、应用服务、认证、服务端路由测试
+- `T-RLD-*` / `T-CCH-*` / `T-HDR-*`：热重载、缓存失效、响应缓存头测试
+- `T-PRV-*`：预览与状态 API 测试
+- `T-SPA-*`：Web 嵌入静态资源、Go fallback 与单服务 Compose 测试
+- `T-WEB-*` / `T-INT-*`：前端单元/组件测试与 Playwright 集成测试
 
 ---
 
@@ -133,7 +133,7 @@ M7 + M8 -> M9 -> M10
 - `Config` 及嵌套结构体全部添加 `json` tag（与 `yaml` tag 保持同名 lowercase），使 `encoding/json` 序列化的 key 名与 API 契约一致
 - `Sources` JSON 序列化：添加 `FetchOrder` 的 `json:"fetch_order"` tag（替代当前 `yaml:"-"`），新增 `Sources.MarshalYAML` 按 `FetchOrder` 排列子键顺序。`fetch_order` 非空时必须完整包含 `subscriptions`、`snell`、`vless` 且三项各出现一次；重复、未知或缺项返回 `invalid_fetch_order`。详见 `config-schema.md` §sources 的 JSON 表示
 - `CachedFetcher` 新增 `Invalidate(rawURL string)` 方法，供 reload 读取远程主配置前清除对应缓存项。当前行为见 [缓存设计](../design/caching.md#热重载与预览如何使用缓存)
-- `ConfigError` 结构化路径：将 collector 的 `add(field, message)` 改为 `add(section, key, index, valuePath, message)`，使 `ConfigError` 携带结构化路径字段（`Section`、`Key`、`Index`、`ValuePath`），替代当前的 dot-separated `Field` 字符串。app 层基于此计算 `json_pointer`，组装 `DiagnosticItem`。详见 `app-service.md` §ConfigError → DiagnosticItem 翻译
+- `ConfigError` 结构化路径：在 `internal/config/validate.go` 中为 collector 引入 `diagnosticPath` 与 `add(loc, message)` / `addCode(loc, code, message)`，使 `ConfigError` 携带结构化路径字段（`Section`、`Key`、`Index`、`ValuePath`），替代早期的点分 `Field` 字符串。app 层基于此计算 `json_pointer`，组装 `DiagnosticItem`。详见 `app-service.md` §ConfigError / BuildError → DiagnosticItem 翻译
 - 在 `internal/errtype` 新增 `ErrConfigSourceReadonly`、`ErrConfigFileNotWritable`、`ErrReloadInProgress` sentinel error，以及携带 `CurrentConfigRevision` 的 `RevisionConflictError`。详见 `app-service.md` §错误处理
 
 **包与服务搭建**：
@@ -198,7 +198,8 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 - `internal/config/`：
   - `orderedmap.go`：新增 `MarshalJSON`、`UnmarshalJSON`、`MarshalYAML` 三方法
   - `config.go`：全部结构体添加 `json` tag；`Sources` 新增 `FetchOrder` json tag + `MarshalYAML`
-  - `prepare.go`：collector 改为结构化路径接口（`Section`/`Key`/`Index`/`ValuePath`）
+  - `validate.go`：collector 结构化路径接口（`diagnosticPath` → `Section`/`Key`/`Index`/`ValuePath`）与 URL 校验
+  - `prepare.go`：各配置段预计算调用结构化路径 collector
 - `internal/errtype/`：
   - `errors.go`：新增 `ErrConfigSourceReadonly`、`ErrConfigFileNotWritable`、`ErrReloadInProgress` sentinel errors，以及 `RevisionConflictError`
 - `internal/fetch/`：
@@ -216,9 +217,9 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 - `internal/generate/`：
   - 移除 `Service.cfg` 字段，`Generate` 改为接收 `*config.RuntimeConfig` 参数（无状态化迁移）
 - `internal/server/`：
-  - 路由注册扩展：`/api/auth/*`、`/api/config`、`/api/config/validate`、`/api/reload`
+  - `server.go`：挂载 `/api/` 前缀到注入的 `AdminHandler`（全部 `/api/*` 子路由集中在 `internal/admin/handler.go` 分发）
 - `internal/auth/`：
-  - `state.go` / `session.go`：auth state 文件、PBKDF2 密码哈希、session token 哈希、失败计数与锁定逻辑
+  - `service.go` / `errors.go`：auth state 文件、PBKDF2 密码哈希、session token 哈希、失败计数与锁定逻辑
 - 测试：`T-ADM-001` ~ `T-ADM-022`（含 OrderedMap round-trip、CachedFetcher.Invalidate、ConfigError 结构化路径、409 error code 判断和 session 鉴权）
 
 ### 验收项
@@ -275,8 +276,8 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 - 实现 `POST /api/preview/nodes`（接收 `{config}` 草稿，Prepare 后执行 Source + Filter，不写文件、不替换 RuntimeConfig）
 - 实现 `GET /api/preview/groups`（基于当前 `RuntimeConfig` 执行到 ValidateGraph 阶段，返回节点组、链式组、服务组、`@all` / `@auto` 展开结果；图级错误返回 400 结构化诊断）
 - 实现 `POST /api/preview/groups`（接收 `{config}` 草稿，Prepare 后执行到 ValidateGraph 阶段；图级错误返回 400 结构化诊断）
-- 实现 `GET/POST /api/generate/preview?format=clash|surge`（复用生成逻辑，返回生成文本但不触发下载——无 `Content-Disposition` header；POST 使用草稿配置；用于验证草稿在目标格式下的生成可用性）
-- 实现 `GET /api/generate/link?format=clash|surge`（要求管理员 session，由服务端按 `base_url`、filename 和订阅访问 token 生成客户端订阅链接）
+- 实现 `GET/POST /api/generate/preview?format=clash|surge|loon`（复用生成逻辑，返回生成文本但不触发下载——无 `Content-Disposition` header；POST 使用草稿配置；用于验证草稿在目标格式下的生成可用性；`loon` 于后续扩展加入）
+- 实现 `GET /api/generate/link?format=clash|surge|loon`（要求管理员 session，由服务端按 `base_url`、filename 和订阅访问 token 生成客户端订阅链接；`loon` 于后续扩展加入）
 - 实现 `GET /api/status`（进程信息、版本号、配置源位置与可写性、配置加载状态、dirty 状态、上次热重载时间和结果）
 - `/generate` 与 `/api/generate/preview` 的 TargetError HTTP 映射已统一：fallback 清空返回 400，projection invariant 保持 500
 - 在 `app` / `pipeline` 之间新增部分执行入口（`SourceAndFilter`、`SourceFilterGroupRouteValidate`），复用现有阶段函数但在指定阶段截断返回
@@ -284,16 +285,13 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 ### 产物
 
 - `internal/admin/`：
-  - `preview_handler.go`：节点预览和分组预览 handler
-  - `generate_preview_handler.go`：生成预览 handler
-  - `generate_link_handler.go`：订阅链接生成 handler
-  - `status_handler.go`：系统状态 handler
+  - `handler.go`：集中承载节点预览、分组预览、生成预览、订阅链接与系统状态等全部 Admin API handler（未拆分为多文件）
 - `internal/app/`：
   - `preview.go`：运行时与草稿预览编排
   - `status.go`：系统状态查询
   - `generate_link.go`：订阅链接生成
 - `internal/pipeline/`：
-  - `FilterResult{Included, Excluded}` 与必要的部分执行入口函数（基于现有 `Build` 的阶段拆分，不改变现有 `Build` 对外行为）；groups 预览入口必须执行到 ValidateGraph
+  - `FilterResult{Included, Excluded, All}` 与部分执行入口函数（`SourceAndFilter`、`SourceFilterGroupRouteValidate`）
 - `internal/generate/`：
   - 继续提供生成能力；状态查询由 `app.Service` 承接
 - 测试：`T-PRV-001` ~ `T-PRV-014`，其中 `T-PRV-014` 覆盖后台 session 下载 Surge 时 managed URL 的 token 来源必须来自服务端订阅访问 token
@@ -308,7 +306,7 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 - `/api/status` 返回版本号、配置源位置、配置源可写性、上次加载时间、dirty 状态、上次重载结果、当前配置 revision 与运行时 revision
 - `/api/generate/link` 在 `base_url` 缺失时返回 `400 base_url_required`；服务端配置订阅 token 时返回含 token 链接，未配置时返回 `token_included=false`；链接 token 来源是服务端订阅访问 token，不依赖当前请求鉴权方式
 - 本地配置源 status 每次重算 sha256；HTTP(S) 配置源 status 不主动拉取远程配置，dirty 基于最近一次 config/reload 观测结果
-- `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` 映射为 400，projection invariant 仍映射为 500
+- `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` / `CodeTargetLoonFallbackEmpty`（后续扩展）映射为 400，projection invariant 仍映射为 500
 - 预览 API 使用当前 `RuntimeConfig` 快照（RLock 复制指针后立即释放），不影响并发安全
 - 慢速 `/api/preview/*` 请求不会因持有配置读锁而阻塞 `/api/reload` 获取写锁
 - `go test ./...` 全部通过
@@ -341,7 +339,7 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 - 建立 `web/` 目录结构（React + Vite + TypeScript）
 - 根 `pnpm web:embed` 构建 `web/dist/` 并同步到 `internal/webui/dist`
 - 根 `Dockerfile` 使用已同步产物，并以 `-tags webui` 构建 Go 二进制
-- `internal/server` 支持嵌入式 SPA fallback；`/api/*`、精确 `/generate`、`/healthz` 保持后端优先处理
+- `internal/server` 支持嵌入式 SPA fallback；`/api`（含 `/api/`）、`/generate`（含 `/generate/`）、`/healthz`（含 `/healthz/`）保持后端优先处理
 - 新增单服务 Demo Compose 示例：`docker-compose.demo.yaml` 只启动 `subconverter`
 - 不维护独立 Web 静态镜像或 nginx 路径配置夹具
 - 编写 SPA 路由与静态资源测试，确认 Go fallback 和后端路径边界可工作
@@ -359,7 +357,7 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 
 - Compose 启动后，浏览器访问 `subconverter` 服务端口可打开 SPA
 - SPA 路由刷新不 404（`/any/path` 在无匹配静态文件时由 Go fallback 到 `index.html`）
-- `/generate?format=clash` 与 `/generate?format=surge` 由同一 Go 服务处理成功，且不被 SPA fallback 接管
+- `/generate?format=clash`、`/generate?format=surge` 与 `/generate?format=loon`（后续扩展）由同一 Go 服务处理成功，且不被 SPA fallback 接管
 - `/healthz` 由同一 Go 服务处理成功
 - `/api/status` 由同一 Go 服务处理成功
 - 生产路径不依赖 CORS；浏览器看到的 Web 页面与 API 为同源
@@ -407,13 +405,15 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 ### 产物
 
 - `web/src/`：
-  - `api/`：API 客户端封装
-  - `components/`：通用组件（拖拽排序、正则输入、卡片、表格等）
-  - `pages/`：A1-A4、B1、C 页面组件
-  - `layouts/`：布局组件
-  - `hooks/`：自定义 hooks（useConfig、usePreview、useReload 等）
-  - `theme/`：主题配置
-- 测试：`T-WEB-001` ~ `T-WEB-010` + `T-WEB-021`（组件渲染测试 + API 集成测试 + 登录/setup 流程）
+  - `api/`：API 客户端封装、错误归一化与类型定义
+  - `app/`：路由元信息、`ProtectedRoute`、React Query 配置与 `queryKeys`
+  - `components/`：通用 UI 组件、`SortableList`、`SourceEditor`、`ResourceEditor`、`Diagnostics`
+  - `features/`：业务模型与自定义 hooks（`configModel`、`diagnostics`、`useRegexValidation`、`useResourceContent`、`useSaveWorkflow`）
+  - `layout/`：应用壳层与导航（`AppShell`）
+  - `pages/`：登录页、A1-A8、B1-B3、C 页面组件
+  - `state/`：配置草稿 Context、确认框、主题与 Toast 状态
+  - `styles.css`：全局与主题样式
+- 测试：前端单元与集成测试（实际编号见 `testing-strategy.md` §实际测试编号映射与已知覆盖缺口）
 
 ### 验收项
 
@@ -460,14 +460,14 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 - A7 其他配置页面（`fallback`、`base_url`、`templates` 字段编辑）
 - A8 静态配置校验页面（Drawer 展示校验结果——errors / warnings / infos 分级显示，错误项通过 `locator.json_pointer` 跳转到对应页面的对应字段）
 - B2 分组预览页面（调用 `GET /api/preview/groups`，树形展示节点组 / 链式组 / 服务组 → 成员映射关系；图级错误时显示诊断，不展示部分成功结果）
-- B3 生成下载页面（调用 `GET /api/generate/preview`、`/generate`、`GET /api/generate/link`，自动展示 Clash / Surge 双格式运行时生成文本 + 下载按钮 + 复制订阅链接；后端 `POST /api/generate/preview` 草稿生成能力保留为 API 能力）
+- B3 生成下载页面（调用 `GET /api/generate/preview`、`/generate`、`GET /api/generate/link`，自动展示 Clash / Surge / Loon（后续扩展）运行时生成文本 + 下载按钮 + 复制订阅链接；后端 `POST /api/generate/preview` 草稿生成能力保留为 API 能力）
 - 端到端测试覆盖全流程（空配置 → 逐步编辑 → 保存 → 重载 → 预览 → 生成 → 下载 → 验证内容）
 
 ### 产物
 
-- `web/src/pages/`：A5-A8、B2-B3 页面组件
-- `web/src/components/`：校验结果 Drawer、代码预览器、链接生成器等
-- 测试：`T-WEB-011` ~ `T-WEB-020` + `T-E2E-010` ~ `T-E2E-015`
+- `web/src/pages/`：A5-A8、B2-B3 页面组件（其中 `DiagnosticDrawer` 内联于 `ValidatePage.tsx`，`CodePreview` 内联于 `DownloadPage.tsx`）
+- `web/src/components/`：通用基础组件与诊断展示组件（`Diagnostics.tsx`、`ui.tsx`）
+- 测试：`web/src/App.test.tsx`（含 `T-WEB-011`–`016`、`T-WEB-022`–`024`、`T-WEB-UX-*` 等）、`web/e2e/m10.spec.ts`（`T-E2E-010`、`T-E2E-014`、`T-E2E-015`）及 `web/e2e/integration/*.spec.ts`（57 个 `T-INT-*` 集成测试）
 
 ### 验收项
 
@@ -475,7 +475,7 @@ M6 工作项之间存在严格的执行顺序约束。以下标注每个工作�
 - A8 静态配置校验错误可点击跳转到对应页面的对应字段，前端不得解析 `display_path`
 - 运行时生成预览与实际 `/generate` 下载内容一致
 - 订阅链接复制功能正确：前端调用 `GET /api/generate/link`，复制含 `token_included=true` 的链接前显式确认；服务端配置订阅 token 时链接可包含 `token` 和 `filename` 参数
-- 端到端：空配置 → 编辑全部字段 → 保存 → 重载 → 生成 → 下载 → 验证内容（两种格式均覆盖）
+- 端到端：空配置 → 编辑全部字段 → 保存 → 重载 → 生成 → 下载 → 验证内容（Clash / Surge / Loon 均覆盖）
 - 错误路径：静态校验失败 → 不可保存 → 修复后可保存；分组预览图级错误 → UI 显示诊断并保留草稿；运行时生成预览失败 → UI 显示生成期错误并可重试；重载失败 → UI 显示错误 → 旧配置不变
 - `go test ./...` 全部通过
 - 前端测试通过（`pnpm web:test`）

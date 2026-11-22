@@ -1645,7 +1645,7 @@ tr:last-child td {
   padding: 2px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--surface-base);
+  background: var(--surface);
   outline: none;
   min-width: 80px;
   max-width: 220px;
@@ -3114,7 +3114,7 @@ tr:last-child td {
 }
 
 .code-preview .hl-key {
-  color: var(--accent);
+  color: var(--primary);
   font-weight: 500;
 }
 

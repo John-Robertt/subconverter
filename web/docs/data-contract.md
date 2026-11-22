@@ -12,7 +12,13 @@
 - `POST /api/auth/logout`
 - `GET /api/config`
 - `PUT /api/config`
+- `POST /api/config/import`
+- `GET /api/config/saved.zip`
+- `GET /api/config/effective.zip`
+- `GET /api/config/effective.yaml`（后端已实现，`api/client.ts` 已导出路径常量，当前 UI 未直接暴露入口）
 - `POST /api/config/validate`
+- `POST /api/resources/read`
+- `POST /api/subscriptions/check`
 - `POST /api/reload`
 - `GET/POST /api/preview/nodes`
 - `GET/POST /api/preview/groups`
@@ -89,13 +95,13 @@
 
 ## 预览结果
 
-- 节点预览需要展示 Kind、来源、过滤状态和格式限定。
-- 分组预览需要展示节点组、链式组、服务组和展开成员。
-- `expanded_members` 需要区分用户显式声明、`@auto` 展开和 `@all` 展开。
+- 节点预览通过 `kind` 区分来源（订阅 / Snell / VLESS / 自定义），并展示类型、地址、端口、过滤状态与格式限定。
+- 分组预览展示节点组、链式组、服务组和展开成员，前端优先消费带身份信息的 `member_details`、`expanded_member_details`、`all_proxy_details`，缺省时回退 `members`、`expanded_members`、`all_proxies`。
+- `expanded_member_details` / `expanded_members` 区分用户显式声明（`literal`）、`@auto` 展开（`auto_expanded`）和 `@all` 展开（`all_expanded`）。
 
 ## 订阅链接结果
 
-`GET /api/generate/link` 返回：
+`GET /api/generate/link` 接受 `format`（必填）、`filename`（可选）与 `include_token`（`true`/`false`，默认 `true`；下载页卡片展示传 `false`，点击复制传 `true`），返回：
 
 - `url`：可复制给 Clash Meta、Surge 或 Loon 客户端的完整订阅链接。
 - `token_included`：链接是否包含订阅访问 token。
@@ -104,12 +110,14 @@
 
 ## HTTP 状态
 
-前端必须单独处理：
+前端需要处理的 HTTP 状态码：
 
 - `400`：请求或配置语义错误。
-- `401`：管理接口缺少、无效或已过期的 session；登录凭据错误；或 `/generate` 缺少 / 不匹配订阅访问 token。
+- `401`：管理接口缺少、无效或已过期的 session；登录凭据错误；首次 setup 缺少/错误 setup token；或 `/generate` 缺少 / 不匹配订阅访问 token。
+- `403`：非安全 `/api/*` 请求同源校验失败（`csrf_check_failed`）。
 - `409`：按 `error.code` 分流处理。
-- `429`：reload 正在执行，前端短间隔退避重试。
+- `423`：登录失败次数达上限临时锁定（`auth_locked`）。
+- `429`：reload 正在执行（`reload_in_progress`），前端短间隔退避重试一次。
 - `502`：远程主配置源或订阅等上游拉取失败，按接口上下文展示。
 
 API client 归一化错误对象至少包含：
@@ -121,10 +129,12 @@ API client 归一化错误对象至少包含：
 
 409 的前端行为：
 
-- `config_revision_conflict`：保留草稿，提示外部修改，提供重新加载配置或手动合并入口。
+- `config_revision_conflict`：保留草稿，提示外部修改，在提示中提供“重新加载配置”入口。
 - `config_source_readonly`：进入只读模式，禁用保存、新增、删除和排序。
 - `config_file_not_writable`：展示文件权限或部署挂载问题，并保留草稿。
-- 未知 409 code：按未知保存失败处理，不覆盖草稿，展示可重试或查看详情入口。
+- `resource_content_write_failed`：展示正文目录写入权限问题，保留草稿与编辑能力。
+- `config_not_initialized`：本地主配置尚未创建或尚未热重载生效，引导初始化与热重载。
+- 未知 409 code：按未知保存失败处理，不覆盖草稿，展示持久错误提示。
 
 认证错误前端行为：
 
@@ -143,4 +153,4 @@ API client 归一化错误对象至少包含：
 
 `GET /api/config` 展开可读正文供编辑；不可读的 `content_file` 或模板路径保留原引用，编辑器允许修复或删除。保存正文时，后端生成时间戳文件并写入引用。正文目录写入错误使用 `409 resource_content_write_failed`，前端保留草稿与编辑能力。
 
-`api.checkSource` 返回 `recognized` 或 `ambiguous`。格式、节点数、完整输出兼容性均由后端返回；检查链接保留 URL，显式复制时才使用返回的 `content`。过期响应应丢弃，输入变更后清除检查结果；歧义未解决或检查失败时禁用“保存来源”。
+`SourceEditor` 检查链接来源时先调用 `api.readResource(address)` 获取原文，再携带该原文与 `source_location` 调用 `api.checkSource`；点击“编辑为本地副本”沿用已读取的正文，保留原链接直到用户切换并保存。`api.checkSource` 返回 `recognized` 或 `ambiguous`，过期响应被丢弃，输入变更后清除检查结果；歧义未解决或检查失败时禁用“应用到草稿”（无配置改动或只读查看时按钮显示“完成”直接关闭弹窗）。

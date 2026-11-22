@@ -64,8 +64,9 @@ v2.0 在 v1.0 核心管道基础上新增：
 
 ### 启动
 
-- `app.New` 读取并解析 YAML，再通过 `prepareAdminConfig` 调用 `config.Prepare`，校验字段、编译正则并展开 `@auto`
-- 成功后保存 `RuntimeConfig`、源 YAML 字节和对应 revision；失败则退出启动流程
+- `app.New` 先检查配置源：若本地主配置文件尚不存在，保留空运行快照并记录 `observedConfigRevision="missing"`，继续启动受管理员认证保护的后台；详情见 [首次配置 API](design/api.md#首次配置)
+- 若文件存在或配置源为远程 HTTP(S) URL，读取并解析 YAML，再通过 `prepareAdminConfig` 调用 `config.Prepare`，校验字段、编译正则并展开 `@auto`
+- 成功后保存 `RuntimeConfig`、源 YAML 字节和对应 revision；已存在文件的解析/校验失败或远程配置读取失败则退出启动流程
 - 请求按只读约定使用 `RuntimeConfig`。其方法会返回含切片等引用的数据，Go 类型本身没有强制禁止修改；管道应另建结果，保持这份准备好的配置不变
 
 ### 热重载
@@ -87,8 +88,12 @@ config.yaml + remote sources
    subconverter
         │
         ├─► /generate?format=clash|surge|loon    （生成配置）
-        ├─► /api/config                     （配置管理）
-        ├─► /api/preview/*                  （运行时预览）
+        ├─► /api/auth/*                     （管理员认证与首次 setup）
+        ├─► /api/config*                    （配置读写、校验、导入与 ZIP/YAML 导出）
+        ├─► /api/resources/read             （读取订阅或模板文本副本）
+        ├─► /api/subscriptions/check        （来源格式、节点数与输出兼容性检查）
+        ├─► /api/preview/*                  （运行时与草稿预览）
+        ├─► /api/generate/*                 （生成预览与订阅链接生成）
         ├─► /api/reload                     （热重载）
         ├─► /api/status                     （系统状态）
         └─► /healthz                        （健康检查）
@@ -169,7 +174,8 @@ RUnlock()
 模块职责：
 
 - `config`：配置加载、保序解析、静态校验、启动期预计算（`Prepare` 产出 `RuntimeConfig`）
-- `model`：格式无关的中间表示
+- `errtype`：六类类型化业务错误定义（Config / Fetch / Resource / Build / Target / Render）及共享 sentinel / 冲突错误
+- `model`：格式无关的中间表示与单节点结构不变量校验（`ValidateProxyInvariant`）
 - `fetch`：订阅拉取、缓存、统一资源加载
 - `ssparse`：Shadowsocks URI 解析
 - `proxyparse`：自定义代理 URL 解析
@@ -177,15 +183,16 @@ RUnlock()
 - `target`：目标格式投影与格式相关级联校验
 - `render`：Clash Meta、Surge 与 Loon 渲染器，只做序列化
 - `generate`：单一"生成配置"服务，承接 `Build -> Target -> Render`。v2.0 起改为无状态设计：`Generate` 方法接收 `*RuntimeConfig` 参数，不再通过结构体字段持有配置指针；`app.Service` 在每次请求时取快照后传入
-- `app`：应用服务入口，承接配置快照、保存、导入导出、热重载、预览、订阅链接和状态查询；将内部节点图转换为 API 所需数据，让 HTTP 层无需理解管道细节
+- `app`：应用服务入口，承接配置快照、首次创建、条件保存、版本化正文文件存储、导入导出、资源读取、来源检查、热重载、预览、订阅链接、请求计数和状态查询；将内部节点图转换为 API 所需数据，让 HTTP 层无需理解管道细节
 - `auth`：v2.0 管理后台认证层，承接 bootstrap setup token、管理员 PBKDF2 密码哈希、auth state 文件、session 创建/校验/注销和登录失败锁定；不依赖配置生成管道
 - `admin`：Admin API 处理器，只做 JSON 解析、同源校验、调用 `app.Service` 或 `auth`、错误映射；不直接编排管道或渲染逻辑
+- `webui`：可选嵌入式 Web SPA 静态资产（由 `-tags webui` 控制开关，不依赖其他业务包）
 - `server`：HTTP 路由注册、`/generate`、`/healthz`、SPA 路由回退、响应缓存头和文本错误映射；生成响应设置 `no-store`，静态资源按路径设置缓存头，具体见 [API 契约](design/api.md#错误语义)
 
 依赖原则：
 
 - 依赖方向单向
-- `model` 和 `errtype` 是叶子包，不依赖其他业务包
+- `model`、`errtype`、`auth`、`ssparse`、`webui` 是叶子包，不依赖其他业务包
 - 渲染层不反向依赖配置层实现细节
 - HTTP 层不直接依赖管道与渲染细节：受保护 `/api/*` 先经 `auth` 校验 session，再通过 `admin` 调用 `app.Service`；`/generate` 也通过 `app.Service` 获取当前快照后再进入生成逻辑
 
@@ -293,7 +300,8 @@ POST /api/reload
 统一中间表示
     │
     ├─► Clash 目标投影 ──► Clash Meta 渲染
-    └─► Surge 目标投影 ──► Surge 渲染
+    ├─► Surge 目标投影 ──► Surge 渲染
+    └─► Loon 目标投影  ──► Loon 渲染
 
 Web 管理后台
     │
@@ -337,7 +345,7 @@ Web 管理后台
 | 渲染器合并策略 | Clash 用 yaml.Node 替换；Surge / Loon 用 section 切分替换 | 保留底版用户设置 |
 | 结构化订阅表示 | `KindSubscription` + 可选 `NativeProxy` | 复用统一过滤/分组语义，同时完整保留目标原生节点字段 |
 | 节点身份 | Build 内唯一 `ProxyID`；节点名只是显示名候选 | 同名节点可安全共存，过滤/分组/链式关系不依赖可变名称 |
-| 输出命名 | 每个目标在格式过滤后独立消歧 | Clash-only / Surge-only 同名节点都可保留原名，目标内仍满足唯一性 |
+| 输出命名 | 每个目标在格式过滤后独立消歧 | Clash-only / Surge-only / Loon-only 同名节点都可保留原名，目标内仍满足唯一性 |
 | **热重载并发模型** | `sync.RWMutex` 保护 `RuntimeConfig` | 单进程无需分布式锁，读多写少场景最优 |
 | **前端部署方式** | `web/dist` 同步至 `internal/webui/dist`，再用 `webui` 标签嵌入二进制 | 单镜像、单进程，生产同源访问 |
 | **开发模式** | Vite proxy 优先；`-cors` 仅作本地调试兜底 | 前后端分离开发 |
@@ -356,7 +364,7 @@ Web 管理后台
 > **触及时行动**：新增 format-specific 过滤时 → 重新评估是否引入 per-format validation hook。
 
 - **现象**：Build 阶段"合法"的配置，在某一输出格式的 Target 阶段可能失败
-- **报错路径**：`target.ForClash` / `target.ForSurge` 在 Target 阶段返回 `TargetError`
+- **报错路径**：`target.ForClash` / `target.ForSurge` / `target.ForLoon` 在 Target 阶段返回 `TargetError`
 - **影响**：静态校验或分组预览通过后，某一种格式仍可能在 Target 阶段失败；错误类型是 `TargetError`，发生在 Render 之前
 
 ### 2. 中间表示对"格式限定字段"的宽松包容
@@ -405,16 +413,20 @@ Web 管理后台
 
 实现细节由后续文档承接：
 
+- `docs/product-spec.md`：产品规格与核心场景
+- `docs/deployment.md`：构建、Release 与部署指南
 - `docs/design/config-schema.md`：配置结构与字段约束
 - `docs/design/domain-model.md`：领域模型与中间表示
 - `docs/design/pipeline.md`：各阶段职责与数据约束
 - `docs/design/api.md`：HTTP 接口约定
+- `docs/design/app-service.md`：`app.Service` 接口与 DTO 契约
 - `docs/design/rendering.md`：Clash Meta / Surge / Loon 渲染映射
 - `docs/design/validation.md`：配置与图校验规则
 - `docs/design/caching.md`：订阅拉取与缓存策略
 - `docs/design/web-ui.md`：Web 管理后台设计
 - `docs/implementation/project-structure.md`：代码目录与包边界
 - `docs/implementation/implementation-plan.md`：v2.0 开发计划
+- `docs/implementation/progress.md`：v2.0 开发进度与验收证据
 - `docs/implementation/testing-strategy.md`：测试与验收策略
 
 ### Loon 目标投影与校验边界

@@ -1,6 +1,6 @@
 # 渲染设计
 
-> 状态提示：§Snell 过滤、§VLESS 过滤、§预览模式 为 v1.0 已有 + v2.0 预览扩展。当前代码中 Snell/VLESS 渲染和级联过滤引擎已可用。
+> 状态提示：当前代码中 Clash Meta、Surge 与 Loon 三种渲染器、Snell / VLESS / 原生订阅级联过滤引擎以及 v2.0 预览模式均已实现并可用。
 
 ## 目标
 
@@ -22,7 +22,7 @@
 映射要求：
 
 - 节点输出到 `proxies`
-- 节点组和服务组输出到 `proxy-groups`
+- 服务组与节点组输出到 `proxy-groups`（固定顺序：服务组 → 地区节点组 → 链式节点组）
 - 远程规则集输出到 `rule-providers`
 - 内联规则和 ruleset 引用输出到 `rules`
 - fallback 输出为 `MATCH,<fallback>`
@@ -40,15 +40,14 @@
 说明：
 
 - Clash Meta 的规则集引用采用 provider 名称，而不是直接在规则中内联完整 URL
-- 规则集固定生成 `behavior: classical` 且显式输出 `format: text`
-- provider 缓存路径固定为 `.txt`
+- 每个 provider 固定输出 `type: http`、`behavior: classical`、`format: text`、`url`、`path: ./rule-providers/<name>.txt` 与 `interval: 86400`
 
-rule-provider 命名规则（两阶段分配）：
+rule-provider 命名规则（收集 → 计数 → 分配）：
 
-1. 从 URL 路径中提取文件名并去掉扩展名，如 `https://example.com/Clash/Netflix.list` → `Netflix`
+1. 从 URL 路径中提取文件名并去掉扩展名，如 `https://example.com/Clash/Netflix.list` → `Netflix`（URL 解析失败、路径为空或去扩展名后为空时回退为 `provider`）
 2. 跨所有 rulesets 统一去重（provider 命名空间全局共享）：
    - 唯一名称直接使用
-   - 重复名称追加递增后缀（`Netflix-2`、`Netflix-3`）
+   - 重复名称首个保留原名，从第二个起追加递增后缀（`Netflix-2`、`Netflix-3`）
    - 生成的后缀名若与其他 URL 的自然名称碰撞，则继续递增直到不冲突
 3. provider 名称仅用于 Clash Meta 输出的内部引用，不影响语义
 
@@ -64,7 +63,7 @@ name / type:vless / server / port / uuid / network / udp:true
   → 若 security ∈ {tls, reality}：tls:true / servername / client-fingerprint
   → 若 security == reality：reality-opts:{ public-key / short-id }
   → transport-specific *-opts（ws-opts / http-opts / h2-opts / grpc-opts / xhttp-opts，详见下表）
-  → dialer-proxy（链式节点）
+  → dialer-proxy（渲染器通用分支；当前管道约束下链式出口仅支持 ss/socks5/http）
 ```
 
 URI query 到 Params 的命名映射由解析器完成（见 `config-schema.md` 的 `sources.vless`），Clash 渲染器直接按目标键读取：
@@ -75,12 +74,12 @@ URI query 到 Params 的命名映射由解析器完成（见 `config-schema.md` 
 | `security` | `security` | —（分支判定）| none/tls/reality |
 | `encryption` | `encryption` | `encryption` | 非空时透传并输出 |
 | `flow` | `flow` | `flow` | 空则不输出 |
-| `type` | `network` | `network` | 已知值 `tcp`/`ws`/`http`/`h2`/`grpc`/`xhttp` 原样保留；缺失或未知值回落到 `tcp` |
+| `type` | `network` | `network` | 已知值 `tcp`/`ws`/`http`/`h2`/`grpc`/`xhttp` 原样保留；缺失（含无 query）或未知值回落到 `tcp` |
 | `sni` | `servername` | `servername` | 仅在 tls/reality 时输出 |
 | `fp` | `client-fingerprint` | `client-fingerprint` | 仅在 tls/reality 时输出 |
 | `alpn` | `alpn` | `alpn` | 展开为 YAML 列表 |
-| `pbk` | `reality-public-key` | `reality-opts.public-key` | 仅在 reality 时 |
-| `sid` | `reality-short-id` | `reality-opts.short-id` | 仅在 reality 时（可空） |
+| `pbk` | `reality-public-key` | `reality-opts.public-key` | 仅在 reality 时非空输出 |
+| `sid` | `reality-short-id` | `reality-opts.short-id` | 仅在 reality 时输出（始终显式输出，缺失时为 `""`） |
 | `spx` | `reality-spider-x` | —（不输出） | 宽松存入，forward compat |
 
 每种非 tcp 的 `network` 值都会触发渲染器输出对应的 `*-opts` 块。URI 里的 `path` / `host` / `serviceName` / `mode` 由 parser **按 network 分发**到 transport-specific Params 键，渲染器按键直接输出，无运行时分派：
@@ -98,7 +97,7 @@ URI query 到 Params 的命名映射由解析器完成（见 `config-schema.md` 
 
 Parser 会校验 `security` 只接受 `none`/`tls`/`reality`；`encryption` 在非空时不做值校验、直接透传，以匹配 Mihomo 当前支持的扩展模式。传输层高级字段（如 `packet-encoding`、`ws-opts.max-early-data`、`grpc-opts.ping-interval`）以及 TLS 扩展字段（如 `support-x25519mlkem768`）当前 iteration 不消费——`sources.vless` 仍是“一行一个 URI”的输入模型，本次未为这些字段定义稳定 query 契约。
 
-**关于 Params 键命名**：transport-specific 键（`ws-path`、`ws-host`、`h2-path`、`h2-host`、`http-path`、`http-host`、`grpc-service-name`、`xhttp-path`、`xhttp-host`、`xhttp-mode`）是 **network-qualified** 的前缀键，**不是 URI 查询的原始键名**。原因：VLESS URI 里的 `path` / `host` 在不同 `type` 下对应 Clash 中不同的 `*-opts` 嵌套位置（例如 `ws-opts.path` vs `h2-opts.path`）；parser 在 query 解析时按 network 分发到具体键，让渲染器按键直接读取，避免"同名不同位"的运行时分派。tcp 没有传输层 opts 块，不产生前缀键。该命名规则是 CLAUDE.md "Params 的 key 名称保持目标格式原样" 原则的一个**网络受限例外**——由 Clash 的配置结构决定，而非 parser/renderer 的风格选择。
+**关于 Params 键命名**：transport-specific 键（`ws-path`、`ws-host`、`h2-path`、`h2-host`、`http-path`、`http-host`、`grpc-service-name`、`xhttp-path`、`xhttp-host`、`xhttp-mode`）是 **network-qualified** 的前缀键，**不是 URI 查询的原始键名**。原因：VLESS URI 里的 `path` / `host` 在不同 `type` 下对应 Clash 中不同的 `*-opts` 嵌套位置（例如 `ws-opts.path` vs `h2-opts.path`）；parser 在 query 解析时按 network 分发到具体键，让渲染器按键直接读取，避免"同名不同位"的运行时分派。tcp 没有传输层 opts 块，不产生前缀键。该命名规则是 `AGENTS.md` "Params 的 key 名称保持目标格式原样" 原则的一个**网络受限例外**——由 Clash 的配置结构决定，而非 parser/renderer 的风格选择。
 
 ### SS 渲染
 
@@ -132,6 +131,13 @@ Plugin 限制：
 - 不支持的插件名称或包含未知选项的 obfs 插件返回 `RenderError`（而非静默降级）
 - 无 plugin 时不输出 obfs 相关字段
 
+### SOCKS5 / HTTP 渲染
+
+`socks5` / `http` 来自 `sources.custom_proxies`（含独立节点和链式出口），支持三种输出（Loon 字段见对应章节）：
+
+- **Clash Meta**：按固定顺序输出 `name`、`type`（`socks5`/`http`）、`server`、`port`、非空 `username`、非空 `password`、可选 `dialer-proxy`
+- **Surge**：输出 `<name> = <type>, <server>, <port>[, <username>, <password>][, underlying-proxy=...]`；当 `username` 或 `password` 任一非空时按位置参数不加引号输出两者
+
 ### AnyTLS 渲染
 
 AnyTLS 节点来自 `sources.subscriptions`，规范化节点支持三种输出，Loon 字段见对应章节；原生声明按所属格式过滤。
@@ -145,7 +151,7 @@ name / type:anytls / server / port / password / udp:true
   → client-fingerprint（非空才输出）
   → alpn（逗号分隔串展开为 YAML 列表）
   → idle-session-check-interval / idle-session-timeout / min-idle-session（非空才输出）
-  → dialer-proxy（链式节点）
+  → dialer-proxy（渲染器通用分支；当前管道约束下链式出口仅支持 ss/socks5/http）
 ```
 
 **Surge**：
@@ -156,23 +162,23 @@ name / type:anytls / server / port / password / udp:true
 
 约束：
 - `password` 必填；输出阶段采用“宽进严出”：parser 接受订阅商 / Surge / Quantumult X 方言，renderer 只输出目标客户端官方支持字段
-- `sources.subscriptions` 的 URI parser 将 `insecure=1` 归一化为 `skip-cert-verify=true`
-- Quantumult X 的 `tls-host` 归一化为 `sni`，`tls-verification=false` 归一化为 `skip-cert-verify=true`，`fast-open` 归一化为 `tfo`
+- `sources.subscriptions` 的 `anytls://` URI 省略端口时默认使用 `443`；仅解析 `sni`（缺失时回退 `peer`）、`insecure`（`true`/`1`/`yes`/`on` 均归一化为 `skip-cert-verify=true`）、`fp`、`alpn`
+- Surge / Quantumult X 行格式将 `tls-host` 归一化为 `sni`、`fast-open` 归一化为 `tfo`，对 `tls-verification` 做布尔取反（`false` → `skip-cert-verify=true`，`true` → `skip-cert-verify=false`；其中 Surge 原样输出 `skip-cert-verify`，Clash 仅在真值时输出 `skip-cert-verify: true`），并支持 `idle-session-check-interval`、`idle-session-timeout`、`min-idle-session` 与 `server-cert-fingerprint-sha256`（不解析 `peer`/`insecure`/`fp`）
 - Surge 输入中的 `tls=true` 与 Quantumult X 输入中的 `over-tls=true` 是 input-only 兼容字段；Surge 输出不固定回写 `tls=true`
 - Quantumult X 输入中的 `udp-relay` 会保存在 IR，Clash 输出固定为 `udp:true`；Surge 官方 AnyTLS 参数未列 `udp-relay`，因此 Surge 输出不透传
 
-| 输入字段 | IR key | Clash Meta 输出 | Surge 输出 |
-|----------|--------|-----------------|------------|
-| URI auth / `password` | `password` | `password` | `password` |
-| `sni` / `tls-host` | `sni` | `sni` | `sni` |
-| `insecure=1` / `skip-cert-verify` / `tls-verification=false` | `skip-cert-verify` | `skip-cert-verify` | `skip-cert-verify` |
-| `fp` / `client-fingerprint` | `client-fingerprint` | `client-fingerprint` | 不输出 |
-| `alpn` | `alpn` | `alpn` 列表 | 不输出 |
-| `reuse` | `reuse` | 不输出 | `reuse` |
-| `udp-relay` | `udp-relay` | `udp:true`（固定输出） | 不输出 |
-| `fast-open` / `tfo` | `tfo` | 不输出 | 不输出 |
-| `idle-session-*` | 同名 key | 同名字段 | 不输出 |
-| `server-cert-fingerprint-sha256` | 同名 key | 不输出 | 同名字段 |
+| 输入字段 | 来源格式 | IR key | Clash Meta 输出 | Surge 输出 |
+|----------|----------|--------|-----------------|------------|
+| URI auth / `password` | URI / 行 | `password` | `password` | `password` |
+| `sni` / `peer`（仅 URI）/ `tls-host`（行） | URI / 行 | `sni` | `sni` | `sni` |
+| `insecure`（仅 URI）/ `skip-cert-verify` / `tls-verification`（行，布尔取反） | URI / 行 | `skip-cert-verify` | 仅真值输出 `skip-cert-verify: true` | `skip-cert-verify`（原样输出） |
+| `fp`（仅 URI）/ `client-fingerprint`（行） | URI / 行 | `client-fingerprint` | `client-fingerprint` | 不输出 |
+| `alpn` | URI / 行 | `alpn` | `alpn` 列表 | 不输出 |
+| `reuse` | 行 | `reuse` | 不输出 | `reuse` |
+| `udp-relay` | 行 | `udp-relay` | `udp:true`（固定输出） | 不输出 |
+| `fast-open` / `tfo` | 行 | `tfo` | 不输出 | 不输出 |
+| `idle-session-check-interval` / `idle-session-timeout` / `min-idle-session` | 行 | 同名 key | 同名字段 | 不输出 |
+| `server-cert-fingerprint-sha256` | 行 | 同名 key | 不输出 | 同名字段 |
 
 ### Snell 过滤
 
@@ -182,12 +188,12 @@ Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。`Ta
 2. 剔除链式节点中 `DialerID` 属于已剔除集合的节点（失效上游）；诊断路径中这类叶子会同时显示候选名与 ID
 3. 对每个节点组 / 服务组，按 `ProxyID` 或类型化组引用剔除已删除成员；若 Members 清空则该组自身被剔除。迭代到不动点
 4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
-5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetClashFallbackEmpty`），错误消息附带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY(chained) ← [HK-Snell(snell)]]]`），便于定位根因
+5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetClashFallbackEmpty`），错误消息附带清空路径（如 `FINAL ← [GRP_CHAIN ← [HK-Snell→MY-PROXY#2(chained) ← [HK-Snell#1(snell)]]]`），便于定位根因
 
-清空路径使用显式原因图：
+清空路径使用显式原因图（代理节点统一按 `NAME#ID` 格式化）：
 
-- 原始 Snell 根节点标记为 `NAME(snell)`
-- 受已删除上游牵连的链式节点标记为 `NAME(chained) ← [<upstream>]`
+- 原始 Snell 根节点标记为 `NAME#ID(snell)`
+- 受已删除上游牵连的链式节点标记为 `NAME#ID(chained) ← [<upstream>]`
 - 共享掉落子图会正常展开；`(cycle)` 只表示真实递归保护命中，而不是普通共享引用
 
 过滤算法作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；现在它位于 `internal/target/filter_cascade.go`，由 `target.ForClash` 包装调用。过滤后再独立分配 Clash 输出名并产出 `TargetPipeline`，渲染器不接触内部 ID。
@@ -200,7 +206,7 @@ Clash Meta 主线不支持 Snell v4/v5（jinqians/snell.sh 默认版本）。`Ta
 
 - 若配置了 `base_url`，输出首行为 `#!MANAGED-CONFIG <managed-url> interval=86400 strict=false`
 - 节点输出到代理定义段
-- 节点组和服务组输出到组定义段
+- 服务组与节点组输出到组定义段（固定顺序：服务组 → 地区节点组 → 链式节点组）
 - 远程规则集在规则中直接引用 URL
 - fallback 输出为 `FINAL,<fallback>`
 
@@ -236,9 +242,9 @@ Surge 不原生支持 VLESS。`Target` 阶段会先做级联过滤（对称于 C
 2. 剔除链式节点中 `DialerID` 属于已剔除集合的节点
 3. 对每个节点组 / 服务组，按 `ProxyID` 或类型化组引用剔除已删除成员；若 Members 清空则该组自身被剔除。迭代到不动点
 4. 规则集、内联规则中 Policy 属于已剔除组的条目被剔除
-5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetSurgeFallbackEmpty`），错误消息附带清空路径（VLESS 根节点标记为 `NAME(vless)`，链式节点标记为 `NAME(chained) ← [<upstream>]`）
+5. 若 `fallback` 所指服务组在级联中被清空，返回 `TargetError`（`CodeTargetSurgeFallbackEmpty`），错误消息附带清空路径（VLESS 根节点标记为 `NAME#ID(vless)`，链式节点标记为 `NAME#ID(chained) ← [<upstream>]`）
 
-算法由共享 cascade 引擎 `filterUnsupportedProxies` 提供，与 Clash 侧过滤 Snell 是同一份代码，参数化注入标签（`formatName`、`rootLabel`、`emptyCode`、`emptyReasonClause`）。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；过滤后再独立分配 Surge 输出名，Render 只消费 `TargetPipeline`。
+算法由共享 cascade 引擎 `filterUnsupportedProxies` 提供，由 Clash、Surge、Loon 三方共用，通过 `cascadeOptions`（含 `unsupportedProxy`、`formatName`、`formatDisplayName`、`nativeFormat`、`rootLabel`、`emptyCode`、`internalCode`、`emptyReasonClause`）参数化注入规则与诊断标签。过滤作用在 `*model.Pipeline` 的**副本**上，原 Pipeline 不变；过滤后再独立分配 Surge 输出名，Render 只消费 `TargetPipeline`。
 
 ---
 
@@ -252,20 +258,19 @@ Loon 使用与 Clash / Surge 相同的 YAML 来源、过滤、分组和路由声
 |------|-----------|
 | SS `cipher/password` | `Shadowsocks,server,port,cipher,"password"` |
 | SS Simple Obfs | `obfs-name` / `obfs-host` / `obfs-uri`；不支持的插件返回 RenderError |
-| AnyTLS `password/sni` | `anytls,server,port,"password",sni=...` |
+| AnyTLS `password` / `sni` / `skip-cert-verify` / `idle-session-timeout` | `anytls,server,port,"password"[, sni=..., skip-cert-verify=..., idle-session-timeout=...]` |
 | AnyTLS `server-cert-fingerprint-sha256` | `tls-cert-sha256` |
 | `tfo` / `udp-relay` | `fast-open` / `udp`；规范化 AnyTLS/VLESS 未声明 UDP 时输出 `udp=true` |
 | HTTP / SOCKS5 账号密码 | 端口后的两个位置参数；普通用户名直接输出，含逗号等需转义字符、首尾空白或为空时加引号并转义，密码始终加引号 |
-| VLESS UUID / network | `vless,server,port,"UUID",transport=tcp|ws|http` |
-| VLESS TLS / Reality | `over-tls`、`sni`、`flow`、`public-key`、`short-id` |
-| VLESS `client-fingerprint`（URI 的 `fp`） | 启用 TLS / Reality 时输出 `tls-profile`；未指定时省略，由客户端选择默认值 |
+| VLESS UUID / network | `vless,server,port,"UUID",transport=tcp\|ws\|http` |
+| VLESS 参数与 TLS / Reality | `flow`、`sni`、`skip-cert-verify`、`public-key`、`short-id` 非空即输出；仅当 `security` 为 `tls` 或 `reality` 时输出 `over-tls=true` 与非空 `tls-profile`（URI 的 `fp`） |
 | VLESS ws/http path / host | `path` / `host` |
-| 节点组、服务组 | `[Proxy Group]`；复用配置中的顺序与成员 |
-| 链式节点 | Target 分配出口辅助节点，`[Proxy Chain]` 写 `链路名 = 上游名, 出口名`；出口启用 UDP 时附加 `udp=true` |
+| 服务组、节点组 | `[Proxy Group]`（固定顺序：服务组 → 地区节点组 → 链式节点组）；`url-test` 默认参数与 Surge 一致（`url=http://www.gstatic.com/generate_204`、`interval=300`、`tolerance=100`） |
+| 链式节点 | Target 分配出口辅助节点名 `<链路名>-exit`（冲突按目标命名空间消歧），`[Proxy Chain]` 写 `链路名 = 上游名, 出口名`；出口 `udp-relay` 为真时附加 `udp=true` |
 | rulesets | `[Remote Rule]` 按声明顺序写 `URL,策略` |
 | rules / fallback | `[Rule]` 原样规则及 `FINAL,<fallback>` |
 
-`ForLoon` 复用格式过滤和级联清理，剔除 Snell、其他目标原生节点及 `tcp/ws/http` 以外的规范化 VLESS 传输，以及未适配的 VLESS encryption / flow。fallback 清空返回 `target_loon_fallback_empty`；内部投影失败返回 `target_loon_projection_invalid`。继续由 Target 做格式相关校验，Build 保留格式无关图。
+`ForLoon` 复用格式过滤和级联清理，剔除 Snell、其他目标原生节点，以及规范化 VLESS 中 `network ∉ {tcp, ws, http}`、`encryption ∉ {"", "none"}`、`flow ∉ {"", "xtls-rprx-vision"}` 的节点。fallback 清空返回 `target_loon_fallback_empty`（400）；内部投影失败返回 `target_loon_projection_invalid`（500）。继续由 Target 做格式相关校验，Build 保留格式无关图。
 
 Loon 底版整体替换上述五个生成段，保留 `[General]`、`[Host]`、`[Rewrite]`、`[Script]`、`[MITM]` 等用户设置；清除底版中的 Surge managed header。供应商 Host 映射需要用户放进底版，不随节点来源自动导入。
 
@@ -279,9 +284,9 @@ Loon 3.0.3+ 的域名请求先匹配域名规则，再解析 DNS 匹配 IP；来
 
 - Clash YAML：`NativeProxy.Payload` 保存 `proxies` 中的单个 YAML 映射。Clash Render 重新解析该映射、用 `TargetProxy.Name` 覆盖 `name`，然后把其余字段（包括未知协议字段和嵌套结构）写入输出
 - Surge CONF / Loon：`NativeProxy.Payload` 保存 `[Proxy]` 声明中 `=` 右侧的完整内容。对应 Render 输出 `<TargetProxy.Name> = <Payload>`
-- Surge `[Proxy]` 中精确名称为 `DIRECT` / `REJECT` 的声明对应项目内置策略，Source 阶段跳过，不进入 IR 或 `@all`
+- Surge CONF / Loon `[Proxy]` 中精确名称为 `DIRECT` / `REJECT` 的声明对应项目内置策略，Source 阶段跳过，不进入 IR 或 `@all`
 - Source 保留原生候选名和独立 ID；Clash / Surge / Loon 分别在格式过滤后分配目标内唯一名称。若两个同名节点各自只支持一个目标，两边都保留原名；同一目标内冲突才追加 `②③...`
-- Clash YAML、Surge CONF、Loon 节点各自只进入对应目标视图。目标不匹配时复用协议过滤的 cascade 引擎，原生根节点分别标记为 `NAME(Clash YAML 专属)` / `NAME(Surge CONF 专属)`
+- Clash YAML、Surge CONF、Loon 节点各自只进入对应目标视图。目标不匹配时复用协议过滤的 cascade 引擎，原生根节点分别标记为 `NAME#ID(Clash YAML 专属)` / `NAME#ID(Surge CONF 专属)` / `NAME#ID(Loon CONF 专属)`
 - 若格式专属原生节点是链式上游，另一格式会同时剔除依赖它的链式节点；若进一步清空 fallback，TargetError 的清空路径会保留完整根因链
 
 结构化订阅只复制节点声明，不复制来源文档中的组、规则、DNS 或通用设置；这些部分仍由本项目配置和 `templates` 负责。
@@ -290,7 +295,7 @@ Loon 3.0.3+ 的域名请求先匹配域名规则，再解析 DNS 匹配 IP；来
 
 ## 规则排列顺序
 
-Clash / Surge 输出的规则按以下顺序排列；Loon 的段落与来源优先级见下节：
+Clash / Surge 输出的规则按以下顺序排列；Loon 的段落与来源优先级见上文 [Loon](#loon) 节：
 
 1. `rulesets`（按 `rulesets` 段书写顺序，同一服务组的多条 URL 按声明顺序排列）
 2. `rules`（按 `rules` 段书写顺序）
@@ -320,7 +325,7 @@ Clash / Surge 输出的规则按以下顺序排列；Loon 的段落与来源优�
 - `interval`：更新检查最小间隔，默认 86400 秒（24 小时）
 - `strict`：是否强制过期更新，默认 false
 
-未显式传入 `filename` 时，最终文件名默认使用 `surge.conf`；若请求带了自定义 `filename`，managed URL 中也使用该值。当 `base_url` 为空时不输出此行。Clash Meta 输出不受影响。
+未显式传入 `filename` 时，最终文件名默认使用 `surge.conf`；若请求带了自定义 `filename`，managed URL 中也使用该值。当 `base_url` 为空时不输出此行。Clash Meta 与 Loon 输出不受影响。
 
 **Docker Compose 部署的 `base_url`**：单服务 Compose 部署时，`base_url` 应填写 `subconverter` 服务的外部可访问地址（如 `https://myserver.com`）。若 `base_url` 误填容器内部地址，Surge 客户端将无法完成对 managed URL 的更新请求。
 
@@ -351,7 +356,7 @@ Clash / Surge 输出的规则按以下顺序排列；Loon 的段落与来源优�
 ### Clash Meta 合并策略
 
 - 使用 yaml.v3 Node API 解析底版为 AST
-- 在根 MappingNode 中定位并替换 `proxies`、`proxy-groups`、`rule-providers`、`rules` 四个 key
+- 在根 MappingNode 中定位并替换 `proxies`、`proxy-groups`、`rule-providers`、`rules` 四个 key；底版中不存在的 key 按上述顺序追加到根映射末尾
 - 底版中的其他 key（如 `mixed-port`、`dns`、`tun`）原样保留
 - 底版为空或非 YAML 映射文档时报错
 
@@ -362,6 +367,14 @@ Clash / Surge 输出的规则按以下顺序排列；Loon 的段落与来源优�
 - 底版中的其他段落（如 `[General]`、`[Host]`）原样保留
 - 未在底版中找到的生成段落追加到末尾
 - 底版 preamble 中的 `#!MANAGED-CONFIG` 行会被剥离，避免与新生成的 header 重复
+
+### Loon 合并策略
+
+- 与 Surge 共用 INI section 切分合并逻辑（`mergeINISections`）
+- 替换 `[Proxy]`、`[Proxy Chain]`、`[Proxy Group]`、`[Rule]`、`[Remote Rule]` 五个段落的内容
+- 底版中的其他段落（如 `[General]`、`[Host]`、`[Rewrite]`、`[Script]`、`[MITM]`）原样保留
+- 未在底版中找到的生成段落按 `[Proxy]` → `[Proxy Chain]` → `[Proxy Group]` → `[Rule]` → `[Remote Rule]` 顺序追加到末尾
+- 底版 preamble 中的 `#!MANAGED-CONFIG` 行同样会被剥离
 
 ### 无底版时的行为
 

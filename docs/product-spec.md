@@ -8,7 +8,7 @@
 
 ### 1.1 订阅源
 
-一个或多个订阅链接，可返回三类节点列表：
+一个或多个订阅来源（支持 URL、本地正文或文件引用，字段定义见[配置规约](design/config-schema.md#subscriptions)），可返回四类节点列表：
 
 ```text
 # TXT / Base64 列表
@@ -79,7 +79,7 @@ vless://11111111-2222-3333-4444-555555555555@sg.example.com:443?security=reality
 
 ```
 名称: HK-ISP
-类型: socks5/http
+类型: ss/socks5/http
 地址: 154.197.1.1:45002
 认证: user/pass
 ```
@@ -133,7 +133,7 @@ HK-03 → HK-ISP
 
 ### 2.1 面板结构
 
-用户打开 Surge / Clash Meta 客户端后，看到的代理组面板：
+用户打开 Surge / Clash Meta / Loon 客户端后，看到的代理组面板：
 
 #### 服务组 —— "这个服务走哪个出口"
 
@@ -375,7 +375,7 @@ rulesets:
 rules:
   - "GEOIP,CN,🎯 China" # 中国 IP  → 直连
 
-fallback: 🐟 FINAL # 未匹配任何规则的流量走这里（Clash 生成 MATCH，Surge 生成 FINAL）
+fallback: 🐟 FINAL # 未匹配任何规则的流量走这里（Clash 生成 MATCH，Surge / Loon 生成 FINAL）
 ```
 
 ### 配置与面板的对应关系
@@ -405,7 +405,7 @@ rulesets + rules + fallback     →    自动路由（用户无感）
 | 路由自动补充       | `@auto` 展开为节点组+包含 `@all` 的服务组+DIRECT | 消除 routing 冗余，链式组自动可用 |
 | 节点组策略         | 所有节点组都需显式指定 select/url-test    | 手动 + 自动，避免隐式默认值      |
 | 输出目标           | Clash Meta + Surge + Loon                        | Shadowrocket/QuantumultX 暂不做  |
-| Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG`，使用服务端订阅访问 token（若启用）和最终 `filename` | 用户显式控制，无需依赖反向代理头；token 来源不依赖当前请求鉴权方式，见 `T-PRV-014` |
+| Surge 订阅更新     | 在配置中声明 `base_url`，渲染时生成 `#!MANAGED-CONFIG`，使用服务端订阅访问 token（若启用）和最终 `filename` | 用户显式控制，无需依赖反向代理头；token 来源不依赖当前请求鉴权方式，由 `TestE2E_GenerateSurgeWithAdminSessionUsesServerTokenInManagedURL` 验证 |
 | 访问控制边界       | `/api/*` 使用管理员登录态和 `session_id` Cookie；`/generate` 保留 query token 兼容订阅链接；订阅 token 不进入 YAML，也不作为后台登录凭据 | 将公网后台权限与客户端订阅更新密钥解耦 |
 | 默认文件名         | Clash 默认 `clash.yaml`；Surge 默认 `surge.conf`；Loon 默认 `loon.lcf` | 客户端订阅与浏览器下载都需要稳定文件名 |
 | Web 管理后台       | React SPA 由生产镜像嵌入 Go 二进制，单个 `subconverter` 服务同源托管 SPA、`/api/*`、`/generate` 和 `/healthz` | 单镜像单服务，部署路径更简单 |

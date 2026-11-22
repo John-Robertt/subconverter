@@ -199,7 +199,7 @@ export function LoginPage() {
             </div>
             <p>
               检测到尚未初始化。请从服务日志复制 Setup Token，凭据将写入
-              auth.yaml。
+              auth.json。
             </p>
           </div>
         ) : (
@@ -325,7 +325,7 @@ export function LoginPage() {
       </section>
 
       <footer className="login-footer">
-        <span>subconverter v{authQuery.data ? "2.0" : "0.9.4"}</span>
+        <span>subconverter 管理后台</span>
         <span className="login-footer-dot" aria-hidden="true" />
         <a
           href="https://github.com/John-Robertt/subconverter"

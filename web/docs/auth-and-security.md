@@ -26,12 +26,12 @@ Cookie：`session_id`，HttpOnly、SameSite=Lax、Path=/；HTTPS 下必须 Secur
 | 状态 | 前端行为 |
 |------|----------|
 | `idle` | 表单可输入，提交按钮可点 |
-| `validating` | 按钮显示加载态，表单禁用 |
-| `invalid_credentials` | 密码框展示错误，提示剩余尝试次数 |
-| `auth_locked` | 展示锁定截止时间，禁用提交 |
-| `redirecting` | 展示登录成功并跳转 |
-| `network_error` | 展示连接错误和重试动作 |
-| `setup` | 增加 setup token、确认密码和密码强度提示，提交创建管理员；`401 setup_token_required` / `setup_token_invalid` 展示 token 错误 |
+| `validating` | 提交按钮显示加载态并禁用 |
+| `invalid_credentials` | 右下角 Toast 提示用户名或密码错误及剩余尝试次数 |
+| `auth_locked` | 登录提交返回 423 时以右下角 Toast 展示锁定截止时间并禁用提交，到期后自动恢复（注：首次加载页面即从 `authStatus.locked_until` 获知锁定时，当前仅禁用提交按钮、尚未在页面展示解锁时间） |
+| `redirecting` | 登录成功后清除认证提示并直接跳转 `next` 或 `/sources` |
+| `network_error` | `/api/auth/status` 不可达时展示带“重试”按钮的错误 Toast；登录/setup 提交网络错误展示持久错误 Toast |
+| `setup` | 增加 setup token、确认密码和密码强度提示，提交创建管理员；`401 setup_token_required` / `setup_token_invalid` 及 `409 auth_state_not_writable` 以右下角 Toast 展示状态码与原因 |
 
 失败次数由后端按 IP + 用户名联合计数。第 5 次失败后后端返回 `423 auth_locked`，默认锁定 15 分钟，UI 只读显示后端返回的解锁时间。
 
@@ -40,7 +40,7 @@ Cookie：`session_id`，HttpOnly、SameSite=Lax、Path=/；HTTPS 下必须 Secur
 - 未选择“记住我”：session 最长 24 小时。
 - 选择“记住我”：session 最长 7 天。
 - 前端不持久保存密码、session id 或订阅访问 token。
-- 主题选择可以写入 `localStorage`，但不属于认证材料。
+- 浏览器 `localStorage` 仅存储界面偏好（`subconverter.theme`）与首次本地保存确认标记（`subconverter.firstSaveConfirmed`），不保存认证材料。
 
 ## Setup Bootstrap
 
@@ -61,11 +61,12 @@ Cookie：`session_id`，HttpOnly、SameSite=Lax、Path=/；HTTPS 下必须 Secur
 
 复制订阅链接时，前端调用 `GET /api/generate/link`，由后端根据 `base_url`、格式、文件名和订阅访问 token 返回完整 URL。前端不得自行持有或拼接 `SUBCONVERTER_TOKEN`。
 
-复制 `token_included=true` 的链接前，UI 必须提示：
+下载页卡片默认以 `include_token=false` 展示不含 token 的链接预览；点击“复制”并得到 `token_included=true` 的链接时，UI 弹出确认框提示：
 
 - token 会进入 URL。
 - URL 可能出现在客户端配置、浏览器历史或代理日志中。
-- 用户可以选择不附带 token，自行手动处理访问控制。
+
+确认后才写入剪贴板（取消则不复制；弹窗本身不另设“复制无 token 链接”按钮）。
 
 浏览器内下载按钮可凭当前 session Cookie 调用 `/generate`，不需要把订阅 token 写入前端状态。
 

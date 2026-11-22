@@ -146,7 +146,8 @@ export const fixtureGroups: GroupPreviewResponse = {
       name: "GRP_HK",
       strategy: "url-test",
       match: "(港|HK)",
-      members: [
+      members: ["🇭🇰 香港 IEPL 01", "🇭🇰 香港 IEPL 02", "🇭🇰 Snell HK Premium"],
+      member_details: [
         { kind: "proxy", id: "proxy-1", name: "🇭🇰 香港 IEPL 01" },
         { kind: "proxy", id: "proxy-2", name: "🇭🇰 香港 IEPL 02" },
         { kind: "proxy", id: "proxy-7", name: "🇭🇰 Snell HK Premium" }
@@ -156,7 +157,8 @@ export const fixtureGroups: GroupPreviewResponse = {
       name: "GRP_JP",
       strategy: "url-test",
       match: "(日本|JP|东京)",
-      members: [
+      members: ["🇯🇵 大阪 BGP 01", "🇯🇵 东京 IEPL 02"],
+      member_details: [
         { kind: "proxy", id: "proxy-3", name: "🇯🇵 大阪 BGP 01" },
         { kind: "proxy", id: "proxy-4", name: "🇯🇵 东京 IEPL 02" }
       ]
@@ -165,7 +167,8 @@ export const fixtureGroups: GroupPreviewResponse = {
       name: "GRP_SG",
       strategy: "select",
       match: "(新加坡|SG)",
-      members: [{ kind: "proxy", id: "proxy-5", name: "🇸🇬 新加坡 01" }]
+      members: ["🇸🇬 新加坡 01"],
+      member_details: [{ kind: "proxy", id: "proxy-5", name: "🇸🇬 新加坡 01" }]
     }
   ],
   chained_groups: [],
@@ -173,13 +176,20 @@ export const fixtureGroups: GroupPreviewResponse = {
     {
       name: "SVC_PROXY",
       strategy: "select",
-      members: [
+      members: ["GRP_HK", "GRP_JP", "🇭🇰 香港 IEPL 01", "🇯🇵 东京 IEPL 02"],
+      member_details: [
         { kind: "node_group", name: "GRP_HK" },
         { kind: "node_group", name: "GRP_JP" },
         { kind: "proxy", id: "proxy-1", name: "🇭🇰 香港 IEPL 01" },
         { kind: "proxy", id: "proxy-4", name: "🇯🇵 东京 IEPL 02" }
       ],
       expanded_members: [
+        { value: "GRP_HK", origin: "auto_expanded" },
+        { value: "GRP_JP", origin: "auto_expanded" },
+        { value: "🇭🇰 香港 IEPL 01", origin: "all_expanded" },
+        { value: "🇯🇵 东京 IEPL 02", origin: "all_expanded" }
+      ],
+      expanded_member_details: [
         { kind: "node_group", name: "GRP_HK", origin: "auto_expanded" },
         { kind: "node_group", name: "GRP_JP", origin: "auto_expanded" },
         { kind: "proxy", id: "proxy-1", name: "🇭🇰 香港 IEPL 01", origin: "all_expanded" },
@@ -189,11 +199,23 @@ export const fixtureGroups: GroupPreviewResponse = {
     {
       name: "SVC_DIRECT",
       strategy: "select",
-      members: [{ kind: "reserved", name: "DIRECT" }],
-      expanded_members: [{ kind: "reserved", name: "DIRECT", origin: "literal" }]
+      members: ["DIRECT"],
+      member_details: [{ kind: "reserved", name: "DIRECT" }],
+      expanded_members: [{ value: "DIRECT", origin: "literal" }],
+      expanded_member_details: [{ kind: "reserved", name: "DIRECT", origin: "literal" }]
     }
   ],
   all_proxies: [
+    "🇭🇰 香港 IEPL 01",
+    "🇭🇰 香港 IEPL 02",
+    "🇯🇵 大阪 BGP 01",
+    "🇯🇵 东京 IEPL 02",
+    "🇸🇬 新加坡 01",
+    "🇭🇰 Snell HK Premium",
+    "🇩🇪 法兰克福 Reality",
+    "Home Relay"
+  ],
+  all_proxy_details: [
     { kind: "proxy", id: "proxy-1", name: "🇭🇰 香港 IEPL 01" },
     { kind: "proxy", id: "proxy-2", name: "🇭🇰 香港 IEPL 02" },
     { kind: "proxy", id: "proxy-3", name: "🇯🇵 大阪 BGP 01" },

@@ -30,13 +30,26 @@
 
 ## 里程碑总览
 
-| 里程碑 | 状态 | 对应需求 | 对应测试 | 当前结论 | 下一步 |
-|--------|------|----------|----------|----------|--------|
-| M6 Admin API 基线 | 已验收 | `REQ-14` - `REQ-17`, `REQ-27` | `T-ADM-*`, `T-RLD-*`, `T-CCH-*` | 配置 CRUD、静态校验、热重载、Admin auth/session 已实现并通过验证 | 启动 M7 预览与状态 API |
-| M7 预览与状态 API | 已验收 | `REQ-18` - `REQ-21` | `T-PRV-*` | 预览、生成预览、订阅链接与状态 API 已实现并通过验证 | 启动 M8 Web 镜像与 Compose 集成；M9 可依赖 M7 API |
-| M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SPA-*` | 正式 Vite SPA 工程、`pnpm web:embed` 嵌入式 Web 发布链路、单服务 Compose 示例和 CI Web 产物校验已实现 | 已启动并完成 M9 前端核心页面 |
-| M9 前端工程与核心页面 | 已验收 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `T-WEB-001` - `T-WEB-010`, `T-WEB-021` | Shell、API client、登录/setup、A1-A4、B1、C、主题、保存与独立 reload 工作流已实现并通过验证 | 启动 M10 前端完善与端到端验收 |
-| M10 前端完善与端到端验收 | 已验收 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-016`, `T-E2E-010`, `T-E2E-014`, `T-E2E-015` | A5-A8、B2/B3、正式 E2E 与桌面浏览器验收已通过 | M10 已完成；可进入发布前整理 |
+| 里程碑 | 状态 | 对应需求 | 对应测试 | 当前结论 | 备注 |
+|--------|------|----------|----------|----------|------|
+| M6 Admin API 基线 | 已验收 | `REQ-14` - `REQ-17`, `REQ-27` | `T-ADM-*`, `T-APP-*`, `T-AUTH-*` | 配置 CRUD、静态校验、热重载、Admin auth/session 已实现并通过验证（并发 reload 429 Go 测试待补，见下方当前状态） | 已完成 |
+| M7 预览与状态 API | 已验收 | `REQ-18` - `REQ-21` | `T-PRV-*`, `T-APP-*`, `T-SRV-*` | 预览、生成预览、订阅链接与状态 API 已实现并通过验证 | 已完成 |
+| M8 Web 镜像与 Compose 集成 | 已验收 | `REQ-22`, `REQ-23` | `T-SRV-*`, Web embed / Docker 构建 | 正式 Vite SPA 工程、`pnpm web:embed` 嵌入式 Web 发布链路、单服务 Compose 示例和 CI Web 产物校验已实现 | 已完成 |
+| M9 前端工程与核心页面 | 已验收 | `REQ-24` 部分, `REQ-25` 部分, `REQ-26`, `REQ-27` | `web/src/App.test.tsx`, `LoginPage.test.tsx`, `T-INT-*` | Shell、API client、登录/setup、A1-A4、B1、C、主题、保存与独立 reload 工作流已实现并通过验证 | 已完成 |
+| M10 前端完善与端到端验收 | 已验收 | `REQ-24` 剩余, `REQ-25` 剩余 | `T-WEB-011` - `T-WEB-016`, `T-E2E-010`, `T-E2E-014`, `T-E2E-015` | A5-A8、B2/B3、正式 E2E 与桌面浏览器验收已通过 | 已完成 |
+| M10 后续增量扩展（至当前版本） | 已交付 | 扩展能力 | `T-*-LOON-*`, `T-*-STORE-*`, `T-*-CHECK-*`, `T-*-LOCAL-*`, `T-*-BOOT-*`, `T-WEB-UX-*`, `T-INT-*` | 已落地 Loon 订阅与输出、本地正文版本文件存储、ZIP 配置包导入导出、来源检查、资源读取、本地缺失主配置首次初始化、登录失败空闲过期/定时解锁 | 持续维护 |
+
+## 当前代码基线与已知差距
+
+> 下方 M6–M10 分节保留了对应里程碑完成时的验收历史快照；以下摘要反映当前仓库实测基线与已知待补差距。
+
+- **后端测试规模**：共 16 个 Go package，其中 15 个含 `*_test.go`（`internal/webui` 无测试文件）。
+- **前端测试规模**：
+  - 单元测试（`pnpm web:test`）：2 个测试文件 / 86 个测试（`web/src/App.test.tsx` 82 个 + `web/src/pages/LoginPage.test.tsx` 4 个）。
+  - Playwright 集成测试（`pnpm --filter subconverter-web test:e2e:int`）：13 个 spec 文件 / 57 个 `T-INT-*` 测试（`web/e2e/integration/*.spec.ts`）。
+  - 真实后端 E2E（`pnpm --filter subconverter-web test:e2e`）：`web/e2e/m10.spec.ts` 含 3 个测试（`T-E2E-010`、`T-E2E-014`、`T-E2E-015`），`web/playwright.config.ts` 已排除 `integration/`。
+- **已知局部差距**：
+  - 前端与验收契约仍存在少量局部差距：首次进入 `/login` 即处于 `auth_locked` 时未显示解锁时间；B1/B2 在无运行版本时不发请求但尚未展示空态引导；C 页未在正文展开配置源可写性与 revision；`409 config_revision_conflict` 仅提供重新加载入口而无独立手动合并；`auth_state_not_writable` 走通用 Setup 失败 Toast。详情见 `web/docs/acceptance.md`。
 
 ## M6 Admin API 基线
 
@@ -112,7 +125,7 @@
 | M8-WP2 嵌入式 Web 与 Compose 路径 | 已验收 | `pnpm web:embed`、根 `Dockerfile`、`internal/webui`、Compose 示例、Go fallback | `docs/deployment.md`, `docs/design/web-ui.md` | 单服务 Web 镜像与同源路径 | `test -s internal/webui/dist/index.html`、`docker build -t subconverter:local .` | 无 |
 | M8-WP3 M8 收口验收 | 已验收 | Web 镜像构建、代理验证、文档同步 | `implementation/implementation-plan.md` | M8 验收记录 | 本文件更新，前端/Go/Docker 测试结果记录 | 无 |
 
-### M8 当前契约记录（2026-05-05）
+### M8 验收记录（2026-05-05，历史快照）
 
 - 状态：已验收。
 - 实现的 REQ：`REQ-22`、`REQ-23`。
@@ -125,11 +138,11 @@
   - Docker build：根 Dockerfile 不运行 pnpm，Go 阶段使用 `-tags webui` 嵌入已同步的 `internal/webui/dist`，runtime 只包含 Go 二进制和底版模板。
   - Compose smoke test：`subconverter` 是唯一浏览器入口，验证 SPA fallback、`/healthz`、`/api/status` 与 `/generate` 均由同一服务处理。
   - 后端回归：`go test ./...`、`go vet ./...`。
-- 当前标准测试命令与结果：
+- 验收时标准测试命令与结果（当时快照；最新基线见顶部“当前代码基线与已知差距”）：
   - `go test ./...`：通过。
   - `go test -tags webui ./...`：通过。
   - `go vet ./...`：通过。
-  - `pnpm web:test`：通过，1 个测试文件 / 21 个测试。
+  - `pnpm web:test`：通过，1 个测试文件 / 21 个测试（当时规模）。
   - `pnpm web:typecheck`：通过。
   - `pnpm web:build`：通过。
   - `test -s internal/webui/dist/index.html`：通过。
@@ -137,11 +150,11 @@
 - 关键证据：
   - `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml`：pnpm workspace 工程与锁文件。
   - 根 `Dockerfile`：使用已同步的 `internal/webui/dist`，Go `webui` build tag 嵌入静态资源。
-  - `internal/server/webui.go`：`/api/*`、精确 `/generate`、`/healthz` 优先交给后端；其他路径 fallback 到 `index.html`。
+  - `internal/server/webui.go`：`/api`（含 `/api/`）、`/generate`（含 `/generate/`）、`/healthz`（含 `/healthz/`）优先交给后端；其他路径 fallback 到 `index.html`。
   - `docker-compose.demo.yaml`：只引用已构建镜像，单个 `subconverter` 服务映射 `8080:8080`。
 - 示例输入或 fixture：Compose 验证使用临时只读配置 `/private/tmp/subconverter-m8/config/config.yaml`，订阅源由本地临时 HTTP 服务提供，包含 1 个 `HK-01` 节点。
-- 关键响应：`/download` 不触发下载、返回 SPA；`/generate?format=clash|surge` 触发后端下载响应；`/api/status` 未登录时返回 `auth_required`；`/healthz` 返回响应体 `ok`。
-- 已知错误案例：未登录访问 `/api/*` 返回 `401 auth_required`；`/generate/path` 非精确生成端点，按 SPA fallback 处理。
+- 关键响应：`/download` 不触发下载、返回 SPA；`/generate?format=clash|surge|loon`（`loon` 于后续扩展加入）触发后端下载响应；`/api/status` 未登录时返回 `auth_required`；`/healthz` 返回响应体 `ok`。
+- 已知错误案例：未登录访问 `/api/*` 返回 `401 auth_required`；`/generate/path` 属于 `/generate/` 前缀，交由后端 `ServeMux` 返回 `404` 而非 SPA fallback。
 - 已知限制：M8 只交付工程、嵌入式发布链路和部署入口；登录、配置编辑、API client、主题切换、保存/预览工作流归属 M9/M10。
 - 下一步：启动 M9 前端工程与核心页面，基于 M7 API 和 M8 单服务 SPA/Compose 基础实现正式后台交互。
 
@@ -158,10 +171,10 @@
 
 测试命令结果：
 
-- `pnpm web:test`：通过，1 个测试文件 / 21 个测试。
+- `pnpm web:test`：通过，1 个测试文件 / 21 个测试（M9 验收时快照）。
 - `pnpm web:build`：通过，Vite 生产构建成功。
 - 发布前 Docker 环境验证项：`docker build -t subconverter:local .` 使用已同步 Web embed 产物并嵌入 Go 二进制。
-- `go test ./...`：通过，15 个 Go package 均通过。
+- `go test ./...`：通过，16 个 Go package 中 15 个含测试包均通过（`internal/webui` 无测试文件）。
 - `pnpm --filter subconverter-web dev -- --host 127.0.0.1` + 本地 mock API：通过，Chrome 冒烟验证 `/sources`、`/filters` 草稿节点预览、`/nodes` 运行时节点预览可渲染且无明显首屏溢出。
 
 关键产出：
@@ -212,9 +225,9 @@
 - 测试命令与结果：
   - `go test ./...`：通过。
   - `pnpm web:typecheck`：通过。
-  - `pnpm web:test`：通过，1 个测试文件 / 21 个测试。
+  - `pnpm web:test`：通过，1 个测试文件 / 21 个测试（M10 验收时快照；当前已扩展至 2 文件 / 83 测试）。
   - `pnpm web:build`：通过。
-  - `pnpm web:test:e2e`：正式 E2E 入口保留，当前标准验证未将其列为必跑项。
+  - `pnpm --filter subconverter-web test:e2e`（真后端 E2E）与 `pnpm --filter subconverter-web test:e2e:int`（mock 集成测试）：正式 E2E 入口保留，当前标准 Release CI 未将其列为必跑项。
   - 发布前 Docker 环境验证项：`docker build -t subconverter:local .` 使用已同步 Web embed 产物；不在 Docker 内运行 pnpm。
   - `git diff --check -- .github web docs`：通过。
   - `Computer Use` + Chrome `127.0.0.1:15174` 桌面验收：通过；覆盖 setup 后登录态、A5 新增 URL 保存后手动 reload、A6 policy selector、A7 fallback/base_url/templates、A8 通过态与错误 Drawer 跳转、B2 分组预览、B3 Clash/Surge 预览、下载和含 token 链接复制确认。

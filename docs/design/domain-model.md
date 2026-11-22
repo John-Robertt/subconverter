@@ -33,7 +33,7 @@
 - 用户配置层中的 `custom_proxies` 只保留原始 YAML 字段（`name` / `url` / `relay_through`）
 - `url` 解析得到的 `type/server/port/params/plugin` 在 `Prepare` 阶段存入 `PreparedCustomProxy.Parsed`，不回写到 `Config`
 - `ChainTemplate` 是 Group 阶段使用的运行期结构，不属于稳定领域模型
-- `PreparedRouteMember` 携带 `RouteMemberOrigin` 枚举（`Literal` / `AutoExpanded` / `AllExpanded`），用于 ValidateGraph 区分用户声明 vs 机器展开的成员
+- `PreparedRouteMember` 携带 `RouteMemberOrigin` 枚举（`RouteMemberOriginLiteral` = `"literal"` / `RouteMemberOriginAutoExpanded` = `"auto_expanded"` / `RouteMemberOriginAllExpanded` = `"all_expanded"`），用于 ValidateGraph 区分用户声明 vs 机器展开的成员
 - `ProxyID` 在节点创建阶段分配：Source 为原始节点分配，Group 为链式节点分配；ID 在本次 Build 内不复用且保持稳定，不承诺跨配置 revision 持久化
 - 节点显示名不进入图引用命名空间；节点组、服务组、`DIRECT`、`REJECT` 仍共享策略命名空间
 
@@ -55,7 +55,7 @@
 | `KindCustom` | 用户手工声明，且**未**设 `relay_through` | `ss`, `socks5`, `http` | ✗（名字已显式） | ✗ | ✓ |
 | `KindChained` | `custom_proxy` 带 `relay_through` 派生 | 继承自 custom_proxy | ✗ | ✗ | ✗ |
 
-> 带 `relay_through` 的 custom_proxy 本身不产生 `KindCustom` 节点——它仅作为链式模板被 Group 阶段消费，生成 `KindChained` 节点和一个同名链式组。用户若需"直连 + 中继"两种入口，声明两条不同 `name` 的 custom_proxies。
+> 带 `relay_through` 的 custom_proxy 本身不产生 `KindCustom` 节点——它仅作为链式模板被 Group 阶段消费，生成 `KindChained` 节点和一个同名链式组。用户若需"直连 + 中继"两种入口，可声明两条 `custom_proxies`（即使同名也不会报错，直连节点会在目标投影内自动追加后缀消歧；建议区分命名以便辨识）。
 
 建议属性：
 
@@ -79,7 +79,7 @@
 - `DialerID` 仅在链式节点上生效，用于按身份引用其上游；`ChainNameSuffix` 保存链式模板名
 - `Params` 为 `map[string]string`，承载代理类型的核心参数（如 SS 的 `cipher/password`、AnyTLS 的 `password/sni`、socks5/http 的 `username/password`）
 - `Plugin` 为可选结构，承载 SS plugin 的名称与参数，避免把 plugin 语义混入 `Params` 的字符串 key 约定中
-- 渲染器按目标客户端能力解释 `Plugin`：Clash Meta 可通用透传，Surge 仅支持可映射的子集
+- 渲染器按目标客户端能力解释 `Plugin`：Clash Meta 可通用透传，Surge 和 Loon 仅支持可映射的 simple-obfs 子集
 - `NativeProxy` 只用于已采用目标原生语法的结构化订阅节点：`Format` 为 `clash`、`surge` 或 `loon`，`Payload` 保存一个 Clash 节点映射或一个 Surge / Loon `[Proxy]` 声明右值
 - 带 `NativeProxy` 的节点仍是 `KindSubscription`，因此共享过滤、地区匹配、ID 引用、链式上游和 `@all` 语义；其 `server` / `port` 只作可选预览信息，不作为模型必填项
 - 目标格式投影只保留 `NativeProxy.Format` 与目标一致的节点；渲染时由目标内分配的 `TargetProxy.Name` 覆盖原生声明中的旧名称
@@ -150,7 +150,7 @@
 
 - 采用透传方案。系统不解析规则的类型和值语义，只提取 `Policy` 用于引用校验
 - 渲染时直接输出 `Raw` 原始字符串
-- 理由：内联规则的语法（GEOIP、DOMAIN、IP-CIDR 等）在 Clash Meta 和 Surge 中一致，无需格式转换
+- 理由：内联规则的语法（GEOIP、DOMAIN、IP-CIDR 等）在 Clash Meta、Surge 和 Loon 中一致，无需格式转换
 - RULE-SET 条目不经过 Rule 实体——它们由渲染器根据 Ruleset 实体自动生成，格式差异在渲染层处理
 
 ### Pipeline
@@ -208,14 +208,27 @@ Loon 的链路声明，包含最终唯一的 `Name` 和按连接顺序排列的 
 - 节点组和服务组的名称都可被服务组引用
 - fallback 必须引用已存在服务组
 
+### 单节点结构不变量（`model.ValidateProxyInvariant`）
+
+`Source` 和 `Group` 阶段在产出节点后统一调用 `model.ValidateProxyInvariant`（`internal/model/proxy_invariant.go`）集中校验单节点结构：
+
+- `ID != 0`、`Name != ""`、`Kind != ""`、`Type != ""`
+- `Kind == KindChained` 时 `DialerID != 0` 且 `ChainNameSuffix != ""` 必填；非 `KindChained` 时两者均必须为零值
+- `Native != nil` 时：仅允许 `Kind == KindSubscription`，`Native.Format` 必须为 `clash` / `surge` / `loon`，`Native.Payload != ""`（豁免下述 `Server` / `Port` / `Type` / `Params` 检查）
+- `Native == nil` 时：`Server != ""`、`1 <= Port <= 65535`，且受 `allowedProxyTypesByKind` 与 `requiredProxyParams` 约束：
+  - `KindSubscription`：允许 `ss`（必填 `cipher`、`password`）、`anytls`（必填 `password`）
+  - `KindSnell`：允许 `snell`（必填 `psk`）
+  - `KindVLess`：允许 `vless`（必填 `uuid`、`network`）
+  - `KindCustom` / `KindChained`：允许 `ss`（必填 `cipher`、`password`）、`socks5` / `http`（无必填参数）
+
 ### 目标输出名称唯一性保证策略
 
-节点名不是引用体系的 key。Source 保留原始节点候选名并分配独立 ID，Group 为派生链式节点分配独立 ID；Clash 和 Surge 分别在格式专属节点过滤完成后分配唯一输出名。
+节点名不是引用体系的 key。Source 保留原始节点候选名并分配独立 ID，Group 为派生链式节点分配独立 ID；Clash、Surge 和 Loon 分别在格式专属节点过滤完成后分配唯一输出名（Loon 还在同一目标命名空间内为链式出口分配 `<chainName>-exit` 辅助节点名并消歧）。
 
 | 冲突场景 | 策略 | 原因 |
 |---------|------|------|
 | 同一目标内多个节点候选名相同 | 按目标内保序顺序使用原名、`②`…`⑩`、`(11)`… 后缀 | 满足客户端名称唯一约束，同时保持确定性 |
-| 同名节点分别只支持 Clash / Surge | 两个目标都保留原始名 | 名称分配发生在格式过滤之后，互不占用名额 |
+| 同名节点分别只支持 Clash / Surge / Loon | 各自目标均保留原始名 | 名称分配发生在格式过滤之后，互不占用名额 |
 | 节点候选名与节点组、服务组、`DIRECT`、`REJECT` 冲突 | 保留策略/组名，节点追加后缀 | 策略引用仍以名称工作，节点身份不需要抢占该命名空间 |
 | 候选名本身含 `②` 等自然后缀 | 统一检查已占用最终名并继续递增 | 保证最终输出仍唯一 |
 
@@ -248,5 +261,5 @@ Web 管理后台不维护独立的领域模型：
 - `GET /api/config` 返回 `{config_revision, config}`；前端编辑 `config`，保存时携带原 `config_revision` 做条件写回
 - 前端直接消费 `/api/preview/*` 返回的 JSON；节点和代理成员包含本次 Build 内的 `proxy-N` 调试 ID，显示名可重复
 - 前端不接触 `Pipeline`、`RuntimeConfig` 等内部中间表示
-- 前端编辑操作 = 修改 Config JSON → POST 草稿预览 / 校验 → `PUT /api/config`（仅本地可写配置源可用；远程配置源为只读）
+- 前端编辑操作 = 修改 Config JSON → POST 草稿预览 / 校验 → `PUT /api/config`（仅本地可写配置源可用；远程配置源或不可写的本地文件/目录为只读）
 - 保序字段在前端以数组形式操作，拖拽排序直接改变数组索引

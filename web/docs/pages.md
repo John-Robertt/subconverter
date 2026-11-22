@@ -7,17 +7,17 @@
 | 路由 | 页面 | 数据来源 |
 |------|------|----------|
 | `/login` | 登录 / 首次 setup | `GET /api/auth/status` + `POST /api/auth/login` / `POST /api/auth/setup` |
-| `/sources` | A1 订阅来源 | `GET /api/config` 的 `sources` |
-| `/filters` | A2 过滤器 | 草稿 config，预览用 `POST /api/preview/nodes` |
-| `/groups` | A3 节点分组 | 草稿 config，预览用 `POST /api/preview/groups` |
-| `/routing` | A4 路由策略 | `routing` + 可引用成员集合 |
+| `/sources` | A1 订阅来源 | `GET /api/config` 的 `sources` + `POST /api/resources/read` + `POST /api/subscriptions/check` |
+| `/filters` | A2 过滤器 | 草稿 config，正则校验用 `POST /api/config/validate`，预览用 `POST /api/preview/nodes` |
+| `/groups` | A3 节点分组 | 草稿 config，正则校验用 `POST /api/config/validate`，预览用 `POST /api/preview/groups` |
+| `/routing` | A4 路由策略 | `routing` + 可引用成员集合（含链式分组） |
 | `/rulesets` | A5 规则集 | `rulesets` |
 | `/rules` | A6 内联规则 | `rules` |
-| `/settings` | A7 其他配置 | `fallback` / `base_url` / `templates` |
-| `/validate` | A8 静态配置校验 | `POST /api/config/validate` |
+| `/settings` | A7 其他配置 | `fallback` / `base_url` / `templates` + `POST /api/resources/read` |
+| `/validate` | A8 静态校验 | `POST /api/config/validate` |
 | `/nodes` | B1 节点预览 | `GET /api/preview/nodes` |
 | `/preview/groups` | B2 分组预览 | `GET /api/preview/groups` |
-| `/download` | B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` |
+| `/download` | B3 生成下载 | `GET /api/generate/preview` + `GET /api/preview/nodes` + `/generate` + `GET /api/generate/link` + `POST /api/config/import` + `GET /api/config/{saved,effective}.zip` |
 | `/status` | C 系统状态 | `GET /api/status` + `GET /healthz` |
 
 `/generate` 只表示后端生成接口和订阅链接路径，不作为 SPA 页面路由。
@@ -40,7 +40,7 @@
 
 - 编辑页操作前端草稿，不直接修改运行时配置。
 - A2/A3 草稿预览会联网拉取来源，必须显示明确加载文案。
-- A4 成员选择器必须支持节点组、服务组、`DIRECT`、`REJECT`、`@all`、`@auto`。
+- A4 成员选择器支持节点组、链式分组、服务组、`DIRECT`、`REJECT`、`@all`、`@auto`。
 - A8 诊断跳转以 `locator.json_pointer` 为定位依据，不能依赖展示路径反查字段。
 
 ## B 区预览页
@@ -52,5 +52,5 @@
 
 ## C 区状态页
 
-- 展示版本、配置源、可写性、revision、dirty 和最近 reload 结果。
+- 展示健康状态与运行时长、版本/commit/构建日期、配置状态（未创建/待重载/已加载）及条目统计、最近 reload 历史、运行环境（配置文件路径、监听地址、工作目录、Go runtime、内存占用、请求总数）和 `/healthz` 探针行（注：配置源可写性与 revision 字段当前未在状态页正文展开）。
 - 不把 `GET /api/status` 解释为远程配置源实时探测。HTTP(S) 配置源的 revision 基于最近观测结果。

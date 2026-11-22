@@ -15,7 +15,7 @@ test.describe("runtime preview", () => {
     await expect(page.getByText("Home Relay")).toBeVisible();
     // Format-specific badges
     await expect(page.locator(".chip", { hasText: "Surge" }).first()).toBeVisible();
-    await expect(page.locator(".chip", { hasText: "Clash" }).first()).toBeVisible();
+    await expect(page.locator(".chip", { hasText: "Clash / Loon" }).first()).toBeVisible();
   });
 
   test("T-INT-RTM-002 nodes page filters by kind via category pill", async ({ page }) => {

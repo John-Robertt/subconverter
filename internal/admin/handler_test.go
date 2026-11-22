@@ -13,7 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/John-Robertt/subconverter/internal/app"
 	"github.com/John-Robertt/subconverter/internal/auth"
@@ -420,6 +422,108 @@ type adminMapFetcher struct {
 
 func (f *adminMapFetcher) Fetch(_ context.Context, rawURL string) ([]byte, error) {
 	return append([]byte(nil), f.responses[rawURL]...), nil
+}
+
+type blockingAdminFetcher struct {
+	mu       sync.Mutex
+	body     []byte
+	blocking bool
+	entered  chan struct{}
+	release  chan struct{}
+}
+
+func (f *blockingAdminFetcher) Fetch(ctx context.Context, _ string) ([]byte, error) {
+	f.mu.Lock()
+	shouldBlock := f.blocking
+	entered := f.entered
+	release := f.release
+	f.mu.Unlock()
+
+	if shouldBlock {
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]byte(nil), f.body...), nil
+}
+
+// T-RLD-001: POST /api/reload returns 429 reload_in_progress when another reload is running
+// T-RLD-008: POST /api/reload succeeds again after the in-progress reload completes
+func TestReloadEndpointReturns429WhenInProgress(t *testing.T) {
+	dir := t.TempDir()
+	remoteURL := "https://config.example.com/config.yaml"
+	fetcher := &blockingAdminFetcher{
+		body:    []byte(appTestConfigYAML),
+		entered: make(chan struct{}, 1),
+		release: make(chan struct{}),
+	}
+	appSvc, err := app.New(context.Background(), app.Options{
+		ConfigLocation: remoteURL,
+		Fetcher:        fetcher,
+	})
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
+	authSvc, err := auth.New(auth.Options{
+		StatePath:  filepath.Join(dir, "auth.json"),
+		SetupToken: "setup-secret",
+		Logger:     log.New(io.Discard, "", 0),
+	})
+	if err != nil {
+		t.Fatalf("auth.New: %v", err)
+	}
+	handler := New(appSvc, authSvc)
+
+	setup := serve(handler, http.MethodPost, "/api/auth/setup", `{"username":"admin","password":"long-enough-password","setup_token":"setup-secret"}`, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup status = %d body = %s", setup.Code, setup.Body.String())
+	}
+	headers := map[string]string{"Cookie": auth.SessionCookieName + "=" + setup.Result().Cookies()[0].Value}
+
+	fetcher.mu.Lock()
+	fetcher.blocking = true
+	fetcher.mu.Unlock()
+
+	firstRespCh := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		firstRespCh <- serve(handler, http.MethodPost, "/api/reload", "", headers)
+	}()
+
+	select {
+	case <-fetcher.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first POST /api/reload to start fetching")
+	}
+
+	second := serve(handler, http.MethodPost, "/api/reload", "", headers)
+	if second.Code != http.StatusTooManyRequests || !strings.Contains(second.Body.String(), `"code":"reload_in_progress"`) {
+		t.Fatalf("concurrent reload status = %d body = %s, want 429 reload_in_progress", second.Code, second.Body.String())
+	}
+
+	close(fetcher.release)
+	select {
+	case first := <-firstRespCh:
+		if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"success":true`) {
+			t.Fatalf("first reload status = %d body = %s, want 200 success", first.Code, first.Body.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first POST /api/reload to complete")
+	}
+
+	fetcher.mu.Lock()
+	fetcher.blocking = false
+	fetcher.mu.Unlock()
+
+	third := serve(handler, http.MethodPost, "/api/reload", "", headers)
+	if third.Code != http.StatusOK || !strings.Contains(third.Body.String(), `"success":true`) {
+		t.Fatalf("retry reload status = %d body = %s, want 200 success", third.Code, third.Body.String())
+	}
 }
 
 func serve(handler http.Handler, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {

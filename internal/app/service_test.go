@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -959,4 +960,224 @@ func lastReloadTimeOf(status *StatusResult) string {
 		return ""
 	}
 	return status.LastReload.Time
+}
+
+type blockingFetcher struct {
+	mu        sync.Mutex
+	responses map[string][]byte
+	blockURL  string
+	entered   chan struct{}
+	release   chan struct{}
+}
+
+func (f *blockingFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error) {
+	f.mu.Lock()
+	shouldBlock := f.blockURL != "" && f.blockURL == rawURL
+	entered := f.entered
+	release := f.release
+	f.mu.Unlock()
+
+	if shouldBlock {
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	f.mu.Lock()
+	body, ok := f.responses[rawURL]
+	f.mu.Unlock()
+	if !ok {
+		return nil, errors.New("missing response")
+	}
+	return append([]byte(nil), body...), nil
+}
+
+// T-RLD-001: concurrent Reload rejects re-entry with ErrReloadInProgress
+// T-RLD-008: subsequent Reload succeeds after the in-flight Reload completes
+func TestReloadConcurrentReturnsInProgress(t *testing.T) {
+	rawURL := "https://config.example.com/config.yaml"
+	fetcher := &blockingFetcher{
+		responses: map[string][]byte{rawURL: []byte(validConfigYAML)},
+		entered:   make(chan struct{}, 1),
+		release:   make(chan struct{}),
+	}
+	svc, err := New(context.Background(), Options{ConfigLocation: rawURL, Fetcher: fetcher})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	fetcher.mu.Lock()
+	fetcher.blockURL = rawURL
+	fetcher.responses[rawURL] = []byte(strings.Replace(validConfigYAML, "strategy: select", "strategy: url-test", 1))
+	fetcher.mu.Unlock()
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, reloadErr := svc.Reload(context.Background())
+		firstDone <- reloadErr
+	}()
+
+	select {
+	case <-fetcher.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first Reload to enter fetch")
+	}
+
+	if _, err := svc.Reload(context.Background()); !errors.Is(err, errtype.ErrReloadInProgress) {
+		t.Fatalf("concurrent Reload error = %v, want ErrReloadInProgress", err)
+	}
+
+	close(fetcher.release)
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf("first Reload failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first Reload to finish")
+	}
+
+	fetcher.mu.Lock()
+	fetcher.blockURL = ""
+	fetcher.mu.Unlock()
+
+	if _, err := svc.Reload(context.Background()); err != nil {
+		t.Fatalf("subsequent Reload after completion failed: %v", err)
+	}
+}
+
+// T-RLD-002: in-flight Generate and Preview requests do not block Reload and finish with old snapshot
+// T-RLD-005: Reload completes while slow Generate is still fetching upstream subscriptions
+// T-PRV-012: slow PreviewNodes / PreviewGroups do not hold RLock across upstream fetches
+func TestReloadDoesNotBlockOnSlowGenerateAndPreview(t *testing.T) {
+	oldSubURL := "https://sub.example.com/old"
+	newSubURL := "https://sub.example.com/new"
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configYAML(oldSubURL, "", "HK")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fetcher := &blockingFetcher{
+		responses: map[string][]byte{
+			oldSubURL: subResponse("ss://YWVzLTI1Ni1jZmI6cGFzcw@hk.example.com:8388#HK-OLD"),
+			newSubURL: subResponse("ss://YWVzLTI1Ni1jZmI6cGFzcw@sg.example.com:8388#SG-NEW"),
+		},
+		blockURL: oldSubURL,
+		entered:  make(chan struct{}, 3),
+		release:  make(chan struct{}),
+	}
+
+	svc, err := New(context.Background(), Options{ConfigLocation: configPath, Fetcher: fetcher})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	type genOutcome struct {
+		res *GenerateResult
+		err error
+	}
+	type nodesOutcome struct {
+		res *NodePreviewResult
+		err error
+	}
+	type groupsOutcome struct {
+		res *GroupPreviewResult
+		err error
+	}
+
+	genCh := make(chan genOutcome, 1)
+	nodesCh := make(chan nodesOutcome, 1)
+	groupsCh := make(chan groupsOutcome, 1)
+
+	go func() {
+		res, genErr := svc.Generate(context.Background(), generate.Request{Format: "clash", Filename: "clash.yaml"})
+		genCh <- genOutcome{res: res, err: genErr}
+	}()
+	go func() {
+		res, previewErr := svc.PreviewNodes(context.Background())
+		nodesCh <- nodesOutcome{res: res, err: previewErr}
+	}()
+	go func() {
+		res, previewErr := svc.PreviewGroups(context.Background())
+		groupsCh <- groupsOutcome{res: res, err: previewErr}
+	}()
+
+	for i := range 3 {
+		select {
+		case <-fetcher.entered:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for slow request %d/3 to enter fetch", i+1)
+		}
+	}
+
+	if err := os.WriteFile(configPath, []byte(configYAML(newSubURL, "", "SG")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		_, reloadErr := svc.Reload(context.Background())
+		reloadDone <- reloadErr
+	}()
+	select {
+	case err := <-reloadDone:
+		if err != nil {
+			t.Fatalf("Reload while slow requests are in flight failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Reload blocked on slow Generate / Preview requests")
+	}
+
+	// New requests after Reload immediately see the new snapshot.
+	newGen, err := svc.Generate(context.Background(), generate.Request{Format: "clash", Filename: "clash.yaml"})
+	if err != nil {
+		t.Fatalf("new Generate after Reload: %v", err)
+	}
+	if !strings.Contains(string(newGen.Body), "SG-NEW") || strings.Contains(string(newGen.Body), "HK-OLD") {
+		t.Fatalf("new Generate did not use reloaded snapshot: %s", newGen.Body)
+	}
+	newNodes, err := svc.PreviewNodes(context.Background())
+	if err != nil {
+		t.Fatalf("new PreviewNodes after Reload: %v", err)
+	}
+	if len(newNodes.Nodes) != 1 || newNodes.Nodes[0].Name != "SG-NEW" {
+		t.Fatalf("new PreviewNodes = %+v, want SG-NEW", newNodes.Nodes)
+	}
+	newGroups, err := svc.PreviewGroups(context.Background())
+	if err != nil {
+		t.Fatalf("new PreviewGroups after Reload: %v", err)
+	}
+	if len(newGroups.NodeGroups) != 1 || newGroups.NodeGroups[0].Name != "SG" {
+		t.Fatalf("new PreviewGroups = %+v, want SG group", newGroups.NodeGroups)
+	}
+
+	// Unblock old in-flight requests and verify they finish with the old snapshot.
+	close(fetcher.release)
+
+	oldGen := <-genCh
+	if oldGen.err != nil {
+		t.Fatalf("in-flight Generate failed: %v", oldGen.err)
+	}
+	if !strings.Contains(string(oldGen.res.Body), "HK-OLD") || strings.Contains(string(oldGen.res.Body), "SG-NEW") {
+		t.Fatalf("in-flight Generate did not keep old snapshot: %s", oldGen.res.Body)
+	}
+
+	oldNodes := <-nodesCh
+	if oldNodes.err != nil {
+		t.Fatalf("in-flight PreviewNodes failed: %v", oldNodes.err)
+	}
+	if len(oldNodes.res.Nodes) != 1 || oldNodes.res.Nodes[0].Name != "HK-OLD" {
+		t.Fatalf("in-flight PreviewNodes = %+v, want HK-OLD", oldNodes.res.Nodes)
+	}
+
+	oldGroups := <-groupsCh
+	if oldGroups.err != nil {
+		t.Fatalf("in-flight PreviewGroups failed: %v", oldGroups.err)
+	}
+	if len(oldGroups.res.NodeGroups) != 1 || oldGroups.res.NodeGroups[0].Name != "HK" {
+		t.Fatalf("in-flight PreviewGroups = %+v, want HK group", oldGroups.res.NodeGroups)
+	}
 }

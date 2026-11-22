@@ -56,22 +56,23 @@ RUnlock()
 POST /api/reload
   │
   ├─ reloadMu.TryLock()     已有重载在执行时，返回 429 reload_in_progress
-  ├─ readConfigBytes       读取 YAML；远程主配置先 Invalidate 对应缓存项
-  ├─ parseConfigYAML       解析配置
-  ├─ prepareAdminConfig    应用层检查 + config.Prepare
+  ├─ readSavedConfig        本地先检查是否存在（缺失则记录失败并返 409 config_not_initialized）；远程主配置先 Invalidate 再经 readConfigBytes 读取
+  ├─ setObservedConfigRevision  短暂 WLock 更新观测 revision
+  ├─ parseConfigYAML        解析配置
+  ├─ prepareAdminConfig     应用层检查 + config.Prepare
   │
-  ├─ 失败？ ──► 返回错误，RuntimeConfig 不变
+  ├─ 失败？ ──► 短暂 WLock 记录 lastReload 失败状态，返回错误，生效 RuntimeConfig 不变
   │
   └─ 成功：
        WLock()
-       替换配置指针、revision、生效 YAML 和重载状态
+       替换配置指针、runtime/observed revision、生效 YAML、加载时间和重载状态
        WUnlock()
 ```
 
 关键保证：
 
-- 热重载校验失败时，旧 `RuntimeConfig` 保持不变，所有请求继续使用旧配置
-- 配置写锁只保护上述内存状态的更新，文件读取、网络拉取、解析和 Prepare 均在锁外
+- 热重载校验失败时，旧 `RuntimeConfig`、`runtimeConfigRevision` 与 `effectiveConfigYAML` 保持不变，所有请求继续使用旧配置（仅会短暂加写锁更新 `observedConfigRevision` 与 `lastReload` 记录）
+- 文件读取、网络拉取、解析和 Prepare 均在配置锁外执行，写锁仅用于上述极短的内存状态替换/记录
 - 读请求只在读取 `*RuntimeConfig` 指针快照时短暂持有 `RLock`，随后释放锁再执行 Source / Filter / Group / Render 等可能耗时阶段
 - 已经取得快照的请求会继续使用旧配置完成；热重载成功后，新请求会读取新配置快照
 - 重载只验证主配置的静态内容，不拉取节点来源、不加载模板，也不执行 Build、Target 或 Render。要确认生成可用，需继续运行对应预览或生成请求
@@ -101,7 +102,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 ## Stage 1: LoadConfig
 
-这里的 `LoadConfig` 是“读取并解析配置”的阶段名称。当前启动和热重载入口由 `app.Service` 的 `readConfigBytes`、`parseConfigYAML` 完成，再调用 `prepareAdminConfig`；`config.Load` 仍是配置包提供的加载函数，并非当前应用入口的调用链。
+这里的 `LoadConfig` 是“读取并解析配置”的阶段名称。当前启动和热重载入口由 `app.Service` 的 `readSavedConfig`（内部按需调用 `readConfigBytes`）和 `parseConfigYAML` 完成，再调用 `prepareAdminConfig`；`config.Load` 仍是配置包提供的加载函数，并非当前应用入口的调用链。
 
 职责：
 
@@ -125,7 +126,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 - 展开 `@auto`（存入 `ExpandedMembers`），`@all` 保留到请求期 Route 阶段展开
 - 构建策略命名空间：注册 DIRECT/REJECT、节点组名、服务组名和链式组名，检测组/保留策略之间的命名冲突
 - 检测路由环路
-- 校验 ruleset/rule 策略引用合法性、fallback 存在性
+- 校验 ruleset/rule 策略引用合法性、解析内联规则并提取目标策略、校验 fallback 存在性
 
 输出：
 
@@ -156,7 +157,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 输出：
 
-- `SourceResult`（原始节点集合 + 链式模板）
+- `SourceResult`（原始节点集合 + 链式模板 + `NextProxyID`；返回前调用 `model.ValidateProxyInvariant` 校验单节点结构不变量，`NextProxyID` 确保 Group 阶段不复用被 Filter 排除的原始节点 ID）
 
 说明：
 
@@ -165,17 +166,17 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 - 同名节点保留各自候选显示名和独立 ID；本阶段不修改节点名
 - `InspectSource` 复用 Source 正文解析以检查单个来源；订阅通过 `InspectSubscription` 按内容提供识别结果或候选，Snell / VLESS 通过各自严格解析器检查，不改变 Build 中的解析规则；订阅识别规则见 [配置规约](config-schema.md#web-订阅检查)
 - 订阅格式由 `format`、URL 后缀及内容识别决定，规则以 [配置规约](config-schema.md#subscriptions) 为准
-- Clash YAML 复制 `proxies` 中的完整节点映射；Surge CONF / Loon 复制 `[Proxy]` 中每条声明的完整右值。这些节点都保留为 `KindSubscription`，并用 `NativeProxy.Format` 记录其唯一目标格式
-- TXT 响应体支持 Base64 编码列表和明文列表；明文列表兼容 SS（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss, ...`）和 AnyTLS（`anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）行格式
+- Clash YAML 复制 `proxies` 中的完整节点映射；Surge CONF / Loon 复制 `[Proxy]` 中每条声明的完整右值（本地 `content` 或 `content_file` 在显式 `format: surge` / `loon` 且无 `[Section]` 头时自动补 `[Proxy]` 接受裸节点片段）。这些节点都保留为 `KindSubscription`，并用 `NativeProxy.Format` 记录其唯一目标格式
+- TXT 响应体支持 Base64 编码列表和明文列表，两者解码后共用统一行解析器，兼容 SS（SIP002 `ss://`、Quantumult X `shadowsocks = ...`、Surge `<name> = ss/shadowsocks, ...`；仅 SIP002 解析 `plugin`）和 AnyTLS（`anytls://`、Quantumult X `anytls=...`、Surge `<name> = anytls, ...`）行格式
 - AnyTLS 输入按“宽进严出”归一化：Surge / Quantumult X 方言字段可被接受，但只有目标客户端官方支持字段会在 Render 阶段输出
-- TXT 订阅中的空行、整行注释和单行解析失败会被跳过；结构化订阅声明错误整源报错；任一格式最终 0 个有效节点都报错
+- TXT 订阅中的空行、整行注释和单行解析失败会被跳过；结构化订阅声明错误整源报错（Clash YAML 附带 `proxies[index]`，Surge CONF / Loon 附带 `[Proxy]` 物理行号）；任一格式最终 0 个有效节点都报错
 - Snell 来源单行解析失败整源报错
 - VLESS 来源单行解析失败整源报错
-- 来源错误对 URL 脱敏；本地节点池正文使用字段路径定位，文件使用本地路径定位，Snell / VLESS 错误均保留物理行号
+- 来源错误对 URL 脱敏；本地订阅正文与节点池正文使用字段路径定位（如 `sources.subscriptions[index].content` / `sources.snell[index].content`），文件使用本地路径定位，Snell / VLESS 错误均保留物理行号
 
 来源遍历顺序：
 
-- `sources` 下的 `subscriptions` / `snell` / `vless` 三类 key 按 YAML 书写顺序记录到 `Sources.FetchOrder`，Source 阶段按此顺序调度拉取
+- `sources` 下的 `subscriptions` / `snell` / `vless` 三类 key 按 YAML 书写顺序记录到 `Sources.FetchOrder`（为空时默认按 `["subscriptions", "snell", "vless"]`），Source 阶段按此顺序调度拉取；`custom_proxies` 不进入 `FetchOrder`，统一在拉取类来源之后转换并追加到 `Proxies` 末尾再分配 `ProxyID`
 
 ---
 
@@ -192,16 +193,17 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 输出：
 
-- `FilterResult`
+- `FilterResult`（供预览入口 `SourceAndFilter` / `SourceFilterGroupRouteValidate` 使用；生成管道内部的 `filterCompiled` 直接产出保留节点切片）
   - `Included`：未被过滤的节点集合，供后续 Group / Route / Render 使用
-  - `Excluded`：被 `filters.exclude` 命中的拉取类节点，仅供预览和诊断使用
+  - `Excluded`：被 `filters.exclude` 命中的拉取类节点，用于统计过滤数量
+  - `All`：按 Source 原始顺序保留的全部 `FilteredProxy{Proxy, Filtered}`，供节点预览输出
 
 说明：
 
 - 过滤对象是拉取类节点（`KindSubscription`，含 TXT / Clash YAML / Surge CONF / Loon；加上 `KindSnell` + `KindVLess`）
 - 自定义代理和链式节点不参与过滤
-- 生成管道只消费 `FilterResult.Included`
-- `/api/preview/nodes` 同时返回 `Included` 与 `Excluded` 的合并视图，并用 `filtered` 字段标记节点是否被排除
+- 生成管道只消费未过滤节点（`Included`）
+- `/api/preview/nodes` 按 Source 原始顺序输出 `FilterResult.All`，用 `filtered` 字段标记是否被排除，并分别以 `Included` / `Excluded` 计数 `active_count` / `filtered_count`
 
 ---
 
@@ -220,12 +222,12 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 输出：
 
-- 全部节点、节点组集合、`@all` 展开列表
+- `GroupResult`：全部节点（原始 + 链式，返回前调用 `model.ValidateProxyInvariant` 校验）、`RegionGroups`、`ChainedGroups`、`NodeGroups`（地区组在前、链式组在后）、`@all` 展开列表
 
 子步骤执行顺序：
 
 1. **构建地区节点组**：正则匹配过滤后的拉取类节点
-2. **构建链式节点和链式组**：利用已构建的地区组或正则匹配确定上游节点
+2. **构建链式节点和链式组**：按 `relay_through.type` 利用已构建的地区组（`group`）、正则匹配（`select`）或全部过滤后的拉取类节点（`all`）确定上游节点
 3. **计算 `@all`**：收集全部原始节点（不含链式节点）
 
 关键规则：
@@ -241,20 +243,20 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 职责：
 
-- 根据 `routing` 生成服务组
-- 将预计算后的 `@auto` 成员和 `@all` token解析为类型化引用
-- 根据 `rulesets` 生成服务组绑定关系
-- 解析 `rules`
+- 根据 Prepare 产出的 `PreparedRouteGroup` 生成服务组
+- 将预计算后的 `@auto` 成员和 `@all` token 解析为类型化引用
+- 将 `PreparedRuleset` 转换为 IR 规则集集合
+- 将 Prepare 阶段已解析的 `PreparedRule` 转换为 IR 内联规则列表（不再重复解析规则文本）
 - 记录 `fallback`
 
 输入：
 
-- `routing`、`rulesets`、`rules`、`fallback`
+- Prepare 产出的 `routing`（`[]PreparedRouteGroup`）、`rulesets`（`[]PreparedRuleset`）、`rules`（`[]PreparedRule`）、`fallback`
 - `GroupResult`
 
 输出：
 
-- 服务组集合、规则集集合、内联规则集合、fallback
+- `RouteResult`：服务组集合（`RouteGroups`）、规则集集合、内联规则集合、fallback，以及用于 ValidateGraph 和分组预览溯源的 `PreparedRouteGroups` 与 `ResolvedRouteGroups`（含成员来源 `Origin`）
 
 说明：
 
@@ -302,10 +304,10 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
 
 说明：
 
-- Clash 视图剔除 Snell 节点及级联影响（见 `rendering.md` §Snell 过滤）
-- Surge 视图剔除 VLESS 节点及级联影响（见 `rendering.md` §VLESS 过滤）
-- Clash 视图剔除 Surge CONF 原生订阅节点；Surge 视图剔除 Clash YAML 原生订阅节点
-- 原生格式剔除与协议剔除共用同一级联：依赖被剔除上游的链式节点、空节点组/服务组、对应规则与 `@all` 成员同步清理
+- Clash 视图（`ForClash`）剔除 Snell 节点及所有非 Clash 原生订阅节点（Surge CONF / Loon），并执行级联清理（见 [Snell 过滤](rendering.md#snell-过滤)）
+- Surge 视图（`ForSurge`）剔除 VLESS 节点及所有非 Surge 原生订阅节点（Clash YAML / Loon），并执行级联清理（见 [VLESS 过滤](rendering.md#vless-过滤)）
+- Loon 视图（`ForLoon`）剔除 Snell、所有非 Loon 原生订阅节点（Clash YAML / Surge CONF），以及规范化 VLESS 中不支持的传输（非 `tcp`/`ws`/`http`）、未适配的 `encryption`（非空且非 `none`）或 `flow`（非空且非 `xtls-rprx-vision`）；通用名称分配完成后追加执行 `projectLoonChains`，在预留组/保留策略/已有代理与链路名后，为每个带 `Dialer` 的链式节点分配 `<链路名>-exit` 辅助出口名（冲突按 `②`…`⑩`、`(11)`… 消歧），写入 `TargetPipeline.ProxyChains`（含 `Members: [Dialer, exitName]` 与 `UDP`），并将出口代理改名为 `exitName`、清空 `Dialer`（见 [Loon 渲染](rendering.md#loon)）
+- 原生格式剔除与协议剔除共用同一级联：依赖被剔除上游的链式节点、空节点组/服务组、对应规则集、内联规则与 `@all` 成员同步清理
 - 级联过滤算法由共享引擎 `filterUnsupportedProxies`（`internal/target/filter_cascade.go`）提供
 - 若 `fallback` 在目标格式视图中被清空，本阶段返回 `TargetError`
 
@@ -339,7 +341,7 @@ GET 预览只读取当前生效的 `RuntimeConfig`；POST 预览只使用请求�
               └──────── 执行所需阶段 ──────────┘
 
 POST /api/reload
-  reloadMu.TryLock → 读取 / 解析 / Prepare → WLock → 替换状态 → Unlock
+  reloadMu.TryLock → readSavedConfig（本地缺失返 409）→ 短暂 WLock 更新观测 revision → 解析 / Prepare → 成功则 WLock 替换生效状态，失败则短暂 WLock 记录 lastReload
 ```
 
 配置锁、重载互斥和文件保存的边界见 [app.Service 并发安全](app-service.md#并发安全)。请求各自构建结果，共享的 `RuntimeConfig` 按只读约定使用；远程资源缓存另由 `CachedFetcher` 的锁保护。

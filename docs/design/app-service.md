@@ -12,15 +12,17 @@
 
 ```text
 internal/admin ──► internal/app ──► internal/config
-                        │          ├─► internal/fetch
-                        │          ├─► internal/generate
-                        │          ├─► internal/pipeline
-                        │          ├─► internal/model
-                        │          └─► internal/errtype
+       │                │          ├─► internal/fetch
+       │                │          ├─► internal/generate
+       │                │          ├─► internal/pipeline
+       │                │          ├─► internal/model
+       │                │          └─► internal/errtype
+       ├─► internal/auth
+       └─► internal/errtype
 ```
 
 约束：
-- `admin` 只调用 `app.Service` 的公开方法，不直接导入 `model`、`pipeline` 或 `generate`
+- `admin` 只调用 `app.Service` 和 `auth.Service` 的公开方法，不直接导入 `model`、`pipeline` 或 `generate`
 - `app.Service` 在方法内部完成 `model.Proxy` → `NodePreview` 等 DTO 转换
 - `admin` 只接收/返回 JSON 友好的 DTO 和标准错误
 
@@ -28,11 +30,56 @@ internal/admin ──► internal/app ──► internal/config
 
 ## 方法签名
 
+### 初始化、选项、常量与导出辅助函数
+
+```go
+const (
+    DefaultDataDir              = "/config"
+    MaxConfigImportArchiveBytes = 10 * 1024 * 1024
+    ConfigArchiveFilename       = "subconverter-config.zip"
+)
+
+type Options struct {
+    ConfigLocation string
+    DataDir        string
+    ListenAddr     string
+    Fetcher        fetch.Fetcher
+    Generate       generate.Options
+    Now            func() time.Time
+    Version        string
+    Commit         string
+    BuildDate      string
+}
+
+// New 初始化应用服务；本地主配置缺失时保留空运行快照以便受保护后台初始化。
+func New(ctx context.Context, opts Options) (*Service, error)
+
+// NewWithRuntime 以预构造的 RuntimeConfig 创建服务实例（主要用于测试）。
+func NewWithRuntime(location string, runtimeCfg *config.RuntimeConfig, fetcher fetch.Fetcher, genOpts generate.Options) *Service
+
+// IncrementRequestCount 递增进程内请求计数（由 HTTP 中间件调用，跳过 OPTIONS 与 /healthz）。
+func (s *Service) IncrementRequestCount()
+
+// NewGenerateInput 校验 format 与 filename，返回规范化后的 GenerateInput（供 admin 层调用）。
+func NewGenerateInput(format, rawFilename string, filenamePresent bool) (GenerateInput, error)
+
+// ValidateResultFromError / GraphValidateResultFromError 将 ConfigError / BuildError(CodeBuildValidationFailed)
+// 翻译为携带 json_pointer 的 ValidateResult（供 ValidateDraft 与 admin 错误映射共用）。
+func ValidateResultFromError(err error) (*ValidateResult, bool)
+func GraphValidateResultFromError(err error) (*ValidateResult, bool)
+
+// BadRequestError 表示应用层请求参数错误，由 admin 映射为 400 + error.code。
+type BadRequestError struct {
+    Code    string
+    Message string
+}
+```
+
 ### 配置管理
 
 ```go
-// ConfigSnapshot 读取已保存配置，还原可读正文；无法读取的文件保留引用供修复。
-// revision 仍取主配置文件。
+// ConfigSnapshot 读取已保存配置，还原三类来源的可读本地 content_file 及 DataDir 下的托管模板版本文件；
+// 无法读取的来源文件与普通本地模板路径保留原引用。revision 仍取主配置文件。
 // 用于 GET /api/config。
 func (s *Service) ConfigSnapshot(ctx context.Context) (*ConfigSnapshotResult, error)
 
@@ -61,7 +108,7 @@ func (s *Service) EffectiveConfigArchive(ctx context.Context) (*ConfigArchiveRes
 // 用于 GET /api/config/saved.zip。
 func (s *Service) SavedConfigArchive(ctx context.Context) (*ConfigArchiveResult, error)
 
-// ImportConfigYAML 将上传 YAML 解析为 Config JSON，并读取已有本地正文引用。
+// ImportConfigYAML 将上传 YAML 解析为 Config JSON，并还原三类来源可读本地 content_file 及 DataDir 下的托管模板版本文件。
 // 不写文件、不替换 RuntimeConfig、不执行 Prepare。
 // 用于 POST /api/config/import。
 func (s *Service) ImportConfigYAML(ctx context.Context, raw []byte) (*ImportConfigYAMLResult, error)
@@ -88,10 +135,11 @@ func (s *Service) ValidateDraft(ctx context.Context, configJSON json.RawMessage)
 ```go
 // Reload 触发完整热重载流程：
 // 1. reloadMu.TryLock；已有重载在执行时返回 ErrReloadInProgress
-// 2. 在配置锁外读取并解析 YAML，再执行 prepareAdminConfig / Prepare
-//    远程主配置读取前先 Invalidate 对应缓存项
-// 3. 成功 → 短暂加写锁，替换配置指针、revision、生效 YAML 和重载状态
-// 4. 失败 → 旧配置不变，返回错误
+// 2. 在配置锁外调用 readSavedConfig（本地缺失时记录失败 lastReload 并返回 CodeConfigNotInitialized/409；
+//    远程主配置先 Invalidate 对应缓存项再读取），随后短暂 WLock 更新 observedConfigRevision
+// 3. 在配置锁外解析 YAML 并执行 prepareAdminConfig / Prepare
+// 4. 成功 → 短暂加写锁，替换配置指针、revision、生效 YAML、加载时间和重载状态
+// 5. 失败 → 生效配置不变，短暂加写锁记录失败 lastReload，返回错误
 // 用于 POST /api/reload。
 func (s *Service) Reload(ctx context.Context) (*ReloadResult, error)
 ```
@@ -105,7 +153,8 @@ func (s *Service) Reload(ctx context.Context) (*ReloadResult, error)
 func (s *Service) PreviewNodes(ctx context.Context) (*NodePreviewResult, error)
 
 // PreviewGroups 基于当前 RuntimeConfig 快照执行 Source→Filter→Group→Route→ValidateGraph。
-// ValidateGraph 发现图级错误时返回结构化诊断，不返回部分成功的分组结果。
+// ValidateGraph 发现图级错误时返回 *errtype.BuildError（CodeBuildValidationFailed），
+// 由 admin 经 GraphValidateResultFromError 转换为 400 结构化诊断，不返回部分成功的分组结果。
 // 用于 GET /api/preview/groups。
 func (s *Service) PreviewGroups(ctx context.Context) (*GroupPreviewResult, error)
 ```
@@ -266,10 +315,10 @@ type DiagnosticItem struct {
 // 后端不感知前端页面结构；前端根据 Locator.Section 自行决定展示位置。
 
 type DiagnosticLocator struct {
-    Section    string `json:"section"`
-    Key        string `json:"key,omitempty"`
-    Index      int    `json:"index,omitempty"`
-    ValuePath  string `json:"value_path,omitempty"`
+    Section     string `json:"section"`
+    Key         string `json:"key,omitempty"`
+    Index       *int   `json:"index,omitempty"` // 指针类型确保下标 0 仍序列化，仅 nil 时省略
+    ValuePath   string `json:"value_path,omitempty"`
     JSONPointer string `json:"json_pointer"` // 唯一稳定定位依据
 }
 ```
@@ -348,15 +397,12 @@ type PreviewMemberItem struct {
 ### GenerateInput / GenerateResult
 
 ```go
-// 当前实现中 GenerateInput 是 generate.Request 的类型别名。
-// 字段：Format string；Filename string（已由 HTTP 层校验并规范化后的最终文件名）。
+// 当前实现中 GenerateInput 与 GenerateResult 均为 generate 包类型的别名，
+// 使 *app.Service 直接满足 server.Generator 接口。
+// GenerateInput 字段：Format string；Filename string（已由 HTTP 层校验并规范化后的最终文件名）。
+// GenerateResult 字段：Filename string；ContentType string（"text/yaml; charset=utf-8" 或 "text/plain; charset=utf-8"）；Body []byte。
 type GenerateInput = generate.Request
-
-type GenerateResult struct {
-    Filename    string // 最终下载文件名
-    ContentType string // "text/yaml; charset=utf-8" 或 "text/plain; charset=utf-8"
-    Body        []byte // 完整配置文本
-}
+type GenerateResult = generate.Result
 ```
 
 ### GenerateLinkInput / GenerateLinkResult
@@ -415,7 +461,7 @@ type RuntimeEnvironment struct {
     WorkingDir      string `json:"working_dir"`
     GoRuntime       string `json:"go_runtime"`
     MemoryAllocMB   string `json:"memory_alloc_mb"`
-    RequestCount24h uint64 `json:"request_count_24h"` // 当前实现为进程内请求计数，启动未满 24h 时即自启动以来
+    RequestCount24h uint64 `json:"request_count_24h"` // 自进程启动以来的累计请求计数（跳过 OPTIONS 与 /healthz），暂无 24h 滚动窗口
     UptimeSeconds   int64  `json:"uptime_seconds"`
 }
 // 注意：LastReload 用指针 + omitempty，让"从未 reload"（nil → JSON 省略字段）与
@@ -429,22 +475,25 @@ type RuntimeEnvironment struct {
 
 `app.Service` 方法在内部完成以下转换，`admin` 不接触 `model` 包：
 
-| app 方法 | 内部消费的 model 类型 | 返回的 DTO |
-|----------|---------------------|-----------|
-| `PreviewNodes` | `model.Proxy` (FilterResult.Included + Excluded) | `NodePreviewResult` |
-| `PreviewGroups` | `model.Pipeline` (GroupResult + RouteResult) | `GroupPreviewResult` |
-| `Generate` | `model.Pipeline` (经 Target 投影) → render 输出 | `GenerateResult` |
+| app 方法 | 内部消费的类型 | 返回的 DTO |
+|----------|----------------|------------|
+| `PreviewNodes` | `*pipeline.FilterResult`（按 Source 顺序的 `All` + `Included` / `Excluded` 计数） | `NodePreviewResult` |
+| `PreviewGroups` | `*pipeline.GroupPreviewStageResult`（`Group` + `Route`）与 `*config.RuntimeConfig`（取地区组 `RawMatch`） | `GroupPreviewResult` |
+| `Generate` | `model.Pipeline`（经 Target 投影）→ render 输出 | `GenerateResult` |
 | `GenerateLink` | `*config.RuntimeConfig` 的 `base_url` + 服务端配置的订阅访问 token | `GenerateLinkResult` |
-| `Status` | `*config.RuntimeConfig` 元信息 | `StatusResult` |
+| `Status` | `Service` 内存元数据（版本/revision/reload/计数）+ 本地配置源字节 | `StatusResult` |
 
 设计原则：
 - DTO 是 `model` 的**子集视图**：只暴露前端需要的字段，不暴露内部实现细节
 - `Kind` 枚举在 DTO 层用字符串表示（`"subscription"` / `"snell"` / `"vless"` / `"custom"`），避免 `model.ProxyKind` 泄漏到 HTTP 契约；AnyTLS 节点使用 `kind="subscription"`、`type="anytls"`
 - `GroupPreviewResult` 中的 `ExpandedMembers` 携带 `origin` 字段，区分用户显式声明 / `@auto` 展开 / `@all` 展开
 
-### ConfigError → DiagnosticItem 翻译
+### ConfigError / BuildError → DiagnosticItem 翻译
 
-`config.Prepare` 产出的 `ConfigError` 携带结构化路径（`Section`、`Key`、`Index`、`ValuePath`），这些是配置域概念，不涉及 JSON 序列化格式。`app.Service` 在返回 `ValidateResult` 和 `PUT /api/config` 校验失败响应时，在 app 层完成翻译：
+`config.Prepare` 产出的 `ConfigError` 携带结构化路径（`Section`、`Key`、`Index`、`ValuePath`），这些是配置域概念，不涉及 JSON 序列化格式。`app` 包导出 `ValidateResultFromError` 和 `GraphValidateResultFromError` 统一完成翻译：
+
+- `ValidateDraft` 在方法内部调用 `ValidateResultFromError`，直接返回 `(*ValidateResult, nil)`
+- `SaveConfig`、`Reload`、`PreviewNodesFromDraft`、`PreviewGroups`、`PreviewGroupsFromDraft`、`Generate`、`GenerateFromDraft` 返回原始 `error`，由 `admin` 层的 `writeServiceError(..., validationBody=true)` 调用上述两个导出函数转换为 `400` + `ValidateResult` JSON
 
 ```text
 ConfigError{Section:"groups", Key:"🇭🇰 Hong Kong", Index:0, ValuePath:"match"}
@@ -467,13 +516,16 @@ DiagnosticItem{Locator:{Section:"groups", Key:"🇭🇰 Hong Kong", Index:0, Val
 
 | 错误类型 | 定义位置 | 判断方式 | HTTP 状态 / code |
 |----------|---------|----------|------------------|
-| `*errtype.ConfigError` | `internal/errtype` | `errors.As` | `CodeConfigNotInitialized` 返回 `409 config_not_initialized`；其他配置错误返回 400 |
-| `*errtype.RevisionConflictError` | `internal/errtype` | `errors.As` | `409 config_revision_conflict` |
+| `*errtype.ConfigError` | `internal/errtype` | `errors.As` | `CodeConfigNotInitialized` 返回 `409 config_not_initialized`；其他配置错误返回 400（启用 `validationBody` 时返回 `ValidateResult`） |
+| `*app.BadRequestError` | `internal/app` | `errors.As` | `400` + `badReq.Code` |
+| `*errtype.RevisionConflictError` | `internal/errtype` | `errors.As` | `409 config_revision_conflict`（附带 `current_config_revision`） |
 | `errtype.ErrConfigSourceReadonly` | `internal/errtype`（sentinel） | `errors.Is` | `409 config_source_readonly` |
 | `errtype.ErrConfigFileNotWritable` | `internal/errtype`（sentinel） | `errors.Is` | `409 config_file_not_writable` |
-| `errtype.ErrReloadInProgress` | `internal/errtype`（sentinel） | `errors.Is` | 429 |
-| `*errtype.FetchError` | `internal/errtype` | `errors.As` | 502 |
-| `*errtype.BuildError` / `*errtype.TargetError` / `*errtype.RenderError` | `internal/errtype` | `errors.As` | 400/500（按 `validation.md` 映射） |
+| `errtype.ErrReloadInProgress` | `internal/errtype`（sentinel） | `errors.Is` | `429 reload_in_progress` |
+| `*errtype.FetchError` | `internal/errtype` | `errors.As` | `502` + `fetchErr.Code` |
+| `*errtype.ResourceError` | `internal/errtype` | `errors.As` | `CodeResourceContentWriteFailed` 返回 `409 resource_content_write_failed`；其余（如 `CodeResourceLocalReadFailed`）返回 `500` |
+| `*errtype.BuildError` / `*errtype.TargetError` / `*errtype.RenderError` | `internal/errtype` | `errors.As` | `400` / `500`（按 `validation.md` 映射；`CodeBuildValidationFailed` 在 `validationBody` 端点返回 `400 ValidateResult`） |
+| 其他未分类错误 | — | 兜底分支 | `500 internal_error` |
 
 revision 冲突需要携带当前配置源 revision，供 `PUT /api/config` 的 `409 config_revision_conflict` 响应返回 `current_config_revision`：
 
@@ -505,11 +557,11 @@ var (
 
 `sync.RWMutex` 保护当前生效配置及相关内存状态：
 
-- 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`）：只在复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
+- 读路径（`PreviewNodes`、`PreviewGroups`、`Generate`、`GenerateLink`）：只在通过 `runtimeSnapshot` 复制 `*RuntimeConfig` 指针时短暂 `RLock`，随后释放锁
 - `Status`：只在 `RLock` 内复制运行时 revision、加载时间、最近 reload 和远程配置最近观测 revision 等内存态；本地配置源的文件读取与 sha256 计算在释放锁后执行，`config_dirty` 在无文件且无运行快照时为 false，其余按保存版本与运行版本差异计算
 - `EffectiveConfigYAML`：只在 `RLock` 内复制当前生效 YAML 字节；该快照只在启动成功和 `Reload` 成功时更新
 - `EffectiveConfigArchive`：复用 `EffectiveConfigYAML` 取得生效 YAML 快照，再读取其中的本地订阅与模板位置；正文读取与 ZIP 编码在释放锁后执行
-- 写路径（`Reload`）：先在锁外读取、解析和准备配置；校验成功后，短暂加写锁一起更新配置指针、revision、生效 YAML、加载时间和重载状态
+- 写路径（`Reload`、`ConfigSnapshot`）：`Reload` 先在锁外读取、解析和准备配置，读取完成后会短暂加写锁更新 `observedConfigRevision`；校验成功后短暂加写锁一起更新配置指针、revision、生效 YAML、加载时间和重载状态，失败时也会短暂加写锁记录 `lastReload`（保持生效快照不变）；`ConfigSnapshot` 读取配置后同样短暂加写锁更新 `observedConfigRevision`
 - 慢速订阅拉取、模板加载和渲染不持有配置锁
 
 例如，请求 A 取得旧配置后开始下载订阅，重载 B 此时可以准备并发布新配置。A 仍用旧配置完成，之后取得快照的请求才使用新配置。`RuntimeConfig` 按只读约定使用，管道各自构建结果；其 Go 类型并未强制深层数据不可修改。
@@ -519,7 +571,7 @@ var (
 `SaveConfig` 用 `saveMu` 串行执行同一服务实例内的保存，保持生效快照不变：
 
 - 先读取文件并计算 `config_revision`，与调用方传入的版本比较；不匹配时返回冲突，保留文件原样
-- 校验通过后按当前已保存配置的服务正文文件比较内容，复用未变引用，仅为新增或变化的正文发布版本文件。再把引用写入完整 YAML 的同目录临时文件，用 `os.Rename` 替换原配置；主配置提交失败时只回收本次新增正文，复用文件与旧版本不覆盖
+- 校验通过后按当前已保存配置的服务正文文件比较内容，复用未变引用，仅为新增或变化的正文发布版本文件。再把引用写入完整 YAML 的同目录临时文件：首次创建（原文件不存在）使用 `os.Link` 排他发布，已有文件使用 `os.Rename` 原子替换；主配置提交失败（含并发创建冲突 `os.ErrExist`）时只回收本次新增正文，复用文件与旧版本不覆盖
 - 若序列化结果与当前文件完全相同，直接返回原 revision，不重写配置文件
 - 成功时根据写出的字节计算并返回新 revision。下一次本地 `Status` 会重新读文件并计算 revision，生效 revision 仍要等成功重载才更新
 

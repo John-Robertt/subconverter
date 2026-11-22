@@ -43,12 +43,13 @@ internal/app → internal/{config,fetch,generate,pipeline,model,errtype}
 internal/generate → internal/{config,fetch,model,pipeline,target,render}
 internal/pipeline → internal/{config,fetch,model,errtype,proxyparse,ssparse}
 internal/config → internal/{errtype,fetch,proxyparse}
+internal/fetch → internal/{errtype}
 internal/proxyparse → internal/{ssparse}
 internal/render → internal/{model,errtype}
 internal/target → internal/{model,errtype}
 ```
 
-`model`、`errtype`、`auth`、`ssparse` 不依赖其他业务包。`render` 不反向依赖 `config`。`admin` 通过 `app.Service` 间接访问 `RuntimeConfig`（RWMutex 保护），不直接编排管道或渲染。
+`model`、`errtype`、`auth`、`ssparse`、`webui` 不依赖其他业务包。`render` 不反向依赖 `config`。`admin` 通过 `app.Service` 间接访问 `RuntimeConfig`（RWMutex 保护），不直接编排管道或渲染。
 
 **核心术语**（下游章节会反复使用）：
 
@@ -89,8 +90,9 @@ internal/target → internal/{model,errtype}
    | `internal/pipeline/validate.go` 的 `buildChainedProxyIDSet` + `buildNamespaceIndex`   | 是否纳入 ID 引用检查？链式集合判定？       |
    | `internal/model/proxy_invariant.go` 的 `allowedProxyTypesByKind`                      | 新 Kind 允许哪些 Type？需新增映射条目      |
    | `internal/model/proxy_invariant.go` 的 `ValidateProxyInvariant` KindChained 分支      | 新 Kind 是否有类似 DialerID 的结构约束？   |
+   | `internal/target/name_projection.go` 的 `allocateTargetProxyNames`                    | 新 Kind 是否按非链式/链式分轮分配输出名？  |
 
-   > **注意**：`filterUnsupportedProxies` 同时按 `px.Type`（协议）和 `px.Native.Format`（结构化订阅原生格式）判断，`renderSurgeProxy` switch 分派的是 `px.Type`。新增 Kind 不需因 Kind 本身修改协议分支，但必须按行为语义评估目标格式投影；新增协议时见 §新增 Proxy.Type。
+   > **注意**：`filterUnsupportedProxies` 同时按 `px.Type`（协议）和 `px.Native.Format`（结构化订阅原生格式）判断，`buildClashProxy` / `renderSurgeProxy` / `renderLoonProxy` switch 分派的是 `px.Type`。新增 Kind 不需因 Kind 本身修改协议分支，但必须按行为语义评估目标格式投影；新增协议时见 §新增 Proxy.Type。
 
 4. 更新相关函数/变量的 doc comment（历史注释可能写 "只含 KindSubscription"，必须同步改）
 5. 写 group-level 回归测试（`TestGroup_<NewKind>ParticipatesInRegionMatch` 之类），防止 `isFetchedKind` 等 helper 被改窄导致静默回归
@@ -101,12 +103,13 @@ internal/target → internal/{model,errtype}
 
 1. `internal/render/clash.go` 的 `buildClashProxy` switch 加 case
 2. `internal/render/surge.go` 的 `renderSurgeProxy` switch 加 case
-3. 若协议**只支持某一输出格式**，选一种策略：
-   - **A 报错**：不支持方的渲染器 case 返回 `RenderError`（参考 SS v2ray-plugin 在 Surge 的处理）
+3. `internal/render/loon.go` 的 `renderLoonProxy` switch 加 case
+4. 若协议**只支持某一输出格式**，选一种策略：
+   - **A 报错**：不支持方的渲染器 case 返回 `RenderError`（参考 SS v2ray-plugin 在 Surge / Loon 的处理）
    - **B 过滤**：不支持方做"视图过滤"，参考 `internal/target/filter_cascade.go` 的级联剔除；级联清空 fallback 或触发内部不变量异常抛 `TargetError`（非 `RenderError`），见 §新增错误码的边界判准
-4. 字段顺序：在 Surge 里用 `xxxKeyOrder` slice 固定（golden 比对依赖确定性输出）
-5. Params 的 key 名称**保持目标格式原样**（如 Snell 的 `shadow-tls-password`），避免在解析/渲染两处做命名映射
-6. 更新 `docs/design/rendering.md` 的映射表
+5. 字段顺序：在 Surge 里用 `xxxKeyOrder` slice 固定（golden 比对依赖确定性输出）
+6. Params 的 key 名称**保持目标格式原样**（如 Snell 的 `shadow-tls-password`），避免在解析/渲染两处做命名映射
+7. 更新 `docs/design/rendering.md` 的映射表
 
 ### 新增来源类型（类比 `sources.snell`）
 
@@ -121,6 +124,7 @@ internal/target → internal/{model,errtype}
 - [ ] Group 阶段：混合 Kind 的 region regex 匹配用例
 - [ ] Surge 渲染：含 base template + 含 managed header 的共存测试
 - [ ] Clash 渲染：若做过滤，测级联 + fallback 清空 + 规则/ruleset 清理
+- [ ] Loon 渲染：覆盖五段底版合并；若做过滤，测级联 + fallback 清空 + 规则/ruleset 清理
 - [ ] Execute 端到端：`TestExecute_<Source>EndToEnd` 贯通管道 + 三种渲染器
 - [ ] ValidateGraph happy path：含新 Kind 的 GroupResult 通过校验
 - [ ] 配置校验：`sources.<new>[].url` 空 / 非 HTTP(S) 报错
@@ -142,7 +146,7 @@ internal/target → internal/{model,errtype}
 1. 位置：`internal/errtype/errors.go`
 2. 命名：`Code<Domain><Scene>`，Domain ∈ {Config, Fetch, Resource, Build, Target, Render}
 3. 使用对应 `*Error` 结构体：`ConfigError` / `FetchError` / `ResourceError` / `BuildError` / `TargetError` / `RenderError`
-4. **Target vs Render 边界判准**：目标格式投影阶段的失败（fallback 级联清空、协议过滤内部不变量异常等发生在渲染之前的格式投影错误）抛 `TargetError`；输出序列化 / 底版模板合并失败（YAML 编码、template.Parse、managed header 注入等 Render 阶段错误）抛 `RenderError`。两者在 HTTP 层都映射为 500，但阶段语义不同，不要混用
+4. **Target vs Render 边界判准**：目标格式投影阶段的失败（fallback 级联清空、协议过滤内部不变量异常等发生在渲染之前的格式投影错误）抛 `TargetError`；输出序列化 / 底版模板合并失败（YAML 编码、底版 YAML/INI 解析合并、managed header 注入等 Render 阶段错误）抛 `RenderError`。在 HTTP 层，用户可修复的 fallback 级联清空类 `TargetError`（`CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` / `CodeTargetLoonFallbackEmpty`）映射为 `400`，投影不变量类 `TargetError` 与 `RenderError` 映射为 `500`，阶段语义不同，不要混用
 5. `errors_test.go` 加覆盖（现有测试对每个新 Code 至少有一条断言其 Error() 输出格式）
 
 ---
@@ -227,8 +231,11 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - `docs/design/validation.md` — 配置与图校验规则
 - `docs/design/web-ui.md` — Web 管理后台设计
 - `docs/design/api.md` — HTTP API 设计（含 Admin API）
+- `docs/design/app-service.md` — `app.Service` Go 层接口与 DTO 契约
 - `docs/design/caching.md` — 订阅拉取与缓存策略
+- `docs/deployment.md` — 构建、Release 与部署指南
 - `docs/implementation/implementation-plan.md` — v2.0 开发计划
+- `docs/implementation/progress.md` — v2.0 开发进度与验收证据
 - `docs/implementation/project-structure.md` — 代码目录与包边界
 - `docs/implementation/testing-strategy.md` — 测试编号与覆盖策略
 
@@ -243,7 +250,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 > **触及时行动**：新增 format-specific 过滤时 → 重新评估是否引入 per-format validation hook（让 ValidateGraph 接受 `formatHint` 参数）。
 
 - **现象**：Build 阶段"合法"的配置，在某一输出格式的 Target 阶段可能失败（如 Snell 节点让 Clash fallback 被级联清空）
-- **报错路径**：`target.ForClash`（内部调用 `filterUnsupportedProxies`）在 Target 阶段返回 `CodeTargetClashFallbackEmpty`
+- **报错路径**：`target.ForClash` / `target.ForSurge` / `target.ForLoon`（内部调用 `filterUnsupportedProxies`）在 Target 阶段返回 `CodeTargetClashFallbackEmpty` / `CodeTargetSurgeFallbackEmpty` / `CodeTargetLoonFallbackEmpty`
 - **影响**：Build 通过后，某一种格式仍可能在 Target 阶段失败；返回 `TargetError`，此时尚未执行 Render
 - **缓解方案（未实施）**：引入 per-format validation hook，让 ValidateGraph 接受 `formatHint` 参数，对每种输出格式跑一次图校验。当前规模下不必处理，但**新增 format-specific 过滤时应重新评估**
 
@@ -264,6 +271,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 - **报错路径**：
   - Clash 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForClash`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetClashFallbackEmpty` 等错误
   - Surge 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForSurge`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetSurgeFallbackEmpty` 等错误
+  - Loon 走 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies`（经 `target.ForLoon`），可能级联清空 fallback / 规则 / ruleset，最终抛 `CodeTargetLoonFallbackEmpty` 等错误
 - **影响**：Build 阶段通过的配置可能在 Target 阶段失败；调试需读级联链（"FINAL 为空 ← SVC_X 为空 ← GRP_SG 被过滤 ← 仅含 Snell 节点"）
 - **与局限 1 的关系**：同属"ValidateGraph 不感知格式"的具体表现。缓解方案共享：per-format validation hook
 - **新增格式专属协议或结构化来源时**：复用 `internal/target/filter_cascade.go` 的 `filterUnsupportedProxies` 过滤策略；同步补跨格式过滤测试（至少覆盖"该节点在另一格式下被过滤后 fallback / 规则的级联效应"）
@@ -287,7 +295,7 @@ Release workflow 按以下顺序执行，任一步失败则阻断后续 job（bi
 
 按本项目历次偏差归纳的尾部自检清单。提交改动前逐条确认：
 
-- [ ] **ProxyKind 枚举变更** → 见 §新增 ProxyKind：已按判定原则逐个评估所有 Kind 敏感分派点（pipeline 层 6 处 + model 层 2 处）
+- [ ] **ProxyKind 枚举变更** → 见 §新增 ProxyKind：已按判定原则逐个评估所有 Kind 敏感分派点（pipeline 层 6 处 + model 层 2 处 + target 层 1 处）
 - [ ] **用户可见错误消息含 URL**：已用 `fetch.SanitizeURL` 脱敏（订阅/链路 URL 常含 token）
 - [ ] **新增来源类型** → 见 §新增来源类型：`configs/base_config.yaml` 已加注释示例块；docs 已同步
 - [ ] **函数行为语义变化** → 见 §语义变更优先 rename：已 rename 函数/变量名而非仅改注释（锚点一致性）

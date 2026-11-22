@@ -1,6 +1,6 @@
 # Web 管理后台设计
 
-> 状态提示：本文描述 v2.0 Web 管理后台当前契约；`web/` 是正式 Vite SPA 工程，生产镜像将构建产物嵌入 Go 二进制。能力状态见 docs/README.md。
+> 状态提示：本文描述 v2.0 Web 管理后台当前契约；`web/` 是正式 Vite SPA 工程，生产镜像将构建产物嵌入 Go 二进制。能力状态见 [文档状态矩阵](../README.md)。
 
 ## 目标
 
@@ -20,7 +20,7 @@
 
 ## 信息架构
 
-三个功能区：
+三个逻辑功能区（侧边栏导航在视觉上归为“配置”与“运行时（含系统状态）”两组）：
 
 ### A 区：配置编辑
 
@@ -28,14 +28,14 @@
 
 | 页面 | 对应 YAML 段 | 核心功能 |
 |------|-------------|---------|
-| A1 订阅来源 | `sources` | 四类来源（subscriptions / snell / vless / custom_proxies）的卡片式管理；三类拉取来源均支持 URL 或本地正文编辑，每类来源独立区块；自定义代理含 `relay_through` 子表单 |
-| A2 过滤器 | `filters` | exclude 正则编辑 + 草稿匹配预览（调用 `POST /api/preview/nodes` 展示当前草稿会匹配/排除的节点）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
-| A3 节点分组 | `groups` | 分组卡片列表（拖拽排序，保序）；每组：名称 + match 正则 + strategy 选择器 + 草稿匹配预览（调用 `POST /api/preview/groups`）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
-| A4 路由策略 | `routing` | 服务组列表（拖拽排序，保序）；每组：名称 + 成员选择器（可引用节点组、服务组、DIRECT、REJECT、`@all`、`@auto`）；约束提示 |
+| A1 订阅来源 | `sources` | 四类来源（subscriptions / snell / vless / custom_proxies）的卡片式管理；三类拉取来源均支持 URL 或本地正文编辑、自动读取、来源检查，每类来源独立区块且支持排序；自定义代理含 `relay_through` 子表单 |
+| A2 过滤器 | `filters` | exclude 正则编辑（防抖调用 `POST /api/config/validate` 走后端 Go RE2 校验）+ 常用正则模板 + 草稿匹配预览（调用 `POST /api/preview/nodes` 展示当前草稿会匹配/排除的节点）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
+| A3 节点分组 | `groups` | 分组卡片列表（拖拽排序，保序）；每组：名称 + match 正则（防抖后端正则校验）+ strategy 选择器 + 重命名引用同步 + 草稿匹配预览（调用 `POST /api/preview/groups`）。注意：预览会实际拉取订阅，应显示"正在拉取订阅..."提示 |
+| A4 路由策略 | `routing` | 服务组列表（拖拽排序，保序）；每组：名称 + 成员选择器（可引用节点组、链式组、服务组、DIRECT、REJECT、`@all`、`@auto`）+ 组内成员拖拽排序 + 约束提示 |
 | A5 规则集 | `rulesets` | 按服务组分组展示 URL 列表；增删改及拖拽调整绑定和 URL 顺序 |
-| A6 内联规则 | `rules` | 规则表格（拖拽排序）+ 语法提示 |
-| A7 其他配置 | `fallback` / `base_url` / `templates` | fallback 下拉（已定义服务组）；base_url 输入；templates 路径输入 |
-| A8 静态配置校验 | （全配置） | 调用 `POST /api/config/validate`；展示 errors / warnings / infos 三级；通过 `locator.json_pointer` 跳转到对应 A1–A7 页面的具体字段 |
+| A6 内联规则 | `rules` | 规则列表（关键字搜索过滤、拖拽排序）+ 底部选中规则编辑面板（原始规则文本与末尾 Policy 选择器） |
+| A7 其他配置 | `fallback` / `base_url` / `templates` | fallback 下拉（已定义服务组）；base_url 输入与前端格式校验/链接预览；Clash / Surge / Loon 模板路径或本地正文编辑（`ResourceEditor`） |
+| A8 静态校验 | （全配置） | 导航与页面标题为“静态校验”；调用 `POST /api/config/validate`；展示 errors / warnings / infos 三级；通过 `locator.json_pointer` 跳转到对应 A1–A7 页面的具体字段，并通过右侧只读 Drawer 查看定位详情 |
 
 ### B 区：运行时预览
 
@@ -43,18 +43,18 @@
 
 | 页面 | 数据来源 | 核心功能 |
 |------|---------|---------|
-| B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅 / Snell / VLESS / 自定义）；显示名称、类型、服务器、端口、Kind；标注可由类型判断的格式限定（Snell = 仅 Surge / VLESS = Clash / Loon（按传输过滤）） |
+| B1 节点预览 | `GET /api/preview/nodes` | 全来源节点表格（按来源分类：订阅 / Snell / VLESS / 自定义）；顶部分类胶囊标注 `Surge only`（Snell）与 `Clash / Loon`（VLESS），表格显示名称、类型、服务器、端口、来源（`kind`）和标签（按 `kind` 标 `Surge` / `Clash / Loon`，`anytls` 标 `AnyTLS`，以及 `active` / `filtered`） |
 | B2 分组预览 | `GET /api/preview/groups` | 当前运行时节点组、链式组和服务组结果；展示 `@all` / `@auto` 展开后的成员 |
-| B3 生成下载 | `GET /api/generate/preview` + `/generate` + `GET /api/generate/link` + `GET /api/config/saved.zip` + `GET /api/config/effective.zip` + `POST /api/config/import` | 自动展示 Clash Meta / Surge / Loon 三种格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；分别导出已保存配置与当前生效配置的可迁移 ZIP；导入 ZIP 或 YAML 到前端草稿 |
+| B3 生成下载 | `GET /api/generate/preview` + `GET /api/preview/nodes` + `/generate` + `GET /api/generate/link` + `GET /api/config/saved.zip` + `GET /api/config/effective.zip` + `POST /api/config/import` | 顶栏展示节点与配置统计；自动展示 Clash Meta / Surge / Loon 三种格式运行时生成内容（语法高亮）；下载目标格式配置；复制订阅链接（由服务端生成，可含订阅 token）；分别导出已保存配置与当前生效配置的可迁移 ZIP；导入 ZIP 或 YAML 到前端草稿 |
 
 ### C 区：系统状态
 
 | 内容 | 数据来源 | 说明 |
 |------|---------|------|
-| 服务健康 | `GET /healthz` | 健康/异常指示 |
-| 版本信息 | `GET /api/status` | 版本号、commit、构建时间 |
-| 配置信息 | `GET /api/status` | 配置源位置、可写性、上次加载时间 |
-| 热重载历史 | `GET /api/status` | 上次热重载时间、成功/失败状态 |
+| 服务健康与运行状态 | `GET /healthz` + `GET /api/status` | 健康/异常指示、运行时长与 `/healthz` 探针行 |
+| 版本与配置摘要 | `GET /api/status` + 草稿统计 | 版本号、commit、构建时间；配置状态（未创建/待重载/已加载）及来源/分组/路由条目计数 |
+| 热重载历史 | `GET /api/status` | 最近一次热重载时间、耗时、成功/失败状态及错误消息 |
+| 运行环境 | `GET /api/status` | 配置文件路径（`config_source.location`）、监听地址、工作目录、Go runtime、内存占用、请求总数（注：配置源可写性与 `config_loaded_at` 当前未在状态页正文展开，`config_loaded_at` 仅在侧边栏状态卡无 reload 记录时回退显示） |
 
 ---
 
@@ -63,8 +63,8 @@
 | 场景 | 模式 | 说明 |
 |------|------|------|
 | 添加/编辑条目 | 居中 Modal | 表单编辑，确认后保存 |
-| 操作成功反馈 | 右下绿色 Toast | 约 4s 自动消失，并替换同一操作的旧反馈 |
-| 操作失败反馈 | 右下反馈 | 普通提示 8s 后消失；需恢复操作的错误持续显示，同一操作合并；反馈正文不拦截下方控件，取消恢复操作后保留按钮 |
+| 操作成功反馈 | 右下绿色 Toast | 3.6s 自动消失，并按 `scope`（或标题）替换同一操作的旧反馈 |
+| 操作失败反馈 | 右下反馈 | 非持久信息/警告 8s 后消失；错误提示默认持续显示直到关闭或被同 `scope` 反馈替换；反馈正文不拦截下方控件，取消恢复操作后保留按钮 |
 | 进行中状态 | 顶栏按钮 Spinner + 禁用 | 防止重复提交 |
 | 不可撤销操作 | 居中红色确认弹窗 | 删除、重置等需二次确认 |
 | 首次覆写已有本地 YAML | 居中确认弹窗 | 提示注释、引号和格式风格可能丢失，用户确认后才发起 `PUT /api/config` |
@@ -101,13 +101,13 @@ SPA 使用以下路由结构（React Router），与 Go 服务的 SPA fallback �
 | `/rulesets` | A5 规则集 | A 配置编辑 |
 | `/rules` | A6 内联规则 | A 配置编辑 |
 | `/settings` | A7 其他配置 | A 配置编辑 |
-| `/validate` | A8 静态配置校验 | A 配置编辑 |
+| `/validate` | A8 静态校验 | A 配置编辑 |
 | `/nodes` | B1 节点预览 | B 运行时预览 |
 | `/preview/groups` | B2 分组预览 | B 运行时预览 |
 | `/download` | B3 生成下载 | B 运行时预览 |
 | `/status` | C 系统状态 | C 系统状态 |
 
-所有路由在未匹配静态文件时由 Go 服务 fallback 到 `index.html`，无需服务端渲染支持。
+根路径 `/` 与其他未匹配路径均重定向至 `/sources`。所有路由在未匹配静态文件时由 Go 服务 fallback 到 `index.html`，无需服务端渲染支持。
 `/generate` 保留为后端生成接口和订阅链接路径，不作为 SPA 页面路由。
 
 ---
@@ -145,21 +145,21 @@ SPA 使用以下路由结构（React Router），与 Go 服务的 SPA fallback �
 - `/generate` 订阅链接继续使用 query token 兼容客户端；后台内下载可凭 session Cookie 调用 `/generate`
 - 复制订阅链接时，前端调用 `GET /api/generate/link` 由服务端生成 URL；复制含 token 的链接前需显式确认
 - 请求/响应均为 JSON（除 `/generate` 和 `/api/generate/preview` 返回配置文本）
-- 前端通过 `GET /api/status` 读取 `capabilities.config_write`；当配置不可写时，编辑页进入只读查看模式，保存按钮禁用
-- API client 将错误归一化为 `status` / `code` / `message` / `details`；`409` 必须按 `error.code` 区分 revision 冲突、只读配置源和本地文件不可写
+- 前端通过 `GET /api/status` 同时依据 `capabilities.config_write` 与 `config_source.writable`（以及保存遇 `409 config_source_readonly` 触发的 `forcedReadonly`）控制只读模式；当配置不可写时，编辑页进入只读查看模式，保存按钮禁用
+- API client 将错误归一化为 `status` / `code` / `message` / `details`；`409` 在保存工作流中按 `error.code` 区分 revision 冲突、只读配置源、本地文件不可写与托管正文目录不可写
 
 ### 无主配置的初始化
 
-本地文件缺失时，后台在管理员认证后返回空草稿。全局提示引导用户导入或手动编辑；配置目录可写时启用导入与编辑，不把文件缺失视为只读。首次保存使用配置接口提供的版本标记创建文件，保留空运行状态，热重载后才启用运行时生成与预览。未创建文件时隐藏已保存配置导出并禁用热重载；无运行版本时隐藏下载卡片。目录不可写时说明原因，保留只读限制。字段契约见 [首次配置 API](api.md#首次配置)。
+本地文件缺失时，后台在管理员认证后返回空草稿。全局提示引导用户导入或手动编辑；配置目录可写时启用导入与编辑，不把文件缺失视为只读。首次保存使用配置接口提供的版本标记创建文件，保留空运行状态，热重载后才启用运行时生成与预览。未创建文件时隐藏“导出已保存配置”并禁用热重载；无运行版本时禁用“导出生效配置”并隐藏下载卡片，B3 展示引导文案（B1/B2 此时不发请求，当前尚未单独展示空运行版本引导文案）。目录不可写时说明原因，保留只读限制。字段契约见 [首次配置 API](api.md#首次配置)。
 
 ### 登录态流程
 
 - 页面启动时先调用 `GET /api/auth/status` 判断 `authed`、`setup_required`、`setup_token_required` 和 `locked_until`
 - `setup_required=true` 时，`/login` 渲染 setup 模式，要求输入 bootstrap setup token，提交 `POST /api/auth/setup`
 - 未登录访问受保护页面时跳转 `/login?next=<原路径>`；登录成功后跳回 `next` 或默认 `/sources`
-- 受保护 API 返回 `401 auth_required` 或 `401 session_expired` 时，全局拦截并跳转 `/login`，提示“登录已过期”
-- 登录失败 `401 invalid_credentials` 时展示剩余次数；`423 auth_locked` 时展示锁定截止时间并禁用提交。页面按截止时间注册定时器，到期恢复提交并清除锁定提示；已过期的缓存时间不禁用登录。失败计数的过期规则见 [鉴权](api.md#鉴权)，实际登录请求仍由后端校验
-- setup 失败 `401 setup_token_required` 或 `401 setup_token_invalid` 时在 setup token 字段下展示错误，不创建管理员凭据
+- 受保护 API 返回 `401 auth_required` 或 `401 session_expired` 时，由 API client 派发事件并经 `ProtectedRoute` 清理登录态缓存并重定向至 `/login?next=<原路径>`；其中 `session_expired` 同时弹出“登录已过期”提示 Toast
+- 登录提交返回 `401 invalid_credentials` 时以右下角 Toast 展示剩余次数；返回 `423 auth_locked` 时以右下角 Toast 展示锁定截止时间并禁用提交（若首次加载页面即从 `authStatus.locked_until` 获知处于锁定态，当前仅禁用提交按钮、尚未在页面展示锁定提示）。页面按截止时间注册定时器，到期恢复提交并清除锁定提示；已过期的缓存时间不禁用登录。失败计数的过期规则见 [鉴权](api.md#鉴权)，实际登录请求仍由后端校验
+- setup 失败 `401 setup_token_required` 或 `401 setup_token_invalid` 时以右下角 Toast 展示错误，不创建管理员凭据
 - 右上角或用户菜单提供退出登录，调用 `POST /api/auth/logout` 后跳转 `/login`
 - “记住我”只影响服务端 session 过期时间：未选最长 24 小时，选中最长 7 天；前端不持久保存密码、session id 或订阅 token
 
@@ -193,13 +193,13 @@ B2 分组预览执行到 ValidateGraph：若后端返回图级错误，页面显
 
 缓解策略（纯前端行为，无需后端改动）：
 
-- 前端在编辑页面活跃期间，定期（建议 30s）poll `GET /api/status` 的 `config_revision`
-- 当 revision 与编辑起始时的 revision 不一致时，顶栏显示 warning："配置文件已被外部修改，保存前请对比最新版本"
-- 不自动覆盖用户正在编辑的草稿，仅提示用户自行决定是否重新加载
+- 前端登录后通过 `ConfigProvider` 定期（30s）poll `GET /api/status` 的 `config_revision`
+- 当存在未保存草稿（`isDraftDirty=true`）且 `status.config_revision` 与 `baseRevision` 不一致时，顶栏显示 warning：“检测到配置 revision 已变化，当前草稿不会被自动覆盖。”
+- 不自动覆盖用户正在编辑的草稿；顶栏条幅提供“丢弃草稿”按钮回退至当前已加载基线，若继续点击保存触发 `409 config_revision_conflict`，则在反馈提示中提供从服务端“重新加载配置”的入口
 
 ## 保序字段的 JSON 表示
 
-YAML 配置中 `groups` / `routing` / `rulesets` 使用 OrderedMap 保序。JSON 序列化规范（含完整示例和 round-trip 不变量）定义在 `config-schema.md` §JSON API 表示。以下为前端消费示例：
+YAML 配置中 `groups` / `routing` / `rulesets` 使用 OrderedMap 保序。JSON 序列化规范（含完整示例和 round-trip 不变量）定义在 [JSON API 表示（v2.0）](config-schema.md#json-api-表示v20)。以下为前端消费示例：
 
 ```json
 {
@@ -220,7 +220,7 @@ YAML 配置中 `groups` / `routing` / `rulesets` 使用 OrderedMap 保序。JSON
 - 支持浅色/深色主题
 - 静态校验不依赖外部网络（前端格式级校验 + 后端 Prepare 校验）；运行时预览和生成预览可能访问远程订阅与模板
 - 页面加载后可离线操作配置编辑（保存/预览需网络）
-- 当后端 API 不可用时（网络错误或 `api` 容器宕机），SPA 应显示明确的连接错误提示，而非空白页面或静默失败
+- 当后端 API 不可用时，登录页（`/api/auth/status` 失败）、侧边栏状态卡与 C 状态页（`/api/status`、`/healthz` 失败）显示明确连接错误提示；`GET /api/config` 失败时，配置页（A1–A8）在未载入草稿前展示带“重试”按钮的错误态而不渲染空表单，非配置页及已载入草稿后的后台刷新失败在顶部展示告警条与重试入口
 
 
 ### 节点与模板正文编辑
@@ -235,7 +235,7 @@ YAML 配置中 `groups` / `routing` / `rulesets` 使用 OrderedMap 保序。JSON
 
 三类来源先通过 `POST /api/resources/read` 读取原文，再通过 `POST /api/subscriptions/check` 携带 `kind` 检查这份原文，并携带 `source_location` 保留来源位置的识别提示。读取与检查独立反馈：格式待确认或解析失败时仍可展开原文、编辑副本；只有当前内容检查成功后才允许“应用到草稿”。更正格式只重新检查原文，不重新下载。修改输入使旧检查结果失效，旧异步响应不能覆盖当前内容。模板格式由 Clash / Surge / Loon 所属栏目确定，读取后即可查看，不执行节点检查。
 
-引用正文以只读方式展示。“编辑为本地副本”保留已读取内容，切换到本地正文；保存后改由用户维护，不再跟随原地址更新，原资源不被覆盖。首次输入或读取失败时可选择粘贴正文修复。切换来源方式保留本次未保存的正文；更换地址后不复用旧来源的编辑副本。
+引用正文以只读方式展示。“编辑为本地副本”保留已读取内容，切换到本地正文；保存后改由用户维护，不再跟随原地址更新，原资源不被覆盖。首次输入或读取失败时，模板编辑器提供“粘贴正文”按钮，三类节点来源编辑器可通过顶部模式切换至“本地正文”粘贴修复。切换来源方式保留本次未保存的正文；更换地址后不复用旧来源的编辑副本。
 
 订阅列表仅展示配置中的格式名称，例如“Surge 配置”；未指定格式或使用 `auto` 时显示“按内容识别”。这些文字使用中性色，不附加状态圆点或“解析方式”前缀。进入或重新进入列表不读取订阅，也不显示“尚未检查”等检查状态；检查仅在新建、编辑或只读查看某条来源时执行，结果留在对应编辑器中，不缓存到列表或写入 YAML。
 
